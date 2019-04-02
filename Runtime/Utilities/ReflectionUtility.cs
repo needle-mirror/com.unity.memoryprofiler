@@ -1,30 +1,40 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
-using UnityEngine;
+using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("Unity.MemoryProfiler.Tests")]
 namespace Unity.MemoryProfiler
 {
+
     internal class ReflectionUtility
     {
-        public static List<Type> GetConcreteDerivedTypes(Type baseType, Assembly assembly)
+        public static List<Type> GetTypesImplementingInterfaceFromCurrentDomain(Type baseType)
         {
-            // Request all types from the given assembly
-            Type[] types = assembly.GetTypes();
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
             List<Type> derived = new List<Type>();
 
-            for (int i = 0; i < types.Length; ++i)
+            for (int i = 0; i < assemblies.Length; ++i)
             {
-                Type type = types[i];
-                if (type.IsSubclassOf(baseType) && !type.IsAbstract)
+                Type[] types = assemblies[i].GetTypes();
+
+                for (int j = 0; j < types.Length; ++j)
                 {
-                    derived.Add(type);
+                    Type type = types[j];
+                    if (!type.IsAbstract)
+                    {
+                        Type[] interfaces = type.GetInterfaces();
+                        for (int k = 0; k < interfaces.Length; ++k)
+                        {
+                            if(interfaces[k] == baseType)
+                            {
+                                derived.Add(type);
+                                break;
+                            }
+                        }
+                    }
                 }
             }
-
             return derived;
         }
     }
-
 }

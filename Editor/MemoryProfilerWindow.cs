@@ -80,14 +80,10 @@ namespace Unity.MemoryProfiler.Editor
         const string k_ViewFileExtension = "xml";
         const string k_RawCategoryName = "Raw";
         const string k_DiffRawCategoryName = "Diff Raw";
-
-        const string k_ToolbarCommonStyleSheetPath = "StyleSheets/ToolbarCommon.uss";
-        const string k_ToolbarDarkStyleSheetPath = "StyleSheets/ToolbarDark.uss";
-        const string k_ToolbarLightStyleSheetPath = "StyleSheets/ToolbarLight.uss";
+        
         const string k_WindowUxmlPath = "Packages/com.unity.memoryprofiler/Package Resources/UXML/MemoryProfilerWindow.uxml";
         const string k_SnapshotListItemUxmlPath = "Packages/com.unity.memoryprofiler/Package Resources/UXML/SnapshotListItem.uxml";
         const string k_WindowCommonStyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss";
-        const string k_Window20191StyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style_2019_1.uss";
         const string k_WindowLightStyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style_light.uss";
         const string k_WindowDarkStyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style_dark.uss";
         const string k_SnapshotButtonClassName = "snapshotButton";
@@ -177,6 +173,7 @@ namespace Unity.MemoryProfiler.Editor
   
         void OnEnable()
         {
+            MemoryProfilerAnalytics.EnableAnalytics();
             m_MemorySnapshotsCollection = new SnapshotCollection(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath);
             m_LegacyReader = new LegacyReader();
 
@@ -184,16 +181,12 @@ namespace Unity.MemoryProfiler.Editor
             var root = this.rootVisualElement;
             
             root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(k_WindowCommonStyleSheetPath));
-            root.styleSheets.Add(EditorGUIUtility.Load(k_Window20191StyleSheetPath) as StyleSheet);
-            root.styleSheets.Add(EditorGUIUtility.Load(k_ToolbarCommonStyleSheetPath) as StyleSheet);
             if (EditorGUIUtility.isProSkin)
             {
-                root.styleSheets.Add(EditorGUIUtility.Load(k_ToolbarDarkStyleSheetPath) as StyleSheet);
                 root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(k_WindowDarkStyleSheetPath));
             }
             else
             {
-                root.styleSheets.Add(EditorGUIUtility.Load(k_ToolbarLightStyleSheetPath) as StyleSheet);
                 root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(k_WindowLightStyleSheetPath));
             }
             // Import UXML
@@ -202,16 +195,13 @@ namespace Unity.MemoryProfiler.Editor
 #else
             var root = this.GetRootVisualContainer();
             root.AddStyleSheetPath(k_WindowCommonStyleSheetPath);
-            root.AddStyleSheetPath(k_ToolbarCommonStyleSheetPath); 
             root.AddStyleSheetPath(k_WindowCommonStyleSheetPath);
             if (EditorGUIUtility.isProSkin)
             {
-                root.AddStyleSheetPath(k_ToolbarDarkStyleSheetPath);
                 root.AddStyleSheetPath(k_WindowDarkStyleSheetPath);
             }
             else
             {
-                root.AddStyleSheetPath(k_ToolbarLightStyleSheetPath);
                 root.AddStyleSheetPath(k_WindowLightStyleSheetPath);
             }
             // Import UXML
@@ -300,7 +290,9 @@ namespace Unity.MemoryProfiler.Editor
         IEnumerator UpdateOpenSnapshotsPaneAfterLayout()
         {
             yield return null;
-            if(m_LeftPaneToolbarWidthTakenByUIElements <= 0)
+            if (m_LeftPane == null || m_LeftPane.layout == null)
+                yield break;
+            if (m_LeftPaneToolbarWidthTakenByUIElements <= 0)
             {
 
 #if UNITY_2019_1_OR_NEWER
@@ -586,11 +578,12 @@ namespace Unity.MemoryProfiler.Editor
         void OnDisable()
         {
             UIState.ClearAllOpenModes();
-            SidebarWidthChanged = null;
+            SidebarWidthChanged = delegate { };
             if(m_PlayerConnectionState != null)
             {
                 m_PlayerConnectionState.Dispose();
                 m_PlayerConnectionState = null;
+                EditorApplication.playModeStateChanged -= PlaymodeStateChanged;
             }
 
             CompilationPipeline.assemblyCompilationStarted -= StartedCompilationCallback;

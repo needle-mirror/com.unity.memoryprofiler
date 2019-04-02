@@ -11,12 +11,16 @@ namespace Unity.MemoryProfiler.Editor
     {
         static bool s_EnableAnalytics = false;
 
-        static Dictionary<Type, double> s_PendingEvents;
+        static Dictionary<Type, double> s_PendingEvents = new Dictionary<Type, double>();
 
-        static Dictionary<Type, List<int>> s_MetaDataForPendingEvents;
+        static Dictionary<Type, List<int>> s_MetaDataForPendingEvents = new Dictionary<Type, List<int>>();
 
         static List<Filter> s_PendingFilterChanges = new List<Filter>();
         static string s_TableNameOfPendingFilterChanges = "";
+
+        const int k_MaxEventsPerHour = 100;
+        const int k_MaxEventItems = 1000;
+        const string k_VendorKey = "unity.memoryprofiler";
 
         public interface IMemoryProfilerAnalyticsEvent
         {
@@ -38,7 +42,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "captureSnapshot";
             }
-            // camelCase since these events get serialized to json and naming convention in analytics is camelCase
+            // camelCase since these events get serialized to Json and naming convention in analytics is camelCase
             public string subtype;
             public int ts;
             public float duration;
@@ -173,12 +177,10 @@ namespace Unity.MemoryProfiler.Editor
 
         const string k_EventTopicName = "memoryProfiler";
 
-        [InitializeOnLoadMethod]
-        static void InitializeAnalytics()
+        public static void EnableAnalytics()
         {
             s_EnableAnalytics = true;
-            s_MetaDataForPendingEvents = new Dictionary<Type, List<int>>();
-            s_PendingEvents = new Dictionary<Type, double>();
+            EditorAnalytics.RegisterEventWithLimit(k_EventTopicName, k_MaxEventsPerHour, k_MaxEventItems, k_VendorKey);
         }
         
         public static void SendEvent<T>(T eventData) where T : IMemoryProfilerAnalyticsEvent

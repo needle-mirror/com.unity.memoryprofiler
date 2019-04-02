@@ -2,14 +2,12 @@
 /* Top-level UI                                                                                                       */
 /**********************************************************************************************************************/
 
-#backwardsInHistoryButton{
-	--unity-image::resource("Icons/d_Profiler.PrevFrame.png");
-	image:resource("Icons/d_Profiler.PrevFrame.png");
+#backwardsInHistoryButton.historyButtonIcon{
+	background-image: resource("Icons/d_Profiler.PrevFrame.png");
 }
 
-#forwardsInHistoryButton{
-	--unity-image::resource("Icons/d_Profiler.NextFrame.png");
-	image:resource("Icons/d_Profiler.NextFrame.png");
+#forwardsInHistoryButton.historyButtonIcon{
+	background-image: resource("Icons/d_Profiler.NextFrame.png");
 }
 
 /**********************************************************************************************************************/
@@ -57,8 +55,7 @@ Toggle.radioButton:focus:checked > #Checkmark {
 }
 
 #optionButton{
-	--unity-image::resource("Icons/d__Popup.png");
-	image:resource("Icons/d__Popup.png");
+	background-image: resource("Icons/d__Popup.png");
 }
 
 .previewImage{

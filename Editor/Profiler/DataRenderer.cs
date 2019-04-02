@@ -269,7 +269,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.NativeObject:
                     return RenderPointer(m_Snapshot.nativeObjects.nativeObjectAddress[od.nativeObjectIndex]);
                 default:
-                    return "<unknown type>";
+                    return "<uninitialized type>";
             }
         }
 
@@ -316,7 +316,7 @@ namespace Unity.MemoryProfiler.Editor
                         goto default;
                     }
                 case ObjectDataType.Unknown:
-                    return "<unknown>";
+                    return "<uninitialized type>";
                 default:
                     {
                         if (od.IsField())

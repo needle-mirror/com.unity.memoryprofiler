@@ -1,0 +1,16 @@
+{
+    "name": "Unity.MemoryProfiler.Tests",
+    "references": [
+        "Unity.MemoryProfiler"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": []
+}

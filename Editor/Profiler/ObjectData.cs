@@ -365,7 +365,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.ReferenceArray:
                     break;
                 default:
-                    UnityEngine.Debug.LogError("Requesting an array element on an invalid data type");
+                    DebugUtility.DebugLog("Requesting an array element on an invalid data type");
                     return invalid;
             }
             ObjectData o = new ObjectData();

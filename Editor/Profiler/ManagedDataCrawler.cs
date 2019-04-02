@@ -540,58 +540,57 @@ namespace Unity.MemoryProfiler.Editor
                 Debug.LogWarning("Could not find unity object instance id field or m_CachedPtr");
                 return;
             }
+            
 
             for (int i = 0; i != objectInfos.Count; i++)
             {
                 //Must derive of unity Object
                 var objectInfo = objectInfos[i];
-                if (!DerivesFrom(snapshot.typeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
-                    continue;
+                objectInfo.NativeObjectIndex = -1;
 
-                //Find object instance id
-                int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceID_None;
-                if (iField_UnityEngineObject_m_InstanceID >= 0)
+                if (DerivesFrom(snapshot.typeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
                 {
-                    var h = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (UInt64)instanceIDOffset, snapshot.virtualMachineInformation);
-                    if (h.IsValid)
+                    //Find object instance id
+                    int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceID_None;
+                    if (iField_UnityEngineObject_m_InstanceID >= 0)
                     {
-                        instanceID = h.ReadInt32();
+                        var h = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (UInt64)instanceIDOffset, snapshot.virtualMachineInformation);
+                        if (h.IsValid)
+                        {
+                            instanceID = h.ReadInt32();
+                        }
+                        else
+                        {
+                            Debug.LogWarning("Managed object missing head (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ")");
+                        }
                     }
-                    else
+                    else if (cachedPtrOffset >= 0)
                     {
-                        Debug.LogWarning("Managed object missing head (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ")");
-                        continue;
+                        // If you get a compilation error on the following 2 lines, update to Unity 5.4b14.
+                        var heapSection = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (UInt64)cachedPtrOffset, snapshot.virtualMachineInformation);
+                        if (!heapSection.IsValid)
+                        {
+                            Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
+                        }
+                        else
+                        {
+                            var cachedPtr = heapSection.ReadPointer();
+                            var indexOfNativeObject = snapshot.nativeObjects.nativeObjectAddress.FindIndex(no => no == cachedPtr);
+                            if (indexOfNativeObject >= 0)
+                            {
+                                instanceID = snapshot.nativeObjects.instanceId[indexOfNativeObject];
+                            }
+                        }
                     }
-                }
-                else if (cachedPtrOffset >= 0)
-                {
-                    // If you get a compilation error on the following 2 lines, update to Unity 5.4b14.
-                    var heapSection = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (UInt64)cachedPtrOffset, snapshot.virtualMachineInformation);
-                    if (!heapSection.IsValid)
-                    {
-                        Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
-                        continue;
-                    }
-                    var cachedPtr = heapSection.ReadPointer();
-                    var indexOfNativeObject = snapshot.nativeObjects.nativeObjectAddress.FindIndex(no => no == cachedPtr);
-                    if (indexOfNativeObject >= 0)
-                    {
-                        instanceID = snapshot.nativeObjects.instanceId[indexOfNativeObject];
-                    }
-                    else
-                    {
-                        continue;
-                    }
-                }
 
-                if (!snapshot.nativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
-                {
-                    objectInfo.NativeObjectIndex = -1;
+                    if (instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceID_None && snapshot.nativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
+                    {
+                        snapshot.nativeObjects.managedObjectIndex[objectInfo.NativeObjectIndex] = i;
+                    }
                 }
-                else
-                {
-                    snapshot.nativeObjects.managedObjectIndex[objectInfo.NativeObjectIndex] = i;
-                }
+            
+                objectInfos[i] = objectInfo;
+                snapshot.CrawledData.ManagedObjectByAddress[objectInfo.PtrObject] = objectInfo;
             }
         }
 
@@ -667,6 +666,10 @@ namespace Unity.MemoryProfiler.Editor
 
             obj = ParseObjectHeader(snapshot, data.ptr, out wasAlreadyCrawled, false);
             ++obj.RefCount;
+
+            snapshot.CrawledData.ManagedObjects[obj.ManagedObjectIndex] = obj;
+            snapshot.CrawledData.ManagedObjectByAddress[obj.PtrObject] = obj;
+
             dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.indexOfFrom, data.ptrFrom, obj.ManagedObjectIndex, data.ptr, data.typeFrom, data.fieldFrom, data.fromArrayIndex));
 
             if (!obj.IsKnownType())

@@ -11,19 +11,97 @@ namespace Unity.MemoryProfiler.Containers
         internal static class NativeArrayAlgorithms
         {
             /// <summary>
-            /// Port of MSDN's internal method for QuickSort, roughly 10% slower than it's counterpart, can work with native array containers inside a jobified environment.
+            /// Implementation of the binary search algorithm.
+            /// </summary>
+            /// <typeparam name="T"></typeparam>
+            /// <param name="array">Pre sorted native array</param>
+            /// <param name="value"></param>
+            /// <remarks>Note that there are no checks in regards to the provided NativeArray's sort state.</remarks>
+            /// <returns>Index of the value</returns>
+            public static int BinarySearch<T>(NativeArray<T> array, T value) where T : struct, IComparable<T>
+            {
+                unsafe
+                {
+                    byte* ptr = (byte*)array.GetUnsafePtr();
+                    byte* val = (byte*)UnsafeUtility.AddressOf<T>(ref value);
+
+                    int typeSize = UnsafeUtility.SizeOf<T>();
+
+                    switch (array.Length)
+                    {
+                        case 1:
+                            if (UnsafeUtility.MemCmp(ptr, val, typeSize) == 0)
+                            {
+                                return 0;
+                            }
+                            return -1;
+
+                        case 2:
+                            if (UnsafeUtility.MemCmp(ptr + typeSize, val, typeSize) == 0)
+                            {
+                                return 1;
+                            }
+
+                            if (UnsafeUtility.MemCmp(ptr, val, typeSize) == 0)
+                            {
+                                return 0;
+                            }
+                            return -1;
+                    }
+
+                    int left = 0;
+                    int right = array.Length - 1;
+                    while (left <= right)
+                    {
+                        int mid = (left + right) >> 1;
+                        T compareVar;
+                        UnsafeUtility.CopyPtrToStructure(ptr + mid * typeSize, out compareVar);
+                        int cmpResult = compareVar.CompareTo(value);
+
+                        switch (cmpResult)
+                        {
+                            case -1:
+                                left = mid + 1;
+                                break;
+                            case 1:
+                                right = mid - 1;
+                                break;
+                            case 0:
+                                return mid;
+                        }
+                    }
+                    return -1;
+                }
+            }
+
+            /// <summary>
+            /// Port of MSDN's internal method for QuickSort, can work with native array containers inside a jobified environment.
             /// </summary>
             /// <typeparam name="T"></typeparam>
             /// <param name="array"></param>
             /// <param name="startIndex"></param>
             /// <param name="length"></param>
+            /// <remarks>
+            /// ~10% slower than it's counterpart when using Mono 3.5, and 10% faster when using Mono 4.x
+            /// </remarks>
+#if NET_4_6
+            public static void IntrospectiveSort<T>(NativeArray<T> array, int startIndex, int length) where T : unmanaged, IComparable<T>
+#else
             public static void IntrospectiveSort<T>(NativeArray<T> array, int startIndex, int length) where T : struct, IComparable<T>
+#endif
             {
 #if MEM_PROFILER_ALGORITHM_CHECK
                 if (length < 0 || length > array.Length)
                     throw new ArgumentOutOfRangeException("length should be in the range [0, array.Length].");
                 if (startIndex < 0 || startIndex > length - 1)
                     throw new ArgumentOutOfRangeException("startIndex should in the range [0, length).");
+#endif
+
+#if !NET_4_6
+                if (!UnsafeUtility.IsBlittable<T>())
+                {
+                    throw new ArgumentException(string.Format("Type: {0}, must be a blittable type.", typeof(T).Name));
+                }
 #endif
                 if (length < 2)
                     return;
@@ -35,6 +113,23 @@ namespace Unity.MemoryProfiler.Containers
                 }
             }
 
+#if NET_4_6
+            unsafe struct NativeArrayData<T> where T : unmanaged
+            {
+                [NativeDisableUnsafePtrRestriction]
+                public readonly T* ptr;
+                public T aux_first;
+                public T aux_second;
+
+                public NativeArrayData(void* nativeArrayPtr)
+                {
+                    ptr = (T*)nativeArrayPtr;
+                    aux_first = default(T);
+                    aux_second = aux_first;
+                }
+
+            }
+#else
             unsafe struct NativeArrayData<T> where T : struct
             {
                 [NativeDisableUnsafePtrRestriction]
@@ -52,8 +147,14 @@ namespace Unity.MemoryProfiler.Containers
                 }
 
             }
+#endif
 
+#if NET_4_6
+            static void IntroSortInternal<T>(ref NativeArrayData<T> array, int low, int high, int depth, int partitionThreshold) where T : unmanaged, IComparable<T>
+#else
             static void IntroSortInternal<T>(ref NativeArrayData<T> array, int low, int high, int depth, int partitionThreshold) where T : struct, IComparable<T>
+
+#endif
             {
                 while (high > low)
                 {
@@ -90,8 +191,10 @@ namespace Unity.MemoryProfiler.Containers
             }
 #if NET_4_6
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
+            static void Heapsort<T>(ref NativeArrayData<T> array, int low, int high) where T : unmanaged, IComparable<T>
+#else
             static void Heapsort<T>(ref NativeArrayData<T> array, int low, int high) where T : struct, IComparable<T>
+#endif
             {
                 int rangeSize = high - low + 1;
                 for (int i = rangeSize / 2; i >= 1; --i)
@@ -106,8 +209,37 @@ namespace Unity.MemoryProfiler.Containers
                 }
             }
 #if NET_4_6
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
+            unsafe static void DownHeap<T>(ref NativeArrayData<T> array, int i, int n, int low) where T : unmanaged, IComparable<T>
+            {
+                var typeSize = UnsafeUtility.SizeOf<T>();
+                array.aux_first = *(array.ptr + (low + i - 1));
+
+                int child;
+                while (i <= n / 2)
+                {
+                    child = 2 * i;
+                    T* cChildAddr = array.ptr + (low + child - 1);
+                    T* nChildAddr = array.ptr + (low + child);
+
+                    if (child < n && cChildAddr->CompareTo(*nChildAddr) < 0)
+                    {
+                        ++child;
+                        cChildAddr = nChildAddr;
+                        if (!(array.aux_first.CompareTo(*nChildAddr) < 0))
+                            break;
+                    }
+                    else
+                    {
+                        if (!(array.aux_first.CompareTo(*cChildAddr) < 0))
+                            break;
+                    }
+
+                    UnsafeUtility.MemCpy(array.ptr + (low + i - 1), cChildAddr, typeSize);
+                    i = child;
+                }
+                *(array.ptr + (low + i - 1)) = array.aux_first;
+            }
+#else
             unsafe static void DownHeap<T>(ref NativeArrayData<T> array, int i, int n, int low) where T : struct, IComparable<T>
             {
                 var typeSize = UnsafeUtility.SizeOf<T>();
@@ -141,10 +273,29 @@ namespace Unity.MemoryProfiler.Containers
                 }
                 UnsafeUtility.CopyStructureToPtr(ref array.aux_first, array.ptr + ((low + i - 1) * typeSize));
             }
+#endif
 
 #if NET_4_6
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
+            unsafe static void InsertionSort<T>(ref NativeArrayData<T> array, int low, int high) where T : unmanaged, IComparable<T>
+            {
+                int i, j;
+                var typeSize = UnsafeUtility.SizeOf<T>();
+
+                for (i = low; i < high; ++i)
+                {
+                    j = i;
+                    array.aux_first = *(array.ptr + (i + 1));
+                    while (j >= low)
+                    {
+                        if (!(array.aux_first.CompareTo(*(array.ptr + j)) < 0))
+                            break;
+                        UnsafeUtility.MemCpy(array.ptr + (j + 1), array.ptr + j, typeSize);
+                        j--;
+                    }
+                    *(array.ptr + (j + 1)) = array.aux_first;
+                }
+            }
+#else
             unsafe static void InsertionSort<T>(ref NativeArrayData<T> array, int low, int high) where T : struct, IComparable<T>
             {
                 int i, j;
@@ -165,7 +316,39 @@ namespace Unity.MemoryProfiler.Containers
                     UnsafeUtility.CopyStructureToPtr(ref array.aux_first, array.ptr + ((j + 1) * typeSize));
                 }
             }
+#endif
 
+#if NET_4_6
+            unsafe static int PartitionRangeAndPlacePivot<T>(ref NativeArrayData<T> array, int low, int high) where T : unmanaged, IComparable<T>
+            {
+                int mid = low + (high - low) / 2;
+
+                // Sort low/high/mid in order to have the correct pivot.
+                SwapSortAscending(ref array, low, mid, high);
+
+                array.aux_second = *(array.ptr + mid);
+
+                Swap(ref array, mid, high - 1);
+                int left = low, right = high - 1;
+
+                while (left < right)
+                {
+                    do { ++left; }
+                    while ((array.ptr + left)->CompareTo(array.aux_second) < 0);
+
+                    do { --right; }
+                    while (array.aux_second.CompareTo(*(array.ptr + right)) < 0);
+
+                    if (left >= right)
+                        break;
+
+                    Swap(ref array, left, right);
+                }
+
+                Swap(ref array, left, (high - 1));
+                return left;
+            }
+#else
             unsafe static int PartitionRangeAndPlacePivot<T>(ref NativeArrayData<T> array ,int low, int high) where T : struct, IComparable<T>
             {
                 int mid = low + (high - low) / 2;
@@ -204,10 +387,58 @@ namespace Unity.MemoryProfiler.Containers
                 Swap(ref array, left, (high - 1));
                 return left;
             }
+#endif
 
 #if NET_4_6
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
+            unsafe static void SwapSortAscending<T>(ref NativeArrayData<T> array, int left, int mid, int right) where T : unmanaged, IComparable<T>
+            {
+                var typeSize = UnsafeUtility.SizeOf<T>();
+                T* leftAddr = array.ptr + left;
+                T* midAddr = array.ptr + mid;
+                T* rightAddr = array.ptr + right;
+
+                int bitmask = 0;
+                if (leftAddr->CompareTo(*midAddr) > 0)
+                    bitmask = 1;
+                if (leftAddr->CompareTo(*rightAddr) > 0)
+                    bitmask |= 1 << 1;
+                if (midAddr->CompareTo(*rightAddr) > 0)
+                    bitmask |= 1 << 2;
+
+                switch (bitmask)
+                {
+                    case 1:
+                        array.aux_first = *leftAddr;
+                        UnsafeUtility.MemCpy(leftAddr, midAddr, typeSize);
+                        *midAddr = array.aux_first;
+                        return;
+                    case 3:
+                        array.aux_first = *leftAddr;
+                        UnsafeUtility.MemCpy(leftAddr, midAddr, typeSize);
+                        UnsafeUtility.MemCpy(midAddr, rightAddr, typeSize);
+                        *rightAddr = array.aux_first;
+                        return;
+                    case 4:
+                        array.aux_first = *midAddr;
+                        UnsafeUtility.MemCpy(midAddr, rightAddr, typeSize);
+                        *rightAddr = array.aux_first;
+                        return;
+                    case 6:
+                        array.aux_first = *leftAddr;
+                        UnsafeUtility.MemCpy(leftAddr, rightAddr, typeSize);
+                        UnsafeUtility.MemCpy(rightAddr, midAddr, typeSize);
+                        *midAddr = array.aux_first;
+                        return;
+                    case 7:
+                        array.aux_first = *leftAddr;
+                        UnsafeUtility.MemCpy(leftAddr, rightAddr, typeSize);
+                        *rightAddr = array.aux_first;
+                        return;
+                    default: //we are already ordered
+                        return;
+                }
+            }
+#else
             unsafe static void SwapSortAscending<T>(ref NativeArrayData<T> array, int left, int mid, int right) where T : struct, IComparable<T>
             {
                 var typeSize = UnsafeUtility.SizeOf<T>();
@@ -256,10 +487,27 @@ namespace Unity.MemoryProfiler.Containers
                         return;
                 }
             }
+#endif
 
 #if NET_4_6
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
+            unsafe static void SwapIfGreater<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : unmanaged, IComparable<T>
+            {
+                if (lhs != rhs)
+                {
+                    T* leftAddr = array.ptr + lhs;
+                    T* rightAddr = array.ptr + rhs;
+
+                    if (leftAddr->CompareTo(*rightAddr) > 0)
+                    {
+                        array.aux_first = *rightAddr;
+                        UnsafeUtility.MemCpy(rightAddr, leftAddr, UnsafeUtility.SizeOf<T>());
+                        *leftAddr = array.aux_first;
+                    }
+
+                }
+            }
+#else
             static void SwapIfGreater<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : struct, IComparable<T>
             {
                 if (lhs != rhs)
@@ -282,10 +530,21 @@ namespace Unity.MemoryProfiler.Containers
                     }
                 }
             }
+#endif
+
 
 #if NET_4_6
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
+            unsafe static void Swap<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : unmanaged, IComparable<T>
+            {
+                T* leftAddr = array.ptr + lhs;
+                T* rightAddr = array.ptr + rhs;
+                array.aux_first = *leftAddr;
+
+                UnsafeUtility.MemCpy(leftAddr, rightAddr, UnsafeUtility.SizeOf<T>());
+                *rightAddr = array.aux_first;
+            }
+#else
             unsafe static void Swap<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : struct, IComparable<T>
             {
                 var typeSize = UnsafeUtility.SizeOf<T>();
@@ -296,6 +555,8 @@ namespace Unity.MemoryProfiler.Containers
                 UnsafeUtility.MemCpy(leftAddr, rightAddr, typeSize);
                 UnsafeUtility.CopyStructureToPtr(ref array.aux_first, rightAddr);
             }
+#endif
+
 
             static int GetMaxDepth(int length)
             {

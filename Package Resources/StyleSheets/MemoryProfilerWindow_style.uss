@@ -13,20 +13,20 @@ VisualSplitter.verticalSplitter{
 }
 
 #splitterLeftPane {
-    min-width: 252;
+    min-width: 252px;
 }
 
 #splitterDraglineAnchor {
-    width: 1;
+    width: 1px;
 }
 
 #splitterDragline {
-    width: 10;
+    width: 10px;
     background-color: rgba(0, 0, 0, 0);
-    position-left: -5;
-    position-top: 0;
-    position-bottom: 0;
-    position-type: absolute;
+    left: -5px;
+    top: 0;
+    bottom: 0;
+    position: absolute;
     cursor: resize-horizontal;
 }
 
@@ -50,27 +50,27 @@ VisualSplitter.verticalSplitter{
 
 ToolbarButton.iconButton{
 	background-image: none;
-	width:28;
-	height:18;
+	width:28px;
+	height:18px;
 }
 
 Image.iconButton{
-	margin-top: 2;
-	margin-bottom: 2;
+	margin-top: 2px;
+	margin-bottom: 2px;
 	margin-left: 0;
 	margin-right: 0;
 }
 
 Image.historyButtonIcon{
-	width:16;
-	height:14;
+	width:16px;
+	height:14px;
 }
 
 ScrollView#snapshotListSidebar {
-	margin-left:1;
+	margin-left:1px;
 	margin-right:0;
-	margin-top:1;
-	margin-bottom:1;
+	margin-top:1px;
+	margin-bottom:1px;
 	flex:1;
 }
 
@@ -80,7 +80,6 @@ ScrollView#snapshotListSidebar {
 }
 
 Label.guidanceText{
-	-unity-word-wrap: true;
 	white-space: normal;
 	flex-grow: 1;
 	-unity-text-align: middle-center;
@@ -92,7 +91,7 @@ Label.guidanceText{
 }
 
 #attachToPlayerMenu{
-	min-height:18;
+	min-height: 18px;
 }
 
 /**********************************************************************************************************************/
@@ -102,14 +101,14 @@ Label.guidanceText{
 Toggle.radioButton {
 	margin-left:0;
 	margin-right:0;
-	margin-top:1;
-	margin-bottom:1;
-	padding-top:1;
+	margin-top:1px;
+	margin-bottom:1px;
+	padding-top:1px;
 	padding-bottom:0;
 }
 Toggle.radioButton > Label {
-	font-size:9;
-	margin-top:1;
+	font-size:9px;
+	margin-top:1px;
 	margin-left:0;
 }
 
@@ -118,22 +117,22 @@ Toggle.radioButton > Label {
 /**********************************************************************************************************************/
 
 #snapshotListItem{
-	height:56;
+	height:56px;
 	flex-direction:row;
 	padding-right:0;
-	padding-top:1;
-	padding-bottom:1;
+	padding-top:1px;
+	padding-bottom:1px;
 }
 
 .snapshotButton{
-	height:16;
+	height:16px;
 	min-height:0;
-	margin-top:1;
-	padding-top:2;
-	padding-left:2;
-	padding-right:2;
-	margin-bottom:1;
-	font-size:9;
+	margin-top:1px;
+	padding-top:2px;
+	padding-left:2px;
+	padding-right:2px;
+	margin-bottom:1px;
+	font-size:9px;
 }
 
 #snapshotButtons{ 
@@ -141,14 +140,14 @@ Toggle.radioButton > Label {
 	right: 0;
 	justify-content:flex-end;
 	flex-direction: column;
-	min-width:50;
-	max-width:50;
+	min-width:50px;
+	max-width:50px;
 }
 
 #snapshotMetaData{
 	flex-direction: column;
 	position: absolute;
-	left: 1;
+	left: 1px;
 	flex:1 0 0;
 }
 
@@ -158,8 +157,8 @@ Toggle.radioButton > Label {
 
 #previewImage{
 	flex-direction: row;
-	height:54;
-	width:96;
+	height:54px;
+	width:96px;
 }
 
 Image#previewImage.previewImage{
@@ -179,8 +178,8 @@ Image#previewImage.previewImage{
 #snapshotName.snapshotMetaDataTextField{
 	flex:1;
 	visibility: hidden;
-	max-height: 15;
-	margin-right: 50;
+	max-height: 15px;
+	margin-right: 50px;
 	overflow: hidden;
 }
 
@@ -191,84 +190,71 @@ Image#previewImage.previewImage{
 
 Image.optionButtonIcon
 {
-	height:14;
-	width:15;
+	height:14px;
+	width:15px;
 	align-self: flex-end;
-	margin-right: 4;
+	margin-right: 4px;
 }
 
 .platformIcon{
-	height:16;
-	width:16;
+	height:16px;
+	width:16px;
 }
 
 .platformIcon.Editor{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Editor.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Editor.png");
+	background-image: resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Editor.png");
 }
 
 .platformIcon.Android{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Android.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Android.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Android.png");
 }
 
 .platformIcon.StandaloneOSX{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneOSX.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneOSX.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneOSX.png");
 }
 
 .platformIcon.StandaloneWindows{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneWindows.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneWindows.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneWindows.png");
 }
 
 .platformIcon.iOS{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/iOS.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/iOS.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/iOS.png");
 }
 .platformIcon.StandaloneLinux{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneLinux.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneLinux.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneLinux.png");
 }
 
 .platformIcon.WebGL{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WebGL.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WebGL.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WebGL.png");
 }
 .platformIcon.WSAPlayer{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WSAPlayer.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WSAPlayer.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WSAPlayer.png");
 }
 .platformIcon.PS4{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/PS4.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/PS4.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/PS4.png");
 }
 
 .platformIcon.XboxOne{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/XboxOne.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/XboxOne.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/XboxOne.png");
 }
 .platformIcon.tvOS{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/tvOS.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/tvOS.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/tvOS.png");
 }
 .platformIcon.Switch{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Switch.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Switch.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Switch.png");
 }
 .platformIcon.Lumin{
-	--unity-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Lumin.png");
-	image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Lumin.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Lumin.png");
 }
 /**********************************************************************************************************************/
 /* Main Window                                                                                                        */
 /**********************************************************************************************************************/
 
 #mainWindowContent{
-	margin-left: 2;
-	padding-right: 2;
-	padding-top: 2;
-	padding-bottom: 2;
+	margin-left: 2px;
+	padding-right: 2px;
+	padding-top: 2px;
+	padding-bottom: 2px;
 }
 
 /**********************************************************************************************************************/
@@ -276,12 +262,12 @@ Image.optionButtonIcon
 /**********************************************************************************************************************/
 
 #TreeMap{
-	margin-left: 2;
-	padding-right: 2;
-	padding-top: 2;
-	padding-bottom: 2;
+	margin-left: 2px;
+	padding-right: 2px;
+	padding-top: 2px;
+	padding-bottom: 2px;
 }
 
 #TreeMapSpreadsheet{
-	padding-top: 2;
+	padding-top: 2px;
 }

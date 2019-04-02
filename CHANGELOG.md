@@ -3,6 +3,16 @@ All notable changes to this package will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+## [0.1.0-preview.6] - 2019-04-03
+### Changed
+ - Fixed dangling subscriber for OnPlaymodeChanged.
+ - Fixed broken metadata injector, implemented metadata processors will now be called.
+ - Fixed incorrect referencing of managed objects to native objects that did not own them.
+ - Fixed style sheet warnings.
+ - Changed the display string of uninitialized types from "Unknown Type" to "Uninitialized Type".
+ - Fixed missing references for managed objects.
+ - Fixed incorrect disposal of sidebar delegate.
+
 ## [0.1.0-preview.5] - 2019-01-29
 ### Added
  - Added progress bar displays for actions like opening/importing snapshots.

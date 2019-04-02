@@ -1,7 +1,6 @@
 using System;
 using UnityEngine;
 using UnityEngine.Profiling.Memory.Experimental;
-using System.Reflection;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -32,7 +31,7 @@ namespace Unity.MemoryProfiler
 
         static void InitializeMetadataCollection()
         {
-            var foundTypes = ReflectionUtility.GetConcreteDerivedTypes(typeof(IMetadataCollect), Assembly.GetCallingAssembly());
+            var foundTypes = ReflectionUtility.GetTypesImplementingInterfaceFromCurrentDomain(typeof(IMetadataCollect));
             if (foundTypes.Count > 0)
             {
                 for(int i = 0; i < foundTypes.Count; ++i)
@@ -56,33 +55,20 @@ namespace Unity.MemoryProfiler
             data.platform = Application.platform.ToString();
 
             // TODO: Allow screenshot-ing once we have added the capture operation to EndOfFrame callbacks
-            //if (Application.isPlaying)
-            //{
-            //    int width = Screen.width;
-            //    int height = Screen.height;
-
-            //    Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, true);
-            //    //Read pixels from the currently active render target into the newly created image
-            //    tex.ReadPixels(new Rect(0, 0, width, height), 0, 0, true);
-
-            //    int divider = 0;
-
-            //    while (width > 480 || height > 240)
-            //    {
-            //        width /= 2;
-            //        height /= 2;
-            //        ++divider;
-            //    }
-
-            //    data.screenshot = new Texture2D(width, height, TextureFormat.RGB24, false);
-            //    data.screenshot.SetPixels(tex.GetPixels(divider));
-            //    data.screenshot.Apply();
-            //}
         }
     }
 #endif
+    /// <summary>
+    /// Interface for creating a metadata collector type to populate the `PackedMemorySnapshot.Metadata` member. You can add multiple collectors, but it is recommended to add only one.
+    /// </summary>
+    /// <remarks> Adding a collector will override the default metadata collection functionality. If you want to keep the default metadata, go to the `DefaultCollect` method in the file _com.unity.memoryprofiler\Runtime\MetadataInjector.cs_ and copy that code into your collector method. 
+    /// </remarks>
     public interface IMetadataCollect
     {
+        /// <summary>
+        /// The Memory Profiler will invoke this method during the capture process, to populate the metadata of the capture.
+        /// </summary>
+        /// <param name="data"> The data payload that will get written to the snapshot file. </param>
         void CollectMetadata(MetaData data);
     }
 }
