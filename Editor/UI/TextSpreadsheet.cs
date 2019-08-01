@@ -2,6 +2,9 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    /// <summary>
+    /// A spreadsheet with text rendering util methods
+    /// </summary>
     internal abstract class TextSpreadsheet : SpreadsheetLogic
     {
         private EllipsisStyleMetric m_EllipsisStyleMetricData;
@@ -11,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             get { 
                 if (m_EllipsisStyleMetricData == null)
-                    m_EllipsisStyleMetricData = new EllipsisStyleMetric(Styles.styles.numberLabel);
+                    m_EllipsisStyleMetricData = new EllipsisStyleMetric(Styles.NumberLabel);
 
                 return m_EllipsisStyleMetricData;
             }
@@ -20,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             get { 
                 if (m_EllipsisStyleMetricHeader == null)
-                    m_EllipsisStyleMetricHeader = new EllipsisStyleMetric(Styles.styles.entryEven);
+                    m_EllipsisStyleMetricHeader = new EllipsisStyleMetric(Styles.EntryEven);
 
                 return m_EllipsisStyleMetricHeader; 
             }
@@ -48,14 +51,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             GUILayout.Space(r.height);
             if (Event.current.type == EventType.Repaint)
             {
-                var background = (index % 2 == 0 ? Styles.styles.entryEven : Styles.styles.entryOdd);
+#if UNITY_2019_3_OR_NEWER
+                var background = (index % 2 == 0 && !selected ? Styles.EntryEven : Styles.EntryOdd);
+                var previousColor = GUI.backgroundColor;
+                if (selected)
+                    GUI.backgroundColor = Styles.SelectedColor;
+                background.Draw(r, GUIContent.none, false, false, false, false);
+
+                if (selected)
+                    GUI.backgroundColor = previousColor;
+#else
+                var background = (index % 2 == 0 ? Styles.EntryEven : Styles.EntryOdd);
                 background.Draw(r, GUIContent.none, false, false, selected, false);
+#endif
             }
         }
 
         protected void DrawTextEllipsis(string text, Rect r, GUIStyle textStyle, EllipsisStyleMetric ellipsisStyle, bool selected)
         {
-            Vector2 tSize = Styles.styles.numberLabel.CalcSize(new GUIContent(text));
+            Vector2 tSize = Styles.NumberLabel.CalcSize(new GUIContent(text));
             if (tSize.x > r.width)
             {
                 Rect rclipped = new Rect(r.x, r.y, r.width - ellipsisStyle.pixelSize.x, r.height);
@@ -112,13 +126,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 string t = "R" + row + "C" + col + "Y" + r.y;
 
-                DrawTextEllipsis(t, r, Styles.styles.numberLabel, EllipsisStyleMetricData, selected);
+                DrawTextEllipsis(t, r, Styles.NumberLabel, EllipsisStyleMetricData, selected);
             }
         }
 
         protected override void DrawHeader(long col, Rect r, ref GUIPipelineState pipe)
         {
-            Styles.styles.header.Draw(r, "Header" + col, false, false, false, false);
+            Styles.Header.Draw(r, "Header" + col, false, false, false, false);
         }
     }
 }

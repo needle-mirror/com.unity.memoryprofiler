@@ -7,6 +7,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         public UIState.BaseMode Mode;
     }
 
+    /// <summary>
+    /// Keeps a time-line of events that may be revisited on demand.
+    /// Useful for navigation and undo mechanisms
+    /// </summary>
     internal class History
     {
         public System.Collections.Generic.List<HistoryEvent> events = new System.Collections.Generic.List<HistoryEvent>();

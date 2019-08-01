@@ -4,6 +4,10 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    /// <summary>
+    /// UI component that displays a sequence of boxes that can be resized.
+    /// Useful for headers of tables/spreadsheet
+    /// </summary>
     [System.Serializable]
     internal class SplitterStateEx
     {

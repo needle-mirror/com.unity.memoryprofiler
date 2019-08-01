@@ -14,12 +14,12 @@ xsi:schemaLocation="
 >
     <engine:VisualElement name="sidebar">
       <editor:Toolbar name="sidebarToolbar">
-        <editor:ToolbarSpacer/>
+        <editor:ToolbarSpacer class="toolbarSideBumper"/>
         <engine:VisualElement name="attachToPlayerMenuPlaceholder"/>
         <editor:ToolbarSpacer class="toolbarFlexSpacer"/>
         <editor:ToolbarButton name="captureButton" text="Capture Player" tooltip="Captures a memory snapshot. Warning, this can take a moment."/>
         <editor:ToolbarButton name="importButton" text="Import..." tooltip="Import capture information from a file."/>
-        <editor:ToolbarSpacer/>
+        <editor:ToolbarSpacer class="toolbarSideBumper"/>
       </editor:Toolbar>
       <engine:VisualElement name="sidebarContent">
         <engine:Label name="emptyWorkbenchText" class="guidanceText" text="To start analyzing memory, import or capture a snapshot." />
@@ -30,21 +30,19 @@ xsi:schemaLocation="
     
     <engine:VisualElement name="mainWindow">
       <editor:Toolbar name="mainWindowToolbar">
-        <editor:ToolbarSpacer/>
+        <editor:ToolbarSpacer class="toolbarSideBumper"/>
         <engine:VisualElement name="viewSelectorMenuPlaceholder"/>
-        <editor:ToolbarSpacer/>
         <editor:ToolbarButton name="backwardsInHistoryButton" tooltip="Previous view" class="iconButton">
           <engine:Image name="backwardsInHistoryButton" class="iconButton historyButtonIcon"/>
         </editor:ToolbarButton>
         <editor:ToolbarButton name="forwardsInHistoryButton" tooltip="Next view" class="iconButton">
           <engine:Image name="forwardsInHistoryButton" class="iconButton historyButtonIcon"/>
         </editor:ToolbarButton>
-        <editor:ToolbarSpacer/>
         <editor:ToolbarButton name="loadViewButton" text="Load View..." tooltip="Load a view from a file."/>
         <engine:VisualElement class="toolbarFlexSpacer"/>
-        <editor:ToolbarSpacer />
         <editor:Toolbar name="ToolbarExtension">
         </editor:Toolbar>
+        <editor:ToolbarSpacer class="toolbarSideBumper"/>
       </editor:Toolbar>
         <editor:VisualSplitter name="mainWindowContent" class="verticalSplitter">
         </editor:VisualSplitter>

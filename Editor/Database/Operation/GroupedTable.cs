@@ -218,7 +218,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         // Degenerate group display their first entry as-is
         public bool IsGroupDegenerate(long groupIndex)
         {
-            return m_degenetareGroupOf1 && m_Groups[groupIndex].m_GroupIndice.indexCount == 1;
+            return m_degenetareGroupOf1 && m_Groups[groupIndex].m_GroupIndice.Count == 1;
         }
     }
 }

@@ -57,7 +57,6 @@ namespace Unity.MemoryProfiler.Editor
     {
         DirectoryInfo m_Info;
         List<SnapshotFileData> m_Snapshots;
-        bool m_PrevApplicationFocusState;
         public Action collectionRefresh;
 
         public string Name { get { return m_Info.Name; } }
@@ -73,13 +72,14 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             RefreshFileListInternal(m_Info);
-            m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
-            EditorApplication.update += PoolForApplicationFocus;
         }
 
-        ~SnapshotCollection()
+        internal void RefreshScreenshots()
         {
-            EditorApplication.update -= PoolForApplicationFocus;
+            foreach (var snapshot in m_Snapshots)
+            {
+                snapshot.RefreshScreenshot();
+            }
         }
 
         void RefreshFileListInternal(DirectoryInfo info)
@@ -107,10 +107,30 @@ namespace Unity.MemoryProfiler.Editor
         {
             int nameStart = snapshot.FileInfo.FullName.LastIndexOf(snapshot.FileInfo.Name);
             string targetPath = snapshot.FileInfo.FullName.Substring(0, nameStart) + name + MemoryProfilerWindow.k_SnapshotFileExtension;
-            snapshot.FileInfo.MoveTo(targetPath);
+
+            if (targetPath == snapshot.FileInfo.FullName)
+            {
+                snapshot.GuiData.dynamicVisualElements.snapshotNameLabel.text = snapshot.GuiData.name.text;
+                snapshot.GuiData.RenamingFieldVisible = false;
+                return;
+            }
+
             snapshot.GuiData.name = new GUIContent(name);
             snapshot.GuiData.dynamicVisualElements.snapshotNameLabel.text = name;
             snapshot.GuiData.RenamingFieldVisible = false;
+
+#if UNITY_2019_3_OR_NEWER
+            if (snapshot.GuiData.texture != null)
+            {
+                string possibleSSPath = Path.ChangeExtension(snapshot.FileInfo.FullName, ".png");
+                if (File.Exists(possibleSSPath))
+                {
+                    File.Move(possibleSSPath, Path.ChangeExtension(targetPath, ".png"));
+                }
+            }
+#endif
+            //move snapshot after screenshot
+            snapshot.FileInfo.MoveTo(targetPath);
             m_Info.Refresh();
         }
 
@@ -175,18 +195,6 @@ namespace Unity.MemoryProfiler.Editor
         public SnapshotCollectionEnumerator GetEnumerator()
         {
             return new SnapshotCollectionEnumerator(m_Snapshots);
-        }
-        
-        private void PoolForApplicationFocus()
-        {
-            if (m_PrevApplicationFocusState != InternalEditorUtility.isApplicationActive)
-            {
-                if (!m_PrevApplicationFocusState)
-                {
-                    RefreshCollection();
-                }
-                m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
-            }
         }
     }
 }

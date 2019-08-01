@@ -28,6 +28,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             meshes.Clear();
         }
     }
+
+    /// <summary>
+    /// Helper class that convert lists of triangle/rectangle/lines into a renderable mesh
+    /// </summary>
     internal class MeshBuilder
     {
         public class Layer

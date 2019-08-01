@@ -3,6 +3,9 @@ using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 {
+    /// <summary>
+    /// A collection of filters applied sequentially 
+    /// </summary>
     internal class Multi : Filter
     {
         public List<Filter> filters = new List<Filter>();

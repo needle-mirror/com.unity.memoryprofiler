@@ -14,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor
         public static string kPrefixTableDisplayName = "Raw ";
 
         public CachedSnapshot m_Snapshot;
-        public SnapshotDataRenderer renderer;
+        public SnapshotObjectDataFormatter formatter;
         APITable[] m_Tables;
         Table[] m_ExtraTable;
 
@@ -49,12 +49,12 @@ namespace Unity.MemoryProfiler.Editor
 
         Dictionary<string, Table> m_TablesByName = new Dictionary<string, Table>();
 
-        public void SetupSchema(CachedSnapshot snapshot, DataRenderer dataRenderer)
+        public void SetupSchema(CachedSnapshot snapshot, ObjectDataFormatter objectDataFormatter)
         {
             using (Profiling.GetMarker(Profiling.MarkerId.CreateSnapshotSchema).Auto())
             {
                 m_Snapshot = snapshot;
-                renderer = new SnapshotDataRenderer(dataRenderer, m_Snapshot);
+                formatter = new SnapshotObjectDataFormatter(objectDataFormatter, m_Snapshot);
                 CreateTables(m_Snapshot.CrawledData);
             }
 
@@ -86,9 +86,9 @@ namespace Unity.MemoryProfiler.Editor
 
             List<Table> extraTable = new List<Table>();
 
-            extraTable.Add(new ObjectAllManagedTable(this, renderer, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Managed));
-            extraTable.Add(new ObjectAllNativeTable(this, renderer, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Native));
-            extraTable.Add(new ObjectAllTable(this, renderer, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.All));
+            extraTable.Add(new ObjectAllManagedTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Managed));
+            extraTable.Add(new ObjectAllNativeTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Native));
+            extraTable.Add(new ObjectAllTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.All));
 
             m_ExtraTable = extraTable.ToArray();
             foreach (var t in m_ExtraTable)
@@ -100,7 +100,7 @@ namespace Unity.MemoryProfiler.Editor
         public void Clear()
         {
             m_Snapshot = null;
-            renderer.Clear();
+            formatter.Clear();
         }
 
         public override string GetDisplayName()
@@ -180,7 +180,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                if (!ulong.TryParse(expObj.GetValueString(0), out value))
+                if (!ulong.TryParse(expObj.GetValueString(0, DefaultDataFormatter.Instance), out value))
                 {
                     return false;
                 }
@@ -209,7 +209,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                if (!int.TryParse(expObj.GetValueString(0), out value))
+                if (!int.TryParse(expObj.GetValueString(0, DefaultDataFormatter.Instance), out value))
                 {
                     return false;
                 }
@@ -233,7 +233,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
                 ObjectData od = ObjectData.FromManagedPointer(m_Snapshot, obj, iType);
-                var table = new ObjectSingleTable(this, renderer, m_Snapshot, m_Snapshot.CrawledData, od, od.isNative ? ObjectTable.ObjectMetaType.Native : ObjectTable.ObjectMetaType.Managed);
+                var table = new ObjectSingleTable(this, formatter, m_Snapshot, m_Snapshot.CrawledData, od, od.isNative ? ObjectTable.ObjectMetaType.Native : ObjectTable.ObjectMetaType.Managed);
                 return table;
             }
             else if (name == ObjectReferenceTable.kObjectReferenceTableName)
@@ -244,7 +244,7 @@ namespace Unity.MemoryProfiler.Editor
                     return null;
                 }
                 var od = ObjectData.FromUnifiedObjectIndex(m_Snapshot, objUnifiedIndex);
-                var table = new ObjectReferenceTable(this, renderer, m_Snapshot, m_Snapshot.CrawledData, od, ObjectTable.ObjectMetaType.All); //, od.isNative ? ObjectTable.ObjectMetaType.Native : ObjectTable.ObjectMetaType.Managed);
+                var table = new ObjectReferenceTable(this, formatter, m_Snapshot, m_Snapshot.CrawledData, od, ObjectTable.ObjectMetaType.All); //, od.isNative ? ObjectTable.ObjectMetaType.Native : ObjectTable.ObjectMetaType.Managed);
                 return table;
                 //ObjectReferenceTable
             }
@@ -311,7 +311,7 @@ namespace Unity.MemoryProfiler.Editor
                 );
             table.AddColumn(
                 new MetaColumn("accumulatedSize", "accumulatedSize", typeof(ulong), false, Grouping.groupByDuplicate
-                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)))
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.accumulatedSize)
                 );
             table.CreateTable(kPrefixTableName + "RootReference", kPrefixTableDisplayName + "Root Reference");
@@ -377,7 +377,7 @@ namespace Unity.MemoryProfiler.Editor
                 );
             table.AddColumn(
                 new MetaColumn("addressSize", "addressSize", typeof(ulong), false, Grouping.groupByDuplicate
-                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)))
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.addressSize)
                 );
             table.AddColumn(
@@ -406,7 +406,7 @@ namespace Unity.MemoryProfiler.Editor
                 );
             table.AddColumn(
                 new MetaColumn("size", "size", typeof(ulong), false, Grouping.groupByDuplicate
-                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)))
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeObjects.size)
                 );
 
@@ -502,17 +502,17 @@ namespace Unity.MemoryProfiler.Editor
                 );
             table.AddColumn(
                 new MetaColumn("size", "Size", typeof(ulong), false, Grouping.groupByDuplicate
-                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)))
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.size)
                 );
             table.AddColumn(
                 new MetaColumn("overheadSize", "Overhead Size", typeof(int), false, Grouping.groupByDuplicate
-                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)))
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.overheadSize)
                 );
             table.AddColumn(
                 new MetaColumn("paddingSize", "Padding Size", typeof(int), false, Grouping.groupByDuplicate
-                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)))
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.paddingSize)
                 );
             table.CreateTable(kPrefixTableName + "NativeAllocation", kPrefixTableDisplayName + "Native Allocation");
@@ -567,7 +567,7 @@ namespace Unity.MemoryProfiler.Editor
                 );
             table.AddColumn(
                 new MetaColumn("size", "size", typeof(int), false, Grouping.groupByDuplicate
-                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)))
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
                 , DataArray.MakeColumn(m_Snapshot.typeDescriptions.size)
                 );
             table.AddColumn(

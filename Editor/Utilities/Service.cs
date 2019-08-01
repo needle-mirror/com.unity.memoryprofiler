@@ -7,6 +7,8 @@ namespace Unity.MemoryProfiler.Editor
     {
         static private Stack<IServieT> m_Implementation = new Stack<IServieT>();
 
+        static public bool Available { get { return m_Implementation.Count > 0; } }
+
         static public IServieT Current
         {
             get

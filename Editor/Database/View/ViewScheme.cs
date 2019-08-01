@@ -12,7 +12,13 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         public Database.Schema baseSchema;
         public ViewTable[] tables;
         public System.Collections.Generic.Dictionary<string, ViewTable> tablesByName = new System.Collections.Generic.Dictionary<string, ViewTable>();
-
+        public ViewSchema()
+        {
+        }
+        public ViewSchema(Database.Schema baseSchema)
+        {
+            this.baseSchema = baseSchema;
+        }
         public override string GetDisplayName()
         {
             return baseSchema.GetDisplayName();
@@ -22,7 +28,11 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         {
             if (table.Schema == this) return true;
             if (System.Array.IndexOf(tables, table) >= 0) return true;
-            return baseSchema.OwnsTable(table);
+            if (baseSchema != null)
+            {
+                return baseSchema.OwnsTable(table);
+            }
+            return false;
         }
 
         public override long GetTableCount()
@@ -89,19 +99,22 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
             public ViewSchema Build(Database.Schema baseSchema)
             {
-                ViewSchema vs = new ViewSchema();
-                vs.baseSchema = baseSchema;
-                vs.tables = new ViewTable[viewTable.Count];
-                vs.name = name;
-                int i = 0;
-                foreach (var tBuilder in viewTable)
+                using (ScopeDebugContext.Func(() => { return "ViewSchema '" + name + "'"; }))
                 {
-                    var table = tBuilder.Build(vs, baseSchema);
-                    vs.tables[i] = table;
-                    vs.tablesByName.Add(table.GetName(), table);
-                    ++i;
+                    ViewSchema vs = new ViewSchema();
+                    vs.baseSchema = baseSchema;
+                    vs.tables = new ViewTable[viewTable.Count];
+                    vs.name = name;
+                    int i = 0;
+                    foreach (var tBuilder in viewTable)
+                    {
+                        var table = tBuilder.Build(vs, baseSchema);
+                        vs.tables[i] = table;
+                        vs.tablesByName.Add(table.GetName(), table);
+                        ++i;
+                    }
+                    return vs;
                 }
-                return vs;
             }
 
             public static Builder LoadFromXML(XmlElement root)

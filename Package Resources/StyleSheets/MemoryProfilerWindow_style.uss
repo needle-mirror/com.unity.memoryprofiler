@@ -166,11 +166,6 @@ Image#previewImage.previewImage{
 	align-items: flex-end;
 }
 
-
-.snapshotMetaDataText{
-	flex:3;
-}
-
 #snapshotName.snapshotMetaDataText{
 	-unity-font-style:bold;
 }
@@ -181,6 +176,16 @@ Image#previewImage.previewImage{
 	max-height: 15px;
 	margin-right: 50px;
 	overflow: hidden;
+}
+
+.hiddenFromLayout{
+	display: none;
+	position: absolute;
+}
+
+.notHiddenFromLayout{
+	display: flex;
+	position: relative;
 }
 
 #metaDataAndButtons{
@@ -202,49 +207,49 @@ Image.optionButtonIcon
 }
 
 .platformIcon.Editor{
-	background-image: resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Editor.png");
+	background-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Editor.png");
 }
 
 .platformIcon.Android{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Android.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Android.png");
 }
 
 .platformIcon.StandaloneOSX{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneOSX.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneOSX.png");
 }
 
 .platformIcon.StandaloneWindows{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneWindows.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneWindows.png");
 }
 
 .platformIcon.iOS{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/iOS.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/iOS.png");
 }
-.platformIcon.StandaloneLinux{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/StandaloneLinux.png");
+.platformIcon.StandaloneLinux64{
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneLinux64.png");
 }
 
 .platformIcon.WebGL{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WebGL.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/WebGL.png");
 }
 .platformIcon.WSAPlayer{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/WSAPlayer.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/WSAPlayer.png");
 }
 .platformIcon.PS4{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/PS4.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/PS4.png");
 }
 
 .platformIcon.XboxOne{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/XboxOne.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/XboxOne.png");
 }
 .platformIcon.tvOS{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/tvOS.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/tvOS.png");
 }
 .platformIcon.Switch{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Switch.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Switch.png");
 }
 .platformIcon.Lumin{
-	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/PlatformIcons/Lumin.png");
+	background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Lumin.png");
 }
 /**********************************************************************************************************************/
 /* Main Window                                                                                                        */

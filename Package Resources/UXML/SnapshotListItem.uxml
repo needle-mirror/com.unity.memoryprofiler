@@ -22,9 +22,9 @@ xsi:schemaLocation="
     </engine:VisualElement>
     
     <engine:VisualElement name="metaDataAndButtons">
-      <engine:TextField name="snapshotName" class="snapshotMetaDataText snapshotMetaDataTextField" text="MemoryCapture-63679245784"/>
       <engine:VisualElement name="snapshotMetaData">
-        <engine:Label name="snapshotName" class="snapshotMetaDataText" text="MemoryCapture-63679245784"/>
+        <engine:TextField name="snapshotName" class="snapshotMetaDataText snapshotMetaDataTextField hiddenFromLayout" text="MemoryCapture-63679245784"/>
+        <engine:Label name="snapshotName" class="snapshotMetaDataText notHiddenFromLayout" text="MemoryCapture-63679245784"/>
         <engine:Label name="secondRowMetaData" class="snapshotMetaDataText" text="09/04/2018 18:05:15"/>
       </engine:VisualElement>
       

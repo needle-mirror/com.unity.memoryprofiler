@@ -29,7 +29,14 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             public Operation.Grouping.MergeAlgo mergeAlgoE;
             public TableLink m_MetaLink;
             public bool isPrimaryKey = false;
+            public string FormatName;
 
+            public Builder() { }
+            public Builder(string name, Operation.Expression.MetaExpression value)
+            {
+                this.name = name;
+                this.value = value;
+            }
 
             private string FormatErrorContextInfo(ViewSchema vs, ViewTable vTable)
             {
@@ -65,11 +72,12 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 return mergeAlgo;
             }
 
-            private MetaColumn BuildOrUpdateMetaColumn(ref MetaColumn metaColumn, Type columnValueType, Operation.Grouping.IMergeAlgorithm mergeAlgo)
+            private MetaColumn BuildOrUpdateMetaColumn(ViewTable.Builder.BuildingData buildingData, ref MetaColumn metaColumn, Type columnValueType, Operation.Grouping.IMergeAlgorithm mergeAlgo)
             {
                 if (metaColumn == null)
                 {
-                    metaColumn = new MetaColumn(name, name, columnValueType, isPrimaryKey, groupAlgo, mergeAlgo, displayDefaultWidth);
+                    metaColumn = new MetaColumn(name, name, columnValueType, isPrimaryKey, groupAlgo, mergeAlgo, FormatName, displayDefaultWidth);
+                    buildingData.MetaTable.AddColumn(metaColumn);
                 }
                 else
                 {
@@ -81,18 +89,45 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     {
                         DebugUtility.LogError("Cannot redefine column type as '" + columnValueType + "'. Was already defined as '" + metaColumn.Type + "'");
                     }
+                    if (!String.IsNullOrEmpty(FormatName))
+                    {
+                        if (String.IsNullOrEmpty(metaColumn.FormatName) || metaColumn.FormatName == FormatName)
+                        {
+                            metaColumn.FormatName = FormatName;
+                        }
+                        else
+                        {
+                            DebugUtility.LogWarning("Format already defined as '" + metaColumn.FormatName + "'. Trying to redefined it as '" + FormatName + "'");
+                        }
+                    }
                 }
                 return metaColumn;
             }
 
             // a column declaration only creates or adds to the column meta data. it does not create the actual column.
-            public void BuildOrUpdateDeclaration(ref MetaColumn metaColumn, Type aOverrideType = null)
+            public void BuildOrUpdateDeclaration(ViewTable.Builder.BuildingData buildingData, ViewTable vTable, ref MetaColumn metaColumn, Operation.ExpressionParsingContext expressionParsingContext, Type aOverrideType = null)
             {
-                Type finalType = aOverrideType != null ? aOverrideType : value.type;
+                Type finalType = aOverrideType != null
+                    ? aOverrideType
+                    : (value == null
+                        ? null
+                        : value.type
+                    );
 
                 //Build meta data
                 var mergeAlgo = BuildOrGetMergeAlgo(null, finalType, metaColumn);
-                BuildOrUpdateMetaColumn(ref metaColumn, finalType, mergeAlgo);
+                BuildOrUpdateMetaColumn(buildingData, ref metaColumn, finalType, mergeAlgo);
+
+
+                if (metaColumn != null && metaColumn.Type == null && finalType == null && !buildingData.FallbackColumnType.ContainsKey(metaColumn))
+                {
+                    Operation.Expression.ParseIdentifierOption parseOpt = new Operation.Expression.ParseIdentifierOption(buildingData.Schema, vTable, true, false, null, expressionParsingContext);
+                    var fallbackType = Operation.Expression.ResolveTypeOf(value, parseOpt);
+                    if (fallbackType != null)
+                    {
+                        buildingData.FallbackColumnType.Add(metaColumn, fallbackType);
+                    }
+                }
             }
 
             //Create a column that merge the result of all sub nodes
@@ -135,18 +170,18 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             }
 
             //A column under a <Node> (or <View>) element is either a declaration (build meta data only) or defines an entry in the parent's ViewColumnNode
-            public void BuildNodeValue(ViewTable.Builder.Node node, long row, ViewSchema vs, Database.Schema baseSchema, ViewTable parentViewTable, Operation.ExpressionParsingContext expressionParsingContext, ref Database.MetaColumn metaColum)
+            public void BuildNodeValue(ViewTable.Builder.BuildingData buildingData, ViewTable vTable, ViewTable.Builder.Node node, long row, ViewTable parentViewTable, Operation.ExpressionParsingContext expressionParsingContext, ref Database.MetaColumn metaColum)
             {
-                BuildOrUpdateDeclaration(ref metaColum);
+                BuildOrUpdateDeclaration(buildingData, vTable, ref metaColum, expressionParsingContext);
 
                 //If the parent's node data type is Node
                 if (node.parent != null && node.parent.data.type == ViewTable.Builder.Node.Data.DataType.Node)
                 {
                     // this column is an entry in the parent's column
-                    var option = new Operation.Expression.ParseIdentifierOption(vs, parentViewTable, true, true, metaColum != null ? metaColum.Type : null, expressionParsingContext);
+                    var option = new Operation.Expression.ParseIdentifierOption(buildingData.Schema, parentViewTable, true, true, metaColum != null ? metaColum.Type : null, expressionParsingContext);
                     option.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) =>
                         {
-                            return FormatErrorContextInfo(vs, parentViewTable) + " : " + s;
+                            return FormatErrorContextInfo(buildingData.Schema, parentViewTable) + " : " + s;
                         };
                     Operation.Expression expression = Operation.Expression.ParseIdentifier(value, option);
 
@@ -161,7 +196,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             }
 
             // Set a Node value to the merged result of it's sub entries
-            public static void BuildNodeValueDefault(ViewTable.Builder.Node node, long row, ViewSchema vs, Database.Schema baseSchema, ViewTable parentViewTable, Operation.ExpressionParsingContext expressionParsingContext, Database.MetaColumn metaColumn)
+            public static void BuildNodeValueDefault(ViewTable.Builder.BuildingData buildingData, ViewTable.Builder.Node node, long row, ViewTable parentViewTable, Operation.ExpressionParsingContext expressionParsingContext, Database.MetaColumn metaColumn)
             {
                 //set the entry for merge column
                 if (metaColumn.DefaultMergeAlgorithm != null && metaColumn.Type != null)
@@ -172,11 +207,11 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 }
             }
 
-            public IViewColumn Build(ViewTable.Builder.Node node, ViewSchema vs, Database.Schema baseSchema, ViewTable vTable, Operation.ExpressionParsingContext expressionParsingContext, ref Database.MetaColumn metaColumn)
+            public IViewColumn Build(ViewTable.Builder.BuildingData buildingData, ViewTable.Builder.Node node, ViewTable vTable, Operation.ExpressionParsingContext expressionParsingContext, ref Database.MetaColumn metaColumn)
             {
                 // Check if we have a type mismatch
                 Type columnValueType = metaColumn != null ? metaColumn.Type : null;
-                if (value.type != null)
+                if (value != null && value.type != null)
                 {
                     if (columnValueType != null && columnValueType != value.type)
                     {
@@ -188,16 +223,16 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 }
 
                 // Parse expression value
-                Operation.Expression.ParseIdentifierOption parseOpt = new Operation.Expression.ParseIdentifierOption(vs, vTable, true, false, columnValueType, expressionParsingContext);
+                Operation.Expression.ParseIdentifierOption parseOpt = new Operation.Expression.ParseIdentifierOption(buildingData.Schema, vTable, true, false, columnValueType, expressionParsingContext);
                 parseOpt.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) => {
-                        return FormatErrorContextInfo(vs, vTable) + " : " + s;
+                        return FormatErrorContextInfo(buildingData.Schema, vTable) + " : " + s;
                     };
 
                 Operation.Expression expression = Operation.Expression.ParseIdentifier(value, parseOpt);
 
 
                 // Build declaration with the type we've just parsed
-                BuildOrUpdateDeclaration(ref metaColumn, expression.type);
+                BuildOrUpdateDeclaration(buildingData, vTable, ref metaColumn, expressionParsingContext, expression.type);
 
                 IViewColumn result = (IViewColumn)Operation.ColumnCreator.CreateViewColumnExpression(expression);
                 ViewColumn vc = new ViewColumn();
@@ -268,7 +303,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             public static Builder LoadFromXML(XmlElement root)
             {
                 Builder b = new Builder();
-                b.name = root.GetAttribute("name");
+                DebugUtility.TryGetMandatoryXmlAttribute(root, "name", out b.name);
                 using (ScopeDebugContext.Func(() => { return "Column '" + b.name + "'"; }))
                 {
                     b.value = Operation.Expression.MetaExpression.LoadFromXML(root);
@@ -293,6 +328,8 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     }
                     string strOp = root.GetAttribute("merged");
                     m_StringToMergeAlgo.TryGetValue(strOp, out b.mergeAlgoE);
+
+                    b.FormatName = root.GetAttribute("format");
 
                     foreach (XmlNode node in root.ChildNodes)
                     {

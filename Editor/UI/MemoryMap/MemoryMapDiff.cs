@@ -243,7 +243,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             ProgressBarDisplay.UpdateProgress(0.0f, "Flushing regions ...");
 
-            uint regionCount = 0;
+            long regionCount = 0;
 
             for (int snapshotIdx=0; snapshotIdx < m_Snapshots.Length; ++snapshotIdx)
                 regionCount += m_Snapshots[snapshotIdx].nativeMemoryRegions.Count + m_Snapshots[snapshotIdx].managedHeapSections.Count + m_Snapshots[snapshotIdx].managedStacks.Count;

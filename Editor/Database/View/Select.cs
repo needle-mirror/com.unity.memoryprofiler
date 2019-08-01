@@ -188,13 +188,13 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             {
                 Select sel = new Select();
                 sel.name = name;
-                sel.sourceTable = baseSchema.GetTableByName(sourceTableName);
+                if(baseSchema != null) sel.sourceTable = baseSchema.GetTableByName(sourceTableName);
                 sel.MaxRow = MaxRow;
                 if (sel.sourceTable == null)
                 {
                     using (ScopeDebugContext.Func(() => { return "Select:'" + name + "'"; }))
                     {
-                        DebugUtility.LogError("Error while building view '" + vs.name + "' select '" + name + "'. No table named '" + sourceTableName + "'");
+                        DebugUtility.LogError("No table named '" + (sourceTableName == null ? "null" : sourceTableName)  + "'");
                         return null;
                     }
                 }
@@ -431,10 +431,14 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     {
                         selectSet.Add(s);
                     }
+                    else
+                    {
+                        DebugUtility.LogError("Could not create Select named '" + iSelect.name + "'");
+                    }
                 }
 
                 // add current set to the expression parsing hierarchy
-                var expressionParsingContext = new Operation.ExpressionParsingContext(viewTable.expressionParsingContext, selectSet);
+                var expressionParsingContext = new Operation.ExpressionParsingContext(viewTable.ExpressionParsingContext, selectSet);
 
                 // Build select statements (second pass)
                 var eSelBuilder = select.GetEnumerator();

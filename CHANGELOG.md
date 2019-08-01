@@ -3,6 +3,30 @@ All notable changes to this package will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+## [0.1.0-preview.7] - 2019-08-02
+### Added
+ - Added Screenshots getting taken on capture for Unity versions starting from 2019.3 and up.
+ - Added window tab icon.
+ - Added a popup warning about the potential for sharing personally identifying or otherwise sensitive data when sharing snapshots.
+ - Added info to the documentation regarding potential sensitive data contained in snapshot files.
+ - Added a button to the preferences to reset the opt-out decisions for above mentioned warning popup.
+ - Added byte size formatting for size columns in the tables.
+ - Added "Open Folder" option to the snapshot options menu.
+ 
+### Changed
+ - Fixed snapshot file rename functionality ([case 1131905](https://issuetracker.unity3d.com/product/unity/issues/guid/1131905/)).
+ - Fixed snapshot file and meta data fields overlapping in 2019.3.x.
+ - Fixed new snapshot folders getting created with every character change to the path in the Memory Profiler preferences ([case 1162851](https://issuetracker.unity3d.com/product/unity/issues/guid/1162851/)).
+ - Fixed a numerical overflow when parsing snapshots with large amounts of objects and/or allocations.
+ - Fixed compile issues due to the removed "EditorApplication.scriptingRuntimeVersion" API.
+ - Fixed the target selection drop-down which stopped working in 2019.3
+ - Moved the Memory Profiler preferences under Analysis/Memory Profiler in the Preferences window to group it with Profiler Window Settings.
+ - Fixed alternating table row colors as well as row selection in 2019.3
+ - Fixed link text color being hard to read in the light editor skin.
+
+### Removed
+ - Metadata collection for Scripting Runtime version for Unity >= 2019.3 since "EditorApplication.scriptingRuntimeVersion" was removed.
+
 ## [0.1.0-preview.6] - 2019-04-03
 ### Changed
  - Fixed dangling subscriber for OnPlaymodeChanged.

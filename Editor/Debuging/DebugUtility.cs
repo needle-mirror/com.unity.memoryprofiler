@@ -6,6 +6,12 @@ namespace Unity.MemoryProfiler.Editor.Debuging
 {
     internal static class DebugUtility
     {
+        internal interface ILogger
+        {
+            void LogError(string message, IDebugContext context);
+            void LogWarning(string message, IDebugContext context);
+        }
+
         public static bool IsInValidRange<T>(T[] array, long index)
         {
             return index >= 0 && index < array.Length;
@@ -63,6 +69,11 @@ namespace Unity.MemoryProfiler.Editor.Debuging
         public static void LogError(string message)
         {
             var debugContext = GetCurrentDebugContext();
+            if (Service<ILogger>.Available)
+            {
+                Service<ILogger>.Current.LogError(message, debugContext);
+                return;
+            }
             if (debugContext != null)
             {
                 UnityEngine.Debug.LogError(message + "\nContext:" + debugContext.GetContextString("\n"));
@@ -76,6 +87,11 @@ namespace Unity.MemoryProfiler.Editor.Debuging
         public static void LogWarning(string message)
         {
             var debugContext = GetCurrentDebugContext();
+            if (Service<ILogger>.Available)
+            {
+                Service<ILogger>.Current.LogWarning(message, debugContext);
+                return;
+            }
             if (debugContext != null)
             {
                 UnityEngine.Debug.LogWarning(message + "\nContext:" + debugContext.GetContextString("\n"));
@@ -117,7 +133,7 @@ namespace Unity.MemoryProfiler.Editor.Debuging
             string valueGot = element.GetAttribute(attributeName);
             if (String.IsNullOrEmpty(valueGot))
             {
-                LogWarning("Element '" + element.Name + "' is missing the '" + attributeName + "' attribute.");
+                LogError("Element '" + element.Name + "' is missing the '" + attributeName + "' attribute.");
                 value = null;
 
                 byte errorID = 3;
@@ -140,6 +156,40 @@ namespace Unity.MemoryProfiler.Editor.Debuging
             }
             value = valueGot;
             return true;
+        }
+
+        /// <summary>
+        /// Useful method to test a condition during validation code that is required for normal operation. 
+        /// Validation code helps programmers on how to use the different classes in this package
+        /// </summary>
+        /// <param name="log">if must output logs, output an error</param>
+        /// <param name="condition">condition that must be true to pass the validation</param>
+        /// <param name="msg">message to output as error if logs are on</param>
+        /// <returns>returns the value of condition</returns>
+        public static bool ValidateError(bool log, bool condition, string msg)
+        {
+            if (!condition)
+            {
+                if (log) LogError(msg);
+            }
+            return condition;
+        }
+
+        /// <summary>
+        /// Useful method to test a condition during validation code that is considered "best-practice"
+        /// Validation code helps programmers on how to use the different classes in this package
+        /// </summary>
+        /// <param name="log">if must output logs, output a warning</param>
+        /// <param name="condition">condition that must be true to pass the validation</param>
+        /// <param name="msg">message to output as warning if logs are on</param>
+        /// <returns>returns the value of condition</returns>
+        public static bool ValidateWarning(bool log, bool condition, string msg)
+        {
+            if (!condition)
+            {
+                if (log) LogWarning(msg);
+            }
+            return condition;
         }
 
         private static bool TestFloat(float v, float min = float.MinValue, float max = float.MaxValue)

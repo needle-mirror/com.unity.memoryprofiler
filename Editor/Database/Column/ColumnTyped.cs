@@ -3,6 +3,10 @@ using Unity.MemoryProfiler.Editor.Database.Operation;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
+    /// <summary>
+    /// A partial implementation of a column that holds value of a specific type `DataT`
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal abstract class ColumnTyped<DataT> : Column where DataT : System.IComparable
     {
         protected long[] m_SortIndexAsc;
@@ -16,26 +20,22 @@ namespace Unity.MemoryProfiler.Editor.Database
         //Call this to get a value to do computation with. May differ from GetRowValueString
         public abstract DataT GetRowValue(long row);
         public abstract void SetRowValue(long row, DataT value);
-        public virtual string ValueToString(DataT a)
-        {
-            return a.ToString();
-        }
 
         public virtual System.Collections.Generic.IEnumerable<DataT> VisitRows(ArrayRange ar)
         {
-            for (long i = 0; i != ar.indexCount; ++i)
+            for (long i = 0; i != ar.Count; ++i)
             {
                 yield return GetRowValue(ar[i]);
             }
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             if (row >= GetRowCount())
             {
                 return "Out of Range";
             }
-            return ValueToString(GetRowValue(row));
+            return formatter.Format(GetRowValue(row));
         }
 
         public override int CompareRow(long rowA, long rowB)
@@ -80,7 +80,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             using (Profiling.GetMarker(Profiling.MarkerId.Sort).Auto())
             {
                 Update();
-                long count = indices.indexCount;
+                long count = indices.Count;
                 DataT[] keys = new DataT[count];
 
 
@@ -116,7 +116,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             using (Profiling.GetMarker(Profiling.MarkerId.ColumnMatchQuery).Auto())
             {
                 Update();
-                long count = rowRange.indexCount;
+                long count = rowRange.Count;
                 long[] matchedIndices = new long[count];
                 long indexOflastMatchedIndex = 0;
                 Operation.Operation.ComparableComparator comparator = Operation.Operation.GetComparator(type, expression.type);
@@ -167,9 +167,9 @@ namespace Unity.MemoryProfiler.Editor.Database
                 }
 
 #if MEMPROFILER_DEBUG_INFO
-	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.indexCount
+	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.Count
 	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expressionRowFirst)
+	                + " Exp():" + expression.GetValueString(expressionRowFirst, DefaultDataFormatter.Instance)
 	                + " expRowFirst:" + expressionRowFirst
 	                + " Column:" + this.GetDebugString(rowRange[0])
 	                + " Expression:" + expression.GetDebugString(expressionRowFirst)
@@ -186,7 +186,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             var result = matcher.GetMatchIndex(expression, indices);
 
 #if MEMPROFILER_DEBUG_INFO
-            Algorithm.DebugLog("GetMatchIndex : indexCount " + indices.indexCount
+            Algorithm.DebugLog("GetMatchIndex : indexCount " + indices.Count
                 + " matcher: " + matcher.GetHashCode()
                 + " Result Count:" + (result != null ? result.Length : 0));
 #endif
@@ -345,7 +345,7 @@ namespace Unity.MemoryProfiler.Editor.Database
 #if MEMPROFILER_DEBUG_INFO
 	            Algorithm.DebugLog("GetFirstMatchIndex :"
 	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expRowFirst)
+	                + " Exp():" + expression.GetValueString(expRowFirst, DefaultDataFormatter.Instance)
 	                + " expRowFirst:" + expRowFirst
 	                + " Column:" + this.GetDebugString(0)
 	                + " Expression:" + expression.GetDebugString(expRowFirst)

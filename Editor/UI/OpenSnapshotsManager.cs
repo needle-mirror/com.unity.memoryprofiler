@@ -358,5 +358,21 @@ namespace Unity.MemoryProfiler.Editor
                     throw new NotImplementedException();
             }
         }
+
+        internal void RefreshScreenshots()
+        {
+            SnapshotFileGUIData firstGUIData = null, secondGUIData = null;
+            if (First != null)
+            {
+                First.RefreshScreenshot();
+                firstGUIData = First.GuiData;
+            }
+            if (Second != null)
+            {
+                Second.RefreshScreenshot();
+                secondGUIData = Second.GuiData;
+            }
+            m_OpenSnapshotsPane.RefreshScreenshots(firstGUIData, secondGUIData);
+        }
     }
 }

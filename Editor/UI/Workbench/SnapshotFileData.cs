@@ -1,7 +1,7 @@
 using System;
 using System.IO;
-using Unity.MemoryProfiler.Editor;
 using UnityEngine;
+using UnityEditor;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 #else
@@ -31,6 +31,7 @@ namespace Unity.MemoryProfiler.Editor
             internal Label snapshotNameLabel;
             internal Label snapshotDateLabel;
             internal TextField snapshotRenameField;
+            internal Image screenshot;
         }
 
         public enum State
@@ -42,6 +43,8 @@ namespace Unity.MemoryProfiler.Editor
 
         const string k_OpenClassName = "snapshotIsOpen";
         const string k_InViewClassName = "snapshotIsInView";
+        const string k_HiddenFromLayout = "hiddenFromLayout";
+        const string k_NotHiddenFromLayout = "notHiddenFromLayout";
 
         public State CurrentState
         {
@@ -105,7 +108,11 @@ namespace Unity.MemoryProfiler.Editor
                 if (value != m_RenamingFieldVisible)
                 {
                     dynamicVisualElements.snapshotRenameField.visible = value;
+                    dynamicVisualElements.snapshotRenameField.AddToClassList(value ? k_NotHiddenFromLayout : k_HiddenFromLayout);
+                    dynamicVisualElements.snapshotRenameField.RemoveFromClassList(!value ? k_NotHiddenFromLayout : k_HiddenFromLayout);
                     dynamicVisualElements.snapshotNameLabel.visible = !value;
+                    dynamicVisualElements.snapshotNameLabel.AddToClassList(!value ? k_NotHiddenFromLayout : k_HiddenFromLayout);
+                    dynamicVisualElements.snapshotNameLabel.RemoveFromClassList(value ? k_NotHiddenFromLayout : k_HiddenFromLayout);
                     // no opening or option meddling while renaming!
                     dynamicVisualElements.openButton.SetEnabled(!value);
                     dynamicVisualElements.optionDropdownButton.SetEnabled(!value);
@@ -113,7 +120,11 @@ namespace Unity.MemoryProfiler.Editor
                     dynamicVisualElements.snapshotRenameField.SetValueWithoutNotify(dynamicVisualElements.snapshotNameLabel.text);
                     if (value)
                     {
+#if UNITY_2019_1_OR_NEWER
+                        EditorApplication.delayCall += () => { dynamicVisualElements.snapshotRenameField.Q("unity-text-input").Focus(); };
+#else
                         dynamicVisualElements.snapshotRenameField.Focus();
+#endif
                     }
                 }
             }
@@ -159,7 +170,13 @@ namespace Unity.MemoryProfiler.Editor
                     m_GuiData.runtimePlatform = runtimePlatform;
 
                 m_GuiData.date = new GUIContent(m_GuiData.UtcDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
+
+#pragma warning disable 618
                 m_GuiData.texture = snapshotMetadata.screenshot;
+#pragma warning restore 618
+#if UNITY_2019_3_OR_NEWER
+                RefreshScreenshot();
+#endif
             }
         }
 
@@ -177,6 +194,23 @@ namespace Unity.MemoryProfiler.Editor
         {
             UnityEngine.Assertions.Assert.IsTrue(FileInfo.Exists);
             return PackedMemorySnapshot.Load(FileInfo.FullName);
+        }
+
+        internal void RefreshScreenshot()
+        {
+            if (m_GuiData.texture == null)
+            {
+                string possibleSSPath = Path.ChangeExtension(FileInfo.FullName, ".png");
+                if (File.Exists(possibleSSPath))
+                {
+                    var texData = File.ReadAllBytes(possibleSSPath);
+                    m_GuiData.texture = new Texture2D(1, 1);
+                    m_GuiData.texture.LoadImage(texData);
+                    m_GuiData.texture.Apply(false, true);
+                    if(m_GuiData.dynamicVisualElements.screenshot != null)
+                        m_GuiData.dynamicVisualElements.screenshot.image = m_GuiData.texture;
+                }
+            }
         }
     }
 }

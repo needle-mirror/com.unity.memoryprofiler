@@ -7,11 +7,14 @@ using Unity.MemoryProfiler.Editor.Database.Operation;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    /// <summary>
+    /// A spreadsheet containing data from a Database.Table
+    /// </summary>
     internal class DatabaseSpreadsheet : TextSpreadsheet
     {
         protected Database.Table m_TableSource;
         protected Database.Table m_TableDisplay;
-        protected DataRenderer m_DataRenderer;
+        protected FormattingOptions m_FormattingOptions;
 
         const string k_DisplayWidthPrefKeyBase = "Unity.MemoryProfiler.Editor.Database.DisplayWidth";
         string[] m_DisplayWidthPrefKeysPerColumn;
@@ -131,23 +134,23 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
 
-        public DatabaseSpreadsheet(DataRenderer dataRenderer, Database.Table table, IViewEventListener listener, State state)
+        public DatabaseSpreadsheet(FormattingOptions formattingOptions, Database.Table table, IViewEventListener listener, State state)
             : base(listener)
         {
             m_TableSource = table;
             m_TableDisplay = table;
-            m_DataRenderer = dataRenderer;
+            m_FormattingOptions = formattingOptions;
 
             InitSplitter();
             CurrentState = state;
         }
 
-        public DatabaseSpreadsheet(DataRenderer dataRenderer, Database.Table table, IViewEventListener listener)
+        public DatabaseSpreadsheet(FormattingOptions formattingOptions, Database.Table table, IViewEventListener listener)
             : base(listener)
         {
             m_TableSource = table;
             m_TableDisplay = table;
-            m_DataRenderer = dataRenderer;
+            m_FormattingOptions = formattingOptions;
 
             InitSplitter();
             InitDefaultTableFilter();
@@ -297,7 +300,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             DirtyRowRange o;
             o.Range = m_TableDisplay.ExpandCell(row, (int)col, expanded);
-            o.HeightOffset = k_RowHeight * o.Range.length;
+            o.HeightOffset = k_RowHeight * o.Range.Length;
             return o;
         }
 
@@ -310,7 +313,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             var colState = m_ColumnState[col];
 
-            string str = m_DataRenderer.ShowPrettyNames
+            string str = m_FormattingOptions.ObjectDataFormatter.ShowPrettyNames
                 ? m_TableDisplay.GetMetaData().GetColumnByIndex((int)col).DisplayName
                 : m_TableDisplay.GetMetaData().GetColumnByIndex((int)col).Name;
             if (colState.Grouped)
@@ -321,7 +324,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var sortName = Filter.Sort.GetSortName(sorted);
             str = sortName + str;
             
-            if(!GUI.Button(r, str, Styles.styles.header))
+            if(!GUI.Button(r, str, Styles.Header))
                 return;
 
             var meta = m_TableSource.GetMetaData();
@@ -524,8 +527,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 r.width -= indent;
                 if (s.isExpandable)
                 {
-                    Rect rToggle = new Rect(r.x, r.y, 16, r.height);
-                    bool newExpanded = GUI.Toggle(rToggle, s.isExpanded, GUIContent.none, Styles.styles.foldout);
+                    Rect rToggle = new Rect(r.x, r.y, Styles.FoldoutWidth, r.height);
+                    bool newExpanded = GUI.Toggle(rToggle, s.isExpanded, GUIContent.none, Styles.Foldout);
                     if (newExpanded != s.isExpanded)
                     {
                         pipe.processMouseClick = false;
@@ -544,24 +547,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (Event.current.type == EventType.Repaint)
             {
                 var column = m_TableDisplay.GetColumnByIndex((int)col);
+                var metaColumn = m_TableDisplay.GetMetaData().GetColumnByIndex((int)col);
                 if (column != null)
                 {
 #if MEMPROFILER_DEBUG_INFO
                     string str;
-                    if (m_DataRenderer.showDebugValue)
+                    if (m_FormattingOptions.ObjectDataFormatter.showDebugValue)
                     {
-                        //str = "\"" + column.GetRowValueString(row) + "\" " + column.GetDebugString(row);
+                        //str = "\"" + column.GetRowValueString(row, Database.DefaultDataFormatter.Instance) + "\" " + column.GetDebugString(row);
                         str = column.GetDebugString(row);
                     }
                     else
                     {
-                        str = column.GetRowValueString(row);
+                        str = column.GetRowValueString(row, m_FormattingOptions.GetFormatter(metaColumn.FormatName));
                     }
 #else
-                    var str = column.GetRowValueString(row);
+                    var str = column.GetRowValueString(row, m_FormattingOptions.GetFormatter(metaColumn.FormatName));
 #endif
                     DrawTextEllipsis(str, r,
-                        link == null ? Styles.styles.numberLabel : Styles.styles.clickableLabel
+                        link == null ? Styles.NumberLabel : Styles.ClickableLabel
                         , EllipsisStyleMetricData, selected);
                 }
             }

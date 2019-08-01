@@ -9,6 +9,7 @@ using UnityEngine.Experimental.UIElements;
 using UnityEditor;
 using Unity.MemoryProfiler.Editor.Database.Operation;
 using System;
+using Unity.MemoryProfiler.Editor.UI.MemoryMap;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -297,7 +298,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     Database.Operation.ExpressionParsingContext expressionParsingContext = null;
                     if (link.SourceView != null)
                     {
-                        expressionParsingContext = link.SourceView.expressionParsingContext;
+                        expressionParsingContext = link.SourceView.ExpressionParsingContext;
                     }
                     
                     var whereUnion = new Database.View.WhereUnion(link.LinkToOpen.RowWhere, null, null, null, null, m_UIState.snapshotMode.SchemaToDisplay, table, expressionParsingContext);
@@ -334,14 +335,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
         public void OpenTable(Database.TableReference tableRef, Database.Table table, bool focus)
         {
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.DataRenderer, table, this);
+            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.onClickLink += OnSpreadsheetClick;
             m_EventListener.OnRepaint();
         }
 
         public void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos, bool focus)
         {
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.DataRenderer, table, this);
+            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.onClickLink += OnSpreadsheetClick;
             m_Spreadsheet.Goto(pos);
             m_EventListener.OnRepaint();
@@ -368,7 +369,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             GUILayout.BeginArea(r);
             
-            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            EditorGUILayout.BeginHorizontal(MemoryMapBase.Styles.ContentToolbar);
 
 
             if (r.width > 200)
@@ -408,6 +409,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             GUILayout.EndArea();
         }
 
+        Vector2 scrool = Vector2.zero;
         void OnGUICallstack(Rect r)
         {
             GUILayout.BeginArea(r);
@@ -420,13 +422,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var col = m_Spreadsheet.DisplayTable.GetColumnByName("allocationSiteId");
 
                     if (col != null && row < col.GetRowCount())
-                    {                  
-                        long id = Convert.ToInt64(col.GetRowValueString(row));
-                        GUI.Label (r, m_UIState.snapshotMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_UIState.snapshotMode.snapshot.nativeCallstackSymbols,id));
+                    {
+                        scrool = GUILayout.BeginScrollView(scrool, false, true, GUILayout.Width(r.width), GUILayout.Height(r.height));
+                        long id = Convert.ToInt64(col.GetRowValueString(row, Database.DefaultDataFormatter.Instance));
+                        string readableCallstack = m_UIState.snapshotMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_UIState.snapshotMode.snapshot.nativeCallstackSymbols, id);
+                        
+                        GUILayout.Label(readableCallstack);
+                        GUILayout.EndScrollView();
                     }
                 }
             }
-
             GUILayout.EndArea();
         }
 

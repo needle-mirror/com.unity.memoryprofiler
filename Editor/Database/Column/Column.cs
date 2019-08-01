@@ -3,9 +3,33 @@ using Unity.MemoryProfiler.Editor.Database.Operation;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
+    /// <summary>
+    /// Represents a column in a table having a set of values indexed sequentially using a `row` parameter
+    /// </summary>
     internal abstract class Column
     {
         public Type type;
+
+        /// <summary>
+        /// Tests if the column is correctly setup. useful for debug and tests
+        /// </summary>
+        /// <param name="log">
+        /// true: will log any errors or warnings
+        /// false: will only output if the table is valid
+        /// </param>
+        /// <param name="metaColumn">
+        /// MetaColumn this column was created with
+        /// </param>
+        /// <returns>
+        /// true: the table can be used. Call update before accessing the data
+        /// false: the table is not correctly setup
+        /// </returns>
+        public virtual bool Validate(bool log, MetaColumn metaColumn)
+        {
+            bool valid = true;
+            valid &= Debuging.DebugUtility.ValidateError(log, type == metaColumn.Type, "Column must have the same value type as its MetaColumn");
+            return valid;
+        }
         public abstract long[] GetSortIndex(SortOrder order, ArrayRange indices, bool relativeIndex);
 
         // equality is an array the same size as the returned index. the value is the index that it's equal to.
@@ -19,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         }
 
         //call this to get a displayable value
-        public abstract string GetRowValueString(long row);
+        public abstract string GetRowValueString(long row, IDataFormatter formatter);
         public abstract int CompareRow(long rowA, long rowB);
         public abstract int Compare(long rowLhs, Operation.Expression exp, long rowRhs);
         //returning indice array is always in ascending index order

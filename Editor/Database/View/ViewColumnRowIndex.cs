@@ -45,9 +45,9 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             return vc.viewTable.GetRowCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
-            return row.ToString();
+            return formatter.Format(row);
         }
 
         public override long GetRowValue(long row)

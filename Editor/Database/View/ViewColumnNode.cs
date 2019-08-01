@@ -87,9 +87,9 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             return LinkRequestTable.MakeLinkRequest(linkEntries[(int)row], m_ViewColumn.viewTable, this, row, m_ViewColumn.ParsingContext);
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
-            return m_Cache.GetValueStringFromExpression((int)row, entries[row], 0);
+            return m_Cache.GetValueStringFromExpression((int)row, entries[row], 0, formatter);
         }
 
         public override DataT GetRowValue(long row)

@@ -3,39 +3,35 @@ using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class Styles
+    internal static class Styles
     {
-        public GUIStyle background = "OL Box";
-        public GUIStyle tooltip = "AnimationEventTooltip";
-        public GUIStyle tooltipArrow = "AnimationEventTooltipArrow";
-        public GUIStyle bar = "ProfilerTimelineBar";
-        public GUIStyle header = "OL title";
-        public GUIStyle leftPane = "ProfilerTimelineLeftPane";
-        public GUIStyle rightPane = "ProfilerRightPane";
-        public GUIStyle entryEven = "OL EntryBackEven";
-        public GUIStyle entryOdd = "OL EntryBackOdd";
-        public GUIStyle numberLabel = "OL Label";
-        public GUIStyle clickableLabel;// = "OL Label";
-        public GUIStyle border = new GUIStyle();
-        public GUIStyle foldout = "ProfilerTimelineFoldout";
-        public GUIStyle profilerGraphBackground = new GUIStyle("ProfilerScrollviewBackground");
+        public static readonly GUIStyle Background = "OL Box";
+        public static readonly GUIStyle Tooltip = "AnimationEventTooltip";
+        public static readonly GUIStyle TooltipArrow = "AnimationEventTooltipArrow";
+        public static readonly GUIStyle Bar = "ProfilerTimelineBar";
+        public static readonly GUIStyle Header = "OL title";
+        public static readonly GUIStyle LeftPane = "ProfilerTimelineLeftPane";
+        public static readonly GUIStyle RightPane = "ProfilerRightPane";
+        public static readonly GUIStyle EntryEven = "OL EntryBackEven";
+        public static readonly GUIStyle EntryOdd = "OL EntryBackOdd";
+        public static readonly GUIStyle NumberLabel = "OL Label";
+        public static readonly GUIStyle ClickableLabel;// = "OL Label";
+        public static readonly GUIStyle Border = new GUIStyle();
+        public static readonly GUIStyle Foldout = "ProfilerTimelineFoldout";
+        public static readonly GUIStyle ProfilerGraphBackground = new GUIStyle("ProfilerScrollviewBackground");
+        public static readonly Color SelectedColor = new Color(62f / 255f, 95f / 255f, 150f / 255f);
+        public const int FoldoutWidth = 16;
 
-        public Styles()
+        static Styles()
         {
-            bar.normal.background = bar.hover.background = bar.active.background = EditorGUIUtility.whiteTexture;
-            bar.normal.textColor = bar.hover.textColor = bar.active.textColor = Color.black;
-            leftPane.padding.left = 15;
-            //border.border.
-            clickableLabel = new GUIStyle(numberLabel);
-            clickableLabel.normal.textColor = new Color(33 / 255.0f, 150 / 255.0f, 243 / 255.0f, 1.0f);
-            //clickableLabel.fontStyle = FontStyle.Bold;
-            //clickableLabel.font = new Font("")
-        }
-
-        private static Styles ms_Styles;
-        public static Styles styles
-        {
-            get { return ms_Styles ?? (ms_Styles = new Styles()); }
+            Bar.normal.background = Bar.hover.background = Bar.active.background = EditorGUIUtility.whiteTexture;
+            Bar.normal.textColor = Bar.hover.textColor = Bar.active.textColor = Color.black;
+            LeftPane.padding.left = 15;
+            ClickableLabel = new GUIStyle(NumberLabel);
+            if(EditorGUIUtility.isProSkin)
+                ClickableLabel.normal.textColor = new Color(33 / 255.0f, 150 / 255.0f, 243 / 255.0f, 1.0f);
+            else
+                ClickableLabel.normal.textColor = new Color(0,0,1,1);
         }
     }
     internal class EllipsisStyleMetric

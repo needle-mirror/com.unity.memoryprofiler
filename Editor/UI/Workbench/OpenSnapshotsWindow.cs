@@ -309,6 +309,14 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
+        internal void RefreshScreenshots(SnapshotFileGUIData guiDataFirst, SnapshotFileGUIData guiDataSecond)
+        {
+            if (guiDataFirst != null && m_OpenSnapshotItemUIFirst != null && m_OpenSnapshotItemUIFirst.Image != null)
+                m_OpenSnapshotItemUIFirst.Image.image  = guiDataFirst.texture;
+            if (guiDataSecond != null && m_OpenSnapshotItemUISecond != null && m_OpenSnapshotItemUISecond.Image != null)
+                m_OpenSnapshotItemUISecond.Image.image = guiDataSecond.texture;
+        }
+
         void SetFocusSecond(bool on)
         {
             if (on)

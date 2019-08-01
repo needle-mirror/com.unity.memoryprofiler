@@ -359,7 +359,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     Database.Operation.ExpressionParsingContext expressionParsingContext = null;
                     if (link.SourceView != null)
                     {
-                        expressionParsingContext = link.SourceView.expressionParsingContext;
+                        expressionParsingContext = link.SourceView.ExpressionParsingContext;
                     }
                     if (tableFilterWhere != null && tableFilterWhere.Count > 0)
                     {
@@ -461,7 +461,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             
             //m_CurrentTableIndex = m_UIState.GetTableIndex(table);
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.DataRenderer, table, this);
+            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.onClickLink += OnSpreadsheetClick;
             m_EventListener.OnRepaint();
         }
@@ -478,7 +478,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             
             //m_CurrentTableIndex = m_UIState.GetTableIndex(table);
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.DataRenderer, table, this);
+            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.onClickLink += OnSpreadsheetClick;
             m_Spreadsheet.Goto(pos);
             m_EventListener.OnRepaint();
@@ -516,7 +516,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_TreeMap.FocusOnAll();
                 }
             }
-            m_UIState.DataRenderer.forceLinkAllObject = true;
+            m_UIState.FormattingOptions.ObjectDataFormatter.forceLinkAllObject = true;
             r.xMin++;
             r.yMin++;
             r.xMax--;

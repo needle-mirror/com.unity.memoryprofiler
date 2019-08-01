@@ -14,6 +14,12 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 			public static readonly GUIStyle TimelineBar  = "AnimationEventTooltip";		
             public static readonly GUIStyle AddressSub =  "OL Label";
             public static readonly GUIStyle SeriesLabel = "ProfilerPaneSubLabel";
+            public static readonly GUIStyle ContentToolbar =
+#if UNITY_2019_3_OR_NEWER
+                "ContentToolbar";
+#else
+                EditorStyles.toolbar;
+#endif
             public static readonly ulong SubAddressStepInRows = 10;
             public static readonly int   LegendHeight = 20;
             public static readonly int   VScrollBarWidth = 15;

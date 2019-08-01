@@ -4,6 +4,10 @@ using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 {
+    /// <summary>
+    /// A filter that will sort entries using a column and a SortOrder (ascending/descending)
+    /// It can sort data on several depth level. When 2 entries have an equal value while sorting, it will sort them using a deeper level of sort
+    /// </summary>
     internal class Sort : Filter
     {
         public abstract class Level

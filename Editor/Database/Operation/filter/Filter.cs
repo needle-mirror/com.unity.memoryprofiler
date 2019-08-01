@@ -10,6 +10,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
         public SortOrder DefaultSorted = SortOrder.None;
         public bool Grouped = false;
     }
+
+    /// <summary>
+    /// Information needed for cloning a filter
+    /// </summary>
     internal class FilterCloning
     {
         Dictionary<Filter, Filter> m_Uniques = new Dictionary<Filter, Filter>();
@@ -47,6 +51,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             return null;
         }
     }
+
+    /// <summary>
+    /// Represent a filter that takes in a table, apply some transformation and output a new table.
+    /// The source table will not be modified, however a filter may return the source table if nothing was needed to do.
+    /// TODO OnGui should be moved to UI namespace.
+    /// </summary>
     internal abstract class Filter
     {
         public abstract Filter Clone(FilterCloning fc);

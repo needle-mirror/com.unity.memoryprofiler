@@ -2,6 +2,10 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation
 {
+    /// <summary>
+    /// A column that handles multiple levels of expansion for grouped entries
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class GroupedColumnTyped<DataT> : ExpandColumnTyped<DataT>, IGroupedColumn, IColumnDecorator where DataT : System.IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -22,8 +26,8 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
 #endif
         protected GroupedTable m_GroupTable;
+        //TODO use valueStringArrayCache here
         DataT[] m_GroupData;
-        string[] m_GroupDataString;
         bool[] m_GroupComputed;
         bool m_IsGroupKey;
 
@@ -47,12 +51,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             m_IsGroupKey = isGroup;
             m_GroupComputed = new bool[table.m_Groups.Length];
             m_GroupData = new DataT[table.m_Groups.Length];
-            m_GroupDataString = new string[table.m_Groups.Length];
         }
 
         public override long GetRowCount()
         {
-            return m_GroupTable.m_Groups.Length;
+            return m_GroupTable.GetRowCount();
         }
 
         public override LinkRequest GetRowLink(long row)
@@ -88,7 +91,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 //pick first value of the group
                 m_GroupData[groupIndex] = m_Column.GetRowValue(tableGroup.m_GroupIndice[0]);
-                m_GroupDataString[groupIndex] = m_Column.GetRowValueString(tableGroup.m_GroupIndice[0]);
             }
             else if (algorithm != null)
             {
@@ -97,7 +99,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             else
             {
                 m_GroupData[groupIndex] = default(DataT);
-                m_GroupDataString[groupIndex] = "";
             }
         }
 
@@ -111,38 +112,45 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return m_GroupData[groupIndex];
         }
 
-        private string GetGroupValueString(long groupIndex, long row)
+        private string GetGroupValueString(long groupIndex, long row, IDataFormatter formatter)
         {
-            if (!m_GroupComputed[groupIndex])
+            if (m_IsGroupKey || m_GroupTable.IsGroupDegenerate(groupIndex))
             {
-                m_GroupComputed[groupIndex] = true;
-                ComputeGroupValue(groupIndex, ref m_GroupTable.m_Groups[groupIndex], row);
+                //pick first value of the group
+                return m_Column.GetRowValueString(m_GroupTable.m_Groups[groupIndex].m_GroupIndice[0], formatter);
             }
-            return m_GroupDataString[groupIndex];
+            else if (algorithm != null)
+            {
+                return formatter.Format(GetGroupValue(groupIndex, row));
+            }
+            else
+            {
+                return "";
+            }
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             var e = m_GroupTable.m_RowData[row];
             if (e.isGroupHead())
             {
-                string v = GetGroupValueString(e.groupIndex, row);
+                string v = GetGroupValueString(e.groupIndex, row, formatter);
                 if (m_IsGroupKey)
                 {
                     string r = v;
-                    r += " (" + m_GroupTable.m_Groups[e.groupIndex].m_GroupIndice.indexCount + ")";
+                    r += " (" + m_GroupTable.m_Groups[e.groupIndex].m_GroupIndice.Count + ")";
                     return r;
                 }
                 else
                 {
-                    return v.ToString();
+                    return v;
                 }
             }
             else
             {
                 var subTable = m_GroupTable.GetGroupSubTable(e.groupIndex);
                 var subCol = (ColumnTyped<DataT>)subTable.GetColumnByIndex(m_ColumnIndex);
-                return subCol.GetRowValueString(e.subGroupIndex);
+                return subCol.GetRowValueString(e.subGroupIndex, formatter);
             }
         }
 
@@ -178,8 +186,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             else
             {
                 m_GroupData[m_GroupTable.m_RowData[row].groupIndex] = value;
-
-                m_GroupDataString[m_GroupTable.m_RowData[row].groupIndex] = m_Column.ValueToString(value);
             }
         }
 

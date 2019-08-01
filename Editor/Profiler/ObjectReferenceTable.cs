@@ -1,3 +1,5 @@
+using Unity.MemoryProfiler.Editor.Database;
+
 namespace Unity.MemoryProfiler.Editor
 {
     internal class ObjectReferenceTable : ObjectListTable
@@ -9,8 +11,8 @@ namespace Unity.MemoryProfiler.Editor
         ObjectData m_Object;
         ObjectData[] m_References;
 
-        public ObjectReferenceTable(Database.Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectData obj, ObjectMetaType metaType)
-            : base(schema, renderer, snapshot, crawledData, metaType)
+        public ObjectReferenceTable(Database.Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectData obj, ObjectMetaType metaType)
+            : base(schema, formatter, snapshot, crawledData, metaType)
         {
             m_Object = obj;
             m_References = ObjectConnection.GetAllObjectConnectingTo(snapshot, obj);
@@ -85,7 +87,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public override string GetName()
         {
-            var str = Renderer.Render(m_Object); //string.Format("0x{0:X16}", ptr);
+            var str = Formatter.Format(m_Object, DefaultDataFormatter.Instance); //string.Format("0x{0:X16}", ptr);
             return kObjectReferenceTableName + "(" + str + ")";
         }
 

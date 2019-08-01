@@ -44,26 +44,27 @@ namespace Unity.MemoryProfiler
             {
                 UnityMemoryProfiler.createMetaData += DefaultCollect;
             }
+
         }
 
         static void DefaultCollect(MetaData data)
         {
             data.content = "Project name: " + Application.productName;
-#if UNITY_EDITOR
+#if UNITY_EDITOR && !UNITY_2019_3
             data.content += "\nScripting Version: " + EditorApplication.scriptingRuntimeVersion.ToString();
 #endif
             data.platform = Application.platform.ToString();
-
-            // TODO: Allow screenshot-ing once we have added the capture operation to EndOfFrame callbacks
         }
     }
+
+
 #endif
-    /// <summary>
-    /// Interface for creating a metadata collector type to populate the `PackedMemorySnapshot.Metadata` member. You can add multiple collectors, but it is recommended to add only one.
-    /// </summary>
-    /// <remarks> Adding a collector will override the default metadata collection functionality. If you want to keep the default metadata, go to the `DefaultCollect` method in the file _com.unity.memoryprofiler\Runtime\MetadataInjector.cs_ and copy that code into your collector method. 
-    /// </remarks>
-    public interface IMetadataCollect
+            /// <summary>
+            /// Interface for creating a metadata collector type to populate the `PackedMemorySnapshot.Metadata` member. You can add multiple collectors, but it is recommended to add only one.
+            /// </summary>
+            /// <remarks> Adding a collector will override the default metadata collection functionality. If you want to keep the default metadata, go to the `DefaultCollect` method in the file _com.unity.memoryprofiler\Runtime\MetadataInjector.cs_ and copy that code into your collector method. 
+            /// </remarks>
+        public interface IMetadataCollect
     {
         /// <summary>
         /// The Memory Profiler will invoke this method during the capture process, to populate the metadata of the capture.

@@ -5,8 +5,8 @@ namespace Unity.MemoryProfiler.Editor
         public new const string TableName = "AllManagedObjects";
         public new const string TableDisplayName = "All Managed Objects";
         private ObjectData[] m_cache;
-        public ObjectAllManagedTable(Database.Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
-            : base(schema, renderer, snapshot, crawledData, metaType)
+        public ObjectAllManagedTable(Database.Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
+            : base(schema, formatter, snapshot, crawledData, metaType)
         {
             InitObjectList();
         }
@@ -61,8 +61,8 @@ namespace Unity.MemoryProfiler.Editor
         public new const string TableName = "AllNativeObjects";
         public new const string TableDisplayName = "All Native Objects";
         private ObjectData[] m_cache;
-        public ObjectAllNativeTable(Database.Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
-            : base(schema, renderer, snapshot, crawledData, metaType)
+        public ObjectAllNativeTable(Database.Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
+            : base(schema, formatter, snapshot, crawledData, metaType)
         {
             InitObjectList();
         }
@@ -111,8 +111,8 @@ namespace Unity.MemoryProfiler.Editor
         public new const string TableName = "AllObjects";
         public new const string TableDisplayName = "All Objects";
         private ObjectData[] m_cache;
-        public ObjectAllTable(Database.Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
-            : base(schema, renderer, snapshot, crawledData, metaType)
+        public ObjectAllTable(Database.Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
+            : base(schema, formatter, snapshot, crawledData, metaType)
         {
             InitObjectList();
         }

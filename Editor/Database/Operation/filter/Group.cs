@@ -4,6 +4,10 @@ using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 {
+    /// <summary>
+    /// Base filter class for creating grouped table
+    /// it will apply a sub filter for entries upon expansion of a group
+    /// </summary>
     internal abstract class Group : Filter
     {
         protected readonly SortOrder m_Order;//default ordering
@@ -114,7 +118,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
         }
     }
 
-
+    /// <summary>
+    /// Group a table using the name of a column
+    /// </summary>
     internal class GroupByColumnName : Group
     {
         readonly string m_ColumnName;

@@ -5,6 +5,9 @@ using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 {
+    /// <summary>
+    /// A Table that filters entries using a string that must be present in a specified column
+    /// </summary>
     internal class MatchTable : IndexedTable
     {
         public int m_columnIndex;
@@ -78,16 +81,16 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             {
                 updater.m_OldToNew[i] = sourceUpdater.OldToNewRow(indices[i]);
             }
-            if (m_Range.array != null)
+            if (m_Range.IsIndex)
             {
-                for (int i = 0; i != m_Range.array.Length; ++i)
+                for (int i = 0; i != m_Range.Array.Length; ++i)
                 {
-                    m_Range.array[i] = sourceUpdater.OldToNewRow(m_Range.array[i]);
+                    m_Range.Array[i] = sourceUpdater.OldToNewRow(m_Range.Array[i]);
                 }
             }
             else
             {
-                if (m_Range.indexCount == oldRowCount)
+                if (m_Range.Count == oldRowCount)
                 {
                     m_Range = new ArrayRange(0, sourceUpdater.GetRowCount());
                 }
@@ -95,7 +98,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                 {
                     long newFirst = 0;
                     long newLast = 0;
-                    for (long i = m_Range.directIndexFirst; i != m_Range.directIndexLast; ++i)
+                    for (long i = m_Range.Sequence.First; i != m_Range.Sequence.Last; ++i)
                     {
                         var n = sourceUpdater.OldToNewRow(i);
                         if (n >= 0)
@@ -105,7 +108,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                         }
                     }
 
-                    for (long i = m_Range.directIndexLast; i != m_Range.directIndexFirst; --i)
+                    for (long i = m_Range.Sequence.Last; i != m_Range.Sequence.First; --i)
                     {
                         var n = sourceUpdater.OldToNewRow(i - 1);
                         if (n >= 0)
@@ -136,6 +139,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
         {
         }
     }
+
+    /// <summary>
+    /// Filter that only keeps the entries which a specified column value includes a specified string.
+    /// </summary>
     internal class Match : Filter
     {
         public string MatchString

@@ -60,7 +60,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             {
                 m_RowData[i].groupIndex = i;
                 m_RowData[i].subGroupIndex = -1;
-                m_GroupRowDataRange[i] = Range.FirstLength(i, 1);
+                m_GroupRowDataRange[i] = Range.FirstPlusLength(i, 1);
             }
         }
 
@@ -95,7 +95,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             else
             {
                 m_Columns[metaColumn.Index] = new ColumnError(this);
-                DebugUtility.LogWarning("Cannot create column '" + GetName() + "." + metaColumn.Name + "'. Type is unknown (null)");
+                DebugUtility.LogError("Cannot create column '" + GetName() + "." + metaColumn.Name + "'. Type is unknown (null)");
             }
         }
 
@@ -153,7 +153,7 @@ namespace Unity.MemoryProfiler.Editor.Database
 
         private Range FixGroupSubRow(long index, Range subRange)
         {
-            if (subRange.length < 0)
+            if (subRange.Length < 0)
             {
                 return RemoveGroupSubRow(index, subRange);
             }
@@ -166,40 +166,40 @@ namespace Unity.MemoryProfiler.Editor.Database
         private Range InsertGroupSubRow(long index, Range subRange)
         {
             //convert subrange to level range
-            long groupStart = m_GroupRowDataRange[index].first + 1;
-            m_GroupRowDataRange[index].last += subRange.length;
-            Range range = Range.FirstLength(subRange.first + groupStart, subRange.length);
+            long groupStart = m_GroupRowDataRange[index].First + 1;
+            m_GroupRowDataRange[index].Last += subRange.Length;
+            Range range = Range.FirstPlusLength(subRange.First + groupStart, subRange.Length);
 
 
-            DataEntry[] newData = new DataEntry[m_RowData.Length + range.length];
+            DataEntry[] newData = new DataEntry[m_RowData.Length + range.Length];
 
             //copy before gap
-            System.Array.Copy(m_RowData, newData, range.first);
+            System.Array.Copy(m_RowData, newData, range.First);
 
             //copy after gap
-            if (range.first < m_RowData.Length)
+            if (range.First < m_RowData.Length)
             {
-                long afterGapLength = m_RowData.Length - range.first;
-                System.Array.Copy(m_RowData, range.first, newData, range.last, afterGapLength);
+                long afterGapLength = m_RowData.Length - range.First;
+                System.Array.Copy(m_RowData, range.First, newData, range.Last, afterGapLength);
             }
 
             //offset trailing goups' dataEntryIndexFirst
             for (long i = index + 1; i < m_GroupRowDataRange.Length; ++i)
             {
-                m_GroupRowDataRange[i] += range.length;
+                m_GroupRowDataRange[i] += range.Length;
             }
 
             //fill the gap with new data
-            for (long i = 0; i < range.length; ++i)
+            for (long i = 0; i < range.Length; ++i)
             {
-                newData[range.first + i].groupIndex = index;
-                newData[range.first + i].subGroupIndex = i + subRange.first;
+                newData[range.First + i].groupIndex = index;
+                newData[range.First + i].subGroupIndex = i + subRange.First;
             }
             //update trailing subGroupIndex
-            long traillingCount = m_GroupRowDataRange[index].last - range.last;
+            long traillingCount = m_GroupRowDataRange[index].Last - range.Last;
             for (long i = 0; i < traillingCount; ++i)
             {
-                newData[range.last + i].subGroupIndex = subRange.last + i;
+                newData[range.Last + i].subGroupIndex = subRange.Last + i;
             }
 
             m_Data.m_RowData = newData;
@@ -209,30 +209,30 @@ namespace Unity.MemoryProfiler.Editor.Database
         //subrange length must be negative and .end is > .start
         private Range RemoveGroupSubRow(long index, Range subRange)
         {
-            long offset = subRange.length;//length is negative
+            long offset = subRange.Length;//length is negative
             //convert subrange to level range
-            long groupStart = m_GroupRowDataRange[index].first + 1;
-            Range range = Range.FirstLength(subRange.last + groupStart, -subRange.length);
+            long groupStart = m_GroupRowDataRange[index].First + 1;
+            Range range = Range.FirstPlusLength(subRange.Last + groupStart, -subRange.Length);
 
 
-            DataEntry[] newData = new DataEntry[m_RowData.Length - range.length];
+            DataEntry[] newData = new DataEntry[m_RowData.Length - range.Length];
             //copy before gap
-            System.Array.Copy(m_RowData, newData, range.first);
+            System.Array.Copy(m_RowData, newData, range.First);
 
             //copy after gap
-            long rangeEnd = range.last;
+            long rangeEnd = range.Last;
             if (rangeEnd < m_RowData.Length)
             {
                 long afterGapLength = m_RowData.Length - rangeEnd;
-                System.Array.Copy(m_RowData, rangeEnd, newData, range.first, afterGapLength);
+                System.Array.Copy(m_RowData, rangeEnd, newData, range.First, afterGapLength);
             }
 
             //update trailing subGroupIndex. this happens when subrange does not include all the group last sub rows.
-            long trailingSubIndexCount = m_GroupRowDataRange[index].last - range.last;
+            long trailingSubIndexCount = m_GroupRowDataRange[index].Last - range.Last;
 
             for (long i = 0; i < trailingSubIndexCount; ++i)
             {
-                newData[range.first + i].subGroupIndex += offset;
+                newData[range.First + i].subGroupIndex += offset;
             }
 
 
@@ -242,12 +242,12 @@ namespace Unity.MemoryProfiler.Editor.Database
                 m_GroupRowDataRange[i] += offset;
             }
 
-            m_GroupRowDataRange[index].last += subRange.length;
+            m_GroupRowDataRange[index].Last += subRange.Length;
 
             m_Data.m_RowData = newData;
 
             //inverse range returned to mark it as removed
-            return Range.FirstLength(range.first + range.length, -range.length);
+            return Range.FirstPlusLength(range.First + range.Length, -range.Length);
         }
 
         private Range ExpandGroupByIndex(long index, bool expand)
@@ -260,9 +260,9 @@ namespace Unity.MemoryProfiler.Editor.Database
                     ExpandedGroup eg = new ExpandedGroup();
                     eg.table = table;
                     m_ExpandedGroup[index] = eg;
-                    return InsertGroupSubRow(index, Range.FirstLast(0, table.GetRowCount()));
+                    return InsertGroupSubRow(index, Range.FirstToLast(0, table.GetRowCount()));
                 }
-                return Range.Empty();
+                return Range.None;
             }
             else
             {
@@ -271,9 +271,9 @@ namespace Unity.MemoryProfiler.Editor.Database
                 {
                     m_ExpandedGroup.Remove(index);
                     long rowCount = eg.table.GetRowCount();
-                    return RemoveGroupSubRow(index, Range.FirstLength(rowCount, -rowCount));
+                    return RemoveGroupSubRow(index, Range.FirstPlusLength(rowCount, -rowCount));
                 }
-                return Range.Empty();
+                return Range.None;
             }
         }
 
@@ -294,7 +294,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             else
             {
                 //is a sub row
-                long subRow = row - (m_GroupRowDataRange[groupIndex].first + 1);
+                long subRow = row - (m_GroupRowDataRange[groupIndex].First + 1);
                 ExpandedGroup eg;
                 if (m_ExpandedGroup.TryGetValue(groupIndex, out eg))
                 {
@@ -319,11 +319,11 @@ namespace Unity.MemoryProfiler.Editor.Database
                 ExpandedGroup eg;
                 if (m_ExpandedGroup.TryGetValue(groupIndex, out eg))
                 {
-                    long subRow = row - (m_GroupRowDataRange[groupIndex].first + 1);
+                    long subRow = row - (m_GroupRowDataRange[groupIndex].First + 1);
                     var subDirtyRange = eg.table.ExpandCell(subRow, col, expanded);
                     return FixGroupSubRow(groupIndex, subDirtyRange);
                 }
-                return Range.Empty();
+                return Range.None;
             }
         }
 
@@ -343,7 +343,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                         if (gt.m_ExpandedGroup.TryGetValue(groupIndex, out eg))
                         {
                             var subCellPos = subLink.Apply(eg.table);
-                            long row = gt.m_GroupRowDataRange[groupIndex].first + 1 + subCellPos.row; //+1 to skip the group head
+                            long row = gt.m_GroupRowDataRange[groupIndex].First + 1 + subCellPos.row; //+1 to skip the group head
                             return new CellPosition(row, subCellPos.col);
                         }
                     }
@@ -488,14 +488,14 @@ namespace Unity.MemoryProfiler.Editor.Database
                     }
 
                     //set group data range to include head + sub rows
-                    u.m_NewData.m_GroupRowDataRange[newCurrentGroup] = Range.FirstLength(newCurrentRow, 1 + subRowCount);
+                    u.m_NewData.m_GroupRowDataRange[newCurrentGroup] = Range.FirstPlusLength(newCurrentRow, 1 + subRowCount);
                     newCurrentRow += subRowCount + 1;
                     hasExpandedGroup = newExpandedGroupEnum.MoveNext();
                 }
                 else
                 {
                     //group use only a single row
-                    u.m_NewData.m_GroupRowDataRange[newCurrentGroup] = Range.FirstLength(newCurrentRow, 1);
+                    u.m_NewData.m_GroupRowDataRange[newCurrentGroup] = Range.FirstPlusLength(newCurrentRow, 1);
                     ++newCurrentRow;
                 }
 
@@ -525,7 +525,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                 }
                 if (newRowGroup >= 0)
                 {
-                    var newGroupHeadRow = u.m_NewData.m_GroupRowDataRange[newRowGroup].first;
+                    var newGroupHeadRow = u.m_NewData.m_GroupRowDataRange[newRowGroup].First;
                     u.m_OldToNewRow[oldCurrentRow] = newGroupHeadRow;
                     //check if this group was expanded
                     if (hasExpandedGroup && oldRowGroup == oldExpandedGroupEnum.Current.Key)
@@ -537,7 +537,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                             if (subUpdater != null)
                             {
                                 //sub table is dirty, update each sub row with the group's updater
-                                for (int j = 0; j < m_Data.m_GroupRowDataRange[oldRowGroup].length - 1; ++j)
+                                for (int j = 0; j < m_Data.m_GroupRowDataRange[oldRowGroup].Length - 1; ++j)
                                 {
                                     var subRowTopRow = oldCurrentRow + j + 1;//sub row index in the m_RowData array
                                     long newSubRow = subUpdater.OldToNewRow(j);
@@ -556,7 +556,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                             else
                             {
                                 //sub table didn't change
-                                for (int j = 0; j != m_Data.m_GroupRowDataRange[oldCurrentRow].length - 1; ++j)
+                                for (int j = 0; j != m_Data.m_GroupRowDataRange[oldCurrentRow].Length - 1; ++j)
                                 {
                                     var subRowTopRow = oldCurrentRow + 1 + j;//sub row index in the m_RowData array
                                     //set to new head row + new sub row
@@ -566,7 +566,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                         }
                         hasExpandedGroup = oldExpandedGroupEnum.MoveNext();
                         //offset oldCurrentRow by the sub row we just fixed
-                        oldCurrentRow += m_Data.m_GroupRowDataRange[oldCurrentRow].length - 1;//-1 to exclude the group head
+                        oldCurrentRow += m_Data.m_GroupRowDataRange[oldCurrentRow].Length - 1;//-1 to exclude the group head
                     }
                 }
                 else

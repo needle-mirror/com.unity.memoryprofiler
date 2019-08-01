@@ -82,14 +82,14 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             }
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             if (m_SourceViewColumn.m_IsDisplayMergedOnly)
             {
                 return "";
             }
             UpdateCache();
-            return m_Cache.GetValueStringFromExpression((int)row, m_SourceExpression, row);
+            return m_Cache.GetValueStringFromExpression((int)row, m_SourceExpression, row, formatter);
         }
 
         public override DataT GetRowValue(long row)

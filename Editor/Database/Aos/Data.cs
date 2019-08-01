@@ -3,6 +3,9 @@ using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Database.Aos
 {
+    /// <summary>
+    /// Provides a way to create columns using an `Array of Struct` data structure as input data
+    /// </summary>
     internal class Data
     {
         public static Column<StructT, DataT> MakeColumn<StructT, DataT>(StructT[] array, Column<StructT, DataT>.Getter getter, Column<StructT, DataT>.Setter setter) where DataT : IComparable, new()
@@ -42,9 +45,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Aos
                 return array.Length;
             }
 
-            public override string GetRowValueString(long row)
+            public override string GetRowValueString(long row, IDataFormatter formatter)
             {
-                return getter(array[row]).ToString();
+                return formatter.Format(getter(array[row]));
             }
 
             public override DataT GetRowValue(long row)
@@ -59,7 +62,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Aos
 
             public override System.Collections.Generic.IEnumerable<DataT> VisitRows(ArrayRange indices)
             {
-                for (long i = 0; i != indices.indexCount; ++i)
+                for (long i = 0; i != indices.Count; ++i)
                 {
                     yield return getter(array[indices[i]]);
                 }
@@ -103,9 +106,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Aos
                 return list.Count;
             }
 
-            public override string GetRowValueString(long row)
+            public override string GetRowValueString(long row, IDataFormatter formatter)
             {
-                return getter(list[(int)row]).ToString();
+                return formatter.Format(getter(list[(int)row]));
             }
 
             public override DataT GetRowValue(long row)
@@ -120,7 +123,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Aos
 
             public override System.Collections.Generic.IEnumerable<DataT> VisitRows(ArrayRange indices)
             {
-                for (long i = 0; i != indices.indexCount; ++i)
+                for (long i = 0; i != indices.Count; ++i)
                 {
                     yield return getter(list[(int)indices[i]]);
                 }

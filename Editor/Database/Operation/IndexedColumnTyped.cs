@@ -37,9 +37,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return m_IndexedTable.GetRowCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
-            return m_SourceColumn.GetRowValueString(m_IndexedTable.indices[row]);
+            return m_SourceColumn.GetRowValueString(m_IndexedTable.indices[row], formatter);
         }
 
         public override DataT GetRowValue(long row)

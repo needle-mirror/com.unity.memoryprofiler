@@ -6,6 +6,9 @@ namespace Unity.MemoryProfiler.Editor.Database
     {
         namespace Filter
         {
+            /// <summary>
+            /// Filter that sort entries using a default Sort filter and may be overridden with a different Sort filter
+            /// </summary>
             internal class DefaultSort : Filter
             {
                 public Sort SortDefault;

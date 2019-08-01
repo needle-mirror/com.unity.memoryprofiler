@@ -98,13 +98,13 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             return null;
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             if (mbDirty)
             {
                 ComputeAllValues();
             }
-            return (string)Convert.ChangeType(entries[(int)row], typeof(string));
+            return formatter.Format(entries[(int)row]);
         }
 
         public override DataT GetRowValue(long row)

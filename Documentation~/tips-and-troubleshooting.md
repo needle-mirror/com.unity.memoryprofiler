@@ -8,7 +8,7 @@ When you create a snapshot for the first time, the Unity __Editor__ will create 
 
 ## Change default snapshot path
 
-By default, the location of all snapshots that you capture or import is _<Path/of/Your/ProjectFolder>/MemoryCaptures_. You can change that default path in the Unity __Preferences__ Window under __Profiling__ > __Memory Profiler__. 
+By default, the location of all snapshots that you capture or import is _<Path/of/Your/ProjectFolder>/MemoryCaptures_. You can change that default path in the Unity __Preferences__ Window under __Analysis__ > __Memory Profiler__. 
 
 > **Note**: The path has to be relative, i.e., it must start with “./” or “../” to denote its location within, or one folder hierarchy above, the Project folder respectively.
 
@@ -28,7 +28,7 @@ Inspect your memory usage regularly, even at the earliest stages of production, 
 
 ## Define snapshot metadata
 
-When capturing a snapshot, it is possible to generate [MetaData](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MetaData.html) on the __Player__ side. If the __Player__ builds from a project that has the Memory Profiler package added to it, it generates some default metadata.
+When capturing a snapshot, it is possible to generate [MetaData](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MetaData.html) on the __Player__ side. If the __Player__ was build from a project that has the Memory Profiler package added to it, it generates some default metadata.
 The default metadata consists of:
 * [MetaData.content](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MetaData-content.html) - Containing the project's name (and the Scripting version when capturing the __Editor__).
 * [MetaData.platform](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MetaData-platform.html) - The [RuntimePlatform](https://docs.unity3d.com/ScriptReference/RuntimePlatform.html) of the __Player__ or the __Editor__ that was captured, stored as a string. 

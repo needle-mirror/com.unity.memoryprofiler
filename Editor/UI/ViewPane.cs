@@ -64,9 +64,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 try
                 {
                     using (new Service<IDebugContextService>.ScopeService(new DebugContextService()))
+                    using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
                     {
                         var rect = m_VisualElements[elementIndex].contentRect;
-                        if(float.IsNaN(rect.width) || float.IsNaN(rect.height))
+                        if (float.IsNaN(rect.width) || float.IsNaN(rect.height))
                         {
                             rect = new Rect(0, 0, 1, 1);
                         }

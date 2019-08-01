@@ -169,13 +169,13 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                         if (sourceColumn.CompareRow(coll.m_sortedIndex[j], coll.m_sortedIndex[i]) != 0)
                         {
                             //create group;
-                            Range range = Range.FirstLast(iGroupFirst, i);
+                            Range range = Range.FirstToLast(iGroupFirst, i);
                             groups.Add(new DupGroup(range));
                             iGroupFirst = i;
                         }
                     }
-                    Range rangeLast = Range.FirstLast(iGroupFirst, coll.m_sortedIndex.Length);
-                    if (rangeLast.length > 0)
+                    Range rangeLast = Range.FirstToLast(iGroupFirst, coll.m_sortedIndex.Length);
+                    if (rangeLast.Length > 0)
                     {
                         groups.Add(new DupGroup(rangeLast));
                     }
@@ -188,47 +188,47 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                         //test if grouping data is good
                         foreach (var g in coll.m_Groups)
                         {
-                            Debug.Assert(g.range.first >= 0);
-                            Debug.Assert(g.range.first < coll.m_sortedIndex.Length);
-                            Debug.Assert(g.range.last > 0);
-                            Debug.Assert(g.range.last <= coll.m_sortedIndex.Length);
+                            Debug.Assert(g.range.First >= 0);
+                            Debug.Assert(g.range.First < coll.m_sortedIndex.Length);
+                            Debug.Assert(g.range.Last > 0);
+                            Debug.Assert(g.range.Last <= coll.m_sortedIndex.Length);
 
                             //indices before should all be -1 compared to group's first index
-                            for (long i = 0; i != g.range.first; ++i)
+                            for (long i = 0; i != g.range.First; ++i)
                             {
-                                int c = sourceColumn.CompareRow(coll.m_sortedIndex[i], coll.m_sortedIndex[g.range.first]);
+                                int c = sourceColumn.CompareRow(coll.m_sortedIndex[i], coll.m_sortedIndex[g.range.First]);
                                 if (c != -1)
                                 {
-                                    Debug.Assert(c == -1, "index " + i + " should be -1 compared to group starting at index " + g.range.first + "."
+                                    Debug.Assert(c == -1, "index " + i + " should be -1 compared to group starting at index " + g.range.First + "."
                                         + "\n Result=" + c
-                                        + "\n val[" + i + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[i])
-                                        + "\n val[" + g.range.first + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[g.range.first])
+                                        + "\n val[" + i + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[i], DefaultDataFormatter.Instance)
+                                        + "\n val[" + g.range.First + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[g.range.First], DefaultDataFormatter.Instance)
                                         );
                                 }
                             }
                             //indices inside group should all be 0 compared to group's first index
-                            for (long i = g.range.first; i != g.range.last; ++i)
+                            for (long i = g.range.First; i != g.range.Last; ++i)
                             {
-                                int c = sourceColumn.CompareRow(coll.m_sortedIndex[i], coll.m_sortedIndex[g.range.first]);
+                                int c = sourceColumn.CompareRow(coll.m_sortedIndex[i], coll.m_sortedIndex[g.range.First]);
                                 if (c != 0)
                                 {
-                                    Debug.Assert(c == 0, "index " + i + " should be 0 compared to group starting at index " + g.range.first + "."
+                                    Debug.Assert(c == 0, "index " + i + " should be 0 compared to group starting at index " + g.range.First + "."
                                         + "\n Result=" + c
-                                        + "\n val[" + i + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[i])
-                                        + "\n val[" + g.range.first + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[g.range.first])
+                                        + "\n val[" + i + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[i], DefaultDataFormatter.Instance)
+                                        + "\n val[" + g.range.First + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[g.range.First], DefaultDataFormatter.Instance)
                                         );
                                 }
                             }
                             //indices after group should all be 1 compared to group's first index
-                            for (long i = g.range.last; i != coll.m_sortedIndex.Length; ++i)
+                            for (long i = g.range.Last; i != coll.m_sortedIndex.Length; ++i)
                             {
-                                int c = sourceColumn.CompareRow(coll.m_sortedIndex[i], coll.m_sortedIndex[g.range.first]);
+                                int c = sourceColumn.CompareRow(coll.m_sortedIndex[i], coll.m_sortedIndex[g.range.First]);
                                 if (c != 1)
                                 {
-                                    Debug.Assert(c == 1, "index " + i + " should be 1 compared to group starting at index " + g.range.first + "."
+                                    Debug.Assert(c == 1, "index " + i + " should be 1 compared to group starting at index " + g.range.First + "."
                                         + "\n Result=" + c
-                                        + "\n val[" + i + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[i])
-                                        + "\n val[" + g.range.first + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[g.range.first])
+                                        + "\n val[" + i + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[i], DefaultDataFormatter.Instance)
+                                        + "\n val[" + g.range.First + "]=" + sourceColumn.GetRowValueString(coll.m_sortedIndex[g.range.First], DefaultDataFormatter.Instance)
                                         );
                                 }
                             }
@@ -386,9 +386,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 return sourceColumn.GetRowValue(row);
             }
 
-            public virtual string GetRowValueString(DataT mergedValue, ColumnTyped<DataT> sourceColumn, long row)
+            public virtual string GetRowValueString(DataT mergedValue, ColumnTyped<DataT> sourceColumn, long row, IDataFormatter formatter)
             {
-                return sourceColumn.GetRowValueString(row);
+                return sourceColumn.GetRowValueString(row, formatter);
             }
         }
 
@@ -424,7 +424,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
             protected override IComparable GroupTyped(ColumnTyped<DataT> sourceColumn, ArrayRange sourceIndices)
             {
-                return math.Make(sourceIndices.indexCount);
+                return math.Make(sourceIndices.Count);
             }
         }
         public class Sum<DataT> : TypedAlgorithm<DataT> where DataT : System.IComparable
@@ -557,7 +557,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                     {
                         result = math.Add(result, v);
                     }
-                    result = math.Div(result, math.Make(sourceIndices.indexCount));
+                    result = math.Div(result, math.Make(sourceIndices.Count));
                     return result;
                 }
             }
@@ -580,7 +580,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 using (Profiling.GetMarker(Profiling.MarkerId.MergeMedian).Auto())
                 {
-                    long count = sourceIndices.indexCount;
+                    long count = sourceIndices.Count;
                     DataT[] d = new DataT[count];
                     int i = 0;
                     foreach (var v in sourceColumn.VisitRows(sourceIndices))
@@ -622,7 +622,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 using (Profiling.GetMarker(Profiling.MarkerId.MergeDeviation).Auto())
                 {
-                    DataT count = math.Make(sourceIndices.indexCount);
+                    DataT count = math.Make(sourceIndices.Count);
                     DataT avg = math.Zero();
                     foreach (var v in sourceColumn.VisitRows(sourceIndices))
                     {
@@ -645,9 +645,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 return sourceColumn.GetRowValue(row);
             }
 
-            public override string GetRowValueString(DataT mergedValue, ColumnTyped<DataT> sourceColumn, long row)
+            public override string GetRowValueString(DataT mergedValue, ColumnTyped<DataT> sourceColumn, long row, IDataFormatter formatter)
             {
-                return sourceColumn.GetRowValueString(row);
+                return sourceColumn.GetRowValueString(row, formatter);
             }
         }
     }

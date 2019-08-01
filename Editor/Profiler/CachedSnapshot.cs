@@ -75,7 +75,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeAllocationSiteEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<long> id;
             public DataArray.Cache<int> memoryLabelIndex;
             public DataArray.Cache<ulong[]> callstackSymbols;
@@ -117,7 +117,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class TypeDescriptionEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<TypeFlags> flags;
             public DataArray.Cache<string> typeDescriptionName;
             public DataArray.Cache<string> assembly;
@@ -238,7 +238,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeTypeEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<string> typeName;
             public DataArray.Cache<int> nativeBaseTypeArrayIndex;
             public SoaDataSet dataSet;
@@ -253,7 +253,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeRootReferenceEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<long> id;
             public DataArray.Cache<string> areaName;
             public DataArray.Cache<string> objectName;
@@ -272,7 +272,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeObjectEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<string> objectName;
             public DataArray.Cache<int> instanceId;
             public DataArray.Cache<ulong> size;
@@ -324,7 +324,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeMemoryRegionEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<string> memoryRegionName;
             public DataArray.Cache<int> parentIndex;
             public DataArray.Cache<ulong> addressBase;
@@ -347,7 +347,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeMemoryLabelEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<string> memoryLabelName;
             public SoaDataSet dataSet;
             public NativeMemoryLabelEntriesCache(NativeMemoryLabelEntries ss)
@@ -360,7 +360,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeCallstackSymbolEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<ulong> symbol;
             public DataArray.Cache<string> readableStackTrace;
             public SoaDataSet dataSet;
@@ -375,7 +375,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeAllocationEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<int> memoryRegionIndex;
             public DataArray.Cache<long> rootReferenceId;
             public DataArray.Cache<long> allocationSiteId;
@@ -400,7 +400,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class ManagedMemorySectionEntriesCache
         {
-            public uint Count;
+            public long Count;
             public byte[][] bytes;
             public ulong[] startAddress;
             public SoaDataSet dataSet;
@@ -431,14 +431,15 @@ namespace Unity.MemoryProfiler.Editor
 
                     }
                     startAddress = new ulong[Count];
-                    ss.startAddress.GetEntries(0, Count, ref startAddress);
+                    //workaround using GetNumEntries instead of count due to limitations of internal API
+                    ss.startAddress.GetEntries(0, ss.GetNumEntries(), ref startAddress);
                 }
             }
         }
 
         public class GCHandleEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<ulong> target;
             public SoaDataSet dataSet;
             public GCHandleEntriesCache(GCHandleEntries ss)
@@ -451,7 +452,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class FieldDescriptionEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<string> fieldDescriptionName;
             public DataArray.Cache<int> offset;
             public DataArray.Cache<int> typeIndex;
@@ -470,7 +471,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class ConnectionEntriesCache
         {
-            public uint Count;
+            public long Count;
             public DataArray.Cache<int> from;
             public DataArray.Cache<int> to;
             public SoaDataSet dataSet;

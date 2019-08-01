@@ -4,7 +4,9 @@ using Unity.MemoryProfiler.Editor.Debuging;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation
 {
-    // Create a hierarchy of contexts used when parsing identifier in any expression
+    /// <summary>
+    /// Create a hierarchy of contexts used when parsing identifier in any expression
+    /// </summary>
     internal class ExpressionParsingContext
     {
         public ExpressionParsingContext parent;
@@ -30,10 +32,13 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
+    /// <summary>
+    /// Base class representing any expression that produce a single value or an array of values (using the row parameter)
+    /// </summary>
     internal abstract class Expression
     {
         public Type type;
-        public abstract string GetValueString(long row);
+        public abstract string GetValueString(long row, IDataFormatter formatter);
         public abstract IComparable GetComparableValue(long row);
         public abstract bool HasMultipleRow();
         public abstract long RowCount();
@@ -50,6 +55,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 this.valueIsLiteral = valueIsLiteral;
                 this.value = value;
+            }
+            public MetaExpression(string value, bool valueIsLiteral, Type type)
+            {
+                this.valueIsLiteral = valueIsLiteral;
+                this.value = value;
+                this.type = type;
             }
 
             // Can be a const value or an identifier. Identifier has the format "selectName.columnName"
@@ -134,6 +145,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
         }
 
+        /// <summary>
+        /// options used when parsing an identifier. provide information about context (ExpressionParsingContext) and other requirements
+        /// </summary>
         internal class ParseIdentifierOption
         {
             public View.ViewSchema Schema;
@@ -159,6 +173,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
             // context in which the identifier is parsed. will provide select sets in which to look for identifiers.
             public ExpressionParsingContext expressionParsingContext;
+
+            /// <summary>
+            /// Will not return an expression but only resolve the type of the expression.
+            /// </summary>
+            public bool OnlyResolveType;
 
             public ParseIdentifierOption(Database.View.ViewSchema schema, Table identifierColumn_table, bool useFirstMatchSelect, bool defaultOnError, Type overrideValueType, ExpressionParsingContext expressionParsingContext)
             {
@@ -188,162 +207,278 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return expression;
         }
 
-        //value can be interpreted as:
-        // a number: "0", "-1", "6.7", "+76"
-        // a table.column identifier: "tableName.columnName"
-        // a column identifier: "columnName"
-        //value cannot be interpreted as:
-        // a string: it can however return a string expression if no valid identifier is found and opt.defaultOnError is set to true
-        public static Database.Operation.Expression ParseIdentifier(MetaExpression value, ParseIdentifierOption opt)
+        private static Type GetExplicitTypeOf(MetaExpression value, ParseIdentifierOption opt)
         {
-            if (value.valueIsLiteral)
+            if (opt.overrideValueType != null) return opt.overrideValueType;
+            else if (value.type != null) return value.type;
+            return null;
+        }
+
+        public static Expression ParseAsDefault(MetaExpression value, ParseIdentifierOption opt, out Type resultExpressionType)
+        {
+            if (opt.defaultOnError)
             {
-                return ColumnCreator.CreateTypedExpressionConst(value.type == null ? typeof(string) : value.type, value.value);
-            }
-            else if (String.IsNullOrEmpty(value.value))
-            {
-                if (!opt.defaultOnError) UnityEngine.Debug.LogWarning(opt.formatError("No value specified", opt));
-            }
-            else if (value.value == MetaTable.kRowIndexColumnName)
-            {
-                var expression = new ExpTableRowIndex(opt.identifierColumn_table);
-                return ProcessDataBreakpointValue(expression, value, opt);
+                resultExpressionType = typeof(string);
+                if (opt.OnlyResolveType) return null;
+                return new ExpConst<string>(value.value);
             }
             else
             {
-                if (char.IsDigit(value.value[0]) || value.value[0] == '-' || value.value[0] == '+')
+                resultExpressionType = null;
+                return null;
+            }
+        }
+        public static bool TryParseAsIdentifier(MetaExpression value, ParseIdentifierOption opt, bool logError, out Expression expressionOut, ref Type resultExpressionType)
+        {
+
+            string[] identifier = value.value.Split('.');
+            int colIdentifierIndex = 0;
+            Table targetTable;
+            View.Select sel = null;
+            ExpressionParsingContext expressionParsingContext = opt.expressionParsingContext;
+            if (identifier.Length == 2)
+            {
+                colIdentifierIndex = 1;
+                if (expressionParsingContext != null && expressionParsingContext.TryGetSelect(identifier[0], out expressionParsingContext, out sel))
                 {
-                    Type valueType;
-                    if (opt.overrideValueType != null) valueType = opt.overrideValueType;
-                    else if (value.type != null) valueType = value.type;
-                    else valueType = typeof(int);
-                    var expression = ColumnCreator.CreateTypedExpressionConst(valueType, value.value);
-                    return ProcessDataBreakpointValue(expression, value, opt);
+                    targetTable = sel.sourceTable;
+                }
+                else if (opt.identifierColumn_table != null && identifier[0] == opt.identifierColumn_table.GetName())
+                {
+                    targetTable = opt.identifierColumn_table;
                 }
                 else
                 {
-                    if (opt.overrideValueType == typeof(bool)
-                        || (opt.overrideValueType == null && value.type == typeof(bool)))
-                    {
-                        //could be a bool const value: "false" or "true"
-                        bool b;
-                        if (Boolean.TryParse(value.value, out b))
-                        {
-                            var expression = new ExpConst<bool>(b);
-                            return ProcessDataBreakpointValue(expression, value, opt);
-                        }
-                    }
+                    targetTable = null;
+                    if (logError) DebugUtility.LogError(opt.formatError("Unknown identifier '" + identifier[0] + "', must be a table or select name.", opt));
+                }
+            }
+            else if (identifier.Length == 1)
+            {
+                colIdentifierIndex = 0;
+                targetTable = opt.identifierColumn_table;
+            }
+            else
+            {
+                targetTable = null;
+            }
 
-                    string[] identifier = value.value.Split('.');
-                    int colIdentifierIndex = 0;
-                    Database.Table targetTable;
-                    Database.View.Select sel = null;
-                    ExpressionParsingContext expressionParsingContext = opt.expressionParsingContext;
-                    if (identifier.Length == 2)
+            if (targetTable != null)
+            {
+                var col = targetTable.GetColumnByName(identifier[colIdentifierIndex]);
+                var metaCol = targetTable.GetMetaData().GetColumnByName(identifier[colIdentifierIndex]);
+
+                if (col != null && metaCol != null)
+                {
+                    Type columnValueType = metaCol.Type;
+                    
+                    Type desiredValueType;
+                    if(resultExpressionType != null)
                     {
-                        colIdentifierIndex = 1;
-                        if (expressionParsingContext != null && expressionParsingContext.TryGetSelect(identifier[0], out expressionParsingContext, out sel))
-                        {
-                            targetTable = sel.sourceTable;
-                        }
-                        else if (opt.identifierColumn_table != null && identifier[0] == opt.identifierColumn_table.GetName())
-                        {
-                            targetTable = opt.identifierColumn_table;
-                        }
-                        else
-                        {
-                            targetTable = null;
-                            if (!opt.defaultOnError) DebugUtility.LogError(opt.formatError("Unknown identifier '" + identifier[0] + "', must be a table or select name.", opt));
-                        }
-                    }
-                    else if (identifier.Length == 1)
-                    {
-                        colIdentifierIndex = 0;
-                        targetTable = opt.identifierColumn_table;
+                        desiredValueType = resultExpressionType;
                     }
                     else
                     {
-                        targetTable = null;
+                        desiredValueType = columnValueType;
+                        resultExpressionType = desiredValueType;
                     }
 
-                    if (targetTable != null)
+                    if (opt.OnlyResolveType)
                     {
-                        var col = targetTable.GetColumnByName(identifier[colIdentifierIndex]);
-                        var metaCol = targetTable.GetMetaData().GetColumnByName(identifier[colIdentifierIndex]);
+                        expressionOut = null;
+                        return true;
+                    }
 
-                        if (col != null && metaCol != null)
+                    Expression expression;
+                    if (sel != null)
+                    {
+                        if (opt.useFirstMatchSelect && sel.isManyToMany)
                         {
-                            Type columnValueType = metaCol.Type;
-                            Expression expression;
-                            if (sel != null)
-                            {
-                                if (opt.useFirstMatchSelect && sel.isManyToMany)
-                                {
-                                    expression = ColumnCreator.CreateTypedExpressionSelectFirstMatch(columnValueType, sel, col);
-                                }
-                                else
-                                {
-                                    expression = ColumnCreator.CreateTypedExpressionSelect(columnValueType, sel, col);
-                                }
-
-                                if (expressionParsingContext.selectSet.Condition != null
-                                    && opt.BypassSelectSetCondition != expressionParsingContext.selectSet)
-                                {
-                                    expression = ColumnCreator.CreateTypedExpressionSelectSetConditional(columnValueType, expressionParsingContext.selectSet, expression);
-                                }
-                            }
-                            else
-                            {
-                                expression = ColumnCreator.CreateTypedExpressionColumn(columnValueType, col);
-                            }
-
-                            // Check if we need a fix row
-                            if (value.row >= 0)
-                            {
-                                // options requires a fixed row
-                                expression = ColumnCreator.CreateTypedExpressionFixedRow(expression, value.row);
-                            }
-                            else if (expressionParsingContext != null && expressionParsingContext.fixedRow >= 0)
-                            {
-                                // Parsing context requires a fixed row
-                                expression = ColumnCreator.CreateTypedExpressionFixedRow(expression, expressionParsingContext.fixedRow);
-                            }
-
-                            // Check if we need a type change
-                            Type desiredValueType;
-                            if (opt.overrideValueType != null) desiredValueType = opt.overrideValueType;
-                            else if (value.type != null) desiredValueType = value.type;
-                            else desiredValueType = columnValueType;
-                            if (desiredValueType != columnValueType)
-                            {
-                                //require type change
-                                expression = ColumnCreator.CreateTypedExpressionTypeChange(desiredValueType, expression);
-                            }
-
-                            //Check for default value
-                            if (value.hasDefaultValue)
-                            {
-                                expression = ColumnCreator.CreateTypedExpressionDefaultOnError(expression, value.valueDefault);
-                            }
-                            expression = ProcessDataBreakpointValue(expression, value, opt);
-                            return expression;
+                            expression = ColumnCreator.CreateTypedExpressionSelectFirstMatch(columnValueType, sel, col);
                         }
                         else
                         {
-                            if (!opt.defaultOnError) DebugUtility.LogError(opt.formatError("Unknown identifier '" + identifier[colIdentifierIndex] + "', must be a column name.", opt));
+                            expression = ColumnCreator.CreateTypedExpressionSelect(columnValueType, sel, col);
+                        }
+
+                        if (expressionParsingContext.selectSet.Condition != null
+                            && opt.BypassSelectSetCondition != expressionParsingContext.selectSet)
+                        {
+                            expression = ColumnCreator.CreateTypedExpressionSelectSetConditional(columnValueType, expressionParsingContext.selectSet, expression);
                         }
                     }
+                    else
+                    {
+                        expression = ColumnCreator.CreateTypedExpressionColumn(columnValueType, col);
+                    }
+
+                    // Check if we need a fix row
+                    if (value.row >= 0)
+                    {
+                        // options requires a fixed row
+                        expression = ColumnCreator.CreateTypedExpressionFixedRow(expression, value.row);
+                    }
+                    else if (expressionParsingContext != null && expressionParsingContext.fixedRow >= 0)
+                    {
+                        // Parsing context requires a fixed row
+                        expression = ColumnCreator.CreateTypedExpressionFixedRow(expression, expressionParsingContext.fixedRow);
+                    }
+
+                    // Check if we need a type change
+                    if (desiredValueType != columnValueType)
+                    {
+                        //require type change
+                        expression = ColumnCreator.CreateTypedExpressionTypeChange(desiredValueType, expression);
+                    }
+
+                    //Check for default value
+                    if (value.hasDefaultValue)
+                    {
+                        expression = ColumnCreator.CreateTypedExpressionDefaultOnError(expression, value.valueDefault);
+                    }
+                    expressionOut = ProcessDataBreakpointValue(expression, value, opt);
+                    return true;
+                }
+                else
+                {
+                    if (logError) DebugUtility.LogError(opt.formatError("Unknown identifier '" + identifier[colIdentifierIndex] + "', must be a column name.", opt));
                 }
             }
 
+            expressionOut = null;
+            return false;
+        }
 
-            if (opt.defaultOnError) return new Database.Operation.ExpConst<string>(value.value);
-            else return null;
+        public static Expression ParseAsLiteralWithType(MetaExpression value, ParseIdentifierOption opt, Type type)
+        {
+            var expression = ColumnCreator.CreateTypedExpressionConst(type, value.value);
+            return ProcessDataBreakpointValue(expression, value, opt);
+        }
+
+        /// <summary>
+        /// Will try to deduce type of expression.
+        /// int: starts with a number or a sign
+        /// bool: is "true" or "false"
+        /// returns null otherwise
+        /// </summary>
+        /// <returns></returns>
+        public static Expression ParseAsLiteralWithTypeDeduction(MetaExpression value, ParseIdentifierOption opt, out Type resultExpressionType)
+        {
+            if (char.IsDigit(value.value[0]) || value.value[0] == '-' || value.value[0] == '+')
+            {
+                if (opt.overrideValueType != null) resultExpressionType = opt.overrideValueType;
+                else if (value.type != null) resultExpressionType = value.type;
+                else resultExpressionType = typeof(int);
+
+                if (opt.OnlyResolveType) return null;
+
+                var expression = ColumnCreator.CreateTypedExpressionConst(resultExpressionType, value.value);
+                return ProcessDataBreakpointValue(expression, value, opt);
+            }
+
+            if (opt.overrideValueType == typeof(bool) || (opt.overrideValueType == null && value.type == typeof(bool)))
+            {
+                //could be a bool const value: "false" or "true"
+                bool b;
+                if (Boolean.TryParse(value.value, out b))
+                {
+                    resultExpressionType = typeof(bool);
+                    if (opt.OnlyResolveType) return null;
+                    var expression = new ExpConst<bool>(b);
+                    return ProcessDataBreakpointValue(expression, value, opt);
+                }
+            }
+            resultExpressionType = null;
+            return null;
+        }
+
+
+        /// <summary>
+        /// value can be interpreted as:
+        /// a number: "0", "-1", "6.7", "+76"
+        /// a bool: "true", "false"
+        /// a table.column identifier: "tableName.columnName" (value.valueIsLitera must be false)
+        /// a column identifier: "columnName" (value.valueIsLitera must be false)
+        /// Will try to deduce type if it is not explicitly specified in either the value.type or opt.overrideValueType.
+        /// </summary>
+        /// <param name="value"></param>
+        /// <param name="opt">
+        /// if opt.OnlyResolveType is true, will always return null
+        /// if value.valueIsLiteral is true, will not parse for table/column identifiers
+        /// </param>
+        /// <param name="resultExpressionType"></param>
+        /// <returns></returns>
+        public static Expression ParseIdentifier(MetaExpression value, ParseIdentifierOption opt, out Type resultExpressionType)
+        {
+            if (value == null)
+            {
+                // nothing to parse
+                return ParseAsDefault(value, opt, out resultExpressionType);
+            }
+
+            // Look for an explicit type
+            resultExpressionType = GetExplicitTypeOf(value, opt);
+            if (opt.OnlyResolveType && resultExpressionType != null) return null;
+
+            Expression expression = null;
+
+            // if no explicit type, try deducing it
+            if (resultExpressionType == null)
+            {
+                //check for type deduction for non-string literals
+                expression = ParseAsLiteralWithTypeDeduction(value, opt, out resultExpressionType);
+                if (opt.OnlyResolveType && resultExpressionType != null) return null;
+                if (expression != null) return expression;
+            }
+
+            // Type is string or could not deduce type.
+            if (!value.valueIsLiteral)
+            {
+                // not forced as literal, check for identifier
+                if (TryParseAsIdentifier(value, opt, false, out expression, ref resultExpressionType))
+                {
+                    if (opt.OnlyResolveType) return null;
+                    return expression;
+                }
+            }
+
+            // if no explicit type, could not deduce a type or is deducible as a string
+            if (resultExpressionType == null)
+            {
+                // Force string
+                resultExpressionType = typeof(string);
+                if (opt.OnlyResolveType) return null;
+                return ParseAsLiteralWithType(value, opt, resultExpressionType);
+            }
+            else
+            {
+                if (opt.OnlyResolveType) return null;
+                return ParseAsLiteralWithType(value, opt, resultExpressionType);
+            }
+
+        }
+        public static Database.Operation.Expression ParseIdentifier(MetaExpression value, ParseIdentifierOption opt)
+        {
+            Type resultExpressionType;
+            return ParseIdentifier(value, opt, out resultExpressionType);
+        }
+        public static Type ResolveTypeOf(MetaExpression value, ParseIdentifierOption opt)
+        {
+            if (value == null) return null;
+            opt.OnlyResolveType = true;
+            Type resultExpressionType;
+            ParseIdentifier(value, opt, out resultExpressionType);
+            return resultExpressionType;
         }
     }
 
+    /// <summary>
+    /// Expression that yield a value of a specific type
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal abstract class TypedExpression<DataT> : Expression where DataT : IComparable
     {
+        static public Type ExpressionType { get { return typeof(DataT); } }
         public abstract DataT GetValue(long row);
         // if GetValueString result may be different from GetValue().ToString()
         // When it is the same, we can avoid calling GetValue and GetValueString which may both be expensive
@@ -377,9 +512,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
         public override bool StringValueDiffers { get { return false; } }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
-            return value.ToString();
+            return formatter.Format(value);
         }
 
         public override IComparable GetComparableValue(long row)
@@ -400,6 +535,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public DataT value;
     }
 
+    /// <summary>
+    /// Yield the value of a source column with same value type.
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpColumn<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -417,11 +556,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             type = typeof(DataT);
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
             using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnGetValueString).Auto())
             {
-                return GetValue(row).ToString();
+                return formatter.Format(GetValue(row));
             }
         }
 
@@ -452,7 +591,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Output the row index for all entries of a given table
+    /// <summary>
+    /// Output the row index for all entries of a given table
+    /// </summary>
     internal class ExpTableRowIndex : TypedExpression<long>
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -470,9 +611,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             type = typeof(long);
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
-            return row.ToString();
+            return formatter.Format(row);
         }
 
         public override long GetValue(long row)
@@ -496,7 +637,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Change the type of the input expression. will log an error if a value cannot change to the target type
+    /// <summary>
+    /// Change the type of the input expression. will log an error if a value cannot change to the target type
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpTypeChange<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -514,13 +658,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             type = typeof(DataT);
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpTypeChangeGetValueString).Auto())
-            {
-                IComparable value = sourceExpression.GetComparableValue(row);
-                return (string)Convert.ChangeType(value, typeof(string));
-            }
+            return formatter.Format(GetValue(row));
         }
 
         public override DataT GetValue(long row)
@@ -566,7 +706,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    //Use the row parameter for the select result table
+    /// <summary>
+    /// Use the row parameter for the select result table
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpSelect<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -619,7 +762,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             m_rowIndex = select.GetMatchingIndices();
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
             using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectGetValueString).Auto())
             {
@@ -627,12 +770,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 if (m_rowIndex != null)
                 {
                     if (!DebugUtility.IsInValidRange(m_rowIndex, row)) return GetOutOfRangeError(row);
-                    return column.GetRowValueString(m_rowIndex[row]);
+                    return column.GetRowValueString(m_rowIndex[row], formatter);
                 }
                 else
                 {
                     //no indices means it uses the full table as is
-                    return column.GetRowValueString(row);
+                    return column.GetRowValueString(row, formatter);
                 }
             }
         }
@@ -688,7 +831,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Yield the result of a sub expression using the index of the main select from a SelectSet after passing the SelectSet's condition.
+    /// <summary>
+    /// Yield the result of a sub expression using the index of the main select from a SelectSet after passing the SelectSet's condition.
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpSelectSetConditional<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -745,13 +891,13 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return row >= 0 && row < GetEffectiveRowCount();
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
             using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectSetConditionalGetValueString).Auto())
             {
                 if (!IsInRange(row)) return GetOutOfRangeError(row);
                 long effectiveRow = GetEffectiveRow(row);
-                return SubExpression.GetValueString(effectiveRow);
+                return SubExpression.GetValueString(effectiveRow, formatter);
             }
         }
 
@@ -783,7 +929,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return GetEffectiveRowCount();
         }
     }
-    //Use the row parameter for the select where condition and only return the first match in each result
+
+    /// <summary>
+    /// Use the row parameter for the select where condition and only return the first match in each result
+    /// The select used must be a many-to-many select, meaning it has a `row` parameter in its `where` statement and may yield 0,1 or several rows.
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpFirstMatchSelect<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -810,14 +961,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             type = typeof(DataT);
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
             using (Profiling.GetMarker(Profiling.MarkerId.ExpFirstMatchSelectGetValueString).Auto())
             {
                 var index = select.GetIndexFirstMatch(row);
                 if (index >= 0)
                 {
-                    return column.GetRowValueString(index);
+                    return column.GetRowValueString(index, formatter);
                 }
                 return "N/A";
             }
@@ -855,7 +1006,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-
+    /// <summary>
+    /// Yield the result of a sub expression using a fixed row value for all requested rows.
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpFixedRow<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -874,9 +1028,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             type = exp.type;
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
-            return exp.GetValueString(this.row);
+            return exp.GetValueString(this.row, formatter);
         }
 
         public override DataT GetValue(long row)
@@ -901,7 +1055,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Yield a default value if the input row is out of range of sub expression.
+    /// <summary>
+    /// Yield a default value if the input row is out of range of sub expression.
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpDefaultOnError<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -925,10 +1082,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return row >= 0 && row < SubExpression.RowCount();
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
-            if (IsInRange(row)) return SubExpression.GetValueString(row);
-            return DefaultValue.ToString();
+            if (IsInRange(row)) return SubExpression.GetValueString(row, formatter);
+            return formatter.Format(DefaultValue);
         }
 
         public override DataT GetValue(long row)
@@ -954,7 +1111,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Yields the merged value of a sub table from a viewtable's group index for a specific column.
+    /// <summary>
+    /// Yields the merged value of a sub table from a viewtable's group index for a specific column.
+    /// Ignores the row parameter
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpColumnMerge<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -989,11 +1150,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             type = typeof(DataT);
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
             using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnMergeGetValueString).Auto())
             {
-                return GetValue(row).ToString();
+                return formatter.Format(GetValue(row));
             }
         }
 
@@ -1046,7 +1207,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Triggers a breakpoint when the source expression yields a value equal the the break value expression. Useful for debugging only
+    /// <summary>
+    /// Triggers a breakpoint when the source expression yields a value equal the the break value expression. Useful for debugging only
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpDataBreakPoint<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -1077,10 +1241,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
             CheckBreakPoint(row);
-            return sourceExpression.GetValueString(row);
+            return sourceExpression.GetValueString(row, formatter);
         }
 
         public override DataT GetValue(long row)
@@ -1106,19 +1270,52 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
+    /// <summary>
+    /// Base class providing a way to test and yield matching indices using an expression as input.
+    /// </summary>
     internal abstract class Matcher
     {
+        /// <summary>
+        /// Test if the specified row in the expression pass the matching test
+        /// </summary>
+        /// <param name="exp"></param>
+        /// <param name="row"></param>
+        /// <returns></returns>
         public abstract bool Match(Expression exp, long row);
+
+        /// <summary>
+        /// Returns matching indices from the expression parameter.
+        /// </summary>
+        /// <param name="exp"></param>
+        /// <param name="indices"></param>
+        /// <returns></returns>
         public abstract long[] GetMatchIndex(Expression exp, ArrayRange indices);
+
+        /// <summary>
+        /// Returns matching indices from the expression parameter using a specified operator
+        /// </summary>
+        /// <param name="exp"></param>
+        /// <param name="indices"></param>
+        /// <param name="operation"></param>
+        /// <returns></returns>
         public abstract long[] GetMatchIndex(Expression exp, ArrayRange indices, Operator operation);
 
         public Type type;
     }
+
+    /// <summary>
+    /// Matcher with a specific value type
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal abstract class TypedMatcher<DataT> : Matcher where DataT : IComparable
     {
         public abstract bool Match(DataT a);
     }
 
+    /// <summary>
+    /// Matcher that test the input expression with a constant value
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ConstMatcher<DataT> : TypedMatcher<DataT> where DataT : IComparable
     {
         public DataT value;
@@ -1143,7 +1340,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             using (Profiling.GetMarker(Profiling.MarkerId.ConstMatcherQuery).Auto())
             {
-                long count = indices.indexCount;
+                long count = indices.Count;
                 long[] o = new long[count];
                 long lastO = 0;
 
@@ -1188,7 +1385,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             using (Profiling.GetMarker(Profiling.MarkerId.ConstMatcherQuery).Auto())
             {
-                long count = indices.indexCount;
+                long count = indices.Count;
                 long[] o = new long[count];
                 long lastO = 0;
 
@@ -1230,10 +1427,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
         }
     }
+
+    /// <summary>
+    /// Matcher that test the input expression of value type `string` by searching for a constant sub-string value.
+    /// </summary>
     internal class SubStringMatcher : TypedMatcher<string>
     {
         public string value;
-
+        public IDataFormatter Formatter = DefaultDataFormatter.Instance;
         public override bool Match(string a)
         {
             return a.Contains(value);
@@ -1241,7 +1442,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override bool Match(Expression exp, long row)
         {
-            var v = exp.GetValueString(row);
+            var v = exp.GetValueString(row, Formatter);
             return v.Contains(value);
         }
 
@@ -1250,14 +1451,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             using (Profiling.GetMarker(Profiling.MarkerId.SubStringMatcherQuery).Auto())
             {
                 var value2 = value.ToLower();
-                long count = indices.indexCount;
+                long count = indices.Count;
                 long[] o = new long[count];
                 long lastO = 0;
 
                 for (int i = 0; i != count; ++i)
                 {
                     long ii = indices[i];
-                    var v = exp.GetValueString(ii);
+                    var v = exp.GetValueString(ii, Formatter);
                     if (v.ToLower().Contains(value2))
                     {
                         o[lastO] = ii;
@@ -1280,16 +1481,18 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Yields the boolean result of comparing 2 expressions using a specified operator
+    /// <summary>
+    /// Yields the boolean result of comparing 2 expressions using a specified operator
+    /// </summary>
     internal class ExpComparison : TypedExpression<bool>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
             return "("
-                + valueLeft.GetValueString(row)
+                + valueLeft.GetValueString(row, DefaultDataFormatter.Instance)
                 + " " + Operation.OperatorToString(operation) + " "
-                + valueRight.GetValueString(row)
+                + valueRight.GetValueString(row, DefaultDataFormatter.Instance)
                 + "){"
                 + valueLeft.GetDebugString(row)
                 + " " + Operation.OperatorToString(operation) + " "
@@ -1313,9 +1516,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return Evaluate(row, row);
         }
 
-        public override string GetValueString(long row)
+        public override string GetValueString(long row, IDataFormatter formatter)
         {
-            return GetValue(row).ToString();
+            return formatter.Format(GetValue(row));
         }
 
         public override bool StringValueDiffers { get { return false; } }
@@ -1345,16 +1548,18 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Compares a column value to an expression using a specified operator
+    /// <summary>
+    /// Compares a column value to an expression using a specified operator
+    /// </summary>
     internal class ColumnComparison
     {
 #if MEMPROFILER_DEBUG_INFO
         public string GetDebugString(long columnRow, long valueRow)
         {
             return "("
-                + column.GetRowValueString(columnRow)
+                + column.GetRowValueString(columnRow, DefaultDataFormatter.Instance)
                 + " " + Operation.OperatorToString(operation) + " "
-                + value.GetValueString(columnRow)
+                + value.GetValueString(columnRow, DefaultDataFormatter.Instance)
                 + "){"
                 + "\"" + ColumnName + "\""
                 + " " + column.GetDebugString(valueRow)
@@ -1395,7 +1600,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-
+    /// <summary>
+    /// Base class for all MetaComparison. handles operator value to string translation
+    /// </summary>
     internal class MetaComparisonBase
     {
         private static System.Collections.Generic.SortedDictionary<string, Operator> _m_StringToOp;
@@ -1428,7 +1635,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Represent an unresolved ColumnComparison. Can be resolved using a Expression.ParseIdentifierOption through the Build method
+    /// <summary>
+    /// Represent an unresolved ColumnComparison. Can be resolved using a Expression.ParseIdentifierOption through the MetaColumnComparison.Build method
+    /// Will be used to build `Where` statements in `Select` statements. See class Database.View.Where
+    /// </summary>
     internal class MetaColumnComparison : MetaComparisonBase
     {
         public string columnName;
@@ -1494,7 +1704,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Represent an unresolved ExpComparison. Can be resolved using a Expression.ParseIdentifierOption through the Build method
+    /// <summary>
+    /// Represent an unresolved ExpComparison. Can be resolved using a Expression.ParseIdentifierOption through the MetaExpComparison.Build method
+    /// </summary>
     internal class MetaExpComparison : MetaComparisonBase
     {
         public Expression.MetaExpression valueLeft;

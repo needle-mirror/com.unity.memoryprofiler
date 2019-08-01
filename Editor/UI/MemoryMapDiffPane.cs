@@ -9,6 +9,7 @@ using UnityEngine.Experimental.UIElements;
 using UnityEditor;
 using Unity.MemoryProfiler.Editor.Database.Operation;
 using System;
+using Unity.MemoryProfiler.Editor.UI.MemoryMap;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -315,7 +316,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     Database.Operation.ExpressionParsingContext expressionParsingContext = null;
                     if (link.SourceView != null)
                     {
-                        expressionParsingContext = link.SourceView.expressionParsingContext;
+                        expressionParsingContext = link.SourceView.ExpressionParsingContext;
                     }
                     var whereUnion = new Database.View.WhereUnion(link.LinkToOpen.RowWhere, null, null, null, null, m_ActiveMode.SchemaToDisplay, filteredTable, expressionParsingContext);
                     var indices = whereUnion.GetMatchingIndices(link.SourceRow);
@@ -353,14 +354,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         }        
         void OpenTable(Database.TableReference tableRef, Database.Table table, bool focus)
         {
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.DataRenderer, table, this);
+            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.onClickLink += OnSpreadsheetClick;
             m_EventListener.OnRepaint();
         }
 
         void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos, bool focus)
         {
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.DataRenderer, table, this);
+            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.onClickLink += OnSpreadsheetClick;
             m_Spreadsheet.Goto(pos);
             m_EventListener.OnRepaint();
@@ -380,7 +381,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             int currentTableView = (int)CurrentTableView;
             
-            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            EditorGUILayout.BeginHorizontal(MemoryMapBase.Styles.ContentToolbar);
 
             if( GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, "Snapshot A", EditorStyles.radioButton))
             {
@@ -449,7 +450,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     if (col != null && row < col.GetRowCount())
                     {             
-                        long id = Convert.ToInt64(col.GetRowValueString(row));
+                        long id = Convert.ToInt64(col.GetRowValueString(row, Database.DefaultDataFormatter.Instance));
                         GUI.Label (r, m_ActiveMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_ActiveMode.snapshot.nativeCallstackSymbols,id));
                     }
                 }

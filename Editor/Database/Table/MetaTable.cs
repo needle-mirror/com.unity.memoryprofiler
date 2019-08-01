@@ -2,6 +2,9 @@ using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
+    /// <summary>
+    /// Holds information about the structure and default behaviours of a table
+    /// </summary>
     internal class MetaTable
     {
         public static string kRowIndexColumnName = "_row_index_";

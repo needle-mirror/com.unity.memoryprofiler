@@ -1,5 +1,8 @@
 namespace Unity.MemoryProfiler.Editor.Database
 {
+    /// <summary>
+    /// Column that output "Error" for all its rows
+    /// </summary>
     internal class ColumnError : Database.ColumnTyped<string>
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -20,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             return m_Table.GetRowCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             return "Error";
         }

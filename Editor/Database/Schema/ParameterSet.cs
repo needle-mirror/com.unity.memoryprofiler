@@ -48,7 +48,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                 {
                     needComma = true;
                 }
-                sb.AppendFormat("{0}={1}", p.Key, p.Value.GetValueString(0));
+                sb.AppendFormat("{0}={1}", p.Key, p.Value.GetValueString(0, DefaultDataFormatter.Instance));
             }
             sb.Append(")");
             return sb.ToString();

@@ -6,8 +6,8 @@ namespace Unity.MemoryProfiler.Editor
         public new const string TableDisplayName = "Managed Object Array";
         public ObjectData arrayData;
         public ArrayInfo arrayInfo;
-        public ObjectArrayTable(Database.Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectData arrayData, ObjectMetaType metaType)
-            : base(schema, renderer, snapshot, crawledData, metaType)
+        public ObjectArrayTable(Database.Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectData arrayData, ObjectMetaType metaType)
+            : base(schema, formatter, snapshot, crawledData, metaType)
         {
             this.arrayData = arrayData;
 

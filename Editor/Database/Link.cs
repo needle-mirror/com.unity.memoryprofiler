@@ -47,6 +47,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         public Table SourceTable;
         public Column SourceColumn;
         public long SourceRow;
+        public TableReference TableReference { get { return new TableReference(LinkToOpen.TableName, Parameters); } }
 
         public static LinkRequestTable MakeLinkRequest(TableLink metaLink, Table sourceTable, Column sourceColumn, long sourceRow, Database.Operation.ExpressionParsingContext expressionParsingContext)
         {

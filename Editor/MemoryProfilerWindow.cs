@@ -1,12 +1,19 @@
 using UnityEngine;
 using UnityEditor;
+
 using System.Collections.Generic;
 using System;
 using System.Text;
+using System.Collections;
+using System.Runtime.CompilerServices;
+using System.IO;
+
+using UnityEditor.Compilation;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 using UnityEngine.Profiling.Memory.Experimental;
 using UnityEditor.Profiling.Memory.Experimental;
-using Unity.MemoryProfiler.Editor.UI;
-using Unity.MemoryProfiler.Editor.Debuging;
+using UnityEditorInternal;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
@@ -14,15 +21,20 @@ using UnityEditor.UIElements;
 using UnityEngine.Experimental.UIElements;
 using UnityEditor.Experimental.UIElements;
 #endif
-using System.IO;
-using Unity.EditorCoroutines.Editor;
-using System.Collections;
-using Unity.MemoryProfiler.Editor.Legacy;
-using System.Runtime.CompilerServices;
-using UnityEditor.Compilation;
+#if UNITY_2019_3_OR_NEWER
+using UnityEngine.Profiling.Experimental;
+#endif
+
 using ConnectionUtility = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUIUtility;
 using ConnectionGUI = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUI;
 using UnityEngine.Experimental.Networking.PlayerConnection;
+
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.EditorCoroutines.Editor;
+using Unity.MemoryProfiler.Editor.UI;
+using Unity.MemoryProfiler.Editor.Debuging;
+using Unity.MemoryProfiler.Editor.Legacy;
 using Unity.MemoryProfiler.Editor.Legacy.LegacyFormats;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 
@@ -43,9 +55,19 @@ namespace Unity.MemoryProfiler.Editor
             public static readonly GUIContent RawDataTableMapViewRoot = new GUIContent("Raw Data/", "");
             public static readonly GUIContent DiffRawDataTableMapViewRoot = new GUIContent("Diff Raw Data/", "");
             public static readonly GUIContent SnapshotOptionMenuItemDelete = new GUIContent("Delete", "Deletes the snapshot file from disk.");
-            public static readonly GUIContent SnapshotOptionMenuItemRename = new GUIContent("Rename", "Renames the snaposhot file on disk.");
+            public static readonly GUIContent SnapshotOptionMenuItemRename = new GUIContent("Rename", "Renames the snapshot file on disk.");
+            public static readonly GUIContent SnapshotOptionMenuItemBrowse = new GUIContent("Open Folder", "Opens the folder where the snapshot file is located on disk.");
+            
+            public static GUIContent Title {
+                get {
+                    s_Title.image = Icons.MemoryProfilerWindowTabIcon;
+                    return s_Title;
+                }
+            }
+            static GUIContent s_Title = new GUIContent("Memory Profiler");
 
             public static GUIContent AttachToPlayerCachedTargetName = new GUIContent();
+            
             public const string LoadViewFilePanelText = "Load View";
             public const string ImportSnapshotWindowTitle = "Import snapshot file";
             public const string DeleteSnapshotDialogTitle = "Delete Snapshot";
@@ -57,6 +79,12 @@ namespace Unity.MemoryProfiler.Editor
             public const string RenameSnapshotDialogMessage = "Renaming an open snapshot will close it. Are you sure you want to close the snapshot?";
             public const string RenameSnapshotDialogAccept = "OK";
             public const string RenameSnapshotDialogCancel = "Cancel";
+
+            public const string HeapWarningWindowTitle = "Warning!";
+            public const string HeapWarningWindowContent = "Memory snapshots contain all memory in the managed heap of your Unity Player or Editor as raw data at the moment of capture. " +
+                "This might include passwords, server keys, access tokens and other personally identifying data. " +
+                "Please use special caution when sharing snapshots. For more information on this, please visit the Memory Profiler Documentation.";
+            public const string HeapWarningWindowOK = "Take Snapshot";
             
             public static readonly string[] MemorySnapshotImportWindowFileExtensions = new string[] { "MemorySnapshot", "snap", "Bitbucket MemorySnapshot", "memsnap,memsnap2,memsnap3" };
         }
@@ -75,29 +103,40 @@ namespace Unity.MemoryProfiler.Editor
 
         const string k_SnapshotFileNamePart = "Snapshot-";
         const string k_SnapshotTempFileName = "temp.tmpsnap";
+#if UNITY_2019_3_OR_NEWER
+        const string k_SnapshotTempScreenshotFileExtension = ".tmppng";
+        const string k_SnapshotScreenshotFileExtension = ".png";
+#endif
         internal const string k_SnapshotFileExtension = ".snap";
         internal const string k_ConvertedSnapshotTempFileName = "ConvertedSnaphot.tmpsnap";
         const string k_ViewFileExtension = "xml";
         const string k_RawCategoryName = "Raw";
         const string k_DiffRawCategoryName = "Diff Raw";
-        
-        const string k_WindowUxmlPath = "Packages/com.unity.memoryprofiler/Package Resources/UXML/MemoryProfilerWindow.uxml";
-        const string k_SnapshotListItemUxmlPath = "Packages/com.unity.memoryprofiler/Package Resources/UXML/SnapshotListItem.uxml";
-        const string k_WindowCommonStyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss";
-        const string k_WindowLightStyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style_light.uss";
-        const string k_WindowDarkStyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style_dark.uss";
+
+        const string k_PackageResourcesPath = "Packages/com.unity.memoryprofiler/Package Resources/";
+
+        const string k_UxmlFilesPath = k_PackageResourcesPath + "UXML/";
+        const string k_WindowUxmlPath = k_UxmlFilesPath + "MemoryProfilerWindow.uxml";
+        const string k_SnapshotListItemUxmlPath = k_UxmlFilesPath + "SnapshotListItem.uxml";
+
+        const string k_StyleSheetsPath = k_PackageResourcesPath + "StyleSheets/";
+        const string k_WindowCommonStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style.uss";
+        const string k_WindowLightStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_light.uss";
+        const string k_WindowDarkStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_dark.uss";
+        const string k_WindowNewThemingStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_newTheming.uss";
+
         const string k_SnapshotButtonClassName = "snapshotButton";
         const string k_SnapshotMetaDataTextClassName = "snapshotMetaDataText";
         const string k_EvenRowStyleClass = "evenRow";
         const string k_OddRowStyleClass = "oddRow";
 
-        const string k_LastImportPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastImportPath";
-        const string k_LastXMLLoadPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastXMLLoadPath";
-
         [NonSerialized]
         SnapshotCollection m_MemorySnapshotsCollection;
         [NonSerialized]
         LegacyReader m_LegacyReader;
+
+        [NonSerialized]
+        bool m_PrevApplicationFocusState;
 
         VisualElement m_ToolbarExtension;
 
@@ -107,7 +146,7 @@ namespace Unity.MemoryProfiler.Editor
         [MenuItem("Window/Analysis/Memory Profiler", false, 2)]
         public static void ShowWindow()
         {
-            EditorWindow.GetWindow<MemoryProfilerWindow>("Memory Profiler");
+            GetWindow<MemoryProfilerWindow>(Content.Title.text);
         }
 
         CaptureFlags m_CaptureFlags = CaptureFlags.ManagedObjects
@@ -165,21 +204,22 @@ namespace Unity.MemoryProfiler.Editor
         }
         public MemoryProfilerWindow()
         {
-            UIStateChanged += OnUIStateChanged;
-            UIStateChanged += m_OpenSnapshots.RegisterUIState;
             UIState = new UI.UIState();
-            UIStateChanged(UIState);
         }
   
         void OnEnable()
         {
+            EditorCoroutineUtility.StartCoroutine(UpdateTitle(), this);
+
             MemoryProfilerAnalytics.EnableAnalytics();
             m_MemorySnapshotsCollection = new SnapshotCollection(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath);
+            m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
+            EditorApplication.update += PollForApplicationFocus;
+            EditorSceneManager.activeSceneChangedInEditMode += OnSceneChanged;
             m_LegacyReader = new LegacyReader();
 
 #if UNITY_2019_1_OR_NEWER
             var root = this.rootVisualElement;
-            
             root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(k_WindowCommonStyleSheetPath));
             if (EditorGUIUtility.isProSkin)
             {
@@ -189,10 +229,13 @@ namespace Unity.MemoryProfiler.Editor
             {
                 root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(k_WindowLightStyleSheetPath));
             }
+#if UNITY_2019_3_OR_NEWER
+            root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(k_WindowNewThemingStyleSheetPath));
+#endif // UNITY_2019_3_OR_NEWER
             // Import UXML
             var windowTree = AssetDatabase.LoadAssetAtPath(k_WindowUxmlPath, typeof(VisualTreeAsset)) as VisualTreeAsset;
             windowTree.CloneTree(root);
-#else
+#else // UNITY_2019_1_OR_NEWER -> !UNITY_2019_1_OR_NEWER
             var root = this.GetRootVisualContainer();
             root.AddStyleSheetPath(k_WindowCommonStyleSheetPath);
             root.AddStyleSheetPath(k_WindowCommonStyleSheetPath);
@@ -208,8 +251,7 @@ namespace Unity.MemoryProfiler.Editor
             var windowTree = AssetDatabase.LoadAssetAtPath(k_WindowUxmlPath, typeof(VisualTreeAsset)) as VisualTreeAsset;
             var slots = new Dictionary<string, VisualElement>();
             windowTree.CloneTree(root, slots);
-#endif
-
+#endif // !UNITY_2019_1_OR_NEWER
 
             // Add toolbar functionality
             m_PlayerConnectionState = ConnectionUtility.GetAttachToPlayerState(this);
@@ -274,6 +316,10 @@ namespace Unity.MemoryProfiler.Editor
             EditorCoroutineUtility.StartCoroutine(UpdateOpenSnapshotsPaneAfterLayout(), this);
             CompilationPipeline.assemblyCompilationStarted += StartedCompilationCallback;
             CompilationPipeline.assemblyCompilationFinished += FinishedCompilationCallback;
+
+            UIStateChanged += OnUIStateChanged;
+            UIStateChanged += m_OpenSnapshots.RegisterUIState;
+            UIStateChanged(UIState);
         }
 
         void StartedCompilationCallback(string msg)
@@ -287,12 +333,21 @@ namespace Unity.MemoryProfiler.Editor
             m_CaptureButton.SetEnabled(true);
         }
 
-        IEnumerator UpdateOpenSnapshotsPaneAfterLayout()
+        IEnumerator UpdateTitle()
         {
             yield return null;
-            if (m_LeftPane == null || m_LeftPane.layout == null)
+            titleContent = Content.Title;
+        }
+
+        IEnumerator UpdateOpenSnapshotsPaneAfterLayout()
+        {
+            if (m_LeftPane == null)
                 yield break;
-            if (m_LeftPaneToolbarWidthTakenByUIElements <= 0)
+            while(float.IsNaN(m_LeftPane.layout.width))
+            {
+                yield return null;
+            }
+            if (float.IsNaN(m_LeftPaneToolbarWidthTakenByUIElements) || m_LeftPaneToolbarWidthTakenByUIElements <= 0)
             {
 
 #if UNITY_2019_1_OR_NEWER
@@ -428,9 +483,10 @@ namespace Unity.MemoryProfiler.Editor
             m_SnapshotList.Add(snapshotListItem);
             if (snapshot.GuiData != null)
             {
+                Image image = null;
                 if (snapshot.GuiData.MetaScreenshot)
                 {
-                    var image = snapshotListItem.Q<Image>("previewImage", "previewImage");
+                    image = snapshotListItem.Q<Image>("previewImage", "previewImage");
                     image.image = snapshot.GuiData.MetaScreenshot;
                     image.scaleMode = ScaleMode.ScaleToFit;
                     image.tooltip = snapshot.GuiData.MetaPlatform.text;
@@ -451,6 +507,7 @@ namespace Unity.MemoryProfiler.Editor
                 //store the references to dynamic elements for later
                 snapshot.GuiData.dynamicVisualElements = new SnapshotFileGUIData.DynamicVisualElements
                 {
+                    screenshot = image,
                     snapshotNameLabel = firstLabel,
                     snapshotDateLabel = secondLabel,
                     snapshotRenameField = renameField,
@@ -462,11 +519,15 @@ namespace Unity.MemoryProfiler.Editor
                 snapshot.GuiData.dynamicVisualElements.openButton.clickable.clicked += () => OpenCapture(snapshot);
                 snapshot.GuiData.dynamicVisualElements.optionDropdownButton.AddManipulator(new Clickable(() => OpenSnapshotOptionMenu(snapshot)));
                 snapshot.GuiData.dynamicVisualElements.closeButton.clickable.clicked += () => m_OpenSnapshots.CloseCapture(snapshot);
-                
-                snapshot.GuiData.dynamicVisualElements.snapshotRenameField.RegisterValueChangedCallback((evt) =>
+
+                snapshot.GuiData.dynamicVisualElements.snapshotRenameField.RegisterCallback<ChangeEvent<string>>((evt) =>
                 {
-                    m_MemorySnapshotsCollection.RenameSnapshot(snapshot, evt.newValue);
+                    if (evt.newValue != evt.previousValue)
+                    {
+                        m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.dynamicVisualElements.snapshotRenameField.text);
+                    }
                 });
+
                 snapshot.GuiData.dynamicVisualElements.snapshotRenameField.RegisterCallback<KeyDownEvent>((evt) =>
                 {
                     if(evt.keyCode == KeyCode.KeypadEnter || evt.keyCode == KeyCode.Return)
@@ -477,7 +538,7 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         // abort the name change
                         snapshot.GuiData.RenamingFieldVisible = false;
-                        //m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.Name.text);
+                        m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.Name.text);
                     }
                 });
                 snapshot.GuiData.dynamicVisualElements.snapshotRenameField.RegisterCallback<BlurEvent>((evt) =>
@@ -530,7 +591,7 @@ namespace Unity.MemoryProfiler.Editor
                     break;
                 case RuntimePlatform.LinuxPlayer:
                 case RuntimePlatform.LinuxEditor:
-                    buildTarget = BuildTarget.StandaloneLinux;
+                    buildTarget = BuildTarget.StandaloneLinux64;
                     break;
                 case RuntimePlatform.WebGLPlayer:
                     buildTarget = BuildTarget.WebGL;
@@ -572,11 +633,31 @@ namespace Unity.MemoryProfiler.Editor
             var menu = new GenericMenu();
             menu.AddItem(Content.SnapshotOptionMenuItemDelete, false, () => DeleteCapture(snapshot));
             menu.AddItem(Content.SnapshotOptionMenuItemRename, false, () => RenameCapture(snapshot));
+            menu.AddItem(Content.SnapshotOptionMenuItemBrowse, false, () => BrowseCaptureFolder(snapshot));
             menu.ShowAsContext();
+        }
+
+        void OnSceneChanged(Scene sceneA, Scene sceneB)
+        {
+            m_MemorySnapshotsCollection.RefreshScreenshots();
+            m_OpenSnapshots.RefreshScreenshots();
+        }
+
+        void PollForApplicationFocus()
+        {
+            if (m_PrevApplicationFocusState != InternalEditorUtility.isApplicationActive)
+            {
+                if (!m_PrevApplicationFocusState)
+                {
+                    m_MemorySnapshotsCollection.RefreshCollection();
+                }
+                m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
+            }
         }
 
         void OnDisable()
         {
+            UIStateChanged = delegate { };
             UIState.ClearAllOpenModes();
             SidebarWidthChanged = delegate { };
             if(m_PlayerConnectionState != null)
@@ -588,6 +669,8 @@ namespace Unity.MemoryProfiler.Editor
 
             CompilationPipeline.assemblyCompilationStarted -= StartedCompilationCallback;
             CompilationPipeline.assemblyCompilationFinished -= FinishedCompilationCallback;
+            EditorApplication.update -= PollForApplicationFocus;
+            EditorSceneManager.activeSceneChangedInEditMode -= OnSceneChanged;
         }
 
         void UI.IViewPaneEventListener.OnRepaint()
@@ -686,52 +769,61 @@ namespace Unity.MemoryProfiler.Editor
 
         void OpenLink(Database.LinkRequest link)
         {
-            var tableLinkRequest = link as Database.LinkRequestTable;
-            if (tableLinkRequest != null)
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
             {
-                try
+                var tableLinkRequest = link as Database.LinkRequestTable;
+                if (tableLinkRequest != null)
                 {
-                    ProgressBarDisplay.ShowBar("Resolving Link...");
-                    var tableRef = new Database.TableReference(tableLinkRequest.LinkToOpen.TableName, link.Parameters);
-                    var table = UIState.CurrentMode.GetSchema().GetTableByReference(tableRef);
-
-                    ProgressBarDisplay.UpdateProgress(0.0f, "Updating Table...");
-                    if (table.Update())
+                    try
                     {
-                        UIState.CurrentMode.UpdateTableSelectionNames();
+                        ProgressBarDisplay.ShowBar("Resolving Link...");
+                        var tableRef = new Database.TableReference(tableLinkRequest.LinkToOpen.TableName, link.Parameters);
+                        var table = UIState.CurrentMode.GetSchema().GetTableByReference(tableRef);
+
+                        ProgressBarDisplay.UpdateProgress(0.0f, "Updating Table...");
+                        if (table.Update())
+                        {
+                            UIState.CurrentMode.UpdateTableSelectionNames();
+                        }
+
+                        ProgressBarDisplay.UpdateProgress(0.75f, "Opening Table...");
+                        var pane = new UI.SpreadsheetPane(UIState, this);
+                        if (pane.OpenLinkRequest(tableLinkRequest, tableRef, table))
+                        {
+                            UIState.TransitModeToOwningTable(table);
+                            TransitPane(pane);
+                        }
                     }
-
-                    ProgressBarDisplay.UpdateProgress(0.75f, "Opening Table...");
-                    var pane = new UI.SpreadsheetPane(UIState, this);
-                    if (pane.OpenLinkRequest(tableLinkRequest, tableRef, table))
+                    finally
                     {
-                        UIState.TransitModeToOwningTable(table);
-                        TransitPane(pane);
+                        ProgressBarDisplay.ClearBar();
                     }
                 }
-                finally
-                {
-                    ProgressBarDisplay.ClearBar();
-                }
+                else
+                    DebugUtility.LogWarning("Cannot open unknown link '" + link.ToString() + "'");
             }
-            else
-                DebugUtility.LogWarning("Cannot open unknown link '" + link.ToString() + "'");
         }
 
         void OpenTable(Database.TableReference tableRef, Database.Table table)
         {
-            UIState.TransitModeToOwningTable(table);
-            var pane = new UI.SpreadsheetPane(UIState, this);
-            pane.OpenTable(tableRef, table);
-            TransitPane(pane);
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
+            {
+                UIState.TransitModeToOwningTable(table);
+                var pane = new UI.SpreadsheetPane(UIState, this);
+                pane.OpenTable(tableRef, table);
+                TransitPane(pane);
+            }
         }
 
         void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos)
         {
-            UIState.TransitModeToOwningTable(table);
-            var pane = new UI.SpreadsheetPane(UIState, this);
-            pane.OpenTable(tableRef, table, pos);
-            TransitPane(pane);
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
+            {
+                UIState.TransitModeToOwningTable(table);
+                var pane = new UI.SpreadsheetPane(UIState, this);
+                pane.OpenTable(tableRef, table, pos);
+                TransitPane(pane);
+            }
         }
 
         void OpenHistoryEvent(UI.HistoryEvent evt)
@@ -760,56 +852,83 @@ namespace Unity.MemoryProfiler.Editor
 
         void OpenTable(UI.HistoryEvent history)
         {
-            var pane = new UI.SpreadsheetPane(UIState, this);
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
+            {
+                var pane = new UI.SpreadsheetPane(UIState, this);
 
-            if (history != null)
-                pane.OpenHistoryEvent(history as SpreadsheetPane.History);
+                if (history != null)
+                    pane.OpenHistoryEvent(history as SpreadsheetPane.History);
 
-            TransitPane(pane);
+                TransitPane(pane);
+            }
         }
 
         void OpenMemoryMap(UI.HistoryEvent history)
         {
-            var pane = new UI.MemoryMapPane(UIState, this, m_ToolbarExtension);
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
+            {
+                var pane = new UI.MemoryMapPane(UIState, this, m_ToolbarExtension);
 
-            if (history != null)
-                pane.RestoreHistoryEvent(history);
+                if (history != null)
+                    pane.RestoreHistoryEvent(history);
 
-            TransitPane(pane);
+                TransitPane(pane);
+            }
         }
 
         void OpenMemoryMapDiff(UI.HistoryEvent history)
         {
-            var pane = new UI.MemoryMapDiffPane(UIState, this, m_ToolbarExtension);
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
+            {
+                var pane = new UI.MemoryMapDiffPane(UIState, this, m_ToolbarExtension);
 
-            if (history != null)
-                pane.RestoreHistoryEvent(history);
+                if (history != null)
+                    pane.RestoreHistoryEvent(history);
 
-            TransitPane(pane);
+                TransitPane(pane);
+            }
         }
 
         void OpenTreeMap(UI.HistoryEvent history)
         {
-            TreeMapPane.History evt = history as TreeMapPane.History;
-
-            if (currentViewPane is UI.TreeMapPane)
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
             {
-                if (evt != null)
+                TreeMapPane.History evt = history as TreeMapPane.History;
+
+                if (currentViewPane is UI.TreeMapPane)
                 {
-                    (currentViewPane as UI.TreeMapPane).OpenHistoryEvent(evt);
-                    return;
+                    if (evt != null)
+                    {
+                        (currentViewPane as UI.TreeMapPane).OpenHistoryEvent(evt);
+                        return;
+                    }
                 }
+                var pane = new UI.TreeMapPane(UIState, this);
+                if (evt != null) pane.OpenHistoryEvent(evt);
+                TransitPane(pane);
             }
-            var pane = new UI.TreeMapPane(UIState, this);
-            if (evt != null) pane.OpenHistoryEvent(evt);
-            TransitPane(pane);
         }
-        
+
+        void CopyDataToTexture(Texture2D tex, NativeArray<byte> byteArray)
+        {
+            unsafe
+            {
+                void* srcPtr = NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(byteArray);
+                void* dstPtr = tex.GetRawTextureData<byte>().GetUnsafeReadOnlyPtr();
+                UnsafeUtility.MemCpy(dstPtr, srcPtr, byteArray.Length * sizeof(byte));
+            }
+        }
 
         bool m_SnapshotInProgress;
+        bool m_ScreenshotInProgress;
+#if UNITY_2019_3_OR_NEWER
+        double m_TimestamprOfLastSnapshotReceived;
+        const double k_TimeOutForScreenshots = 3;
+#endif
+
         IEnumerator DelayedSnapshotRoutine()
         {
-            if (m_SnapshotInProgress)
+            if (m_SnapshotInProgress || m_ScreenshotInProgress)
             {
                 yield break;
             }
@@ -820,6 +939,9 @@ namespace Unity.MemoryProfiler.Editor
             yield return null; //skip one frame so we can draw the progress bar
 
             m_SnapshotInProgress = true;
+#if UNITY_2019_3_OR_NEWER
+            m_ScreenshotInProgress = true;
+#endif
             MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.CapturedSnapshotEvent>();
             m_OpenSnapshots.CloseAllOpenSnapshots();
             UIState.ClearAllOpenModes();
@@ -832,17 +954,56 @@ namespace Unity.MemoryProfiler.Editor
 
             string basePath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, k_SnapshotTempFileName);
 
-            bool captureResult = false;
+            bool snapshotCaptureResult = false;
             string capturePath = "";
 
-            UnityMemoryProfiler.TakeSnapshot(basePath
-                ,(string path, bool result) =>
+#if UNITY_2019_3_OR_NEWER
+            bool screenshotCaptureResult = false;
+            Action<string, bool, DebugScreenCapture> screenshotCaptureFunc = (string path, bool result, DebugScreenCapture screenCapture) =>
+            {
+                m_ScreenshotInProgress = false;
+                screenshotCaptureResult = result;
+                if (!screenshotCaptureResult)
+                    return;
+
+                ProgressBarDisplay.UpdateProgress(0.8f, "Processing Screenshot");
+
+                if (Path.HasExtension(path))
                 {
-                    captureResult = result;
-                    capturePath = path;
-                    m_SnapshotInProgress = false;
+                    path = Path.ChangeExtension(path, k_SnapshotTempScreenshotFileExtension);
                 }
-                , m_CaptureFlags);
+
+                Texture2D tex = new Texture2D(screenCapture.width, screenCapture.height, screenCapture.imageFormat, false);
+                CopyDataToTexture(tex, screenCapture.rawImageDataReference);
+                File.WriteAllBytes(path, tex.EncodeToPNG());
+                if (Application.isPlaying)
+                    Destroy(tex);
+                else
+                    DestroyImmediate(tex);
+
+            };
+#endif
+            Action<string, bool> snapshotCaptureFunc = (string path, bool result) =>
+            {
+                m_SnapshotInProgress = false;
+#if UNITY_2019_3_OR_NEWER
+                m_TimestamprOfLastSnapshotReceived = EditorApplication.timeSinceStartup;
+#endif
+                snapshotCaptureResult = result;
+                capturePath = path;
+            };
+
+#if UNITY_2019_3_OR_NEWER
+            if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Player || Application.isPlaying)
+            {
+                UnityMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, m_CaptureFlags);
+            }
+            else
+#endif
+            {
+                UnityMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, m_CaptureFlags);
+                m_ScreenshotInProgress = false; //screenshot is not in progress
+            }
 
             ProgressBarDisplay.UpdateProgress(1.0f);
 
@@ -850,7 +1011,11 @@ namespace Unity.MemoryProfiler.Editor
             //wait for snapshotting operation to finish and skip one frame to update loading bar
             while (framesToSkip > 0)
             {
-                if (!m_SnapshotInProgress)
+                if (!m_SnapshotInProgress
+#if UNITY_2019_3_OR_NEWER
+                    && (!m_ScreenshotInProgress || EditorApplication.timeSinceStartup - m_TimestamprOfLastSnapshotReceived >= k_TimeOutForScreenshots)
+#endif
+                    )
                 {
                     --framesToSkip;
                 }
@@ -864,13 +1029,21 @@ namespace Unity.MemoryProfiler.Editor
                     m_SnapshotTimer = null;
                 }
 #endif
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.CapturedSnapshotEvent() { success = captureResult });
+            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.CapturedSnapshotEvent() { success = snapshotCaptureResult });
 
-            if (captureResult)
+            if (snapshotCaptureResult)
             {
-                string targetPath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, k_SnapshotFileNamePart + DateTime.Now.Ticks + k_SnapshotFileExtension);
-                File.Move(capturePath, targetPath);
-                var snapshot = m_MemorySnapshotsCollection.AddSnapshotToCollection(targetPath);
+                string snapshotPath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, k_SnapshotFileNamePart + DateTime.Now.Ticks + k_SnapshotFileExtension);
+                File.Move(capturePath, snapshotPath);
+#if UNITY_2019_3_OR_NEWER
+                if (screenshotCaptureResult)
+                {
+                    capturePath = Path.ChangeExtension(capturePath, k_SnapshotTempScreenshotFileExtension);
+                    string screenshotPath = Path.ChangeExtension(snapshotPath, k_SnapshotScreenshotFileExtension);
+                    File.Move(capturePath, screenshotPath);
+                }
+#endif
+                var snapshot = m_MemorySnapshotsCollection.AddSnapshotToCollection(snapshotPath);
                 AddSnapshotToUI(snapshot);
             }
 
@@ -884,7 +1057,12 @@ namespace Unity.MemoryProfiler.Editor
                 Debug.LogError("Unable to snapshot while compilation is ongoing");
                 return;
             }
-            this.StartCoroutine(DelayedSnapshotRoutine());
+            
+            if(EditoUtilityCompatibilityHelper.DisplayDialog(Content.HeapWarningWindowTitle, Content.HeapWarningWindowContent, Content.HeapWarningWindowOK, EditoUtilityCompatibilityHelper.DialogOptOutDecisionType.ForThisMachine, MemoryProfilerSettings.HeapWarningWindowOptOutKey))
+            {
+                this.StartCoroutine(DelayedSnapshotRoutine());
+            }
+            EditorGUIUtility.ExitGUI();
         }
 
         IEnumerator ImportCaptureRoutine(string path)
@@ -940,13 +1118,14 @@ namespace Unity.MemoryProfiler.Editor
 
         void ImportCapture()
         {
-            string path = EditorUtility.OpenFilePanelWithFilters(Content.ImportSnapshotWindowTitle, SessionState.GetString(k_LastImportPathPrefKey, Application.dataPath), Content.MemorySnapshotImportWindowFileExtensions);
+            string path = EditorUtility.OpenFilePanelWithFilters(Content.ImportSnapshotWindowTitle, MemoryProfilerSettings.LastImportPath, Content.MemorySnapshotImportWindowFileExtensions);
+            EditorGUIUtility.ExitGUI();
             if (path.Length == 0)
             {
                 return;
             }
 
-            SessionState.SetString(k_LastImportPathPrefKey, path);
+            MemoryProfilerSettings.LastImportPath = path;
 
             this.StartCoroutine(ImportCaptureRoutine(path));
         }
@@ -977,13 +1156,33 @@ namespace Unity.MemoryProfiler.Editor
 
         void RenameCapture(SnapshotFileData snapshot)
         {
-            if(m_OpenSnapshots.IsSnapshotOpen(snapshot))
+            if(CanRenameSnaphot(snapshot))
             {
-                if (!EditorUtility.DisplayDialog(Content.RenameSnapshotDialogTitle, Content.RenameSnapshotDialogMessage, Content.RenameSnapshotDialogAccept, Content.RenameSnapshotDialogCancel))
-                    return;
-                m_OpenSnapshots.CloseCapture(snapshot);
+                snapshot.GuiData.RenamingFieldVisible = true;
+#if UNITY_2019_1_OR_NEWER
+                EditorApplication.delayCall += () => { snapshot.GuiData.dynamicVisualElements.snapshotRenameField.Q("unity-text-input").Focus(); };
+#else
+                snapshot.GuiData.dynamicVisualElements.snapshotRenameField.Focus();
+#endif
             }
-            snapshot.GuiData.RenamingFieldVisible = true;
+        }
+
+        void BrowseCaptureFolder(SnapshotFileData snapshot)
+        {
+            EditorUtility.RevealInFinder(snapshot.FileInfo.FullName);
+        }
+
+
+        bool CanRenameSnaphot(SnapshotFileData snapshot)
+        {
+            if (m_OpenSnapshots.IsSnapshotOpen(snapshot))
+            {
+                bool close = EditorUtility.DisplayDialog(Content.RenameSnapshotDialogTitle, Content.RenameSnapshotDialogMessage, Content.RenameSnapshotDialogAccept, Content.RenameSnapshotDialogCancel);
+                if(close)
+                    m_OpenSnapshots.CloseCapture(snapshot);
+                return close;
+            }
+            return true;
         }
 
         void OpenCapture(SnapshotFileData snapshot)
@@ -1048,6 +1247,7 @@ namespace Unity.MemoryProfiler.Editor
 
         void DrawTableSelection()
         {
+            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
             using (new EditorGUI.DisabledGroupScope(UIState.CurrentMode == null || UIState.CurrentMode.CurrentViewPane == null))
             {
                 var dropdownContent = Content.NoneView;
@@ -1073,9 +1273,13 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
                 var minSize = EditorStyles.toolbarDropDown.CalcSize(dropdownContent);
-                minSize = new Vector2(Mathf.Max(minSize.x, m_ViewDropdownSize.x),Mathf.Max(minSize.y, m_ViewDropdownSize.y));
+                minSize.y = Mathf.Min(minSize.y, EditorGUIUtility.singleLineHeight);
+                minSize = new Vector2(Mathf.Max(minSize.x, m_ViewDropdownSize.x), Mathf.Max(minSize.y, m_ViewDropdownSize.y));
                 Rect viewDropdownRect = GUILayoutUtility.GetRect(minSize.x, minSize.y, Styles.ToolbarPopup);
                 viewDropdownRect.x--;
+#if UNITY_2019_3_OR_NEWER // Hotfixing theming issues...
+                viewDropdownRect.y--;
+#endif
                 if (m_ViewSelectorMenu != null && Event.current.type == EventType.Repaint)
                 {
                     m_ViewSelectorMenu.style.width = minSize.x;
@@ -1170,12 +1374,12 @@ namespace Unity.MemoryProfiler.Editor
             {
                 using (new Service<IDebugContextService>.ScopeService(new DebugContextService()))
                 {
-                    string viewFile = EditorUtility.OpenFilePanel(Content.LoadViewFilePanelText, EditorPrefs.GetString(k_LastXMLLoadPathPrefKey, Application.dataPath), k_ViewFileExtension);
+                    string viewFile = EditorUtility.OpenFilePanel(Content.LoadViewFilePanelText, MemoryProfilerSettings.LastXMLLoadPath, k_ViewFileExtension);
                     MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.LoadViewXMLEvent>();
                     if (viewFile.Length != 0)
                     {
                         bool success = false;
-                        EditorPrefs.SetString(k_LastXMLLoadPathPrefKey, viewFile);
+                        MemoryProfilerSettings.LastXMLLoadPath = viewFile;
                         if (UIState.LoadView(viewFile))
                         {
                             success = true;

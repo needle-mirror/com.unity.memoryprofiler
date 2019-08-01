@@ -8,6 +8,12 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         void OnRepaint();
     }
+
+    /// <summary>
+    /// Defines the logic behind a spreadsheet.
+    /// Handles scrolling, moving to a specific cell, compute where to draw cells
+    /// The actual drawing of the cell's content is left abstract and must be defined in a sub-class
+    /// </summary>
     internal abstract class SpreadsheetLogic
     {
         //used to catch infinite loop caused by implementation
@@ -76,7 +82,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 get
                 {
                     DirtyRowRange o;
-                    o.Range = Range.Empty();
+                    o.Range = Range.None;
                     o.HeightOffset = 0;
                     return o;
                 }
@@ -224,7 +230,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             GUILayout.BeginVertical(opt);
 
             m_Splitter.BeginHorizontalSplit(-m_GUIState.ScrollPosition.x);
-            Rect rectHeader = new Rect(m_Splitter.m_TopLeft.x, m_Splitter.m_TopLeft.y, 0, Styles.styles.header.fixedHeight);
+            Rect rectHeader = new Rect(m_Splitter.m_TopLeft.x, m_Splitter.m_TopLeft.y, 0, Styles.Header.fixedHeight);
 
             float totalHeaderWidth = 0;
             for (int k = 0; k < m_Splitter.realSizes.Length; ++k)
@@ -253,7 +259,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             //Debug.Log("rr = " + rr.xMin + ", " + rr.yMin + " - " + rr.xMax + ", " + rr.yMax);
 
             Vector2 scrollBefore = m_GUIState.ScrollPosition;
-            m_GUIState.ScrollPosition = GUILayout.BeginScrollView(scrollBefore, Styles.styles.background);
+            m_GUIState.ScrollPosition = GUILayout.BeginScrollView(scrollBefore);
 
             EditorGUILayout.BeginHorizontal();
             for (int k = 0; k < m_Splitter.realSizes.Length; ++k)

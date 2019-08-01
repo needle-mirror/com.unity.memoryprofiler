@@ -7,8 +7,8 @@ namespace Unity.MemoryProfiler.Editor
         public ObjectData obj;
         public int objOffset;
 
-        public ObjectSingleTable(Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectData obj, ObjectMetaType metaType)
-            : base(schema, renderer, snapshot, crawledData, metaType)
+        public ObjectSingleTable(Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectData obj, ObjectMetaType metaType)
+            : base(schema, formatter, snapshot, crawledData, metaType)
         {
             this.obj = obj;
             if (!obj.dataIncludeObjectHeader)

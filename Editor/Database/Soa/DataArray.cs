@@ -4,6 +4,9 @@ using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Database.Soa
 {
+    /// <summary>
+    /// Provides a way to create columns using a `Struct-of-Array` data structure as input data. Will use SoaDataSet to represent data source.
+    /// </summary>
     internal class DataArray
     {
         public static Cache<DataT[]> MakeCache<DataT>(SoaDataSet dataSet, DataSource<DataT[]> source) where DataT : IComparable
@@ -46,6 +49,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             return new Column_Transform<DataOutT, DataInT>(cache, transform, untransform);
         }
 
+        /// <summary>
+        /// Upon request of a data value, it will request data from a DataSource in chunks and store it for later requests.
+        /// </summary>
+        /// <typeparam name="DataT"></typeparam>
         public class Cache<DataT>
         {
             public Cache(SoaDataSet dataSet, DataSource<DataT> source)
@@ -111,7 +118,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                             indexLast = m_DataSet.DataCount;
                         }
                         m_DataChunk[chunkIndex] = new DataChunk<DataT>(indexLast - indexFirst);
-                        m_DataSource.Get(Range.FirstLast(indexFirst, indexLast), ref m_DataChunk[chunkIndex].m_Data);
+                        m_DataSource.Get(Range.FirstToLast(indexFirst, indexLast), ref m_DataChunk[chunkIndex].m_Data);
                     }
                 }
                 return m_DataChunk[chunkIndex];
@@ -216,7 +223,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 using (Profiling.GetMarker(Profiling.MarkerId.ColumnMatchQuery).Auto())
                 {
                     Update();
-                    long count = rowRange.indexCount;
+                    long count = rowRange.Count;
                     var matchedIndices = new List<long>(128);
                     Operation.Operation.ComparableComparator comparator = Operation.Operation.GetComparator(type, expression.type);
                     if (rowToRow)
@@ -247,12 +254,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                         {
                             var valueRight = expression.GetComparableValue(expressionRowFirst);
                             //Optimization for equal operation when querying on all data
-                            if (rowRange.array == null && operation == Operation.Operator.Equal)
+                            if (rowRange.IsSequence && operation == Operation.Operator.Equal)
                             {
                                 //use the sorted index to trim down invalid values
                                 long[] sortedIndex = GetSortIndexAsc();
-                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.directIndexFirst, (int)rowRange.indexCount, valueRight);
-                                int upperIndexIndex = (int)rowRange.directIndexLast;
+                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
+                                int upperIndexIndex = (int)rowRange.Sequence.Last;
                                 for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
                                 {
                                     if (m_Cache[sortedIndex[i]].CompareTo(valueRight) == 0)
@@ -305,9 +312,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     var matchedIndicesArray = matchedIndices.ToArray();
 
 #if MEMPROFILER_DEBUG_INFO
-	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.indexCount
+	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.Count
 	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expressionRowFirst)
+	                + " Exp():" + expression.GetValueString(expressionRowFirst, DefaultDataFormatter.Instance)
 	                + " expRowFirst:" + expressionRowFirst
 	                + " Column:" + this.GetDebugString(rowRange[0])
 	                + " Expression:" + expression.GetDebugString(expressionRowFirst)
@@ -319,18 +326,18 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             }
             protected override long[] GetSortIndex(IComparer<DataT> comparer, ArrayRange indices, bool relativeIndex)
             {
-                if (indices.array != null)
+                if (indices.IsIndex)
                 {
                     return base.GetSortIndex(comparer, indices, relativeIndex);
                 }
-                long count = indices.indexCount;
+                long count = indices.Count;
                 DataT[] k = new DataT[count];
 
-                long firstChunkSubIndex = indices.directIndexFirst % m_Cache.m_DataSet.ChunkSize;
-                long lastChunkSubIndex = indices.directIndexLast % m_Cache.m_DataSet.ChunkSize;
+                long firstChunkSubIndex = indices.Sequence.First % m_Cache.m_DataSet.ChunkSize;
+                long lastChunkSubIndex = indices.Sequence.Last % m_Cache.m_DataSet.ChunkSize;
 
-                long firstChunkIndex = indices.directIndexFirst / m_Cache.m_DataSet.ChunkSize;
-                long lastChunkIndex = indices.directIndexLast / m_Cache.m_DataSet.ChunkSize;
+                long firstChunkIndex = indices.Sequence.First / m_Cache.m_DataSet.ChunkSize;
+                long lastChunkIndex = indices.Sequence.Last / m_Cache.m_DataSet.ChunkSize;
 
                 long firstChunkLength = m_Cache.m_DataSet.ChunkSize - firstChunkSubIndex;
                 long lastChunkLength = lastChunkSubIndex;
@@ -357,7 +364,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     long chunkIndex = i + firstFullChunk;
                     long chunkRowFirst = chunkIndex * m_Cache.m_DataSet.ChunkSize;
                     var c = m_Cache.GetChunk(chunkIndex);
-                    System.Array.Copy(c.m_Data, 0, k, chunkRowFirst - indices.directIndexFirst, m_Cache.m_DataSet.ChunkSize);
+                    System.Array.Copy(c.m_Data, 0, k, chunkRowFirst - indices.Sequence.First, m_Cache.m_DataSet.ChunkSize);
                 }
 
                 //copy last chunk
@@ -365,7 +372,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 {
                     long chunkRowFirst = lastChunkIndex * m_Cache.m_DataSet.ChunkSize;
                     var c = m_Cache.GetChunk(lastChunkIndex);
-                    System.Array.Copy(c.m_Data, 0, k, chunkRowFirst - indices.directIndexFirst, lastChunkLength);
+                    System.Array.Copy(c.m_Data, 0, k, chunkRowFirst - indices.Sequence.First, lastChunkLength);
                 }
 
                 //create index array
@@ -375,15 +382,15 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     for (long i = 0; i != count; ++i)
                     {
                         index[i] = i;
-                        k[i] = GetRowValue(i + indices.directIndexFirst);
+                        k[i] = GetRowValue(i + indices.Sequence.First);
                     }
                 }
                 else
                 {
                     for (long i = 0; i != count; ++i)
                     {
-                        index[i] = i + indices.directIndexFirst;
-                        k[i] = GetRowValue(i + indices.directIndexFirst);
+                        index[i] = i + indices.Sequence.First;
+                        k[i] = GetRowValue(i + indices.Sequence.First);
                     }
                 }
 
@@ -393,7 +400,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
 
                 for (long i = 0; i != count; ++i)
                 {
-                    var v = GetRowValue(i + indices.directIndexFirst);
+                    var v = GetRowValue(i + indices.Sequence.First);
                     long c = k[i].CompareTo(v);
                     UnityEngine.Debug.Assert(c == 0);
                 }
@@ -402,9 +409,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 return index;
             }
 
-            public override string GetRowValueString(long row)
+            public override string GetRowValueString(long row, IDataFormatter formatter)
             {
-                return m_Cache[row].ToString();
+                return formatter.Format(m_Cache[row]);
             }
 
             public override DataT GetRowValue(long row)
@@ -420,14 +427,16 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             //public override bool VisitRows(Visitor v, long[] indices, long firstIndex, long lastIndex)
             public override System.Collections.Generic.IEnumerable<DataT> VisitRows(ArrayRange indices)
             {
-                for (long i = 0; i != indices.indexCount; ++i)
+                for (long i = 0; i != indices.Count; ++i)
                 {
                     yield return m_Cache[indices[i]];
                 }
             }
         }
 
-
+        /// <summary>
+        /// `Struct-of-Array` column for `long` value type. duplicated from column<DataT> to improve performances 
+        /// </summary>
         public class ColumnLong : Column<long>
         {
             public ColumnLong(Cache<long> cache)
@@ -484,7 +493,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 {
                     Update();
                     Operation.TypedExpression<long> typedExpression = expression as Operation.TypedExpression<long>;
-                    long count = rowRange.indexCount;
+                    long count = rowRange.Count;
                     var matchedIndices = new List<long>(128);
                     if (rowToRow)
                     {
@@ -515,12 +524,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                         {
                             var valueRight = typedExpression.GetValue(expressionRowFirst);
                             //Optimization for equal operation when querying on all data
-                            if (rowRange.array == null && operation == Operation.Operator.Equal)
+                            if (rowRange.IsSequence && operation == Operation.Operator.Equal)
                             {
                                 //use the sorted index to trim down invalid values
                                 long[] sortedIndex = GetSortIndexAsc();
-                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.directIndexFirst, (int)rowRange.indexCount, valueRight);
-                                int upperIndexIndex = (int)rowRange.directIndexLast;
+                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
+                                int upperIndexIndex = (int)rowRange.Sequence.Last;
                                 for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
                                 {
                                     if (m_Cache[sortedIndex[i]] == valueRight)
@@ -571,9 +580,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     var matchedIndicesArray = matchedIndices.ToArray();
 
 #if MEMPROFILER_DEBUG_INFO
-	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.indexCount
+	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.Count
 	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expressionRowFirst)
+	                + " Exp():" + expression.GetValueString(expressionRowFirst, DefaultDataFormatter.Instance)
 	                + " expRowFirst:" + expressionRowFirst
 	                + " Column:" + this.GetDebugString(rowRange[0])
 	                + " Expression:" + expression.GetDebugString(expressionRowFirst)
@@ -585,6 +594,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             }
         }
 
+        /// <summary>
+        /// `Struct-of-Array` column for `int` value type. duplicated from column<int> to improve performances 
+        /// </summary>
         public class ColumnInt : Column<int>
         {
             public ColumnInt(Cache<int> cache)
@@ -640,7 +652,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 {
                     Update();
                     Operation.TypedExpression<int> typedExpression = expression as Operation.TypedExpression<int>;
-                    long count = rowRange.indexCount;
+                    long count = rowRange.Count;
                     var matchedIndices = new List<long>(128);
                     if (rowToRow)
                     {
@@ -671,12 +683,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                         {
                             var valueRight = typedExpression.GetValue(expressionRowFirst);
                             //Optimization for equal operation when querying on all data
-                            if (rowRange.array == null && operation == Operation.Operator.Equal)
+                            if (rowRange.IsSequence && operation == Operation.Operator.Equal)
                             {
                                 //use the sorted index to trim down invalid values
                                 long[] sortedIndex = GetSortIndexAsc();
-                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.directIndexFirst, (int)rowRange.indexCount, valueRight);
-                                int upperIndexIndex = (int)rowRange.directIndexLast;
+                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
+                                int upperIndexIndex = (int)rowRange.Sequence.Last;
                                 for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
                                 {
                                     if (m_Cache[sortedIndex[i]] == valueRight)
@@ -728,9 +740,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     var matchedIndicesArray = matchedIndices.ToArray();
 
 #if MEMPROFILER_DEBUG_INFO
-	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.indexCount
+	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.Count
 	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expressionRowFirst)
+	                + " Exp():" + expression.GetValueString(expressionRowFirst, DefaultDataFormatter.Instance)
 	                + " expRowFirst:" + expressionRowFirst
 	                + " Column:" + this.GetDebugString(rowRange[0])
 	                + " Expression:" + expression.GetDebugString(expressionRowFirst)
@@ -770,9 +782,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 return m_Cache.Length;
             }
 
-            public override string GetRowValueString(long row)
+            public override string GetRowValueString(long row, IDataFormatter formatter)
             {
-                return m_Transformer(m_Cache[row]).ToString();
+                return formatter.Format(m_Transformer(m_Cache[row]));
             }
 
             public override DataOutT GetRowValue(long row)
@@ -792,7 +804,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
 
             public override System.Collections.Generic.IEnumerable<DataOutT> VisitRows(ArrayRange indices)
             {
-                for (long i = 0; i != indices.indexCount; ++i)
+                for (long i = 0; i != indices.Count; ++i)
                 {
                     yield return m_Transformer(m_Cache[indices[i]]);
                 }
@@ -823,13 +835,13 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
 
             protected override long[] GetSortIndex(IComparer<DataT> comparer, ArrayRange indices, bool relativeIndex)
             {
-                if (indices.array != null)
+                if (indices.IsIndex)
                 {
                     return base.GetSortIndex(comparer, indices, relativeIndex);
                 }
-                long count = indices.indexCount;
+                long count = indices.Count;
                 DataT[] k = new DataT[count];
-                System.Array.Copy(m_Data, indices.directIndexFirst, k, 0, count);
+                System.Array.Copy(m_Data, indices.Sequence.First, k, 0, count);
 
                 //create index array
                 long[] index = new long[count];
@@ -844,7 +856,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 {
                     for (long i = 0; i != count; ++i)
                     {
-                        index[i] = i + indices.directIndexFirst;
+                        index[i] = i + indices.Sequence.First;
                     }
                 }
 
@@ -852,9 +864,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 return index;
             }
 
-            public override string GetRowValueString(long row)
+            public override string GetRowValueString(long row, IDataFormatter formatter)
             {
-                return m_Data[row].ToString();
+                return formatter.Format(m_Data[row]);
             }
 
             public override DataT GetRowValue(long row)
@@ -869,7 +881,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
 
             public override System.Collections.Generic.IEnumerable<DataT> VisitRows(ArrayRange indices)
             {
-                for (long i = 0; i != indices.indexCount; ++i)
+                for (long i = 0; i != indices.Count; ++i)
                 {
                     yield return m_Data[indices[i]];
                 }

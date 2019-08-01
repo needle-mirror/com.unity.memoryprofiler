@@ -90,8 +90,8 @@ namespace Unity.MemoryProfiler.Editor
         FieldsList m_Fields;
         public ObjectData obj;
         public ObjectData objBase;
-        public ObjectFieldTable(Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectData obj, ObjectMetaType metaType)
-            : base(schema, renderer, snapshot, crawledData, metaType)
+        public ObjectFieldTable(Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectData obj, ObjectMetaType metaType)
+            : base(schema, formatter, snapshot, crawledData, metaType)
         {
             this.obj = obj;
             objBase = obj.GetBase(snapshot);
@@ -164,7 +164,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Type:
                     fl.mbHasStaticGroup = false;
                     fl.mbHasBaseGroup = false;
-                    if (Renderer.flattenFields)
+                    if (Formatter.flattenFields)
                     {
                         //take all static field
                         fl.fieldIndices = Snapshot.typeDescriptions.fieldIndices_static[obj.managedTypeIndex];
@@ -180,11 +180,11 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Object:
                 case ObjectDataType.Value:
                 case ObjectDataType.ReferenceObject:
-                    if (Renderer.flattenFields)
+                    if (Formatter.flattenFields)
                     {
                         fl.mbHasBaseGroup = false;
                         fields.AddRange(Snapshot.typeDescriptions.fieldIndices_instance[obj.managedTypeIndex]);
-                        if (Renderer.flattenStaticFields)
+                        if (Formatter.flattenStaticFields)
                         {
                             fl.mbHasStaticGroup = false;
                             fields.AddRange(Snapshot.typeDescriptions.fieldIndices_static[obj.managedTypeIndex]);
@@ -197,7 +197,7 @@ namespace Unity.MemoryProfiler.Editor
                     else
                     {
                         fl.mbHasBaseGroup = objBase.IsValid;
-                        if (Renderer.flattenStaticFields)
+                        if (Formatter.flattenStaticFields)
                         {
                             fl.mbHasStaticGroup = false;
                             //already has instance and static fields in the same array

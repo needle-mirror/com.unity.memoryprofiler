@@ -2,6 +2,10 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
+    /// <summary>
+    /// A column which entries may expand or collapse into/from several rows
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class ExpandColumnTyped<DataT> : ColumnTyped<DataT>, IExpandColumn, IColumnDecorator where DataT : System.IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -88,13 +92,13 @@ namespace Unity.MemoryProfiler.Editor.Database
             return null;
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             var e = m_Table.m_RowData[row];
             if (e.isGroupHead())
             {
                 if (m_Column == null) return (string)Convert.ChangeType(default(DataT), typeof(string));
-                return m_Column.GetRowValueString(e.groupIndex);
+                return m_Column.GetRowValueString(e.groupIndex, formatter);
             }
             else
             {
@@ -102,7 +106,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                 if (subTable != null)
                 {
                     var col = subTable.GetColumnByIndex(m_ColumnIndex);
-                    return col.GetRowValueString(e.subGroupIndex);
+                    return col.GetRowValueString(e.subGroupIndex, formatter);
                 }
             }
             return "";
@@ -179,7 +183,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             else
             {
                 //some group are expanded
-                bool matchAllData = indices.array == null && indices.indexCount == m_Table.m_RowData.Length;
+                bool matchAllData = indices.IsSequence && indices.Count == m_Table.m_RowData.Length;
                 long[] groupMatches;
                 if (matchAllData)
                 {
@@ -189,8 +193,8 @@ namespace Unity.MemoryProfiler.Editor.Database
                 else
                 {
                     //when asking to test only a subset of the data, test only the groups that fall in the indices range
-                    var l = new System.Collections.Generic.List<long>((int)indices.indexCount);
-                    for (int i = 0; i != indices.indexCount; ++i)
+                    var l = new System.Collections.Generic.List<long>((int)indices.Count);
+                    for (int i = 0; i != indices.Count; ++i)
                     {
                         var row = indices[i];
                         if (m_Table.m_RowData[row].isGroupHead())
@@ -208,7 +212,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                 {
                     var groupIndex = groupMatches[i];
                     var groupRange = m_Table.m_GroupRowDataRange[groupIndex];
-                    for (long j = groupRange.first; j != groupRange.last; ++j)
+                    for (long j = groupRange.First; j != groupRange.Last; ++j)
                     {
                         matches.Add(j);
                     }

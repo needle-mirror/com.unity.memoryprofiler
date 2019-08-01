@@ -59,16 +59,16 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             //if( dirtyRange.length > 0)
             //{
             //new rows inserted
-            long newCount = indices.Length + dirtyRange.length;
+            long newCount = indices.Length + dirtyRange.Length;
             long[] newIndices = new long[newCount];
 
             //find in our index where the created gap corespond to
             long gapFirst = 0;
-            if (dirtyRange.first > 0)
+            if (dirtyRange.First > 0)
             {
-                gapFirst = System.Array.IndexOf(indices, dirtyRange.first - 1) + 1;
+                gapFirst = System.Array.IndexOf(indices, dirtyRange.First - 1) + 1;
             }
-            long gapLast = gapFirst + dirtyRange.length;
+            long gapLast = gapFirst + dirtyRange.Length;
 
             long gapMin = gapFirst;
             if (gapLast < gapMin) gapMin = gapLast;
@@ -76,18 +76,18 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             for (long i = 0; i < gapMin; ++i)
             {
                 long offset = 0;
-                if (indices[i] >= dirtyRange.first)
+                if (indices[i] >= dirtyRange.First)
                 {
                     //index was after gap, need offset
-                    offset = dirtyRange.length;
+                    offset = dirtyRange.Length;
                 }
                 newIndices[i] = indices[i] + offset;
             }
 
             //fill in the gap
-            for (long i = 0; i < dirtyRange.length; ++i)
+            for (long i = 0; i < dirtyRange.Length; ++i)
             {
-                newIndices[gapFirst + i] = dirtyRange.first + i;
+                newIndices[gapFirst + i] = dirtyRange.First + i;
             }
 
             //offset and fixup following indices
@@ -96,14 +96,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 //gapFirst + dirtyRange.length
                 long offset = 0;
-                if (indices[gapFirst + i] >= dirtyRange.first)
+                if (indices[gapFirst + i] >= dirtyRange.First)
                 {
-                    offset = dirtyRange.length;
+                    offset = dirtyRange.Length;
                 }
                 newIndices[gapLast + i] = indices[gapFirst + i] + offset;
             }
             indices = newIndices;
-            return Range.FirstLast(gapFirst, gapLast);
+            return Range.FirstToLast(gapFirst, gapLast);
         }
 
         class LinkIndex : CellLink
@@ -150,6 +150,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
             long IUpdater.OldToNewRow(long a)
             {
+                if (m_OldToNewRow == null) return a;
                 if (a < 0 || a >= m_OldToNewRow.LongLength) return -1;
                 return m_OldToNewRow[a];
             }
@@ -164,23 +165,30 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             var updater = new Updater();
             updater.m_SourceTableUpdater = m_SourceTable.BeginUpdate();
             updater.m_Table = this;
-            var newIndices = new List<long>();
-            var oldToNewRow = new List<long>();
-            for (int i = 0; i != indices.Length; ++i)
+            if (updater.m_SourceTableUpdater != null)
             {
-                var newTarget = updater.m_SourceTableUpdater.OldToNewRow(indices[i]);
-                if (newTarget >= 0)
+                var newIndices = new List<long>();
+                var oldToNewRow = new List<long>();
+                for (int i = 0; i != indices.Length; ++i)
                 {
-                    oldToNewRow.Add(newIndices.Count);
-                    newIndices.Add(newTarget);
+                    var newTarget = updater.m_SourceTableUpdater.OldToNewRow(indices[i]);
+                    if (newTarget >= 0)
+                    {
+                        oldToNewRow.Add(newIndices.Count);
+                        newIndices.Add(newTarget);
+                    }
+                    else
+                    {
+                        oldToNewRow.Add(-1);
+                    }
                 }
-                else
-                {
-                    oldToNewRow.Add(-1);
-                }
+                updater.m_OldToNewRow = oldToNewRow.ToArray();
+                updater.m_NewIndices = newIndices.ToArray();
             }
-            updater.m_OldToNewRow = oldToNewRow.ToArray();
-            updater.m_NewIndices = newIndices.ToArray();
+            else
+            {
+                updater.m_NewIndices = indices;
+            }
             return updater;
         }
 

@@ -7,6 +7,40 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    internal class FormattingOptions
+    {
+        public Editor.ObjectDataFormatter ObjectDataFormatter;
+        System.Collections.Generic.Dictionary<string, Database.IDataFormatter> m_DataFormatters = new System.Collections.Generic.Dictionary<string, Database.IDataFormatter>();
+
+        public void AddFormatter(string name, IDataFormatter formatter)
+        {
+            m_DataFormatters.Add(name, formatter);
+        }
+
+        public IDataFormatter GetFormatter(string name)
+        {
+            if (String.IsNullOrEmpty(name)) return GetDefaultFormatter();
+
+            IDataFormatter formatter;
+            if (m_DataFormatters.TryGetValue(name, out formatter))
+            {
+                return formatter;
+            }
+            return DefaultDataFormatter.Instance;
+        }
+        public IDataFormatter GetDefaultFormatter()
+        {
+            return DefaultDataFormatter.Instance;
+        }
+    }
+
+    /// <summary>
+    /// Holds the current state of the UI such as:
+    ///     current mode (snapshot / diff)
+    ///     current panel (treemap / memory map / table)
+    ///     current display options
+    ///     history of passed actions
+    /// </summary>
     internal class UIState
     {
         internal abstract class BaseMode
@@ -60,7 +94,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             public abstract Database.Schema GetSchema();
-            protected void UpdateTableSelectionNamesFromSchema(DataRenderer dataRenderer, Database.Schema schema)
+            protected void UpdateTableSelectionNamesFromSchema(ObjectDataFormatter objectDataFormatter, Database.Schema schema)
             {
                 if (schema == null)
                 {
@@ -78,7 +112,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     var tab = schema.GetTableByIndex(i);
                     long rowCount = tab.GetRowCount();
-                    m_TableNames[i + 1] = (dataRenderer.ShowPrettyNames ? tab.GetDisplayName() : tab.GetName()) + " (" + (rowCount >= 0 ? rowCount.ToString() : "?") + ")";
+                    m_TableNames[i + 1] = (objectDataFormatter.ShowPrettyNames ? tab.GetDisplayName() : tab.GetName()) + " (" + (rowCount >= 0 ? rowCount.ToString() : "?") + ")";
                     m_Tables[i + 1] = tab;
                 }
             }
@@ -119,12 +153,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_RawSchema = copy.m_RawSchema;
                 ViewSchema = copy.ViewSchema;
                 SchemaToDisplay = copy.SchemaToDisplay;
-                m_RawSchema.renderer.m_BaseRenderer.PrettyNamesOptionChanged += UpdateTableSelectionNames;
+                m_RawSchema.formatter.BaseFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
             }
-            public SnapshotMode(DataRenderer dataRenderer, PackedMemorySnapshot snapshot)
+            public SnapshotMode(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshot)
             {
-                dataRenderer.PrettyNamesOptionChanged += UpdateTableSelectionNames;
-                SetSnapshot(dataRenderer, snapshot);
+                objectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
+                SetSnapshot(objectDataFormatter, snapshot);
             }
 
             public override Database.Schema GetSchema()
@@ -132,7 +166,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return SchemaToDisplay;
             }
 
-            void SetSnapshot(DataRenderer dataRenderer, PackedMemorySnapshot snapshot)
+            void SetSnapshot(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshot)
             {
                 if (snapshot == null)
                 {
@@ -163,7 +197,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ProgressBarDisplay.ClearBar();
 
                 m_RawSchema = new RawSchema();
-                m_RawSchema.SetupSchema(cachedSnapshot, dataRenderer);
+                m_RawSchema.SetupSchema(cachedSnapshot, objectDataFormatter);
 
                 SchemaToDisplay = m_RawSchema;
                 if (k_DefaultViewFilePath.Length > 0)
@@ -201,7 +235,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (m_RawSchema != null)
                 {
-                    UpdateTableSelectionNamesFromSchema(m_RawSchema.renderer.m_BaseRenderer, SchemaToDisplay);
+                    UpdateTableSelectionNamesFromSchema(m_RawSchema.formatter.BaseFormatter, SchemaToDisplay);
                 }
             }
 
@@ -248,15 +282,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             Database.Schema m_SchemaFirst;
             Database.Schema m_SchemaSecond;
             Database.Operation.DiffSchema m_SchemaDiff;
-            DataRenderer m_DataRenderer;
+            ObjectDataFormatter m_ObjectDataFormatter;
 
             private const string k_DefaultDiffViewTable = "All Object";
-            public DiffMode(DataRenderer dataRenderer, PackedMemorySnapshot snapshotFirst, PackedMemorySnapshot snapshotSecond)
+            public DiffMode(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshotFirst, PackedMemorySnapshot snapshotSecond)
             {
-                m_DataRenderer = dataRenderer;
-                m_DataRenderer.PrettyNamesOptionChanged += UpdateTableSelectionNames;
-                modeFirst = new SnapshotMode(dataRenderer, snapshotFirst);
-                modeSecond = new SnapshotMode(dataRenderer, snapshotSecond);
+                m_ObjectDataFormatter = objectDataFormatter;
+                m_ObjectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
+                modeFirst = new SnapshotMode(objectDataFormatter, snapshotFirst);
+                modeSecond = new SnapshotMode(objectDataFormatter, snapshotSecond);
                 m_SchemaFirst = modeFirst.GetSchema();
                 m_SchemaSecond = modeSecond.GetSchema();
 
@@ -264,10 +298,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UpdateTableSelectionNames();
             }
 
-            public DiffMode(DataRenderer dataRenderer, BaseMode snapshotFirst, BaseMode snapshotSecond)
+            public DiffMode(ObjectDataFormatter objectDataFormatter, BaseMode snapshotFirst, BaseMode snapshotSecond)
             {
-                m_DataRenderer = dataRenderer;
-                m_DataRenderer.PrettyNamesOptionChanged += UpdateTableSelectionNames;
+                m_ObjectDataFormatter = objectDataFormatter;
+                m_ObjectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
                 modeFirst = snapshotFirst;
                 modeSecond = snapshotSecond;
                 m_SchemaFirst = modeFirst.GetSchema();
@@ -279,8 +313,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             protected DiffMode(DiffMode copy)
             {
-                m_DataRenderer = copy.m_DataRenderer;
-                m_DataRenderer.PrettyNamesOptionChanged += UpdateTableSelectionNames;
+                m_ObjectDataFormatter = copy.m_ObjectDataFormatter;
+                m_ObjectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
                 modeFirst = copy.modeFirst;
                 modeSecond = copy.modeSecond;
                 m_SchemaFirst = copy.m_SchemaFirst;
@@ -300,7 +334,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public override void UpdateTableSelectionNames()
             {
-                UpdateTableSelectionNamesFromSchema(m_DataRenderer, m_SchemaDiff);
+                UpdateTableSelectionNamesFromSchema(m_ObjectDataFormatter, m_SchemaDiff);
             }
 
             public override ViewPane GetDefaultView(UIState uiState, IViewPaneEventListener viewPaneEventListener)
@@ -410,11 +444,20 @@ namespace Unity.MemoryProfiler.Editor.UI
         public SnapshotMode noMode;
 
         public readonly DefaultHotKey HotKey = new DefaultHotKey();
-        public readonly DataRenderer DataRenderer = new DataRenderer();
-
+        public readonly FormattingOptions FormattingOptions;
+        
         public UIState()
         {
-            noMode = new SnapshotMode(DataRenderer, null);
+            FormattingOptions = new FormattingOptions();
+            FormattingOptions.ObjectDataFormatter = new ObjectDataFormatter();
+            var sizeDataFormatter = new Database.SizeDataFormatter();
+            FormattingOptions.AddFormatter("size", sizeDataFormatter);
+            // TODO add a format named "integer" that output in base 16,10,8,2
+            //FormattingOptions.AddFormatter("integer", PointerFormatter);
+            // TODO add a format named "pointer" that output in hex
+            //FormattingOptions.AddFormatter("pointer", PointerFormatter);
+
+            noMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, null);
         }
 
         public void AddHistoryEvent(HistoryEvent he)
@@ -508,7 +551,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     SecondMode.Clear();
                 SecondMode = FirstMode;
             }
-            FirstMode = new SnapshotMode(DataRenderer, snapshot);
+            FirstMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, snapshot);
 
             // Make sure that the first mode is shown and that ModeChanged (fired by ShownMode if set to something different) is fired.
             if (CurrentViewMode != ViewMode.ShowFirst)
@@ -535,7 +578,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void DiffLastAndCurrentSnapshot(bool firstIsOlder)
         {
             history.Clear();
-            diffMode = new DiffMode(DataRenderer, firstIsOlder ? FirstMode : SecondMode , firstIsOlder ? SecondMode : FirstMode);
+            diffMode = new DiffMode(FormattingOptions.ObjectDataFormatter, firstIsOlder ? FirstMode : SecondMode , firstIsOlder ? SecondMode : FirstMode);
             CurrentViewMode = ViewMode.ShowDiff;
         }
 

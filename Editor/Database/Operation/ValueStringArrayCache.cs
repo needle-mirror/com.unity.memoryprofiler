@@ -1,14 +1,16 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation
 {
     // Handles cache logic for an array of entries.
     // Each entry has a value of DataT type and a string.
+    // Will only cache strings if requested with DefaultDataFormatter.Instance
     internal struct ValueStringArrayCache<DataT> where DataT : IComparable
     {
         DataT[] m_Cache;
-        string[] m_CacheString;
+        string[] m_CacheDefaultString;
         BitArray m_CacheDirty;
         enum State
         {
@@ -26,7 +28,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             m_State = State.Cache_Single;
             m_Cache = new DataT[1];
-            m_CacheString = new string[1];
             m_CacheDirty = new BitArray(1);
             SetAllDirty();
         }
@@ -42,9 +43,17 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             m_State = State.Cache_Direct;
             m_Cache = new DataT[size];
-            m_CacheString = new string[size];
             m_CacheDirty = new BitArray(size);
             SetAllDirty();
+        }
+
+        string[] GetDefaultStringCache()
+        {
+            if(m_CacheDefaultString == null)
+            {
+                m_CacheDefaultString = new string[m_Cache.Length];
+            }
+            return m_CacheDefaultString;
         }
 
         // Initialize the cache using the appropriate associativity for a given expression 
@@ -103,28 +112,32 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
 
         // put value from expression in cache only if entry is dirty
-        public bool UpdateFromExpression(int cacheIndex, TypedExpression<DataT> exp, long row)
+        public bool UpdateValueFromExpression(int cacheIndex, TypedExpression<DataT> exp, long row)
         {
             if (m_CacheDirty[cacheIndex])
             {
                 if (exp == null)
                 {
                     m_Cache[cacheIndex] = default(DataT);
-                    m_CacheString[cacheIndex] = "";
                 }
                 else
                 {
                     m_Cache[cacheIndex] = exp.GetValue(row);
-                    if (exp.StringValueDiffers)
-                    {
-                        m_CacheString[cacheIndex] = exp.GetValueString(row);
-                    }
-                    else
-                    {
-                        m_CacheString[cacheIndex] = m_Cache[cacheIndex].ToString();
-                    }
                 }
                 m_CacheDirty[cacheIndex] = false;
+                return true;
+            }
+            return false;
+        }
+
+        // put value from expression in cache only if entry is dirty.
+        // Use DefaultDataFormatter
+        public bool UpdateStringFromExpression(int cacheIndex, TypedExpression<DataT> exp, long row)
+        {
+            var cache = GetDefaultStringCache();
+            if (cache[cacheIndex] == null)
+            {
+                cache[cacheIndex] = exp.GetValueString(row, DefaultDataFormatter.Instance);
                 return true;
             }
             return false;
@@ -140,7 +153,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 if (m_CacheDirty[index])
                 {
                     m_Cache[index] = value;
-                    m_CacheString[index] = valueString;
+                    GetDefaultStringCache()[index] = valueString;
                     m_CacheDirty[index] = false;
                     return true;
                 }
@@ -163,7 +176,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 if (m_CacheDirty[index])
                 {
                     m_Cache[index] = value();
-                    m_CacheString[index] = valueString();
+                    GetDefaultStringCache()[index] = valueString();
                     m_CacheDirty[index] = false;
                     return true;
                 }
@@ -193,14 +206,27 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
 
         // retrieve cached string value.
-        public bool TryGetCachedValueString(int index, out string value)
+        public bool TryGetCachedValueString(int index, out string value, IDataFormatter formatter)
         {
             int cacheIndex;
             if (TryGetCacheIndex(index, out cacheIndex))
             {
                 if (!m_CacheDirty[cacheIndex])
                 {
-                    value = m_CacheString[cacheIndex];
+                    if (formatter != DefaultDataFormatter.Instance)
+                    {
+                        // not caching string from other formatter than the default one
+                        value = formatter.Format(m_Cache[cacheIndex]);
+                    }
+                    else
+                    {
+                        var stringCache = GetDefaultStringCache();
+                        if (stringCache[cacheIndex] == null)
+                        {
+                            stringCache[cacheIndex] = formatter.Format(m_Cache[cacheIndex]);
+                        }
+                        value = stringCache[cacheIndex];
+                    }
                     return true;
                 }
             }
@@ -214,7 +240,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             if (TryGetCacheIndex(index, out cacheIndex))
             {
                 // use cache
-                UpdateFromExpression(cacheIndex, exp, row);
+                UpdateValueFromExpression(cacheIndex, exp, row);
                 return m_Cache[cacheIndex];
             }
             else
@@ -224,20 +250,21 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
         }
 
-        public string GetValueStringFromExpression(int index, TypedExpression<DataT> exp, long row)
+        public string GetValueStringFromExpression(int index, TypedExpression<DataT> exp, long row, IDataFormatter formatter)
         {
-            int cacheIndex;
-            if (TryGetCacheIndex(index, out cacheIndex))
+            if (formatter == DefaultDataFormatter.Instance)
             {
-                // use cache
-                UpdateFromExpression(cacheIndex, exp, row);
-                return m_CacheString[cacheIndex];
+                // use string cache only with DefaultDataFormatter
+                int cacheIndex;
+                if (TryGetCacheIndex(index, out cacheIndex))
+                {
+                    // use cache
+                    UpdateStringFromExpression(cacheIndex, exp, row);
+                    return GetDefaultStringCache()[cacheIndex];
+                }
             }
-            else
-            {
-                // not caching
-                return exp.GetValueString(row);
-            }
+            // not caching or not caching with the requested formatter
+            return exp.GetValueString(row, formatter);
         }
     }
 

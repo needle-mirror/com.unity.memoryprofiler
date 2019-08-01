@@ -77,6 +77,42 @@ namespace Unity.MemoryProfiler.Editor.Database
             this.Schema = schema;
         }
 
+
+
+        /// <summary>
+        /// Tests if the table and its columns are correctly setup. useful for debug and tests
+        /// </summary>
+        /// <param name="log">
+        /// true: will log any errors or warnings
+        /// false: will only output if the table is valid
+        /// </param>
+        /// <returns>
+        /// true: the table can be used. Call Update before accessing the data
+        /// false: the table is not correctly setup
+        /// </returns>
+        public virtual bool Validate(bool log)
+        {
+            bool valid = true;
+            string name = GetName();
+            using (var ctxTable = Debuging.ScopeDebugContext.String("Table '" + (name==null ? "<unnamed>" : name) + "'"))
+            {
+                valid &= Debuging.DebugUtility.ValidateError(log, m_Meta != null, "Table must have a MetaTable set.");
+                valid &= Debuging.DebugUtility.ValidateError(log, m_Meta.GetColumnCount() == m_Columns.Count, "Table must have the same number of column as its MetaTable.");
+                
+                for (int i = 0;i != m_Columns.Count; ++i)
+                {
+                    var metaColumn = m_Meta.GetColumnByIndex(i);
+                    using (var ctxColumn = Debuging.ScopeDebugContext.String("Column index " + i + ", meta name '" + metaColumn.Name + "'"))
+                    {
+                        valid &= Debuging.DebugUtility.ValidateError(log, metaColumn.Index == i, "Column index must be the same as the MetaColumn.Index property");
+                        valid &= m_Columns[i].Validate(log, metaColumn);
+                    }
+                }
+            }
+                
+            return valid;
+        }
+
         public virtual MetaColumn GetMetaColumnByColumn(Column col)
         {
             int index = m_Columns.IndexOf(col);
@@ -200,7 +236,7 @@ namespace Unity.MemoryProfiler.Editor.Database
 
         public abstract Database.CellLink GetLinkTo(CellPosition pos);
         //return the range or new/deleted row. length is positive for added, negative for removed
-        public virtual Range ExpandCell(long row, int col, bool expanded) { return Range.Empty(); }
+        public virtual Range ExpandCell(long row, int col, bool expanded) { return Range.None; }
     }
 
     internal abstract class CellLink

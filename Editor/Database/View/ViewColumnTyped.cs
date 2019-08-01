@@ -91,18 +91,18 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             return LinkRequestTable.MakeLinkRequest(vc.m_MetaLink, vc.viewTable, this, row, vc.ParsingContext);
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             if (vc.m_IsDisplayMergedOnly) return "";
             Update();
             if (m_rowIndex == null)
             {
                 //act as passthrough
-                return column.GetRowValue(row).ToString();
+                return column.GetRowValueString(row, formatter);
             }
             else if (row < m_rowIndex.Length && m_rowIndex[row] >= 0)
             {
-                return column.GetRowValue(m_rowIndex[row]).ToString();
+                return column.GetRowValueString(m_rowIndex[row], formatter);
             }
             else
             {

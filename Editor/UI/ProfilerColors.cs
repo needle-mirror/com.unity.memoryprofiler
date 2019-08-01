@@ -3,6 +3,9 @@ using UnityEngine.Accessibility;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    /// <summary>
+    /// A collection of colors used for labeling different entries in a graph
+    /// </summary>
     internal class ProfilerColors
     {
         static ProfilerColors()

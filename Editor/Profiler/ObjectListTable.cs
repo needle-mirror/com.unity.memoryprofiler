@@ -1,14 +1,19 @@
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Database.Operation;
 
 namespace Unity.MemoryProfiler.Editor
 {
+    /// <summary>
+    /// Column that lists a unique index for each object.
+    /// indices are unique inside a snapshot and do not uniquely identify an object through several snapshots
+    /// </summary>
     internal class ObjectListUnifiedIndexColumn : Database.ColumnTyped<int>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListUnifiedIndexColumn<int>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListUnifiedIndexColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -30,11 +35,11 @@ namespace Unity.MemoryProfiler.Editor
             return i;
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             var i = GetRowValue(row);
             if (i < 0) return "";
-            return i.ToString();
+            return formatter.Format(i);
         }
 
         public override void SetRowValue(long row, int value)
@@ -42,12 +47,16 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column that output the name of a field. 
+    /// For entries that are not fields (objects/array/etc), it will output its address as string
+    /// </summary>
     internal class ObjectListNameColumn : Database.ColumnTyped<string>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListNameColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListNameColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -72,12 +81,16 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column that output the value of a field.
+    /// For entries that are not fields (objects/array/etc), it will output its address as string
+    /// </summary>
     internal class ObjectListValueColumn : Database.ColumnTyped<string>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListValueColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListValueColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -95,7 +108,7 @@ namespace Unity.MemoryProfiler.Editor
         public override string GetRowValue(long row)
         {
             var obj = m_Table.GetObjectData(row).displayObject;
-            var result = m_Table.Renderer.Render(obj);
+            var result = m_Table.Formatter.Format(obj, DefaultDataFormatter.Instance);
             return result;
         }
 
@@ -143,12 +156,15 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
     
+    /// <summary>
+    /// Column that output a string that uniquely identify each object
+    /// </summary>
     internal class ObjectListUniqueStringColumn : Database.ColumnTyped<string>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListUniqueStringColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListUniqueStringColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -166,7 +182,7 @@ namespace Unity.MemoryProfiler.Editor
         public override string GetRowValue(long row)
         {
             var obj = m_Table.GetObjectData(row).displayObject;
-            var result = m_Table.Renderer.RenderUniqueString(obj);
+            var result = m_Table.Formatter.FormatUniqueString(obj);
             return result;
         }
 
@@ -180,12 +196,15 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 	
+    /// <summary>
+    /// Column that lists the address where an object reside in memory.
+    /// </summary>
     internal class ObjectListAddressColumn : Database.ColumnTyped<ulong>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListAddressColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListAddressColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -216,12 +235,15 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
     
+    /// <summary>
+    /// Column that output the type of an native or managed object
+    /// </summary>
     internal class ObjectListTypeColumn : Database.ColumnTyped<string>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListTypeColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListTypeColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -284,12 +306,15 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column that output the length (number of entries) in an Array type
+    /// </summary>
     internal class ObjectListLengthColumn : Database.ColumnTyped<int>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListLengthColumn<int>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListLengthColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -304,11 +329,11 @@ namespace Unity.MemoryProfiler.Editor
             return m_Table.GetObjectCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             var l = GetRowValue(row);
             if (l < 0) return "";
-            return l.ToString();
+            return formatter.Format(l);
         }
 
         public override int GetRowValue(long row)
@@ -339,12 +364,16 @@ namespace Unity.MemoryProfiler.Editor
         {
         }
     }
+
+    /// <summary>
+    /// Column that list weather a field is static or not
+    /// </summary>
     internal class ObjectListStaticColumn : Database.ColumnTyped<bool>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListStaticColumn<bool>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListStaticColumn<bool>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -369,12 +398,17 @@ namespace Unity.MemoryProfiler.Editor
         {
         }
     }
+
+    /// <summary>
+    /// Column that list the number of references to the object.
+    /// It will provide a link to the table of objects referencing the object
+    /// </summary>
     internal class ObjectListRefCountColumn : Database.ColumnTyped<int>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListRefCountColumn<int>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListRefCountColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -389,14 +423,14 @@ namespace Unity.MemoryProfiler.Editor
             return m_Table.GetObjectCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             var rc = GetRowValue(row);
             if (rc < 0)
             {
                 return "N/A";
             }
-            return rc.ToString();
+            return formatter.Format(rc);
         }
 
         public override int GetRowValue(long row)
@@ -449,12 +483,17 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column that list the size the object is taking in memory. 
+    /// It includes any padding, extra headers or anything else that is directly owned by this object.
+    /// 
+    /// </summary>
     internal class ObjectListOwnedSizeColumn : Database.ColumnTyped<long>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListOwnedSizeColumn<long>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListOwnedSizeColumn<long>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -499,12 +538,18 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column that list the size of the target object of a reference or static value.
+    /// When the current row object is a reference to an object or array, it will find that object/array and output its size
+    /// When the current row object is a static field, it will output the size of the static object.
+    /// This size is not part of the object itself. Will output 0 for any other object type
+    /// </summary>
     internal class ObjectListTargetSizeColumn : Database.ColumnTyped<long>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListTargetSizeColumn<long>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListTargetSizeColumn<long>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -560,13 +605,16 @@ namespace Unity.MemoryProfiler.Editor
         {
         }
     }
-
+    /// <summary>
+    /// Column that output the type of object, not to be confused with class name.
+    /// The type of object can be a combination of Managed/Native/Array/BoxedValue/Object/Reference/Type/Value
+    /// </summary>
     internal class ObjectListObjectTypeColumn : Database.ColumnTyped<string>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListObjectTypeColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListObjectTypeColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -633,6 +681,10 @@ namespace Unity.MemoryProfiler.Editor
         {
         }
     }
+    /// <summary>
+    /// Base class for any column that links to a native object entry in the table ObjectAllNativeTable
+    /// use the 'NativeInstanceId' value to find the entry
+    /// </summary>
     internal abstract class ObjectListNativeLinkColumn<DataT> : Database.ColumnTyped<DataT> where DataT : System.IComparable
     {
         protected ObjectListTable m_Table;
@@ -704,12 +756,17 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column for a native object's name. Can be used for both native and managed objects
+    /// if the object is managed, it will find the native object counterpart and output its name.
+    /// Will output an empty string if the managed object is not linked to a native one.
+    /// </summary>
     internal class ObjectListNativeObjectNameLinkColumn : ObjectListNativeLinkColumn<string>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListNativeObjectNameLinkColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListNativeObjectNameLinkColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -746,12 +803,15 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column for a native object's name. Can be used for native objects table only
+    /// </summary>
     internal class ObjectListNativeObjectNameColumn : Database.ColumnTyped<string>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListNativeObjectNameColumn<string>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListNativeObjectNameColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -785,12 +845,16 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column for a native object's size. can be used for both native and managed objects
+    /// if the object is managed, it will find the native object counterpart and output its size
+    /// </summary>
     internal class ObjectListNativeObjectSizeColumn : ObjectListNativeLinkColumn<long>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListNativeObjectSizeColumn<long>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListNativeObjectSizeColumn<long>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -804,11 +868,9 @@ namespace Unity.MemoryProfiler.Editor
             return m_Table.GetObjectCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
-            long l = GetRowValue(row);
-            if (l < 0) return "";
-            return l.ToString();
+            return formatter.Format(GetRowValue(row));
         }
 
         public override long GetRowValue(long row)
@@ -819,7 +881,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 return (long)m_Table.Snapshot.nativeObjects.size[moi.NativeObjectIndex];
             }
-            return -1;
+            return 0;
         }
 
         public override void SetRowValue(long row, long value)
@@ -827,12 +889,16 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column for an object's native instance ID. can be used for both native and managed objects
+    /// if the object is managed, it will find the native object counterpart and output its instance ID
+    /// </summary>
     internal class ObjectListNativeInstanceIdLinkColumn : ObjectListNativeLinkColumn<int>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListNativeInstanceIdLinkColumn<int>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListNativeInstanceIdLinkColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -846,11 +912,11 @@ namespace Unity.MemoryProfiler.Editor
             return m_Table.GetObjectCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             var l = GetRowValue(row);
             if (l == CachedSnapshot.NativeObjectEntriesCache.InstanceID_None) return "";
-            return l.ToString();
+            return formatter.Format(l);
         }
 
         public override int GetRowValue(long row)
@@ -879,12 +945,16 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Column for an object's native instance ID
+    /// Must be used for native object tables only
+    /// </summary>
     internal class ObjectListNativeInstanceIdColumn : Database.ColumnTyped<int>
     {
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
-            return "ObjectListNativeInstanceIdColumn<int>[" + row + "]{" + GetRowValueString(row) + "}";
+            return "ObjectListNativeInstanceIdColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
         }
 
 #endif
@@ -899,11 +969,11 @@ namespace Unity.MemoryProfiler.Editor
             return m_Table.GetObjectCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             var l = GetRowValue(row);
             if (l == CachedSnapshot.NativeObjectEntriesCache.InstanceID_None) return "";
-            return l.ToString();
+            return formatter.Format(l);
         }
 
         public override int GetRowValue(long row)
@@ -926,6 +996,10 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    /// <summary>
+    /// Base class for all tables that list managed and/or native objects. 
+    /// It will construct the meta tables statically for both managed and native object tables
+    /// </summary>
     internal abstract class ObjectTable : Database.ExpandTable
     {
         public const string TableName = "Object";
@@ -948,21 +1022,21 @@ namespace Unity.MemoryProfiler.Editor
             metaNative.name = TableName;
             metaNative.displayName = TableDisplayName;
 
-            var metaColIndex           = new Database.MetaColumn("Index", "Index", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(int)), 40);
-            var metaColName            = new Database.MetaColumn("Name", "Name", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), 200);
-            var metaColValue           = new Database.MetaColumn("Value", "Value", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), 180);
-            var metaColType            = new Database.MetaColumn("Type", "Type", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), 250);
-            var metaColDataType        = new Database.MetaColumn("DataType", "Data Type", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), 150);
-            var metaColNOName          = new Database.MetaColumn("NativeObjectName", "Native Object Name", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), 125);
-            var metaColLength          = new Database.MetaColumn("Length", "Length", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), 50);
-            var metaColStatic          = new Database.MetaColumn("Static", "Static", typeof(bool), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(bool)), 50);
-            var metaColRefCount        = new Database.MetaColumn("RefCount", "RefCount", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), 50);
-            var metaColOwnerSize       = new Database.MetaColumn("OwnedSize", "Owned Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), 50);
-            var metaColTargetSize      = new Database.MetaColumn("TargetSize", "Target Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), 50);
-            var metaColNativeSize      = new Database.MetaColumn("NativeSize", "Native Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), 75);
-            var metaColNativeId        = new Database.MetaColumn("NativeInstanceId", "Native Instance ID", typeof(int), false, Grouping.groupByDuplicate, null, 75);
-            var metaColAddress         = new Database.MetaColumn("Address", "Address", typeof(ulong), false, Grouping.groupByDuplicate, null, 75);
-            var metaColUniqueString    = new Database.MetaColumn("UniqueString", "Unique String", typeof(string), true, Grouping.groupByDuplicate, null, 250);
+            var metaColIndex           = new Database.MetaColumn("Index", "Index", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(int)), "", 40);
+            var metaColName            = new Database.MetaColumn("Name", "Name", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 200);
+            var metaColValue           = new Database.MetaColumn("Value", "Value", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 180);
+            var metaColType            = new Database.MetaColumn("Type", "Type", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 250);
+            var metaColDataType        = new Database.MetaColumn("DataType", "Data Type", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 150);
+            var metaColNOName          = new Database.MetaColumn("NativeObjectName", "Native Object Name", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 125);
+            var metaColLength          = new Database.MetaColumn("Length", "Length", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 50);
+            var metaColStatic          = new Database.MetaColumn("Static", "Static", typeof(bool), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(bool)), "", 50);
+            var metaColRefCount        = new Database.MetaColumn("RefCount", "RefCount", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 50);
+            var metaColOwnerSize       = new Database.MetaColumn("OwnedSize", "Owned Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 50);
+            var metaColTargetSize      = new Database.MetaColumn("TargetSize", "Target Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 50);
+            var metaColNativeSize      = new Database.MetaColumn("NativeSize", "Native Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 75);
+            var metaColNativeId        = new Database.MetaColumn("NativeInstanceId", "Native Instance ID", typeof(int), false, Grouping.groupByDuplicate, null, "", 75);
+            var metaColAddress         = new Database.MetaColumn("Address", "Address", typeof(ulong), false, Grouping.groupByDuplicate, null, "", 75);
+            var metaColUniqueString    = new Database.MetaColumn("UniqueString", "Unique String", typeof(string), true, Grouping.groupByDuplicate, null, "", 250);
             
             var metaManagedCol = new List<Database.MetaColumn>();
             metaManagedCol.Add(metaColIndex);
@@ -1013,16 +1087,20 @@ namespace Unity.MemoryProfiler.Editor
             m_Meta = s_Meta[(int)metaType];
         }
     }
+
+    /// <summary>
+    /// Lists all objects that fit an ObjectMetaType (Managed, Native or All)
+    /// </summary>
     internal abstract class ObjectListTable : ObjectTable
     {
-        public readonly SnapshotDataRenderer Renderer;
+        public readonly SnapshotObjectDataFormatter Formatter;
         public readonly CachedSnapshot Snapshot;
         public readonly ManagedData CrawledData;
 
-        public ObjectListTable(Database.Schema schema, SnapshotDataRenderer renderer, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
+        public ObjectListTable(Database.Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectMetaType metaType)
             : base(schema, metaType)
         {
-            Renderer = renderer;
+            Formatter = formatter;
             Snapshot = snapshot;
             CrawledData = crawledData;
 
@@ -1077,26 +1155,26 @@ namespace Unity.MemoryProfiler.Editor
             switch (subObj.dataType)
             {
                 case ObjectDataType.Array:
-                    return new ObjectArrayTable(Schema, Renderer, Snapshot, CrawledData, subObj, m_MetaType);
+                    return new ObjectArrayTable(Schema, Formatter, Snapshot, CrawledData, subObj, m_MetaType);
                 case ObjectDataType.ReferenceArray:
                 {
                     var ptr = subObj.GetReferencePointer();
                     subObj = ObjectData.FromManagedPointer(Snapshot, ptr);
-                    return new ObjectArrayTable(Schema, Renderer, Snapshot, CrawledData, subObj, m_MetaType);
+                    return new ObjectArrayTable(Schema, Formatter, Snapshot, CrawledData, subObj, m_MetaType);
                 }
                 case ObjectDataType.Value:
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Object:
                 case ObjectDataType.Type:
-                    return new ObjectFieldTable(Schema, Renderer, Snapshot, CrawledData, subObj, m_MetaType);
+                    return new ObjectFieldTable(Schema, Formatter, Snapshot, CrawledData, subObj, m_MetaType);
                 case ObjectDataType.ReferenceObject:
                 {
                     var ptr = subObj.GetReferencePointer();
                     subObj = ObjectData.FromManagedPointer(Snapshot, ptr);
-                    return new ObjectFieldTable(Schema, Renderer, Snapshot, CrawledData, subObj, m_MetaType);
+                    return new ObjectFieldTable(Schema, Formatter, Snapshot, CrawledData, subObj, m_MetaType);
                 }
                 case ObjectDataType.NativeObject:
-                    return new ObjectReferenceTable(Schema, Renderer, Snapshot, CrawledData, subObj, m_MetaType);
+                    return new ObjectReferenceTable(Schema, Formatter, Snapshot, CrawledData, subObj, m_MetaType);
                 default:
                     return null;
             }
@@ -1117,7 +1195,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool IsGroupLinked(ObjectData od)
         {
-            return IsGroupExpandable(od, Renderer.forceLinkAllObject);
+            return IsGroupExpandable(od, Formatter.forceLinkAllObject);
         }
 
         public bool IsGroupExpandable(ObjectData od, bool forceExpandAllObject = false)
@@ -1147,18 +1225,18 @@ namespace Unity.MemoryProfiler.Editor
                     var obj = ObjectData.FromManagedPointer(Snapshot, ptr);
                     if (!obj.IsValid) return false;
                     if (forceExpandAllObject) return true;
-                    if (!Renderer.IsExpandable(obj.managedTypeIndex)) return false;
+                    if (!Formatter.IsExpandable(obj.managedTypeIndex)) return false;
                     return Snapshot.typeDescriptions.HasAnyField(obj.managedTypeIndex);
                 }
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Object:
                 case ObjectDataType.Value:
                     if (forceExpandAllObject) return true;
-                    if (!Renderer.IsExpandable(od.managedTypeIndex)) return false;
+                    if (!Formatter.IsExpandable(od.managedTypeIndex)) return false;
                     return Snapshot.typeDescriptions.HasAnyField(od.managedTypeIndex);
                 case ObjectDataType.Type:
-                    if (!Renderer.IsExpandable(od.managedTypeIndex)) return false;
-                    if (Renderer.flattenFields)
+                    if (!Formatter.IsExpandable(od.managedTypeIndex)) return false;
+                    if (Formatter.flattenFields)
                     {
                         return Snapshot.typeDescriptions.HasAnyStaticField(od.managedTypeIndex);
                     }
@@ -1185,12 +1263,12 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.ReferenceArray:
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.Value:
-                    return Renderer.RenderPointer(obj.GetObjectPointer(Snapshot));
+                    return Formatter.FormatPointer(obj.GetObjectPointer(Snapshot));
                 case ObjectDataType.Global:
                 case ObjectDataType.Type:
                 case ObjectDataType.Unknown:
                 default:
-                    return Renderer.Render(obj);
+                    return Formatter.Format(obj, DefaultDataFormatter.Instance);
             }
         }
 

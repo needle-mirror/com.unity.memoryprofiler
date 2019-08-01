@@ -15,7 +15,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public override void Get(Range range, ref DataT[] dataOut)
             {
-                m_Array.GetEntries((uint)range.first, (uint)range.length, ref dataOut);
+                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
             }
         }
         public class Adaptor_String : Database.Soa.DataSource<string>
@@ -28,9 +28,9 @@ namespace Unity.MemoryProfiler.Editor
 
             public override void Get(Range range, ref string[] dataOut)
             {
-                string[] tmp = new string[range.length];
-                m_Array.GetEntries((uint)range.first, (uint)range.length, ref tmp);
-                for (long i = 0; i < range.length; ++i)
+                string[] tmp = new string[range.Length];
+                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref tmp);
+                for (long i = 0; i < range.Length; ++i)
                 {
                     dataOut[i] = tmp[i];
                 }
@@ -47,8 +47,8 @@ namespace Unity.MemoryProfiler.Editor
 
             public override void Get(Range range, ref DataT[][] dataOut)
             {
-                dataOut = new DataT[range.length][];
-                m_Array.GetEntries((uint)range.first, (uint)range.length, ref dataOut);
+                dataOut = new DataT[range.Length][];
+                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
             }
         }
         public static Adaptor<DataT> ApiToDatabase<DataT>(UnityEditor.Profiling.Memory.Experimental.ArrayEntries<DataT> array)

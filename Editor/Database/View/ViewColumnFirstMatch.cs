@@ -106,13 +106,13 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             }
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             if (vc.m_IsDisplayMergedOnly) return "";
             long r = GetRow(row);
             if (r >= 0)
             {
-                return column.GetRowValue(r).ToString();
+                return column.GetRowValueString(r, formatter);
             }
             else
             {

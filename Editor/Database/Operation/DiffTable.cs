@@ -7,6 +7,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     {
         void Initialize(DiffTable table, Column[] sourceColumn);
     }
+
+    /// <summary>
+    /// A column that represent the difference between 2 entries of a DiffTable.
+    /// it may represent an entry that is only present in 1 table or both.
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
     internal class DiffColumnTyped<DataT> : ColumnTyped<DataT>, IDiffColumn where DataT : System.IComparable
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -41,11 +47,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return m_Table.GetRowCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             int tabI = m_Table.m_Entries[row].tableIndex;
             long rowI = m_Table.m_Entries[row].rowIndex;
-            return m_SourceColumn[tabI].GetRowValueString(rowI);
+            return m_SourceColumn[tabI].GetRowValueString(rowI, formatter);
         }
 
         public override DataT GetRowValue(long row)
@@ -72,6 +78,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return link;
         }
     }
+
+    /// <summary>
+    /// A Column that output wheater an entry in a DiffTable is present in the first table only (delete), in the second table only (new) or in both tables (same)
+    /// </summary>
     internal class DiffColumnResult : ColumnTyped<DiffTable.DiffResult>
     {
 #if MEMPROFILER_DEBUG_INFO
@@ -93,9 +103,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return m_Table.GetRowCount();
         }
 
-        public override string ValueToString(DiffTable.DiffResult a)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
-            return Enum.GetName(typeof(DiffTable.DiffResult), a);
+            return formatter.Format(Enum.GetName(typeof(DiffTable.DiffResult), m_Table.m_Entries[row].diffResult));
         }
 
         public override DiffTable.DiffResult GetRowValue(long row)
@@ -109,7 +119,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    // Compares 2 table with identical structure and output each rows which primary key are present in either the first one only, the second one only or in both
+    /// <summary>
+    /// Compares 2 table with identical structure and output each rows which primary key are present in either the first one only, the second one only or in both
+    /// </summary>
     internal class DiffTable : Table
     {
         public Table[] sourceTables;

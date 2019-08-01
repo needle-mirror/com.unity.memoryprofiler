@@ -353,7 +353,7 @@ namespace Unity.MemoryProfiler.Editor
                 CrawlDataStack = new Stack<StackCrawlData>();
 
                 TypesWithStaticFields = new List<int>();
-                for (int i = 0; i != snapshot.typeDescriptions.Count; ++i)
+                for (long i = 0; i != snapshot.typeDescriptions.Count; ++i)
                 {
                     if (snapshot.typeDescriptions.staticFieldBytes[i] != null
                         && snapshot.typeDescriptions.staticFieldBytes[i].Length > 0)
@@ -474,7 +474,7 @@ namespace Unity.MemoryProfiler.Editor
 
         static void AddupRawRefCount(CachedSnapshot snapshot)
         {
-            for (int i = 0; i != snapshot.connections.Count; ++i)
+            for (long i = 0; i != snapshot.connections.Count; ++i)
             {
                 int iManagedTo = snapshot.UnifiedObjectIndexToManagedObjectIndex(snapshot.connections.to[i]);
                 if (iManagedTo >= 0)

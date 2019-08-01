@@ -48,10 +48,10 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             return vc.viewTable.GetRowCount();
         }
 
-        public override string GetRowValueString(long row)
+        public override string GetRowValueString(long row, IDataFormatter formatter)
         {
             if (vc.m_IsDisplayMergedOnly) return "";
-            return value.ToString();
+            return formatter.Format(value);
         }
 
         public override DataT GetRowValue(long row)

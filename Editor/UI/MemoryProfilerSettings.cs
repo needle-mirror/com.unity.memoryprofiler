@@ -8,8 +8,14 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal static class MemoryProfilerSettings
     {
+        // Opt-Out Dialog keys:
+        public const string HeapWarningWindowOptOutKey = "Unity.MemoryProfiler.HeapWarningPopup";
+
+        const string k_LastImportPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastImportPath";
+        const string k_LastXMLLoadPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastXMLLoadPath";
         const string k_SnapshotPathEditorPerf = "Unity.MemoryProfiler.Editor.MemorySnapshotStoragePath";
         const string k_DefaultPath = "./MemoryCaptures";
+        
         public static string MemorySnapshotStoragePath
         {
             get
@@ -19,6 +25,30 @@ namespace Unity.MemoryProfiler.Editor
             set
             {
                 EditorPrefs.SetString(k_SnapshotPathEditorPerf, value);
+            }
+        }
+
+        public static string LastImportPath
+        {
+            get
+            {
+                return SessionState.GetString(k_LastImportPathPrefKey, Application.dataPath);
+            }
+            set
+            {
+                SessionState.SetString(k_LastImportPathPrefKey, value);
+            }
+        }
+
+        public static string LastXMLLoadPath
+        {
+            get
+            {
+                return SessionState.GetString(k_LastXMLLoadPathPrefKey, Application.dataPath);
+            }
+            set
+            {
+                SessionState.SetString(k_LastXMLLoadPathPrefKey, value);
             }
         }
 
@@ -68,6 +98,11 @@ namespace Unity.MemoryProfiler.Editor
         {
             EditorPrefs.SetString(k_SnapshotPathEditorPerf, k_DefaultPath);
         }
+
+        public static void ResetAllOptOutModalDialogSettings()
+        {
+            EditorPrefs.SetBool(HeapWarningWindowOptOutKey, false);
+        }
     }
 
     internal class MemoryProfilerSettingsEditor
@@ -78,6 +113,8 @@ namespace Unity.MemoryProfiler.Editor
             public static readonly string OnlyRelativePaths = L10n.Tr("Only relative paths are allowed");
             public static readonly string OKButton = L10n.Tr("OK");
             public static readonly string InvalidPathWindow = L10n.Tr("Invalid Path");
+
+            public static readonly GUIContent ResetOptOutDialogsButton = EditorGUIUtility.TrTextContent("Reset Opt-Out settings for dialog prompts", "All dialogs that you have previously opted out of will show up again when they get triggered.");
         }
         const string k_RootPathSignifier = "./";
         const string k_PathOneUpSignifier = "../";
@@ -85,7 +122,7 @@ namespace Unity.MemoryProfiler.Editor
         [SettingsProvider()]
         static SettingsProvider CreateSettingsProvider()
         {
-            var provider = new SettingsProvider("Preferences/Profiling/MemoryProfiler", SettingsScope.User)
+            var provider = new SettingsProvider("Preferences/Analysis/MemoryProfiler", SettingsScope.User)
             {
                 guiHandler = searchConext =>
                 {
@@ -109,7 +146,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 EditorGUI.BeginChangeCheck();
                 var prevControl = GUI.GetNameOfFocusedControl();
-                var val = EditorGUILayout.TextField(Content.SnapshotPathLabel, MemoryProfilerSettings.MemorySnapshotStoragePath);
+                var val = EditorGUILayout.DelayedTextField(Content.SnapshotPathLabel, MemoryProfilerSettings.MemorySnapshotStoragePath);
                 if (EditorGUI.EndChangeCheck())
                 {
                     if (!(val.StartsWith(k_RootPathSignifier) || val.StartsWith(k_PathOneUpSignifier)))
@@ -135,6 +172,10 @@ namespace Unity.MemoryProfiler.Editor
                                 throw new UnityException("Failed to create directory, with provided preferences path: " + collectionPath);
                         }
                     }
+                }
+                if (GUILayout.Button(Content.ResetOptOutDialogsButton))
+                {
+                    MemoryProfilerSettings.ResetAllOptOutModalDialogSettings();
                 }
             }
             GUILayout.EndVertical();
