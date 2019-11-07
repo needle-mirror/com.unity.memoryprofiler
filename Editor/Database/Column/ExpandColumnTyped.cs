@@ -8,37 +8,6 @@ namespace Unity.MemoryProfiler.Editor.Database
     /// <typeparam name="DataT"></typeparam>
     internal class ExpandColumnTyped<DataT> : ColumnTyped<DataT>, IExpandColumn, IColumnDecorator where DataT : System.IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            var e = m_Table.m_RowData[row];
-            if (e.isGroupHead())
-            {
-                if (m_Column == null)
-                {
-                    return "ExpandColumnTyped<" + typeof(DataT).Name + ">[" + row + "]{ null }";
-                }
-                else
-                {
-                    return "ExpandColumnTyped<" + typeof(DataT).Name + ">[" + row + "]{ Head " + m_Column.GetDebugString(e.groupIndex) + "}";
-                }
-            }
-            else
-            {
-                var subTable = m_Table.GetGroupSubTable(e.groupIndex);
-                if (subTable != null)
-                {
-                    var col = subTable.GetColumnByIndex(m_ColumnIndex);
-                    return "ExpandColumnTyped<" + typeof(DataT).Name + ">[" + row + "]{" + col.GetDebugString(e.subGroupIndex) + "}";
-                }
-                else
-                {
-                    return "ExpandColumnTyped<" + typeof(DataT).Name + ">[" + row + "]{ no sub table }";
-                }
-            }
-        }
-
-#endif
         protected ExpandTable m_Table;
         protected ColumnTyped<DataT> m_Column;
         protected int m_ColumnIndex;

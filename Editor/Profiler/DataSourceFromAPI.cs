@@ -5,10 +5,32 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal class DataSourceFromAPI
     {
-        public class Adaptor<DataT> : Database.Soa.DataSource<DataT>
+        public abstract class Adaptor<DataT> : Database.Soa.DataSource<DataT>
+        {
+            //crappy hack
+        }
+
+        public class AdaptorArray<DataT> : Adaptor<DataT>
+        {
+            private DataT[] m_Array;
+            public AdaptorArray(DataT[] array)
+            {
+                m_Array = array;
+            }
+
+            public override void Get(Range range, ref DataT[] dataOut)
+            {
+                for(long i = range.First; i < range.Length; ++i)
+                {
+                    dataOut[i] = m_Array[i];
+                }
+            }
+        }
+
+        public class AdaptorAPIArray<DataT> : Adaptor<DataT>
         {
             private ArrayEntries<DataT> m_Array;
-            public Adaptor(ArrayEntries<DataT> array)
+            public AdaptorAPIArray(ArrayEntries<DataT> array)
             {
                 m_Array = array;
             }
@@ -18,6 +40,7 @@ namespace Unity.MemoryProfiler.Editor
                 m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
             }
         }
+
         public class Adaptor_String : Database.Soa.DataSource<string>
         {
             private ArrayEntries<string> m_Array;
@@ -28,12 +51,9 @@ namespace Unity.MemoryProfiler.Editor
 
             public override void Get(Range range, ref string[] dataOut)
             {
-                string[] tmp = new string[range.Length];
-                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref tmp);
-                for (long i = 0; i < range.Length; ++i)
-                {
-                    dataOut[i] = tmp[i];
-                }
+                if (dataOut.Length != range.Length)
+                    throw new ArgumentException("DataOut should have the same amount of elements are the range requires");
+                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
             }
         }
 
@@ -53,7 +73,12 @@ namespace Unity.MemoryProfiler.Editor
         }
         public static Adaptor<DataT> ApiToDatabase<DataT>(UnityEditor.Profiling.Memory.Experimental.ArrayEntries<DataT> array)
         {
-            return new Adaptor<DataT>(array);
+            return new AdaptorAPIArray<DataT>(array);
+        }
+
+        public static Adaptor<DataT> ApiToDatabase<DataT>(DataT[] array)
+        {
+            return new AdaptorArray<DataT>(array);
         }
 
         public static Adaptor_String ApiToDatabase(UnityEditor.Profiling.Memory.Experimental.ArrayEntries<string> array)

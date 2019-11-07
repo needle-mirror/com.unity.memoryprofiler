@@ -8,23 +8,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class GroupedColumnTyped<DataT> : ExpandColumnTyped<DataT>, IGroupedColumn, IColumnDecorator where DataT : System.IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            var e = m_GroupTable.m_RowData[row];
-            if (e.isGroupHead())
-            {
-                return "GroupedColumnTyped<" + typeof(DataT).Name + ">[" + row + "]{ group " + e.groupIndex + "}";
-            }
-            else
-            {
-                var subTable = m_GroupTable.GetGroupSubTable(e.groupIndex);
-                var subCol = subTable.GetColumnByIndex(m_ColumnIndex);
-                return "GroupedColumnTyped<" + typeof(DataT).Name + ">[" + row + "]{" + subCol.GetDebugString(e.subGroupIndex) + "}";
-            }
-        }
-
-#endif
         protected GroupedTable m_GroupTable;
         //TODO use valueStringArrayCache here
         DataT[] m_GroupData;

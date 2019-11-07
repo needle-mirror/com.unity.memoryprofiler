@@ -194,6 +194,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
         {
             yield break;
         }
+
         public string GetColumnName(Database.Table sourceTable)
         {
             return sourceTable.GetMetaData().GetColumnByIndex(m_ColumnIndex).Name;

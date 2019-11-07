@@ -1,29 +1,11 @@
 using System;
-using Unity.MemoryProfiler.Editor.Debuging;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.View
 {
     // Used only with select statement that are not Many-To-Many
     internal class ViewColumnTyped<DataT> : Database.ColumnTyped<DataT>, ViewColumn.IViewColumn where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            if (m_rowIndex == null)
-            {
-                return "ViewColumnExpressionType<" + typeof(DataT).Name + ">[" + row + "]{" + column.GetDebugString(row) + "}";
-            }
-            else if (row < m_rowIndex.Length && m_rowIndex[row] >= 0)
-            {
-                return "ViewColumnExpressionType<" + typeof(DataT).Name + ">[" + row + "]{" + column.GetDebugString(m_rowIndex[row]) + "}";
-            }
-            else
-            {
-                return "ViewColumnExpressionType<" + typeof(DataT).Name + ">[" + row + "]{}";
-            }
-        }
-
-#endif
         private long[] m_rowIndex; //when is null, either the data was not computed yet or the column act as passthrough (no where condition on the select statement)
         private ViewColumn vc;
         public Database.ColumnTyped<DataT> column;
@@ -48,7 +30,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             {
                 extraInfo += " column '" + metaColumn.Name + "'";
             }
-            DebugUtility.LogError("Cannot set a const value on an indexed view column. Table '" + vc.viewTable.GetName() + "'" + extraInfo);
+            Debug.LogError("Cannot set a const value on an indexed view column. Table '" + vc.viewTable.GetName() + "'" + extraInfo);
         }
 
         Database.Column ViewColumn.IViewColumn.GetColumn()

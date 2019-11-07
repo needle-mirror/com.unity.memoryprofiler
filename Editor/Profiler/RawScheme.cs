@@ -5,6 +5,7 @@ using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Database.Operation;
 using Unity.MemoryProfiler.Editor.Database.Soa;
 using Unity.MemoryProfiler.Editor.Database.Aos;
+using Unity.Profiling;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -49,15 +50,16 @@ namespace Unity.MemoryProfiler.Editor
 
         Dictionary<string, Table> m_TablesByName = new Dictionary<string, Table>();
 
+        static ProfilerMarker s_CreateSnapshotSchema = new ProfilerMarker("CreateSnapshotSchema");
+
         public void SetupSchema(CachedSnapshot snapshot, ObjectDataFormatter objectDataFormatter)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.CreateSnapshotSchema).Auto())
+            using (s_CreateSnapshotSchema.Auto())
             {
                 m_Snapshot = snapshot;
                 formatter = new SnapshotObjectDataFormatter(objectDataFormatter, m_Snapshot);
                 CreateTables(m_Snapshot.CrawledData);
             }
-
         }
 
         private void CreateTables(ManagedData crawledData)
@@ -74,13 +76,6 @@ namespace Unity.MemoryProfiler.Editor
             CreateNativeTable_NativeTypeBase(tables);
             CreateTable_NativeConnections(tables);
             CreateTable_TypeDescriptions(tables);
-#if MEMPROFILER_ALLRAWDATA
-            CreateTable_GCHandles(tables);
-            CreateTable_ManagedHeapSections(tables);
-            CreateTable_ManagedStacks(tables);
-            CreateTable_Field(tables);
-            CreateManageTable_Connections(tables);
-#endif
             m_Tables = tables.ToArray();
 
 
@@ -300,20 +295,20 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("id", "id", typeof(long), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.id)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("areaName", "areaName", typeof(string), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.areaName)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("objectName", "objectName", typeof(string), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.objectName)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("accumulatedSize", "accumulatedSize", typeof(ulong), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.accumulatedSize)
-                );
+            );
             table.CreateTable(kPrefixTableName + "RootReference", kPrefixTableDisplayName + "Root Reference");
             AddTable(table, tables);
         }
@@ -324,11 +319,11 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("id", "id", typeof(long), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocationSites.id)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("memoryLabelIndex", "memoryLabelIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocationSites.memoryLabelIndex)
-                );
+            );
 
             table.CreateTable(kPrefixTableName + "NativeAllocationSite", kPrefixTableDisplayName + "Native Allocation Site");
             AddTable(table, tables);
@@ -340,11 +335,11 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("symbol", "symbol", typeof(ulong), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeCallstackSymbols.symbol)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("readableStackTrace", "readableStackTrace", typeof(string), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeCallstackSymbols.readableStackTrace)
-                );
+            );
             table.CreateTable(kPrefixTableName + "NativeCallstackSymbol", kPrefixTableDisplayName + "Native Callstack Symbol");
             AddTable(table, tables);
         }
@@ -355,7 +350,7 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("name", "name", typeof(string), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryLabels.memoryLabelName)
-                );
+            );
             table.CreateTable(kPrefixTableName + "NativeMemoryLabel", kPrefixTableDisplayName + "Native Memory Label");
             AddTable(table, tables);
         }
@@ -366,29 +361,29 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("parentIndex", "parentIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.parentIndex)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("name", "name", typeof(string), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.memoryRegionName)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("addressBase", "addressBase", typeof(ulong), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.addressBase)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("addressSize", "addressSize", typeof(ulong), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.addressSize)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("firstAllocationIndex", "firstAllocationIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.firstAllocationIndex)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("numAllocations", "numAllocations", typeof(int), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)))
                 , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.numAllocations)
-                );
+            );
             table.CreateTable(kPrefixTableName + "NativeMemoryRegion", kPrefixTableDisplayName + "Native Memory Region");
             AddTable(table, tables);
         }
@@ -399,68 +394,68 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("name", "name", typeof(string), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeObjects.objectName)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("instanceId", "instanceId", typeof(int), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeObjects.instanceId)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("size", "size", typeof(ulong), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeObjects.size)
-                );
+            );
 
             table.AddColumn(
                 new MetaColumn("nativeObjectAddress", "nativeObjectAddress", typeof(ulong), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeObjects.nativeObjectAddress)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("rootReferenceId", "rootReferenceId", typeof(long), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeObjects.rootReferenceId)
-                );
+            );
 
             table.AddColumn(
                 new MetaColumn("nativeTypeArrayIndex", "nativeTypeArrayIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeObjects.nativeTypeArrayIndex)
-                );
+            );
 
             table.AddColumn(
                 new MetaColumn("isPersistent", "isPersistent", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.flags, (a) => HasBit(a, ObjectFlags.IsPersistent) , (ref ObjectFlags o, bool v) => SetBit(ref o, ObjectFlags.IsPersistent, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("isDontDestroyOnLoad", "isDontDestroyOnLoad", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.flags, (a) => HasBit(a, ObjectFlags.IsDontDestroyOnLoad), (ref ObjectFlags o, bool v) => SetBit(ref o, ObjectFlags.IsDontDestroyOnLoad, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("isManager", "isManager", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.flags, (a) => HasBit(a, ObjectFlags.IsManager), (ref ObjectFlags o, bool v) => SetBit(ref o, ObjectFlags.IsManager, v))
-                );
+            );
 
             table.AddColumn(
                 new MetaColumn("HideInHierarchy", "HideInHierarchy", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.hideFlags, (a) => HasBit(a, HideFlags.HideInHierarchy), (ref HideFlags o, bool v) => SetBit(ref o, HideFlags.HideInHierarchy, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("HideInInspector", "HideInInspector", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.hideFlags, (a) => HasBit(a, HideFlags.HideInInspector), (ref HideFlags o, bool v) => SetBit(ref o, HideFlags.HideInInspector, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("DontSaveInEditor", "DontSaveInEditor", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.hideFlags, (a) => HasBit(a, HideFlags.DontSaveInEditor), (ref HideFlags o, bool v) => SetBit(ref o, HideFlags.DontSaveInEditor, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("NotEditable", "NotEditable", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.hideFlags, (a) => HasBit(a, HideFlags.NotEditable), (ref HideFlags o, bool v) => SetBit(ref o, HideFlags.NotEditable, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("DontSaveInBuild", "DontSaveInBuild", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.hideFlags, (a) => HasBit(a, HideFlags.DontSaveInBuild), (ref HideFlags o, bool v) => SetBit(ref o, HideFlags.DontSaveInBuild, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("DontUnloadUnusedAsset", "DontUnloadUnusedAsset", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.nativeObjects.hideFlags, (a) => HasBit(a, HideFlags.DontUnloadUnusedAsset), (ref HideFlags o, bool v) => SetBit(ref o, HideFlags.DontUnloadUnusedAsset, v))
-                );
+            );
 
             table.CreateTable(kPrefixTableName + "NativeObject", kPrefixTableDisplayName + "Native Object");
             AddTable(table, tables);
@@ -472,11 +467,11 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("name", "name", typeof(string), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeTypes.typeName)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("nativeBaseTypeArrayIndex", "nativeBaseTypeArrayIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeTypes.nativeBaseTypeArrayIndex)
-                );
+            );
             table.CreateTable(kPrefixTableName + "NativeType", kPrefixTableDisplayName + "Native Type");
             AddTable(table, tables);
         }
@@ -487,34 +482,34 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("rootReferenceId", "Root Reference Id", typeof(long), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.rootReferenceId)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("memoryRegionIndex", "Memory Region Index", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.memoryRegionIndex)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("allocationSiteId", "Allocation Site Id", typeof(long), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.allocationSiteId)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("address", "Address", typeof(ulong), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.address)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("size", "Size", typeof(ulong), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.size)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("overheadSize", "Overhead Size", typeof(int), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.overheadSize)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("paddingSize", "Padding Size", typeof(int), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
                 , DataArray.MakeColumn(m_Snapshot.nativeAllocations.paddingSize)
-                );
+            );
             table.CreateTable(kPrefixTableName + "NativeAllocation", kPrefixTableDisplayName + "Native Allocation");
             AddTable(table, tables);
         }
@@ -525,11 +520,11 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("from", "from", typeof(int), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.connections.from)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("to", "to", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.connections.to)
-                );
+            );
             table.CreateTable(kPrefixTableName + "NativeConnection", kPrefixTableDisplayName + "Native Connection");
             AddTable(table, tables);
         }
@@ -542,42 +537,42 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("name", "name", typeof(string), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeDescriptionName)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("assembly", "assembly", typeof(string), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.typeDescriptions.assembly)
-                );
+            );
 
             table.AddColumn(
                 new MetaColumn("isValueType", "isValueType", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.typeDescriptions.flags, (a) => HasBit(a, TypeFlags.kValueType), (ref TypeFlags o, bool v) => SetBit(ref o, TypeFlags.kValueType, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("isArray", "isArray", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.typeDescriptions.flags, (a) => HasBit(a, TypeFlags.kArray), (ref TypeFlags o, bool v) => SetBit(ref o, TypeFlags.kArray, v))
-                );
+            );
 
             table.AddColumn(
                 new MetaColumn("arrayRank", "arrayRank", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.typeDescriptions.flags, (a) => GetBits(a, TypeFlags.kArrayRankMask, 16), (ref TypeFlags o, int v) => SetBits(ref o, TypeFlags.kArrayRankMask, 16, v))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("baseOrElementTypeIndex", "baseOrElementTypeIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.typeDescriptions.baseOrElementTypeIndex)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("size", "size", typeof(int), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
                 , DataArray.MakeColumn(m_Snapshot.typeDescriptions.size)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("typeInfoAddress", "typeInfoAddress", typeof(ulong), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeInfoAddress)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("typeIndex", "typeIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeIndex)
-                );
+            );
             table.CreateTable(kPrefixTableName + "ManagedType", kPrefixTableDisplayName + "Managed Type");
             AddTable(table, tables);
         }
@@ -589,19 +584,19 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("name", "name", typeof(string), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.fieldDescriptions.fieldDescriptionName)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("typeIndex", "typeIndex", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.fieldDescriptions.typeIndex)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("offset", "offset", typeof(int), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.fieldDescriptions.offset)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("isStatic", "isStatic", typeof(bool), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.fieldDescriptions.isStatic)
-                );
+            );
 
             table.CreateTable(kPrefixTableName + "ManagedTypeField", kPrefixTableDisplayName + "Managed Type Field");
             AddTable(table, tables);
@@ -614,7 +609,7 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("target", "target", typeof(ulong), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_Snapshot.gcHandles.target)
-                );
+            );
             table.CreateTable(kPrefixTableName + "GCHandles", kPrefixTableDisplayName + "GCHandles");
             AddTable(table, tables);
         }
@@ -626,7 +621,7 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("startAddress", "startAddress", typeof(ulong), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(dataSet, DataSourceFromAPI.ApiToDatabase(m_Snapshot.packedMemorySnapshot.managedHeapSections.startAddress))
-                );
+            );
             table.CreateTable(kPrefixTableName + "ManagedHeapSections", kPrefixTableDisplayName + "ManagedHeapSections");
             AddTable(table, tables);
         }
@@ -638,7 +633,7 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("startAddress", "startAddress", typeof(ulong), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(dataSet, DataSourceFromAPI.ApiToDatabase(m_Snapshot.packedMemorySnapshot.managedHeapSections.startAddress))
-                );
+            );
             table.CreateTable(kPrefixTableName + "ManagedStacks", kPrefixTableDisplayName + "ManagedStacks");
             AddTable(table, tables);
         }
@@ -651,15 +646,15 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("from", "from", typeof(int), true, Grouping.groupByDuplicate, null)
                 , Data.MakeColumn(pcd.Connections, n => n.GetUnifiedIndexFrom(m_Snapshot))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("to", "to", typeof(int), true, Grouping.groupByDuplicate, null)
                 , Data.MakeColumn(pcd.Connections, n => n.GetUnifiedIndexTo(m_Snapshot))
-                );
+            );
             table.AddColumn(
                 new MetaColumn("type", "type", typeof(ManagedConnection.ConnectionType), true, Grouping.groupByDuplicate, null)
                 , Data.MakeColumn(pcd.Connections, n => n.connectionType)
-                );
+            );
             table.CreateTable(kPrefixTableName + "ObjectConnection", kPrefixTableDisplayName + "Object Connection");
             AddTable(table, tables);
         }
@@ -672,11 +667,11 @@ namespace Unity.MemoryProfiler.Editor
             table.AddColumn(
                 new MetaColumn("typeIndex", "typeIndex", typeof(int), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_TypeBase.TypeIndex)
-                );
+            );
             table.AddColumn(
                 new MetaColumn("baseIndex", "baseIndex", typeof(int), true, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn(m_TypeBase.BaseIndex)
-                );
+            );
             table.CreateTable(kPrefixTableName + "NativeTypeBase", kPrefixTableDisplayName + "Native Type Base");
             AddTable(table, tables);
         }

@@ -5,13 +5,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
     // Used when displaying a constant value for all rows
     internal class ViewColumnConst<DataT> : Database.ColumnTyped<DataT>, ViewColumn.IViewColumn where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ViewColumnConst<" + typeof(DataT).Name + ">{" + value.ToString() + "}";
-        }
-
-#endif
         private ViewColumn vc;
         public DataT value;
         public ViewColumnConst(ViewColumn vc, DataT v)

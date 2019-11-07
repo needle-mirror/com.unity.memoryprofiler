@@ -13,15 +13,13 @@ using UnityEngine.Experimental.UIElements.StyleEnums;
 
 namespace Unity.MemoryProfiler.Editor
 {
-
     internal static class UIElementsStyleCompatibilityExtensions
     {
-
         internal static float GetMarginBottomFromStyle(this VisualElement visualElement)
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.marginBottom;
-#else 
+#else
             return visualElement.style.marginBottom;
 #endif
         }
@@ -30,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.marginTop;
-#else 
+#else
             return visualElement.style.marginTop;
 #endif
         }
@@ -39,7 +37,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.marginRight;
-#else 
+#else
             return visualElement.style.marginRight;
 #endif
         }
@@ -48,7 +46,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.marginLeft;
-#else 
+#else
             return visualElement.style.marginLeft;
 #endif
         }
@@ -57,7 +55,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.paddingBottom;
-#else 
+#else
             return visualElement.style.paddingBottom;
 #endif
         }
@@ -66,7 +64,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.paddingTop;
-#else 
+#else
             return visualElement.style.paddingTop;
 #endif
         }
@@ -75,7 +73,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.paddingRight;
-#else 
+#else
             return visualElement.style.paddingRight;
 #endif
         }
@@ -84,7 +82,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.paddingLeft;
-#else 
+#else
             return visualElement.style.paddingLeft;
 #endif
         }
@@ -93,7 +91,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.width;
-#else 
+#else
             return visualElement.style.width;
 #endif
         }
@@ -102,7 +100,7 @@ namespace Unity.MemoryProfiler.Editor
         {
 #if UNITY_2019_1_OR_NEWER
             return visualElement.resolvedStyle.minWidth.value;
-#else 
+#else
             return visualElement.style.minWidth;
 #endif
         }

@@ -1,6 +1,6 @@
 using System;
 using System.Xml;
-using Unity.MemoryProfiler.Editor.Debuging;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.View
 {
@@ -31,7 +31,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             public bool isPrimaryKey = false;
             public string FormatName;
 
-            public Builder() { }
+            public Builder() {}
             public Builder(string name, Operation.Expression.MetaExpression value)
             {
                 this.name = name;
@@ -87,7 +87,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     }
                     else if (columnValueType != null && metaColumn.Type != columnValueType)
                     {
-                        DebugUtility.LogError("Cannot redefine column type as '" + columnValueType + "'. Was already defined as '" + metaColumn.Type + "'");
+                        Debug.LogError("Cannot redefine column type as '" + columnValueType + "'. Was already defined as '" + metaColumn.Type + "'");
                     }
                     if (!String.IsNullOrEmpty(FormatName))
                     {
@@ -97,7 +97,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                         }
                         else
                         {
-                            DebugUtility.LogWarning("Format already defined as '" + metaColumn.FormatName + "'. Trying to redefined it as '" + FormatName + "'");
+                            Debug.LogWarning("Format already defined as '" + metaColumn.FormatName + "'. Trying to redefined it as '" + FormatName + "'");
                         }
                     }
                 }
@@ -180,9 +180,9 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     // this column is an entry in the parent's column
                     var option = new Operation.Expression.ParseIdentifierOption(buildingData.Schema, parentViewTable, true, true, metaColum != null ? metaColum.Type : null, expressionParsingContext);
                     option.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) =>
-                        {
-                            return FormatErrorContextInfo(buildingData.Schema, parentViewTable) + " : " + s;
-                        };
+                    {
+                        return FormatErrorContextInfo(buildingData.Schema, parentViewTable) + " : " + s;
+                    };
                     Operation.Expression expression = Operation.Expression.ParseIdentifier(value, option);
 
                     //if the meta column does not have a type defined yet, define it as the expression's type.
@@ -215,7 +215,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 {
                     if (columnValueType != null && columnValueType != value.type)
                     {
-                        DebugUtility.LogWarning("While building column '" + name + "' : "
+                        Debug.LogWarning("While building column '" + name + "' : "
                             + "Cannot override type from '" + columnValueType.Name
                             + "' to '" + value.type.Name + "'");
                     }
@@ -225,8 +225,8 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 // Parse expression value
                 Operation.Expression.ParseIdentifierOption parseOpt = new Operation.Expression.ParseIdentifierOption(buildingData.Schema, vTable, true, false, columnValueType, expressionParsingContext);
                 parseOpt.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) => {
-                        return FormatErrorContextInfo(buildingData.Schema, vTable) + " : " + s;
-                    };
+                    return FormatErrorContextInfo(buildingData.Schema, vTable) + " : " + s;
+                };
 
                 Operation.Expression expression = Operation.Expression.ParseIdentifier(value, parseOpt);
 
@@ -304,51 +304,48 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             {
                 Builder b = new Builder();
                 DebugUtility.TryGetMandatoryXmlAttribute(root, "name", out b.name);
-                using (ScopeDebugContext.Func(() => { return "Column '" + b.name + "'"; }))
+                b.value = Operation.Expression.MetaExpression.LoadFromXML(root);
+                if (!int.TryParse(root.GetAttribute("width"), out b.displayDefaultWidth))
                 {
-                    b.value = Operation.Expression.MetaExpression.LoadFromXML(root);
-                    if (!int.TryParse(root.GetAttribute("width"), out b.displayDefaultWidth))
-                    {
-                        b.displayDefaultWidth = 100;
-                    }
-
-                    string strisKey = root.GetAttribute("isKey");
-                    if (strisKey != null && strisKey != "")
-                    {
-                        if (!bool.TryParse(strisKey, out b.isPrimaryKey))
-                        {
-                            UnityEngine.Debug.LogError("Error parsing bool value '" + strisKey + "', default to false");
-                            b.isPrimaryKey = false;
-                        }
-                    }
-                    string strGroupable = root.GetAttribute("groupable");
-                    if (strGroupable == "duplicate")
-                    {
-                        b.groupAlgo = Database.Operation.Grouping.groupByDuplicate;
-                    }
-                    string strOp = root.GetAttribute("merged");
-                    m_StringToMergeAlgo.TryGetValue(strOp, out b.mergeAlgoE);
-
-                    b.FormatName = root.GetAttribute("format");
-
-                    foreach (XmlNode node in root.ChildNodes)
-                    {
-                        if (node.NodeType == XmlNodeType.Element)
-                        {
-                            XmlElement e = (XmlElement)node;
-                            if (e.Name == "Link")
-                            {
-                                LoadLinkFromXML(b, e);
-                            }
-                            else if (e.Name == "ParentGroup")
-                            {
-                                LoadParentGroupFromXML(b, e);
-                            }
-                        }
-                    }
-
-                    return b;
+                    b.displayDefaultWidth = 100;
                 }
+
+                string strisKey = root.GetAttribute("isKey");
+                if (strisKey != null && strisKey != "")
+                {
+                    if (!bool.TryParse(strisKey, out b.isPrimaryKey))
+                    {
+                        UnityEngine.Debug.LogError("Error parsing bool value '" + strisKey + "', default to false");
+                        b.isPrimaryKey = false;
+                    }
+                }
+                string strGroupable = root.GetAttribute("groupable");
+                if (strGroupable == "duplicate")
+                {
+                    b.groupAlgo = Database.Operation.Grouping.groupByDuplicate;
+                }
+                string strOp = root.GetAttribute("merged");
+                m_StringToMergeAlgo.TryGetValue(strOp, out b.mergeAlgoE);
+
+                b.FormatName = root.GetAttribute("format");
+
+                foreach (XmlNode node in root.ChildNodes)
+                {
+                    if (node.NodeType == XmlNodeType.Element)
+                    {
+                        XmlElement e = (XmlElement)node;
+                        if (e.Name == "Link")
+                        {
+                            LoadLinkFromXML(b, e);
+                        }
+                        else if (e.Name == "ParentGroup")
+                        {
+                            LoadParentGroupFromXML(b, e);
+                        }
+                    }
+                }
+
+                return b;
             }
         }
     }

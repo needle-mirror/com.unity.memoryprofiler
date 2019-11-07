@@ -1,5 +1,3 @@
-using Unity.MemoryProfiler.Editor.Debuging;
-
 namespace Unity.MemoryProfiler.Editor.Database
 {
     // A request to open a link.
@@ -52,28 +50,25 @@ namespace Unity.MemoryProfiler.Editor.Database
         public static LinkRequestTable MakeLinkRequest(TableLink metaLink, Table sourceTable, Column sourceColumn, long sourceRow, Database.Operation.ExpressionParsingContext expressionParsingContext)
         {
             if (metaLink == null) return null;
-            using (ScopeDebugContext.Func(() => { return "MakeLinkRequest from table '" + sourceTable.GetName() + "' row " + sourceRow; }))
-            {
-                var lr = new LinkRequestTable();
-                lr.LinkToOpen = metaLink;
-                lr.SourceTable = sourceTable;
-                lr.SourceView = sourceTable as View.ViewTable;
-                lr.SourceColumn = sourceColumn;
-                lr.SourceRow = sourceRow;
+            var lr = new LinkRequestTable();
+            lr.LinkToOpen = metaLink;
+            lr.SourceTable = sourceTable;
+            lr.SourceView = sourceTable as View.ViewTable;
+            lr.SourceColumn = sourceColumn;
+            lr.SourceRow = sourceRow;
 
-                if (lr.LinkToOpen.Parameters != null)
+            if (lr.LinkToOpen.Parameters != null)
+            {
+                foreach (var p in lr.LinkToOpen.Parameters)
                 {
-                    foreach (var p in lr.LinkToOpen.Parameters)
-                    {
-                        var opt = new Operation.Expression.ParseIdentifierOption(sourceTable.Schema as View.ViewSchema, sourceTable, true, true, typeof(string), expressionParsingContext);
-                        var metaExpression = new Operation.Expression.MetaExpression(p.Value, true);
-                        var exp = Operation.Expression.ParseIdentifier(metaExpression, opt);
-                        var exp2 = Operation.ColumnCreator.CreateTypedExpressionFixedRow(exp, sourceRow);
-                        lr.Parameters.Add(p.Key, exp2);
-                    }
+                    var opt = new Operation.Expression.ParseIdentifierOption(sourceTable.Schema as View.ViewSchema, sourceTable, true, true, typeof(string), expressionParsingContext);
+                    var metaExpression = new Operation.Expression.MetaExpression(p.Value, true);
+                    var exp = Operation.Expression.ParseIdentifier(metaExpression, opt);
+                    var exp2 = Operation.ColumnCreator.CreateTypedExpressionFixedRow(exp, sourceRow);
+                    lr.Parameters.Add(p.Key, exp2);
                 }
-                return lr;
             }
+            return lr;
         }
     }
 }

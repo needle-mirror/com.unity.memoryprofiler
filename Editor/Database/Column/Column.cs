@@ -1,5 +1,6 @@
 using System;
 using Unity.MemoryProfiler.Editor.Database.Operation;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
@@ -27,9 +28,14 @@ namespace Unity.MemoryProfiler.Editor.Database
         public virtual bool Validate(bool log, MetaColumn metaColumn)
         {
             bool valid = true;
-            valid &= Debuging.DebugUtility.ValidateError(log, type == metaColumn.Type, "Column must have the same value type as its MetaColumn");
+            if (type != metaColumn.Type)
+            {
+                valid = false;
+                Debug.Log("Column must have the same value type as its MetaColumn");
+            }
             return valid;
         }
+
         public abstract long[] GetSortIndex(SortOrder order, ArrayRange indices, bool relativeIndex);
 
         // equality is an array the same size as the returned index. the value is the index that it's equal to.
@@ -64,10 +70,6 @@ namespace Unity.MemoryProfiler.Editor.Database
         // ComputeRowCount is provided to offset the load of computing the table's data outside the table's construction
         // return if new row count was computed
         public virtual bool ComputeRowCount() { return false; }
-#if MEMPROFILER_DEBUG_INFO
-        // output a string representing the underlying structure of the column
-        public abstract string GetDebugString(long row);
-#endif
     }
 
     internal interface IColumnDecorator

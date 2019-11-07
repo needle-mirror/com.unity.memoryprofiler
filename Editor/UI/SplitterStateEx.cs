@@ -25,7 +25,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public int splitterInitialOffset;
         public int currentActiveSplitter = -1;
 
-        public event Action<int, int> RealSizeChanged = delegate { };
+        public event Action<int, int> RealSizeChanged = delegate {};
 
         public SplitterStateEx(int[] realSizes)
         {

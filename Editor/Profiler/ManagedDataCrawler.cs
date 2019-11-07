@@ -191,7 +191,7 @@ namespace Unity.MemoryProfiler.Editor
             return PtrObject != 0 && PtrTypeInfo != 0 && data.bytes != null;
         }
 
-        public static bool operator ==(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
+        public static bool operator==(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
         {
             return lhs.PtrObject == rhs.PtrObject
                 && lhs.PtrTypeInfo == rhs.PtrTypeInfo
@@ -202,7 +202,7 @@ namespace Unity.MemoryProfiler.Editor
                 && lhs.RefCount == rhs.RefCount;
         }
 
-        public static bool operator !=(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
+        public static bool operator!=(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
         {
             return !(lhs == rhs);
         }
@@ -336,7 +336,7 @@ namespace Unity.MemoryProfiler.Editor
             public int fieldFrom;
             public int fromArrayIndex;
         }
-        
+
         class IntermediateCrawlData
         {
             public List<int> TypesWithStaticFields { private set; get; }
@@ -389,7 +389,7 @@ namespace Unity.MemoryProfiler.Editor
                     else if (snapshot.CrawledData.ManagedObjectByAddress.ContainsKey(target))
                     {
 #if SNAPSHOT_CRAWLER_DIAG
-                    Debuging.DebugUtility.LogWarning("Duplicate gc handles " + i + " addr:" + snapshot.gcHandles.target[i]);
+                        Debuging.DebugUtility.LogWarning("Duplicate gc handles " + i + " addr:" + snapshot.gcHandles.target[i]);
 #endif
                         moi.ManagedObjectIndex = i;
                         moi.PtrObject = target;
@@ -414,6 +414,7 @@ namespace Unity.MemoryProfiler.Editor
                 UnsafeUtility.Free(uniqueHandlesPtr, Collections.Allocator.Temp);
             }
         }
+
         public static IEnumerator Crawl(CachedSnapshot snapshot)
         {
             const int stepCount = 5;
@@ -512,8 +513,8 @@ namespace Unity.MemoryProfiler.Editor
 
             //Get UnityEngine.Object.m_InstanceID field
             int iField_UnityEngineObject_m_InstanceID = Array.FindIndex(
-                    snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
-                    , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_InstanceID");
+                snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
+                , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_InstanceID");
 
             int instanceIDOffset = -1;
             int cachedPtrOffset = -1;
@@ -527,8 +528,8 @@ namespace Unity.MemoryProfiler.Editor
                 // on UNITY_5_4_OR_NEWER, there is the member m_CachedPtr we can use to identify the connection
                 //Since Unity 5.4, UnityEngine.Object no longer stores instance id inside when running in the player. Use cached ptr instead to find the instanceID of native object
                 int iField_UnityEngineObject_m_CachedPtr = Array.FindIndex(
-                        snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
-                        , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_CachedPtr");
+                    snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
+                    , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_CachedPtr");
 
                 if (iField_UnityEngineObject_m_CachedPtr >= 0)
                 {
@@ -540,18 +541,18 @@ namespace Unity.MemoryProfiler.Editor
                 Debug.LogWarning("Could not find unity object instance id field or m_CachedPtr");
                 return;
             }
-            
+
 
             for (int i = 0; i != objectInfos.Count; i++)
             {
                 //Must derive of unity Object
                 var objectInfo = objectInfos[i];
                 objectInfo.NativeObjectIndex = -1;
+                int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceID_None;
 
                 if (DerivesFrom(snapshot.typeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
                 {
                     //Find object instance id
-                    int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceID_None;
                     if (iField_UnityEngineObject_m_InstanceID >= 0)
                     {
                         var h = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (UInt64)instanceIDOffset, snapshot.virtualMachineInformation);
@@ -588,8 +589,14 @@ namespace Unity.MemoryProfiler.Editor
                         snapshot.nativeObjects.managedObjectIndex[objectInfo.NativeObjectIndex] = i;
                     }
                 }
-            
+
                 objectInfos[i] = objectInfo;
+                
+                if (snapshot.HasConnectionOverhaul && instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceID_None)
+                {
+                    snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
+                    ++snapshot.nativeObjects.refcount[objectInfo.NativeObjectIndex];
+                }
                 snapshot.CrawledData.ManagedObjectByAddress[objectInfo.PtrObject] = objectInfo;
             }
         }
@@ -642,7 +649,6 @@ namespace Unity.MemoryProfiler.Editor
                     crawlData.CrawlDataStack.Push(new StackCrawlData() { ptr = fieldLocation.ReadPointer(), ptrFrom = ptrFrom, typeFrom = iTypeDescription, indexOfFrom = indexOfFrom, fieldFrom = iField, fromArrayIndex = -1 });
                 }
             }
-
         }
 
         static bool CrawlPointer(IntermediateCrawlData dataStack)
@@ -814,30 +820,8 @@ namespace Unity.MemoryProfiler.Editor
             {
                 if (!ignoreBadHeaderError)
                 {
-
-
-                    var cursor = boHeader;
-                    string str = "";
-                    for (int j = 0; j != 4; ++j)
-                    {
-                        for (int i = 0; i != 8; ++i)
-                        {
-                            var b = cursor.bytes[cursor.offset + i];
-                            str += string.Format(" {0:X2}", b);
-                        }
-
-                        var d = cursor.ReadInt64();
-                        str += string.Format(" : 0x{0:X}, {1}", d, d);
-                        str += "\n";
-                        cursor = cursor.Add(8);
-                    }
 #if DEBUG_VALIDATION
-                    var ptrIdentityTypeIndex = snapshot.typeDescriptions.TypeInfo2ArrayIndex(ptrIdentity);
-
-                    UnityEngine.Debug.LogWarning("Unknown object header or type. "
-                        + " header: \n" + str
-                        + " First pointer as type index = " + ptrIdentityTypeIndex
-                        );
+                    UnityEngine.Debug.LogError("Bad object header at address: "+ ptrIdentity);
 #endif
                 }
 

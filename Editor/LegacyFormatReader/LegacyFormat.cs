@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using UnityEditorInternal.Profiling.Memory.Experimental.FileFormat;
@@ -178,6 +178,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
 
             writer.Dispose();
         }
+
         private static int WriteIntToByteArray(byte[] array, int offset, int value)
         {
             unsafe
@@ -198,7 +199,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
             {
                 unsafe
                 {
-                    fixed (char* p = value)
+                    fixed(char* p = value)
                     {
                         char* begin = p;
                         char* end = p + value.Length;
@@ -229,7 +230,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
                 OldField = oldFieldName;
                 NewField = newFieldName;
             }
-            
+
             public string OldField { private set; get; }
             public string NewField { private set; get; }
         }
@@ -261,13 +262,13 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
             m_Name = name;
             m_NativeBaseTypeArrayIndex = nativeBaseTypeArrayIndex;
         }
-        
+
         public static explicit operator PackedNativeType(UnityEditor.MemoryProfiler.PackedNativeType type)
         {
             return new PackedNativeType(type.name, type.nativeBaseTypeArrayIndex);
         }
     }
-   
+
 
     [Serializable]
     internal struct PackedNativeUnityEngineObject
@@ -307,12 +308,12 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
                 flags |= ObjectFlags.IsManager;
             }
             return new PackedNativeUnityEngineObject(
-                packedObject.name, 
-                packedObject.instanceId, 
-                packedObject.size, 
-                packedObject.nativeTypeArrayIndex, 
-                packedObject.hideFlags, 
-                flags, 
+                packedObject.name,
+                packedObject.instanceId,
+                packedObject.size,
+                packedObject.nativeTypeArrayIndex,
+                packedObject.hideFlags,
+                flags,
                 packedObject.nativeObjectAddress);
         }
 
@@ -405,7 +406,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
         public static explicit operator TypeDescription(UnityEditor.MemoryProfiler.TypeDescription typeDescription)
         {
             var fields = new FieldDescription[typeDescription.fields.Length];
-            for(int i = 0; i < fields.Length; ++i)
+            for (int i = 0; i < fields.Length; ++i)
             {
                 fields[i] = (FieldDescription)typeDescription.fields[i];
             }
@@ -433,7 +434,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
                 typeDescription.size,
                 typeDescription.typeInfoAddress,
                 typeDescription.typeIndex,
-                flags); 
+                flags);
         }
 
         public bool IsArray
@@ -469,9 +470,9 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
         public static explicit operator FieldDescription(UnityEditor.MemoryProfiler.FieldDescription fieldDescription)
         {
             return new FieldDescription(
-                fieldDescription.name, 
-                fieldDescription.offset, 
-                fieldDescription.typeIndex, 
+                fieldDescription.name,
+                fieldDescription.offset,
+                fieldDescription.typeIndex,
                 fieldDescription.isStatic);
         }
     }
@@ -488,7 +489,8 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
 
         public static explicit operator VirtualMachineInformation(UnityEditor.MemoryProfiler.VirtualMachineInformation VMInfo)
         {
-            return new VirtualMachineInformation {
+            return new VirtualMachineInformation
+            {
                 m_AllocationGranularity = VMInfo.allocationGranularity,
                 m_ObjectHeaderSize = VMInfo.objectHeaderSize,
                 m_ArrayHeaderSize = VMInfo.arrayHeaderSize,

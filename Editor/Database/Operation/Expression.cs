@@ -1,6 +1,7 @@
 using System;
 using System.Xml;
-using Unity.MemoryProfiler.Editor.Debuging;
+using Unity.Profiling;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation
 {
@@ -43,10 +44,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public abstract bool HasMultipleRow();
         public abstract long RowCount();
 
-#if MEMPROFILER_DEBUG_INFO
-        public abstract string GetDebugString(long row);
-#endif
-
         // Meta Expression are unresolved expression that must be parsed using ParseIdentifier to create an Expression
         internal class MetaExpression
         {
@@ -56,6 +53,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 this.valueIsLiteral = valueIsLiteral;
                 this.value = value;
             }
+
             public MetaExpression(string value, bool valueIsLiteral, Type type)
             {
                 this.valueIsLiteral = valueIsLiteral;
@@ -228,9 +226,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 return null;
             }
         }
+
         public static bool TryParseAsIdentifier(MetaExpression value, ParseIdentifierOption opt, bool logError, out Expression expressionOut, ref Type resultExpressionType)
         {
-
             string[] identifier = value.value.Split('.');
             int colIdentifierIndex = 0;
             Table targetTable;
@@ -250,7 +248,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 else
                 {
                     targetTable = null;
-                    if (logError) DebugUtility.LogError(opt.formatError("Unknown identifier '" + identifier[0] + "', must be a table or select name.", opt));
+                    if (logError)
+                    {
+                        Debug.LogError(opt.formatError("Unknown identifier '" + identifier[0] + "', must be a table or select name.", opt));
+
+                    }
                 }
             }
             else if (identifier.Length == 1)
@@ -271,9 +273,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 if (col != null && metaCol != null)
                 {
                     Type columnValueType = metaCol.Type;
-                    
+
                     Type desiredValueType;
-                    if(resultExpressionType != null)
+                    if (resultExpressionType != null)
                     {
                         desiredValueType = resultExpressionType;
                     }
@@ -341,7 +343,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 }
                 else
                 {
-                    if (logError) DebugUtility.LogError(opt.formatError("Unknown identifier '" + identifier[colIdentifierIndex] + "', must be a column name.", opt));
+                    if (logError)
+                    {
+                        Debug.LogError(opt.formatError("Unknown identifier '" + identifier[colIdentifierIndex] + "', must be a column name.", opt));
+                    }
                 }
             }
 
@@ -391,7 +396,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             resultExpressionType = null;
             return null;
         }
-
 
         /// <summary>
         /// value can be interpreted as:
@@ -455,13 +459,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 if (opt.OnlyResolveType) return null;
                 return ParseAsLiteralWithType(value, opt, resultExpressionType);
             }
-
         }
+
         public static Database.Operation.Expression ParseIdentifier(MetaExpression value, ParseIdentifierOption opt)
         {
             Type resultExpressionType;
             return ParseIdentifier(value, opt, out resultExpressionType);
         }
+
         public static Type ResolveTypeOf(MetaExpression value, ParseIdentifierOption opt)
         {
             if (value == null) return null;
@@ -487,13 +492,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
     internal class ExpConst<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ExpConst<" + typeof(DataT).Name + ">[" + row + "](" + value + ")";
-        }
-
-#endif
         public ExpConst(DataT a)
         {
             value = a;
@@ -510,6 +508,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             return value;
         }
+
         public override bool StringValueDiffers { get { return false; } }
 
         public override string GetValueString(long row, IDataFormatter formatter)
@@ -541,13 +540,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpColumn<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ExpColumn<" + typeof(DataT).Name + ">[" + row + "]{" + column.GetDebugString(row) + "}";
-        }
-
-#endif
         public Database.ColumnTyped<DataT> column;
 
         public ExpColumn(Database.Column c)
@@ -558,26 +550,19 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override string GetValueString(long row, IDataFormatter formatter)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnGetValueString).Auto())
-            {
-                return formatter.Format(GetValue(row));
-            }
+            return formatter.Format(GetValue(row));
         }
 
         public override DataT GetValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnGetValue).Auto())
-            {
-                return column.GetRowValue(row);
-            }
+            return column.GetRowValue(row);
+
         }
 
         public override IComparable GetComparableValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnGetComparableValue).Auto())
-            {
-                return column.GetRowValue(row);
-            }
+            return column.GetRowValue(row);
+
         }
 
         public override bool HasMultipleRow()
@@ -596,13 +581,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// </summary>
     internal class ExpTableRowIndex : TypedExpression<long>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ExpTableRowIndex<long>[" + row + "]";
-        }
-
-#endif
         public Table table;
 
         public ExpTableRowIndex(Table table)
@@ -643,13 +621,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpTypeChange<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ExpTypeChange<" + typeof(DataT).Name + ">[" + row + "]{" + sourceExpression.GetDebugString(row) + "}";
-        }
-
-#endif
         public Expression sourceExpression;
 
         public ExpTypeChange(Expression sourceExpression)
@@ -665,34 +636,25 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override DataT GetValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpTypeChangeGetValue).Auto())
+            IComparable value = sourceExpression.GetComparableValue(row);
+            try
             {
-                IComparable value = sourceExpression.GetComparableValue(row);
-                try
-                {
-                    return (DataT)Convert.ChangeType(value, typeof(DataT));
-                }
-                catch (System.Exception)
-                {
-                    DebugUtility.LogError("ExpTypeChange: Cannot type change value \"" + value.ToString()
-                        + "\" from type '" + value.GetType().Name
-                        + "' to type '" + typeof(DataT).Name
-                        + "'"
-#if MEMPROFILER_DEBUG_INFO
-                    + " Source expression: " + sourceExpression.GetDebugString(row)
-#endif
-                    );
-                    return default(DataT);
-                }
+                return (DataT)Convert.ChangeType(value, typeof(DataT));
+            }
+            catch (Exception)
+            {
+                Debug.LogError("ExpTypeChange: Cannot type change value \"" + value.ToString()
+                    + "\" from type '" + value.GetType().Name
+                    + "' to type '" + typeof(DataT).Name
+                    + "'"
+                );
+                return default(DataT);
             }
         }
 
         public override IComparable GetComparableValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpTypeChangeGetComparableValue).Auto())
-            {
-                return GetValue(row);
-            }
+            return GetValue(row);
         }
 
         public override bool HasMultipleRow()
@@ -712,30 +674,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpSelect<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            Update();
-            if (m_rowIndex != null)
-            {
-                string str = "ExpSelect<" + typeof(DataT).Name + ">[" + row + "]";
-                if (Algorithm.IsInValidRange(m_rowIndex, row))
-                {
-                    str += "{" + column.GetDebugString(m_rowIndex[row]) + "}";
-                }
-                else
-                {
-                    str += "{ Out of range (" + row + " : [0," + m_rowIndex.Length + "[}";
-                }
-                return str;
-            }
-            else
-            {
-                return "ExpSelect<" + typeof(DataT).Name + ">[" + row + "]{" + column.GetDebugString(row) + "}";
-            }
-        }
-
-#endif
         public View.Select select;
         public Database.ColumnTyped<DataT> column;
 
@@ -749,11 +687,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         private string GetOutOfRangeError(long row)
         {
-            return "Out Of Range (" + row + " : [0," + m_rowIndex.Length + "[)"
-#if MEMPROFILER_DEBUG_INFO
-                + " Source Select: " + select.GetDebugString(row, 0)
-#endif
-            ;
+            return "Out Of Range (" + row + " : [0," + m_rowIndex.Length + "[)";
         }
 
         public void Update()
@@ -764,54 +698,52 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override string GetValueString(long row, IDataFormatter formatter)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectGetValueString).Auto())
+            Update();
+            if (m_rowIndex != null)
             {
-                Update();
-                if (m_rowIndex != null)
+                if (row < 0 & row >= m_rowIndex.Length)
                 {
-                    if (!DebugUtility.IsInValidRange(m_rowIndex, row)) return GetOutOfRangeError(row);
-                    return column.GetRowValueString(m_rowIndex[row], formatter);
+                    return GetOutOfRangeError(row);
                 }
-                else
-                {
-                    //no indices means it uses the full table as is
-                    return column.GetRowValueString(row, formatter);
-                }
+                return column.GetRowValueString(m_rowIndex[row], formatter);
+            }
+            else
+            {
+                //no indices means it uses the full table as is
+                return column.GetRowValueString(row, formatter);
             }
         }
 
         public override DataT GetValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectGetValue).Auto())
+            Update();
+            if (m_rowIndex != null)
             {
-                Update();
-                if (m_rowIndex != null)
-                {
-                    return column.GetRowValue(m_rowIndex[row]);
-                }
-                else
-                {
-                    //no indices means it uses the full table as is
-                    return column.GetRowValue(row);
-                }
+                return column.GetRowValue(m_rowIndex[row]);
+            }
+            else
+            {
+                //no indices means it uses the full table as is
+                return column.GetRowValue(row);
             }
         }
 
+        static ProfilerMarker s_ExpSelectGetComparableValue = new ProfilerMarker("ExpSelectGetComparableValue");
         public override IComparable GetComparableValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectGetComparableValue).Auto())
+            Update();
+            if (m_rowIndex != null)
             {
-                Update();
-                if (m_rowIndex != null)
+                if (row < 0 & row >= m_rowIndex.Length)
                 {
-                    if (!DebugUtility.IsInValidRange(m_rowIndex, row)) return GetOutOfRangeError(row);
-                    return column.GetRowValue(m_rowIndex[row]);
+                    return GetOutOfRangeError(row);
                 }
-                else
-                {
-                    //no indices means it uses the full table as is
-                    return column.GetRowValue(row);
-                }
+                return column.GetRowValue(m_rowIndex[row]);
+            }
+            else
+            {
+                //no indices means it uses the full table as is
+                return column.GetRowValue(row);
             }
         }
 
@@ -837,23 +769,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpSelectSetConditional<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            string str = "ExpSelectSetConditional<" + typeof(DataT).Name + ">[" + row + "]";
-            if (IsInRange(row))
-            {
-                long effectiveRow = GetEffectiveRow(row);
-                str += "(" + effectiveRow + "){ " + SubExpression.GetDebugString(effectiveRow) + "}";
-            }
-            else
-            {
-                str += "{ Out of range (" + row + " : [0," + GetEffectiveRowCount() + "[}";
-            }
-            return str;
-        }
-
-#endif
         public View.SelectSet SelectSet;
         public TypedExpression<DataT> SubExpression;
         public ExpSelectSetConditional(View.SelectSet selectSet, TypedExpression<DataT> subExpression)
@@ -879,11 +794,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         private string GetOutOfRangeError(long row)
         {
-            return "Out Of Range (" + row + " : [0," + GetEffectiveRowCount() + "[)"
-#if MEMPROFILER_DEBUG_INFO
-                + " SubExpression: " + SubExpression.GetDebugString(row)
-#endif
-            ;
+            return "Out Of Range (" + row + " : [0," + GetEffectiveRowCount() + "[)";
         }
 
         private bool IsInRange(long row)
@@ -893,30 +804,21 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override string GetValueString(long row, IDataFormatter formatter)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectSetConditionalGetValueString).Auto())
-            {
-                if (!IsInRange(row)) return GetOutOfRangeError(row);
-                long effectiveRow = GetEffectiveRow(row);
-                return SubExpression.GetValueString(effectiveRow, formatter);
-            }
+            if (!IsInRange(row)) return GetOutOfRangeError(row);
+            long effectiveRow = GetEffectiveRow(row);
+            return SubExpression.GetValueString(effectiveRow, formatter);
         }
 
         public override DataT GetValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectSetConditionalGetValue).Auto())
-            {
-                long effectiveRow = GetEffectiveRow(row);
-                return SubExpression.GetValue(effectiveRow);
-            }
+            long effectiveRow = GetEffectiveRow(row);
+            return SubExpression.GetValue(effectiveRow);
         }
 
         public override IComparable GetComparableValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpSelectSetConditionalGetComparableValue).Auto())
-            {
-                long effectiveRow = GetEffectiveRow(row);
-                return SubExpression.GetComparableValue(effectiveRow);
-            }
+            long effectiveRow = GetEffectiveRow(row);
+            return SubExpression.GetComparableValue(effectiveRow);
         }
 
         public override bool HasMultipleRow()
@@ -937,21 +839,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpFirstMatchSelect<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            long index = select.GetIndexFirstMatch(row);
-            if (index >= 0)
-            {
-                return "ExpFirstMatchSelect<" + typeof(DataT).Name + ">[" + row + "]{" + column.GetDebugString(index) + "}";
-            }
-            else
-            {
-                return "ExpFirstMatchSelect<" + typeof(DataT).Name + ">[" + row + "]{ default value }";
-            }
-        }
-
-#endif
         public View.Select select;
         public Database.ColumnTyped<DataT> column;
         public ExpFirstMatchSelect(View.Select sel, Database.Column c)
@@ -963,36 +850,27 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override string GetValueString(long row, IDataFormatter formatter)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpFirstMatchSelectGetValueString).Auto())
+            var index = select.GetIndexFirstMatch(row);
+            if (index >= 0)
             {
-                var index = select.GetIndexFirstMatch(row);
-                if (index >= 0)
-                {
-                    return column.GetRowValueString(index, formatter);
-                }
-                return "N/A";
+                return column.GetRowValueString(index, formatter);
             }
+            return "N/A";
         }
 
         public override DataT GetValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpFirstMatchSelectGetValue).Auto())
+            var index = select.GetIndexFirstMatch(row);
+            if (index >= 0)
             {
-                var index = select.GetIndexFirstMatch(row);
-                if (index >= 0)
-                {
-                    return column.GetRowValue(index);
-                }
-                return default(DataT);
+                return column.GetRowValue(index);
             }
+            return default(DataT);
         }
 
         public override IComparable GetComparableValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpFirstMatchSelectGetComparableValue).Auto())
-            {
-                return GetValue(row);
-            }
+            return GetValue(row);
         }
 
         public override bool HasMultipleRow()
@@ -1012,13 +890,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpFixedRow<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ExpFixedRow<" + typeof(DataT).Name + ">[" + row + "]{" + exp.GetDebugString(row) + "}";
-        }
-
-#endif
         public TypedExpression<DataT> exp;
         public long row;
         public ExpFixedRow(TypedExpression<DataT> exp, long row)
@@ -1061,13 +932,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpDefaultOnError<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ExpDefaultOnError<" + typeof(DataT).Name + ">[" + row + "]{" + SubExpression.GetDebugString(row) + "}";
-        }
-
-#endif
         public TypedExpression<DataT> SubExpression;
         public DataT DefaultValue;
         public ExpDefaultOnError(TypedExpression<DataT> exp, DataT defaultValue)
@@ -1118,27 +982,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpColumnMerge<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            var subTable = m_ParentViewTable.CreateGroupTable(m_ParentGroupIndex);
-            if (subTable != null)
-            {
-                var subColumn = subTable.GetColumnByIndex(m_MetaColumnToMerge.index);
-                var rowCount = subColumn.GetRowCount();
-                if (rowCount == 0)
-                {
-                    return "ExpColumnMerge<" + typeof(DataT).Name + ">(0, 0)[" + row + "]{}";
-                }
-                else
-                {
-                    return "ExpColumnMerge<" + typeof(DataT).Name + ">(0, " + rowCount + ")[" + row + "]{ [0] = " + subColumn.GetDebugString(0) + "}";
-                }
-            }
-            return "ExpColumnMerge<" + typeof(DataT).Name + ">(0, 0){ no sub table }";
-        }
-
-#endif
         private View.ViewTable m_ParentViewTable;
         private long m_ParentGroupIndex;
         private MetaColumn m_MetaColumnToMerge;
@@ -1152,48 +995,40 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override string GetValueString(long row, IDataFormatter formatter)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnMergeGetValueString).Auto())
-            {
-                return formatter.Format(GetValue(row));
-            }
+            return formatter.Format(GetValue(row));
+
         }
 
         public override DataT GetValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnMergeGetValue).Auto())
+            var subTable = m_ParentViewTable.CreateGroupTable(m_ParentGroupIndex);
+            if (subTable != null)
             {
-                var subTable = m_ParentViewTable.CreateGroupTable(m_ParentGroupIndex);
-                if (subTable != null)
+                var subColumn = subTable.GetColumnByIndex(m_MetaColumnToMerge.Index);
+                while (subColumn is IColumnDecorator)
                 {
-                    var subColumn = subTable.GetColumnByIndex(m_MetaColumnToMerge.Index);
-                    while (subColumn is IColumnDecorator)
-                    {
-                        subColumn = (subColumn as IColumnDecorator).GetBaseColumn();
-                    }
-                    return (DataT)m_MetaColumnToMerge.DefaultMergeAlgorithm.Merge(subColumn, new ArrayRange(0, subColumn.GetRowCount()));
+                    subColumn = (subColumn as IColumnDecorator).GetBaseColumn();
                 }
-                return default(DataT);
+                return (DataT)m_MetaColumnToMerge.DefaultMergeAlgorithm.Merge(subColumn, new ArrayRange(0, subColumn.GetRowCount()));
             }
+            return default(DataT);
         }
 
         public override bool StringValueDiffers { get { return false; } }
 
         public override IComparable GetComparableValue(long row)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ExpColumnMergeGetComparableValue).Auto())
+            var subTable = m_ParentViewTable.CreateGroupTable(m_ParentGroupIndex);
+            if (subTable != null)
             {
-                var subTable = m_ParentViewTable.CreateGroupTable(m_ParentGroupIndex);
-                if (subTable != null)
+                var subColumn = subTable.GetColumnByIndex(m_MetaColumnToMerge.Index);
+                while (subColumn is IColumnDecorator)
                 {
-                    var subColumn = subTable.GetColumnByIndex(m_MetaColumnToMerge.Index);
-                    while (subColumn is IColumnDecorator)
-                    {
-                        subColumn = (subColumn as IColumnDecorator).GetBaseColumn();
-                    }
-                    return m_MetaColumnToMerge.DefaultMergeAlgorithm.Merge(subColumn, new ArrayRange(0, subColumn.GetRowCount()));
+                    subColumn = (subColumn as IColumnDecorator).GetBaseColumn();
                 }
-                return default(DataT);
+                return m_MetaColumnToMerge.DefaultMergeAlgorithm.Merge(subColumn, new ArrayRange(0, subColumn.GetRowCount()));
             }
+            return default(DataT);
         }
 
         public override bool HasMultipleRow()
@@ -1213,13 +1048,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class ExpDataBreakPoint<DataT> : TypedExpression<DataT> where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ExpDataBreakPoint<" + typeof(DataT).Name + ">(" + BreakOnValue + ")[" + row + "]{" + sourceExpression.GetDebugString(row) + "}";
-        }
-
-#endif
         public TypedExpression<DataT> sourceExpression;
         public TypedExpression<DataT> BreakOnValue;
         public ExpDataBreakPoint(TypedExpression<DataT> sourceExpression, TypedExpression<DataT> breakOnValue)
@@ -1236,8 +1064,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             var lhv = BreakOnValue.GetValue(row);
             if (lhv.CompareTo(rhv) == 0)
             {
-                //System.Diagnostics.Debugger.Break(); this will not work with Unity debugger.
-                DebugUtility.LogError("A user breakpoint event has been triggered. Attach a debugger and add a breakpoint on this line for debugging.");
+                Debug.LogError("A user breakpoint event has been triggered. Attach a debugger and add a breakpoint on this line for debugging.");
             }
         }
 
@@ -1338,93 +1165,88 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ConstMatcherQuery).Auto())
+            long count = indices.Count;
+            long[] o = new long[count];
+            long lastO = 0;
+
+            if (exp is TypedExpression<DataT>)
             {
-                long count = indices.Count;
-                long[] o = new long[count];
-                long lastO = 0;
+                var e = (TypedExpression<DataT>)exp;
 
-                if (exp is TypedExpression<DataT>)
+                for (int i = 0; i != count; ++i)
                 {
-                    var e = (TypedExpression<DataT>)exp;
-
-                    for (int i = 0; i != count; ++i)
+                    long ii = indices[i];
+                    var v = e.GetValue(ii);
+                    if (v.CompareTo(value) == 0)
                     {
-                        long ii = indices[i];
-                        var v = e.GetValue(ii);
-                        if (v.CompareTo(value) == 0)
-                        {
-                            o[lastO] = ii;
-                            ++lastO;
-                        }
+                        o[lastO] = ii;
+                        ++lastO;
                     }
                 }
-                else
-                {
-                    for (int i = 0; i != count; ++i)
-                    {
-                        long ii = indices[i];
-                        var v = exp.GetComparableValue(ii);
-                        if (v.CompareTo(value) == 0)
-                        {
-                            o[lastO] = ii;
-                            ++lastO;
-                        }
-                    }
-                }
-                if (lastO != count)
-                {
-                    long[] trimmed = new long[lastO];
-                    System.Array.Copy(o, trimmed, lastO);
-                    return trimmed;
-                }
-                return o;
             }
+            else
+            {
+                for (int i = 0; i != count; ++i)
+                {
+                    long ii = indices[i];
+                    var v = exp.GetComparableValue(ii);
+                    if (v.CompareTo(value) == 0)
+                    {
+                        o[lastO] = ii;
+                        ++lastO;
+                    }
+                }
+            }
+            if (lastO != count)
+            {
+                long[] trimmed = new long[lastO];
+                System.Array.Copy(o, trimmed, lastO);
+                return trimmed;
+            }
+            return o;
         }
+
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices, Operator operation)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.ConstMatcherQuery).Auto())
+            long count = indices.Count;
+            long[] o = new long[count];
+            long lastO = 0;
+
+            if (exp is TypedExpression<DataT>)
             {
-                long count = indices.Count;
-                long[] o = new long[count];
-                long lastO = 0;
+                var e = (TypedExpression<DataT>)exp;
 
-                if (exp is TypedExpression<DataT>)
+                for (int i = 0; i != count; ++i)
                 {
-                    var e = (TypedExpression<DataT>)exp;
-
-                    for (int i = 0; i != count; ++i)
+                    long ii = indices[i];
+                    var v = e.GetValue(ii);
+                    if (Operation.Match(operation, v.CompareTo(value)))
                     {
-                        long ii = indices[i];
-                        var v = e.GetValue(ii);
-                        if (Operation.Match(operation, v.CompareTo(value)))
-                        {
-                            o[lastO] = ii;
-                            ++lastO;
-                        }
+                        o[lastO] = ii;
+                        ++lastO;
                     }
                 }
-                else
-                {
-                    for (int i = 0; i != count; ++i)
-                    {
-                        long ii = indices[i];
-                        var v = exp.GetComparableValue(ii);
-                        if (Operation.Match(operation, v.CompareTo(value)))
-                        {
-                            o[lastO] = ii;
-                            ++lastO;
-                        }
-                    }
-                }
-                if (lastO != count)
-                {
-                    long[] trimmed = new long[lastO];
-                    System.Array.Copy(o, trimmed, lastO);
-                    return trimmed;
-                }
-                return o;
             }
+            else
+            {
+                for (int i = 0; i != count; ++i)
+                {
+                    long ii = indices[i];
+                    var v = exp.GetComparableValue(ii);
+                    if (Operation.Match(operation, v.CompareTo(value)))
+                    {
+                        o[lastO] = ii;
+                        ++lastO;
+                    }
+                }
+            }
+            if (lastO != count)
+            {
+                long[] trimmed = new long[lastO];
+                System.Array.Copy(o, trimmed, lastO);
+                return trimmed;
+            }
+            return o;
         }
     }
 
@@ -1448,33 +1270,31 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.SubStringMatcherQuery).Auto())
+            var value2 = value.ToLower();
+            long count = indices.Count;
+            long[] o = new long[count];
+            long lastO = 0;
+
+            for (int i = 0; i != count; ++i)
             {
-                var value2 = value.ToLower();
-                long count = indices.Count;
-                long[] o = new long[count];
-                long lastO = 0;
-
-                for (int i = 0; i != count; ++i)
+                long ii = indices[i];
+                var v = exp.GetValueString(ii, Formatter);
+                if (v.ToLower().Contains(value2))
                 {
-                    long ii = indices[i];
-                    var v = exp.GetValueString(ii, Formatter);
-                    if (v.ToLower().Contains(value2))
-                    {
-                        o[lastO] = ii;
-                        ++lastO;
-                    }
+                    o[lastO] = ii;
+                    ++lastO;
                 }
-
-                if (lastO != count)
-                {
-                    long[] trimmed = new long[lastO];
-                    System.Array.Copy(o, trimmed, lastO);
-                    return trimmed;
-                }
-                return o;
             }
+
+            if (lastO != count)
+            {
+                long[] trimmed = new long[lastO];
+                System.Array.Copy(o, trimmed, lastO);
+                return trimmed;
+            }
+            return o;
         }
+
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices, Operator operation)
         {
             throw new InvalidOperationException("Do not use operators with string matcher");
@@ -1486,21 +1306,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// </summary>
     internal class ExpComparison : TypedExpression<bool>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "("
-                + valueLeft.GetValueString(row, DefaultDataFormatter.Instance)
-                + " " + Operation.OperatorToString(operation) + " "
-                + valueRight.GetValueString(row, DefaultDataFormatter.Instance)
-                + "){"
-                + valueLeft.GetDebugString(row)
-                + " " + Operation.OperatorToString(operation) + " "
-                + valueRight.GetDebugString(row)
-                + "}";
-        }
-
-#endif
         public Expression valueLeft;
         public Operator operation;
         public Expression valueRight;
@@ -1553,23 +1358,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// </summary>
     internal class ColumnComparison
     {
-#if MEMPROFILER_DEBUG_INFO
-        public string GetDebugString(long columnRow, long valueRow)
-        {
-            return "("
-                + column.GetRowValueString(columnRow, DefaultDataFormatter.Instance)
-                + " " + Operation.OperatorToString(operation) + " "
-                + value.GetValueString(columnRow, DefaultDataFormatter.Instance)
-                + "){"
-                + "\"" + ColumnName + "\""
-                + " " + column.GetDebugString(valueRow)
-                + " " + Operation.OperatorToString(operation) + " "
-                + value.GetDebugString(valueRow)
-                + "}";
-        }
-
-        public string ColumnName;
-#endif
         public Column column;
         public Operator operation;
         public Expression value;
@@ -1655,22 +1443,20 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public ColumnComparison Build(Expression.ParseIdentifierOption option)
         {
             ColumnComparison comparison = new ColumnComparison();
-#if MEMPROFILER_DEBUG_INFO
-            comparison.ColumnName = columnName;
-#endif
+
             comparison.operation = operation;
 
             var metaColumn = option.identifierColumn_table.GetMetaData().GetColumnByName(columnName);
             if (metaColumn == null)
             {
-                DebugUtility.LogError(option.formatError("No column named '" + columnName + "' in table '" + option.identifierColumn_table.GetName() + "'", option));
+                Debug.LogError(option.formatError("No column named '" + columnName + "' in table '" + option.identifierColumn_table.GetName() + "'", option));
                 return null;
             }
 
             comparison.column = option.identifierColumn_table.GetColumnByName(columnName);
             if (comparison.column == null)
             {
-                DebugUtility.LogError(option.formatError("No column named '" + columnName + "' in table '" + option.identifierColumn_table.GetName() + "'", option));
+                Debug.LogError(option.formatError("No column named '" + columnName + "' in table '" + option.identifierColumn_table.GetName() + "'", option));
                 return null;
             }
 
@@ -1697,9 +1483,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             string strOp = root.GetAttribute("op");
             if (!m_StringToOp.TryGetValue(strOp, out comparison.operation))
             {
-                DebugUtility.LogError("Unknown operator '" + strOp + "'.");
+                Debug.LogError("Unknown operator '" + strOp + "'.");
             }
-            DebugUtility.LogAnyXmlChildAsInvalid(root);
+            //Debug.LogAnyXmlChildAsInvalid(root);
             return comparison;
         }
     }
@@ -1729,7 +1515,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             string strOp = root.GetAttribute("op");
             if (!m_StringToOp.TryGetValue(strOp, out exp.operation))
             {
-                DebugUtility.LogError("Unknown operator '" + strOp + "'.");
+                Debug.LogError("Unknown operator '" + strOp + "'.");
             }
 
             foreach (XmlNode xNode in root.ChildNodes)
@@ -1746,7 +1532,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                             exp.valueRight = Expression.MetaExpression.LoadFromXML(e);
                             break;
                         default:
-                            DebugUtility.LogInvalidXmlChild(root, e);
+                            //DebugUtility.LogInvalidXmlChild(root, e);
                             break;
                     }
                 }

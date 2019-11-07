@@ -13,7 +13,7 @@ xsi:schemaLocation="
 "
 >
   <engine:VisualElement name="openSnapshotItem">
-    
+
     <engine:VisualElement name="previewImage">
       <engine:Image name="previewImage" class="previewImage">
         <engine:Image name="editorIcon" class="platformIcon"/>

@@ -1,9 +1,6 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using System;
 using Unity.MemoryProfiler.Editor.UI;
-using Unity.MemoryProfiler.Editor.Debuging;
 using UnityEditor.Profiling.Memory.Experimental;
 
 namespace Unity.MemoryProfiler.Editor
@@ -72,7 +69,7 @@ namespace Unity.MemoryProfiler.Editor
 
             m_OpenSnapshotsPane.SetSnapshotUIData(true, snapshot.GuiData, true);
             First.GuiData.CurrentState = SnapshotFileGUIData.State.InView;
-            
+
             var loadedPackedSnapshot = snapshot.LoadSnapshot();
             if (loadedPackedSnapshot != null)
             {
@@ -91,78 +88,70 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             try
             {
-                using (new Service<IDebugContextService>.ScopeService(new DebugContextService()))
+                if (Second != null)
                 {
-                    if (Second != null)
+                    if (snapshot == Second)
                     {
-                        if (snapshot == Second)
-                        {
-                            m_UIState.ClearSecondMode();
-                            Second.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
-                        }
-                        else if (snapshot == First)
-                        {
-                            m_UIState.ClearFirstMode();
-                            if (First != null)
-                                First.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
-                            First = Second;
-                            m_UIState.SwapLastAndCurrentSnapshot();
-                        }
-                        else
-                        {
-                            // The snapshot wasn't open, there is nothing left todo here.
-                            return;
-                        }
-                        UIElementsHelper.SwitchVisibility(snapshot.GuiData.dynamicVisualElements.openButton, snapshot.GuiData.dynamicVisualElements.closeButton);
-                        Second = null;
-                        m_UIState.CurrentViewMode = UIState.ViewMode.ShowFirst;
-
+                        m_UIState.ClearSecondMode();
+                        Second.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                    }
+                    else if (snapshot == First)
+                    {
+                        m_UIState.ClearFirstMode();
                         if (First != null)
-                            m_OpenSnapshotsPane.SetSnapshotUIData(true, First.GuiData, true);
-                        else
-                            m_OpenSnapshotsPane.SetSnapshotUIData(true, null, true);
-                        m_OpenSnapshotsPane.SetSnapshotUIData(false, null, false);
-                        // With two snapshots open, there could also be a diff to be closed/cleared. 
-                        m_UIState.ClearDiffMode();
+                            First.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                        First = Second;
+                        m_UIState.SwapLastAndCurrentSnapshot();
                     }
                     else
                     {
-                        if (snapshot == First)
-                        {
-                            First.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
-                            First = null;
-                            m_UIState.ClearAllOpenModes();
-                        }
-                        else if (snapshot == Second)
-                        {
-                            Second.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
-                            Second = null;
-                            m_UIState.ClearAllOpenModes();
-                        }
-                        else
-                        {
-                            // The snapshot wasn't open, there is nothing left todo here.
-                            return;
-                        }
-                        m_OpenSnapshotsPane.SetSnapshotUIData(true, null, false);
-                        m_OpenSnapshotsPane.SetSnapshotUIData(false, null, false);
+                        // The snapshot wasn't open, there is nothing left todo here.
+                        return;
                     }
                     UIElementsHelper.SwitchVisibility(snapshot.GuiData.dynamicVisualElements.openButton, snapshot.GuiData.dynamicVisualElements.closeButton);
+                    Second = null;
+                    m_UIState.CurrentViewMode = UIState.ViewMode.ShowFirst;
+
+                    if (First != null)
+                        m_OpenSnapshotsPane.SetSnapshotUIData(true, First.GuiData, true);
+                    else
+                        m_OpenSnapshotsPane.SetSnapshotUIData(true, null, true);
+                    m_OpenSnapshotsPane.SetSnapshotUIData(false, null, false);
+                    // With two snapshots open, there could also be a diff to be closed/cleared.
+                    m_UIState.ClearDiffMode();
                 }
+                else
+                {
+                    if (snapshot == First)
+                    {
+                        First.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                        First = null;
+                        m_UIState.ClearAllOpenModes();
+                    }
+                    else if (snapshot == Second)
+                    {
+                        Second.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                        Second = null;
+                        m_UIState.ClearAllOpenModes();
+                    }
+                    else
+                    {
+                        // The snapshot wasn't open, there is nothing left todo here.
+                        return;
+                    }
+                    m_OpenSnapshotsPane.SetSnapshotUIData(true, null, false);
+                    m_OpenSnapshotsPane.SetSnapshotUIData(false, null, false);
+                }
+                UIElementsHelper.SwitchVisibility(snapshot.GuiData.dynamicVisualElements.openButton, snapshot.GuiData.dynamicVisualElements.closeButton);
             }
-            catch (ExitGUIException)
+            catch (Exception)
             {
                 throw;
-            }
-            catch (Exception e)
-            {
-                throw new Exception(DebugUtility.GetExceptionHelpMessage(e));
             }
         }
 
         void SetSnapshot(PackedMemorySnapshot snapshot)
         {
-
             //UpdateSnapshotCollectionUI();
         }
 
@@ -236,7 +225,7 @@ namespace Unity.MemoryProfiler.Editor
                     break;
             }
         }
-        
+
         void SwapOpenSnapshots()
         {
             var temp = Second;
@@ -254,8 +243,8 @@ namespace Unity.MemoryProfiler.Editor
                 m_OpenSnapshotsPane.SetSnapshotUIData(false, Second.GuiData, m_UIState.CurrentViewMode == UIState.ViewMode.ShowSecond);
             else
                 m_OpenSnapshotsPane.SetSnapshotUIData(false, null, false);
-
         }
+
         void ShowDiffOfOpenSnapshots()
         {
             if (m_UIState.diffMode != null)
@@ -266,22 +255,15 @@ namespace Unity.MemoryProfiler.Editor
             {
                 try
                 {
-                    using (new Service<IDebugContextService>.ScopeService(new DebugContextService()))
-                    {
-                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.DiffedSnapshotEvent>();
-                        
-                        m_UIState.DiffLastAndCurrentSnapshot(First.GuiData.UtcDateTime.CompareTo(Second.GuiData.UtcDateTime) < 0);
+                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.DiffedSnapshotEvent>();
 
-                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.DiffedSnapshotEvent());
-                    }
+                    m_UIState.DiffLastAndCurrentSnapshot(First.GuiData.UtcDateTime.CompareTo(Second.GuiData.UtcDateTime) < 0);
+
+                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.DiffedSnapshotEvent());
                 }
-                catch (ExitGUIException)
+                catch (Exception)
                 {
                     throw;
-                }
-                catch (Exception e)
-                {
-                    throw new Exception(DebugUtility.GetExceptionHelpMessage(e));
                 }
             }
             else
@@ -289,7 +271,6 @@ namespace Unity.MemoryProfiler.Editor
                 Debug.LogError("No second snapshot opened to diff to!");
             }
         }
-
 
         void ShowFirstOpenSnapshot()
         {
@@ -328,7 +309,7 @@ namespace Unity.MemoryProfiler.Editor
             MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.DiffToggledEvent>();
 
             var oldMode = m_UIState.CurrentViewMode;
-            
+
             m_UIState.CurrentViewMode = mode;
 
             MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.DiffToggledEvent()

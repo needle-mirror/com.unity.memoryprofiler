@@ -15,7 +15,7 @@ namespace Unity.MemoryProfiler.Editor
         const string k_LastXMLLoadPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastXMLLoadPath";
         const string k_SnapshotPathEditorPerf = "Unity.MemoryProfiler.Editor.MemorySnapshotStoragePath";
         const string k_DefaultPath = "./MemoryCaptures";
-        
+
         public static string MemorySnapshotStoragePath
         {
             get

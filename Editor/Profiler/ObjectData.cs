@@ -2,68 +2,10 @@ using System;
 using System.Collections.Generic;
 using UnityEditor.Profiling.Memory.Experimental;
 using System.Runtime.InteropServices;
-using Unity.MemoryProfiler.Editor.Debuging;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {
-#if MEMPROFILER_DEBUG_INFO
-    internal class ObjectData_DebugInfo
-    {
-        public ObjectData_DebugInfo mBase;
-        public string mTypeName;
-        public struct Field
-        {
-            public int mFieldIndex;
-            public int mOffset;
-            public string mName;
-            public string mTypeName;
-            public bool mIsStatic;
-            public Field(CachedSnapshot snapshot, int fieldIndex)
-            {
-                mFieldIndex = fieldIndex;
-                mName = snapshot.fieldDescriptions.fieldDescriptionName[fieldIndex];
-                mOffset = snapshot.fieldDescriptions.offset[fieldIndex];
-                var fti = snapshot.fieldDescriptions.typeIndex[fieldIndex];
-                mTypeName = snapshot.typeDescriptions.typeDescriptionName[fti];
-                mIsStatic = snapshot.fieldDescriptions.isStatic[fieldIndex];
-            }
-        }
-        public Field[] mFieldsInstace;   // include bases fields
-        public Field[] mFieldsStatic;    // include bases fields
-        public Field[] mFieldsAll;       // does not include bases fields
-        public int[] mFieldInstanceIndex;// include bases fields
-        public int[] mFieldStaticIndex;  // include bases fields
-        public int[] mFieldOwnedIndex;   // does not include bases fields
-        public ObjectData_DebugInfo(CachedSnapshot snapshot, int managedTypeIndex)
-        {
-            mTypeName = snapshot.typeDescriptions.typeDescriptionName[managedTypeIndex];
-            mFieldInstanceIndex = snapshot.typeDescriptions.fieldIndices_instance[managedTypeIndex];
-            mFieldsInstace = new Field[mFieldInstanceIndex.Length];
-            for (int i = 0; i != mFieldInstanceIndex.Length; ++i)
-            {
-                mFieldsInstace[i] = new Field(snapshot, mFieldInstanceIndex[i]);
-            }
-
-            mFieldStaticIndex = snapshot.typeDescriptions.fieldIndices_static[managedTypeIndex];
-            mFieldsStatic = new Field[mFieldStaticIndex.Length];
-            for (int i = 0; i != mFieldStaticIndex.Length; ++i)
-            {
-                mFieldsStatic[i] = new Field(snapshot, mFieldStaticIndex[i]);
-            }
-            mFieldOwnedIndex = snapshot.typeDescriptions.fieldIndices[managedTypeIndex];
-            mFieldsAll = new Field[mFieldOwnedIndex.Length];
-            for (int i = 0; i != mFieldOwnedIndex.Length; ++i)
-            {
-                mFieldsAll[i] = new Field(snapshot, mFieldOwnedIndex[i]);
-            }
-            var iBaseType = snapshot.typeDescriptions.baseOrElementTypeIndex[managedTypeIndex];
-            if (iBaseType >= 0)
-            {
-                mBase = new ObjectData_DebugInfo(snapshot, iBaseType);
-            }
-        }
-    }
-#endif
     internal enum ObjectDataType
     {
         Unknown,
@@ -103,16 +45,9 @@ namespace Unity.MemoryProfiler.Editor
     }
     internal struct ObjectData
     {
-#if MEMPROFILER_DEBUG_INFO
-        public ObjectData_DebugInfo mDebugInfo;
-#endif
         private void SetManagedType(CachedSnapshot snapshot, int iType)
         {
             m_data.managed.iType = iType;
-
-#if MEMPROFILER_DEBUG_INFO
-            mDebugInfo = new ObjectData_DebugInfo(snapshot, iType);
-#endif
         }
 
         public static int InvalidInstanceID
@@ -365,7 +300,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.ReferenceArray:
                     break;
                 default:
-                    DebugUtility.DebugLog("Requesting an array element on an invalid data type");
+                    Debug.Log("Requesting an array element on an invalid data type");
                     return invalid;
             }
             ObjectData o = new ObjectData();
@@ -393,9 +328,6 @@ namespace Unity.MemoryProfiler.Editor
             else return ObjectDataType.Object;
         }
 
-
-
-
         // ObjectData is pointing to an object's field
         public bool IsField()
         {
@@ -415,7 +347,7 @@ namespace Unity.MemoryProfiler.Editor
             return snapshot.fieldDescriptions.fieldDescriptionName[m_Parent.iField];
         }
 
-        // Returns the number of fields the object (that this ObjectData is currently pointing at) has 
+        // Returns the number of fields the object (that this ObjectData is currently pointing at) has
         public int GetInstanceFieldCount(CachedSnapshot snapshot)
         {
             switch (m_dataType)
@@ -477,7 +409,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Type:
                     if (!isStatic)
                     {
-                        DebugUtility.LogError("Requesting a non-static field on a type");
+                        Debug.LogError("Requesting a non-static field on a type");
                         return invalid;
                     }
                     break;
@@ -506,7 +438,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 if (iOwningType < 0)
                 {
-                    DebugUtility.LogError("Field requested is not owned by the type not any of its bases");
+                    Debug.LogError("Field requested is not owned by the type not any of its bases");
                     return invalid;
                 }
 
@@ -525,7 +457,8 @@ namespace Unity.MemoryProfiler.Editor
         public int GetInstanceID(CachedSnapshot snapshot)
         {
             int nativeIndex = nativeObjectIndex;
-            if (nativeIndex < 0) {
+            if (nativeIndex < 0)
+            {
                 int managedIndex = GetManagedObjectIndex(snapshot);
                 if (managedIndex >= 0)
                 {
@@ -539,6 +472,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             return CachedSnapshot.NativeObjectEntriesCache.InstanceID_None;
         }
+
         public ObjectData GetBase(CachedSnapshot snapshot)
         {
             switch (m_dataType)
@@ -628,9 +562,6 @@ namespace Unity.MemoryProfiler.Editor
             managedObjectData = new BytesAndOffset();
             m_data.managed.iType = -1;
             m_Parent = null;
-#if MEMPROFILER_DEBUG_INFO
-            mDebugInfo = null;
-#endif
         }
 
         public static ObjectData invalid
@@ -907,86 +838,6 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
-            return o.ToArray();
-        }
-
-        internal static ObjectData[] GetAllObjectConnectingFrom(CachedSnapshot snapshot, ObjectData obj)
-        {
-            //TODO
-            var o = new List<ObjectData>();
-            //int objIndex = -1;
-            //switch (obj.dataType)
-            //{
-            //    case ObjectDataType.Array:
-            //    case ObjectDataType.BoxedValue:
-            //    case ObjectDataType.Object:
-            //        {
-            //            ManagedObjectInfo moi;
-            //            if (snapshot.m_CrawledData.managedObjectByAddress.TryGetValue(obj.hostManagedObjectPtr, out moi))
-            //            {
-            //                objIndex = moi.managedObjectIndex;
-            //                //add crawled connections
-            //                for (int i = 0; i != snapshot.m_CrawledData.connections.Length; ++i)
-            //                {
-            //                    switch (snapshot.m_CrawledData.connections[i].connectionType)
-            //                    {
-            //                        case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
-            //                            if (snapshot.m_CrawledData.connections[i].fromManagedObjectIndex == objIndex)
-            //                            {
-            //                                o.Add(ObjectData.FromManagedObjectIndex(snapshot, snapshot.m_CrawledData.connections[i].toManagedObjectIndex));
-            //                            }
-            //                            break;
-            //                        case ManagedConnection.ConnectionType.Global_To_ManagedObject:
-            //                        case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
-            //                            break;
-
-            //                    }
-            //                }
-            //            }
-            //            break;
-            //        }
-            //    case ObjectDataType.Type:
-            //        for (int i = 0; i != snapshot.m_CrawledData.connections.Length; ++i)
-            //        {
-            //            switch (snapshot.m_CrawledData.connections[i].connectionType)
-            //            {
-            //                case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
-            //                    if (snapshot.m_CrawledData.connections[i].fromManagedType == obj.managedTypeIndex)
-            //                    {
-            //                        o.Add(ObjectData.FromManagedObjectIndex(snapshot, snapshot.m_CrawledData.connections[i].toManagedObjectIndex));
-            //                    }
-            //                    break;
-            //                case ManagedConnection.ConnectionType.Global_To_ManagedObject:
-            //                case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
-            //                    break;
-
-            //            }
-            //        }
-            //        break;
-
-            //    case ObjectDataType.NativeObject:
-            //        objIndex = obj.nativeObjectIndex;
-            //        //for (int i = 0; i != snapshot.m_CrawledData.connections.Length; ++i)
-            //        //{
-            //        //    if (snapshot.m_CrawledData.connections[i].fromPtr == obj.hostManagedObjectPtr)
-            //        //    {
-            //        //        o.Add(ObjectData.FromManagedPointer(snapshot, snapshot.m_CrawledData.connections[i].toPtr));
-            //        //    }
-            //        //}
-            //        break;
-            //    default:
-            //        return null;
-            //}
-            //if (objIndex >= 0)
-            //{
-            //    for (int i = 0; i != snapshot.connections.Count; ++i)
-            //    {
-            //        if (snapshot.connections.from[i] == objIndex)
-            //        {
-            //            o.Add(ObjectData.FromUnifiedObjectIndex(snapshot, snapshot.connections.to[i]));
-            //        }
-            //    }
-            //}
             return o.ToArray();
         }
     }

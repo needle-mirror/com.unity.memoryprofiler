@@ -26,6 +26,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             return new Range(first, first + length);
         }
+
         public bool IsNone { get { return First == Last; } }
         public bool IsAll
         {
@@ -53,13 +54,15 @@ namespace Unity.MemoryProfiler.Editor
             this.First = first;
             this.Last = last;
         }
+
         public Range Union(long value)
         {
             Range o;
             o.First = Math.Min(First, value);
-            o.Last = Math.Max(Last, value+1);
+            o.Last = Math.Max(Last, value + 1);
             return o;
         }
+
         public Range Union(Range value)
         {
             Range o;
@@ -67,6 +70,7 @@ namespace Unity.MemoryProfiler.Editor
             o.Last = Math.Max(Last, value.Last);
             return o;
         }
+
         public Range Union(ArrayRange value)
         {
             if (value.IsSequence)
@@ -74,12 +78,13 @@ namespace Unity.MemoryProfiler.Editor
                 return Union(value.Sequence);
             }
             Range o = this;
-            foreach(var v in value)
+            foreach (var v in value)
             {
                 o = o.Union(v);
             }
             return o;
         }
+
         public Range Intersection(Range other)
         {
             Range o;
@@ -126,12 +131,13 @@ namespace Unity.MemoryProfiler.Editor
         public long[] ToArray()
         {
             var o = new long[Length];
-            for(long i = 0; i != Length; ++i)
+            for (long i = 0; i != Length; ++i)
             {
                 o[i] = i + First;
             }
             return o;
         }
+
         public static Range operator+(Range r, long x)
         {
             return new Range(r.First + x, r.Last + x);
@@ -147,8 +153,9 @@ namespace Unity.MemoryProfiler.Editor
     {
         public static ArrayRange Single(long index)
         {
-            return new ArrayRange(index, index+1);
+            return new ArrayRange(index, index + 1);
         }
+
         public static ArrayRange FirstLast(long first, long last)
         {
             return new ArrayRange(first, last);
@@ -168,6 +175,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             return new ArrayRange(array, first, last);
         }
+
         public static readonly ArrayRange All = new ArrayRange(Range.All);
         public static readonly ArrayRange None = new ArrayRange(0, 0);
 
@@ -319,6 +327,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             return o;
         }
+
         public struct Enumerator : IEnumerator<long>
         {
             ArrayRange m_ArrayRange;
@@ -328,6 +337,7 @@ namespace Unity.MemoryProfiler.Editor
                 m_ArrayRange = range;
                 m_Cursor = -1;
             }
+
             /// <summary>
             /// left not implemented so to not create boxing operation using non-generic enumerators
             /// </summary>
@@ -337,10 +347,12 @@ namespace Unity.MemoryProfiler.Editor
                 ++m_Cursor;
                 return m_Cursor < m_ArrayRange.Count;
             }
+
             public void Reset()
             {
                 m_Cursor = 0;
             }
+
             public long Current { get { return m_ArrayRange[m_Cursor]; } }
             void IDisposable.Dispose() {}
         }
@@ -348,10 +360,12 @@ namespace Unity.MemoryProfiler.Editor
         {
             return new Enumerator(this);
         }
+
         IEnumerator<long> IEnumerable<long>.GetEnumerator()
         {
             return new Enumerator(this);
         }
+
         IEnumerator IEnumerable.GetEnumerator()
         {
             return new Enumerator(this);

@@ -11,7 +11,6 @@ namespace Unity.MemoryProfiler.Editor.NativeArrayExtensions
             {
                 UnsafeUtility.MemClear(arr.GetUnsafePtr(), arr.Length * UnsafeUtility.SizeOf<T>());
             }
-
         }
     }
 }

@@ -38,20 +38,17 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             m_SortOrder = new SortOrder[1] { sortOrder };
             m_createGroupTable = subTable;
 
-            using (Profiling.GetMarker(Profiling.MarkerId.GroupedTable).Auto())
+            var col = m_table.GetColumnByIndex(colToGroup);
+            var metaCol = m_Meta.GetColumnByIndex(colToGroup);
+            if (metaCol.DefaultGroupAlgorithm != null)
             {
-                var col = m_table.GetColumnByIndex(colToGroup);
-                var metaCol = m_Meta.GetColumnByIndex(colToGroup);
-                if (metaCol.DefaultGroupAlgorithm != null)
-                {
-                    m_GroupCollection = metaCol.DefaultGroupAlgorithm.Group(col, range, sortOrder);
-                }
-                else
-                {
-                    throw new Exception("Trying to group a column without grouping algorithm. Column '" + metaCol.Name + "' from table '" + m_table.GetName() + "'");
-                }
-                InitializeFromGroupCollection(col, colToGroup);
+                m_GroupCollection = metaCol.DefaultGroupAlgorithm.Group(col, range, sortOrder);
             }
+            else
+            {
+                throw new Exception("Trying to group a column without grouping algorithm. Column '" + metaCol.Name + "' from table '" + m_table.GetName() + "'");
+            }
+            InitializeFromGroupCollection(col, colToGroup);
         }
 
         public GroupedTable(Database.Table table, ArrayRange range, int colToGroupFirst, int colToGroupLast, int[] colGroupOrder, SortOrder[] sortOrder)
@@ -67,20 +64,17 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
             int sourceGroupedColumnIndex = m_ColumnOrder[colToGroupFirst];
 
-            using (Profiling.GetMarker(Profiling.MarkerId.GroupedTable).Auto())
+            var col = m_table.GetColumnByIndex(sourceGroupedColumnIndex);
+            var metaCol = m_Meta.GetColumnByIndex(sourceGroupedColumnIndex);
+            if (metaCol.DefaultGroupAlgorithm != null)
             {
-                var col = m_table.GetColumnByIndex(sourceGroupedColumnIndex);
-                var metaCol = m_Meta.GetColumnByIndex(sourceGroupedColumnIndex);
-                if (metaCol.DefaultGroupAlgorithm != null)
-                {
-                    m_GroupCollection = metaCol.DefaultGroupAlgorithm.Group(col, range, m_SortOrder[colToGroupFirst]);
-                }
-                else
-                {
-                    throw new Exception("Trying to group a column without grouping algorithm. Column '" + metaCol.Name + "' from table '" + m_table.GetName() + "'");
-                }
-                InitializeFromGroupCollection(col, sourceGroupedColumnIndex);
+                m_GroupCollection = metaCol.DefaultGroupAlgorithm.Group(col, range, m_SortOrder[colToGroupFirst]);
             }
+            else
+            {
+                throw new Exception("Trying to group a column without grouping algorithm. Column '" + metaCol.Name + "' from table '" + m_table.GetName() + "'");
+            }
+            InitializeFromGroupCollection(col, sourceGroupedColumnIndex);
         }
 
         private void InitializeFromGroupCollection(Database.Column col, long sourceColToGroup)

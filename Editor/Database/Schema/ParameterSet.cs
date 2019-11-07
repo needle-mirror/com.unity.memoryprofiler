@@ -44,7 +44,8 @@ namespace Unity.MemoryProfiler.Editor.Database
                 if (needComma)
                 {
                     sb.Append(", ");
-                } else
+                }
+                else
                 {
                     needComma = true;
                 }

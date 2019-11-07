@@ -30,7 +30,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             EditorPrefs.SetInt(m_DisplayWidthPrefKeysPerColumn[columnIndex], value);
         }
 
-
         public Database.Table SourceTable
         {
             get
@@ -49,19 +48,21 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public long RowCount
         {
-            get {
+            get
+            {
                 return m_TableDisplay.GetRowCount();
             }
         }
 
-        public long SelectedRow 
+        public long SelectedRow
         {
-            get {
+            get
+            {
                 return m_GUIState.SelectedRow;
             }
 
-            set {
-
+            set
+            {
                 m_GUIState.SelectedRow = value;
             }
         }
@@ -89,14 +90,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             public double HeightBeforeFirstVisibleRow;//using double since this value will be maintained by offseting it.
         }
 
-        public State CurrentState 
+        public State CurrentState
         {
-            get { 
+            get
+            {
                 State state = new State();
 
                 state.SelectedCell = GetLinkToCurrentSelection();
 
-                state.Filter = GetCurrentFilterCopy(); 
+                state.Filter = GetCurrentFilterCopy();
                 state.ScrollPosition = m_GUIState.ScrollPosition;
                 state.SelectedRow = m_GUIState.SelectedRow;
                 state.FirstVisibleRow = m_GUIState.FirstVisibleRow;
@@ -121,7 +123,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 return state;
             }
-            set {
+            set
+            {
                 InitFilter(value.Filter, value.ExpandedCells);
 
                 m_GUIState.ScrollPosition = value.ScrollPosition;
@@ -323,8 +326,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             var sorted = colState.Sorted != SortOrder.None ? colState.Sorted : colState.DefaultSorted;
             var sortName = Filter.Sort.GetSortName(sorted);
             str = sortName + str;
-            
-            if(!GUI.Button(r, str, Styles.Header))
+
+            if (!GUI.Button(r, str, Styles.Header))
                 return;
 
             var meta = m_TableSource.GetMetaData();
@@ -399,7 +402,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     Filter.Sort.Level level = null;
                     if (sortFilter.SortOverride != null && sortFilter.SortOverride.SortLevel != null && sortFilter.SortOverride.SortLevel.Count > 0)
                         level = sortFilter.SortOverride.SortLevel[0];
-                    if((level == null || level.Order == SortOrder.None) && sortFilter.SortDefault != null && sortFilter.SortDefault.SortLevel != null && sortFilter.SortDefault.SortLevel.Count > 0)
+                    if ((level == null || level.Order == SortOrder.None) && sortFilter.SortDefault != null && sortFilter.SortDefault.SortLevel != null && sortFilter.SortDefault.SortLevel.Count > 0)
                         level = sortFilter.SortDefault.SortLevel[0];
                     if (level == null)
                         continue;
@@ -407,14 +410,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = columnName, filterName = "Sort", filterInput = level != null ? level.Order.ToString() : null });
                 }
                 else if (filter is Filter.Group)
-                { 
+                {
                     m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = (filter as Filter.Group).GetColumnName(m_TableDisplay), filterName = "Group"});
                 }
                 else if (filter is Filter.Match)
                 {
                     var matchFilter = (filter as Filter.Match);
                     m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = matchFilter.GetColumnName(m_TableDisplay), filterName = "Match", filterInput = matchFilter.MatchString });
-                } 
+                }
             }
             MemoryProfilerAnalytics.FiltersChanged(m_TableDisplay.GetName(),  m_FilterBuffer);
         }
@@ -500,7 +503,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             UpdateColumnState();
             m_TableDisplay = m_Filters.CreateFilter(m_TableSource);
-            
+
             UpdateExpandedState(expandedCells);
             UpdateDataState();
             ResetGUIState();
@@ -550,20 +553,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var metaColumn = m_TableDisplay.GetMetaData().GetColumnByIndex((int)col);
                 if (column != null)
                 {
-#if MEMPROFILER_DEBUG_INFO
-                    string str;
-                    if (m_FormattingOptions.ObjectDataFormatter.showDebugValue)
-                    {
-                        //str = "\"" + column.GetRowValueString(row, Database.DefaultDataFormatter.Instance) + "\" " + column.GetDebugString(row);
-                        str = column.GetDebugString(row);
-                    }
-                    else
-                    {
-                        str = column.GetRowValueString(row, m_FormattingOptions.GetFormatter(metaColumn.FormatName));
-                    }
-#else
                     var str = column.GetRowValueString(row, m_FormattingOptions.GetFormatter(metaColumn.FormatName));
-#endif
                     DrawTextEllipsis(str, r,
                         link == null ? Styles.NumberLabel : Styles.ClickableLabel
                         , EllipsisStyleMetricData, selected);
@@ -662,7 +652,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 UpdateDisplayTable();
             }
-            if(changed)
+            if (changed)
                 ReportFilterChanges();
             return changed;
         }
@@ -837,6 +827,5 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ReportFilterChanges();
             }
         }
-        
     }
 }

@@ -216,11 +216,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             m_SortOrder = sortOrder;
             m_ColumnIndexFirst = columnIndexFirst;
 
-            using (Profiling.GetMarker(Profiling.MarkerId.SortedTable).Auto())
-            {
-                this.indices = SortRange(indices, sortColumn, sortOrder, m_ColumnIndexFirst);
-            }
-
+            this.indices = SortRange(indices, sortColumn, sortOrder, m_ColumnIndexFirst);
 
             //create columns
             CreateColumn();

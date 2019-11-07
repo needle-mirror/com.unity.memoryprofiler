@@ -12,7 +12,7 @@ The Workbench is the panel on the left side of the Memory Profiler window. It co
   * Hover over the name to see the full path.
 * Date and time of the capture.
   * The time is stored as UTC but converted to the local machine’s time for displaying.
-  * Hover over the date and time to see the snapshot's metadata, by default that is: 
+  * Hover over the date and time to see the snapshot's metadata, by default that is:
     * The Project name.
     * The Scripting Runtime Version (for snapshots taken within the Editor).
 * An options menu accessed through the cogwheel icon lets you:
@@ -46,4 +46,3 @@ The __Swap__ button in the toolbar of this area will swap the left and right sna
 
 
 [Back to manual](manual.md)
-

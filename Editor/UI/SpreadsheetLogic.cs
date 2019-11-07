@@ -63,7 +63,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         };
         protected GUIState m_GUIState = new GUIState();
         protected GUIState m_DelayedUpdateGUIState = null;
-        public SpreadsheetLogic(IViewEventListener listener) : this(null, listener) { }
+        public SpreadsheetLogic(IViewEventListener listener) : this(null, listener) {}
 
         public SpreadsheetLogic(SplitterStateEx splitter, IViewEventListener listener)
         {
@@ -341,7 +341,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 guiState.FirstVisibleRowY = curYMin;
                 guiState.FirstVisibleRowIndex -= i;
                 guiState.HeightBeforeFirstVisibleRow -= offsetY;
-                
             }
 
 
@@ -351,9 +350,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             float yMax = m_GUIState.ScrollPosition.y + m_GUIState.RectData.height;
             Rect r = new Rect(0
-                    , m_GUIState.FirstVisibleRowY
-                    , 0
-                    , 0);
+                , m_GUIState.FirstVisibleRowY
+                , 0
+                , 0);
             long firstRow = GetFirstRow();
             if (firstRow >= 0)
             {
@@ -424,13 +423,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                         var row = GetRowAtPosition(Event.current.mousePosition);
                         if (row >= 0)
                         {
-                                m_GUIState.SelectedRow = row;
-                                if (m_Listener != null && m_Listener.IsAlive)
-                                {
-                                    ((IViewEventListener)m_Listener.Target).OnRepaint();
-                                }
+                            m_GUIState.SelectedRow = row;
+                            if (m_Listener != null && m_Listener.IsAlive)
+                            {
+                                ((IViewEventListener)m_Listener.Target).OnRepaint();
+                            }
 
-                                OnGUI_CellMouseDown(new Database.CellPosition(row, (int)GetColAtPosition(Event.current.mousePosition)));
+                            OnGUI_CellMouseDown(new Database.CellPosition(row, (int)GetColAtPosition(Event.current.mousePosition)));
                         }
                         break;
                     }
@@ -463,7 +462,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            if(m_DelayedUpdateGUIState != null && Event.current.type == EventType.Repaint)
+            if (m_DelayedUpdateGUIState != null && Event.current.type == EventType.Repaint)
             {
                 m_GUIState = m_DelayedUpdateGUIState;
                 m_DelayedUpdateGUIState = null;

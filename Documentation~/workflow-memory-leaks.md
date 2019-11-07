@@ -30,7 +30,7 @@ There are multiple patterns in which memory leaks occur. A common one is when re
 
 5. Play through the Scene. E.g., if the Scene contains a level of a game, play through a bit of that level.
 
-6. Unload the Scene or switch to an empty Scene. 
+6. Unload the Scene or switch to an empty Scene.
    > **Note**: To fully unload Assets in the last opened scene; you will need to either call [Resources.UnloadUnusedAssets](https://docs.unity3d.com/ScriptReference/Resources.UnloadUnusedAssets.html) or load into two new scenes (e.g., Load Empty Scene twice).
 
 7. Take another snapshot.
@@ -80,14 +80,14 @@ Another typical pattern occurs when we have small continuous allocations that ar
 10. Open the third snapshot you've taken. Then click the __Diff__ button in the [Open Snapshots view](workbench.md#open-snapshots-view), this might also take a few moments, depending on the size of the snapshot file. You will then see the __Diff__ table.
 
 11. Click the table header of the __Diff__ column; this presents you with a drop-down menu:
-  
+
     ![Diff Column Grouping in Memory Profiler window](images/Diff-Column-Group.png)
-    
+
 12. Click on the __Owned Size__ table header and select __Group__; this filters objects based on their presence in the snapshots and their size.
 
 13. Click again on the __Owned Size__ table header and select __Sort Descending__ this sorts all the groups based on their size.
 
-14. Under __Same__ and __New__, attempt to identify the larger groups of allocations present and check if they are present in both __Same__ and __New__ categories. Make a note of any you find. 
+14. Under __Same__ and __New__, attempt to identify the larger groups of allocations present and check if they are present in both __Same__ and __New__ categories. Make a note of any you find.
 
 15. Repeat steps 11-14 for the first and second snapshots. By repeating the process, we will gain an idea of what the potential leaks or problems are within your system.
 

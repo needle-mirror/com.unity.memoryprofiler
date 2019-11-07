@@ -3,11 +3,11 @@
 /**********************************************************************************************************************/
 
 #backwardsInHistoryButton.historyButtonIcon{
-	background-image: resource("Icons/d_Profiler.PrevFrame.png");
+    background-image: resource("Icons/d_Profiler.PrevFrame.png");
 }
 
 #forwardsInHistoryButton.historyButtonIcon{
-	background-image: resource("Icons/d_Profiler.NextFrame.png");
+    background-image: resource("Icons/d_Profiler.NextFrame.png");
 }
 
 /**********************************************************************************************************************/
@@ -43,23 +43,23 @@ Toggle.radioButton:focus:checked > #Checkmark {
 /**********************************************************************************************************************/
 
 #snapshotListItem.evenRow{
-	background-color: #313131;
+    background-color: #313131;
 }
 
 #snapshotButtons.oddRow{
-	background-color: #383838;
+    background-color: #383838;
 }
 
 #snapshotButtons.evenRow{
-	background-color: #313131;
+    background-color: #313131;
 }
 
 #optionButton{
-	background-image: resource("Icons/d__Popup.png");
+    background-image: resource("Icons/d__Popup.png");
 }
 
 .previewImage{
-	background-color: #242424;
+    background-color: #242424;
 }
 
 Button#diffOpenSnapshots.selectedSnapshot{
@@ -68,11 +68,11 @@ Button#diffOpenSnapshots.selectedSnapshot{
 }
 
 Label.snapshotIsOpen{
-	color: rgba(255, 255, 255, 0.4)
+    color: rgba(255, 255, 255, 0.4)
 }
 
 Label.snapshotIsInView{
-	color: rgba(255, 255, 255, 0.4)
+    color: rgba(255, 255, 255, 0.4)
 }
 
 /**********************************************************************************************************************/

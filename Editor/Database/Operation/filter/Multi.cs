@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 {
     /// <summary>
-    /// A collection of filters applied sequentially 
+    /// A collection of filters applied sequentially
     /// </summary>
     internal class Multi : Filter
     {

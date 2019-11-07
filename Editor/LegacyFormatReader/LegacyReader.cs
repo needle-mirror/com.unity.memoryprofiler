@@ -46,8 +46,8 @@ namespace Unity.MemoryProfiler.Editor.Legacy
                             SurrogateSelector ss = new SurrogateSelector();
 
                             ss.AddSurrogate(typeof(UnityEditor.MemoryProfiler.PackedMemorySnapshot),
-                            new StreamingContext(StreamingContextStates.All),
-                            new LegacyFormats.Serialization.LegacyPackedMemorySnapshotSerializationSurrogate(true));
+                                new StreamingContext(StreamingContextStates.All),
+                                new LegacyFormats.Serialization.LegacyPackedMemorySnapshotSerializationSurrogate(true));
                             binaryFormatter.SurrogateSelector = ss;
                             object obj = null;
                             try
@@ -60,8 +60,8 @@ namespace Unity.MemoryProfiler.Editor.Legacy
                                 ss = new SurrogateSelector();
 
                                 ss.AddSurrogate(typeof(UnityEditor.MemoryProfiler.PackedMemorySnapshot),
-                                new StreamingContext(StreamingContextStates.All),
-                                new LegacyFormats.Serialization.LegacyPackedMemorySnapshotSerializationSurrogate(false));
+                                    new StreamingContext(StreamingContextStates.All),
+                                    new LegacyFormats.Serialization.LegacyPackedMemorySnapshotSerializationSurrogate(false));
 
                                 binaryFormatter.SurrogateSelector = ss;
                                 obj = binaryFormatter.Deserialize(memStr);
@@ -87,7 +87,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy
                     snapshot = UnityEngine.JsonUtility.FromJson<LegacyPackedMemorySnapshot>(json);
                     break;
                 default:
-                    throw new System.Exception("Not a supported file format, provided extension was: "+ extension);
+                    throw new System.Exception("Not a supported file format, provided extension was: " + extension);
             }
 
             return snapshot;

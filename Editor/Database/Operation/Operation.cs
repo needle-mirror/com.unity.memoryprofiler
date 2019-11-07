@@ -124,48 +124,49 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 case Operator.IsIn:
                 case Operator.NotIn:
+                {
+                    long rightRowCount = rightExpression.RowCount();
+                    for (long expRow = 0; expRow != rightRowCount; ++expRow)
                     {
-                        long rightRowCount = rightExpression.RowCount();
-                        for (long expRow = 0; expRow != rightRowCount; ++expRow)
+                        var rightValue = rightExpression.GetValue(expRow);
+                        if (leftValue == rightValue)
                         {
-                            var rightValue = rightExpression.GetValue(expRow);
-                            if (leftValue == rightValue)
-                            {
-                                return op == Operator.IsIn;
-                            }
+                            return op == Operator.IsIn;
                         }
-                        return op == Operator.NotIn;
                     }
+                    return op == Operator.NotIn;
+                }
                 default:
-                    {
-                        var rightValue = rightExpression.GetValue(rightExpressionRow);
-                        return Match(op, leftValue, rightValue);
-                    }
+                {
+                    var rightValue = rightExpression.GetValue(rightExpressionRow);
+                    return Match(op, leftValue, rightValue);
+                }
             }
         }
+
         public static bool Match(Operator op, int leftValue, TypedExpression<int> rightExpression, long rightExpressionRow)
         {
             switch (op)
             {
                 case Operator.IsIn:
                 case Operator.NotIn:
+                {
+                    long rightRowCount = rightExpression.RowCount();
+                    for (long expRow = 0; expRow != rightRowCount; ++expRow)
                     {
-                        long rightRowCount = rightExpression.RowCount();
-                        for (long expRow = 0; expRow != rightRowCount; ++expRow)
+                        var rightValue = rightExpression.GetValue(expRow);
+                        if (leftValue == rightValue)
                         {
-                            var rightValue = rightExpression.GetValue(expRow);
-                            if (leftValue == rightValue)
-                            {
-                                return op == Operator.IsIn;
-                            }
+                            return op == Operator.IsIn;
                         }
-                        return op == Operator.NotIn;
                     }
+                    return op == Operator.NotIn;
+                }
                 default:
-                    {
-                        var rightValue = rightExpression.GetValue(rightExpressionRow);
-                        return Match(op, leftValue, rightValue);
-                    }
+                {
+                    var rightValue = rightExpression.GetValue(rightExpressionRow);
+                    return Match(op, leftValue, rightValue);
+                }
             }
         }
 
@@ -182,6 +183,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
             throw new System.Exception("bad operator");
         }
+
         public static bool Match(Operator op, long lhs, long rhs)
         {
             switch (op)
@@ -195,6 +197,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
             throw new System.Exception("bad operator");
         }
+
         public static bool Match(Operator op, int lhs, int rhs)
         {
             switch (op)
@@ -271,17 +274,17 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 if (_comparableComparatorIdentity == null)
                 {
                     _comparableComparatorIdentity = (IComparable a, IComparable b) => {
-                            try
-                            {
-                                return a.CompareTo(b);
-                            }
-                            catch (Exception e)
-                            {
-                                throw new Exception("Failed to compare values: '" + (a == null ? "null" : a.ToString())
-                                    + "' and '" + (b == null ? "null" : b.ToString())
-                                    + "' Exception: " + e.Message);
-                            }
-                        };
+                        try
+                        {
+                            return a.CompareTo(b);
+                        }
+                        catch (Exception e)
+                        {
+                            throw new Exception("Failed to compare values: '" + (a == null ? "null" : a.ToString())
+                                + "' and '" + (b == null ? "null" : b.ToString())
+                                + "' Exception: " + e.Message);
+                        }
+                    };
                 }
                 return _comparableComparatorIdentity;
             }

@@ -42,6 +42,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "captureSnapshot";
             }
+
             // camelCase since these events get serialized to Json and naming convention in analytics is camelCase
             public string subtype;
             public int ts;
@@ -58,6 +59,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "loadSnapshot";
             }
+
             public string subtype;
             public int ts;
             public float duration;
@@ -72,6 +74,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "importSnapshot";
             }
+
             public string subtype;
             public int ts;
             public float duration;
@@ -86,6 +89,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "diffSnapshot";
             }
+
             public string subtype;
             public int ts;
             public float duration;
@@ -100,6 +104,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "diffToggle";
             }
+
             public string subtype;
             public int ts;
             public float duration;
@@ -123,6 +128,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "openView";
             }
+
             public string subtype;
             public int ts;
             public float duration;
@@ -138,6 +144,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "loadViewXML";
             }
+
             public string subtype;
             public int ts;
             public float duration;
@@ -168,6 +175,7 @@ namespace Unity.MemoryProfiler.Editor
                 this.duration = duration;
                 subtype = "filterTable";
             }
+
             public string subtype;
             public int ts;
             public float duration;
@@ -182,7 +190,7 @@ namespace Unity.MemoryProfiler.Editor
             s_EnableAnalytics = true;
             EditorAnalytics.RegisterEventWithLimit(k_EventTopicName, k_MaxEventsPerHour, k_MaxEventItems, k_VendorKey);
         }
-        
+
         public static void SendEvent<T>(T eventData) where T : IMemoryProfilerAnalyticsEvent
         {
             if (s_EnableAnalytics)
@@ -202,7 +210,7 @@ namespace Unity.MemoryProfiler.Editor
                 s_PendingEvents[typeof(T)] = -1;
             }
         }
-        
+
         public static void EndEvent<T>(T eventData) where T : IMemoryProfilerAnalyticsEvent
         {
             if (s_EnableAnalytics)
@@ -210,7 +218,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (s_PendingEvents.ContainsKey(typeof(T)) && s_PendingEvents[typeof(T)] >= 0)
                 {
                     int unixTimestamp = (int)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
-                    eventData.SetTime(unixTimestamp, (float) (EditorApplication.timeSinceStartup - s_PendingEvents[typeof(T)]));
+                    eventData.SetTime(unixTimestamp, (float)(EditorApplication.timeSinceStartup - s_PendingEvents[typeof(T)]));
                     s_PendingEvents[typeof(T)] = -1;
                     SendEvent(eventData);
                 }
@@ -220,7 +228,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
         }
-        
+
         public static void StartEventWithMetaData<T>() where T : IMemoryProfilerAnalyticsEventWithMetaData
         {
             if (s_EnableAnalytics)
@@ -236,7 +244,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
         }
-        
+
         public static void EndEventWithMetadata<T>(T eventData) where T : IMemoryProfilerAnalyticsEventWithMetaData
         {
             if (s_EnableAnalytics)
@@ -249,7 +257,7 @@ namespace Unity.MemoryProfiler.Editor
                 EndEvent<T>(eventData);
             }
         }
-        
+
         public static void AddMetaDatatoEvent<T>(byte data) where T : IMemoryProfilerAnalyticsEventWithMetaData
         {
             if (s_EnableAnalytics && s_PendingEvents.ContainsKey(typeof(T)) && s_PendingEvents[typeof(T)] >= 0)
@@ -261,7 +269,7 @@ namespace Unity.MemoryProfiler.Editor
             if (s_EnableAnalytics)
             {
                 bool changesOccured = false;
-                if(s_PendingFilterChanges.Count == filters.Count)
+                if (s_PendingFilterChanges.Count == filters.Count)
                 {
                     for (int i = 0; i < filters.Count; i++)
                     {
@@ -283,7 +291,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 s_TableNameOfPendingFilterChanges = tableName;
                 s_PendingFilterChanges.Clear();
-                
+
                 foreach (var item in filters)
                 {
                     s_PendingFilterChanges.Add(item);
@@ -294,7 +302,7 @@ namespace Unity.MemoryProfiler.Editor
         public static void SendPendingFilterChanges()
         {
             //TODO: Send off 20seconds after the last change
-            if(s_PendingFilterChanges.Count > 0)
+            if (s_PendingFilterChanges.Count > 0)
             {
                 if (s_PendingEvents.ContainsKey(typeof(TableFilteredEvent)) && s_PendingEvents[typeof(TableFilteredEvent)] >= 0)
                 {

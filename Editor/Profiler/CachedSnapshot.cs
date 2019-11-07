@@ -4,6 +4,8 @@ using System.Linq;
 using UnityEngine;
 using UnityEditor.Profiling.Memory.Experimental;
 using Unity.MemoryProfiler.Editor.Database.Soa;
+using Unity.Profiling;
+using Unity.MemoryProfiler.Containers.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -68,7 +70,14 @@ namespace Unity.MemoryProfiler.Editor
 
     internal class CachedSnapshot
     {
+        const uint kSnapshotVersionWithConnectionChanges = 10;
+        uint m_SnapshotVersion;
         public static int kCacheEntrySize = 4 * 1024;
+
+        public bool HasConnectionOverhaul
+        {
+            get { return m_SnapshotVersion >= kSnapshotVersionWithConnectionChanges; }
+        }
 
         public ManagedData CrawledData { internal set; get; }
         public PackedMemorySnapshot packedMemorySnapshot { private set; get; }
@@ -89,28 +98,29 @@ namespace Unity.MemoryProfiler.Editor
                 callstackSymbols = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.callstackSymbols));
             }
 
-            public string GetReadableCallstackForId( NativeCallstackSymbolEntriesCache symbols, long id)
+            public string GetReadableCallstackForId(NativeCallstackSymbolEntriesCache symbols, long id)
             {
-                int entryIdx = this.id.FindIndex(x=> x==id);
+                int entryIdx = this.id.FindIndex(x => x == id);
 
                 return entryIdx < 0 ? "" : GetReadableCallstack(symbols, entryIdx);
             }
-            public string GetReadableCallstack( NativeCallstackSymbolEntriesCache symbols, long idx)
+
+            public string GetReadableCallstack(NativeCallstackSymbolEntriesCache symbols, long idx)
             {
                 string readableStackTrace = "";
 
                 ulong[] callstackSymbols = this.callstackSymbols[idx];
 
-                for (int i=0; i<callstackSymbols.Length; ++i)
+                for (int i = 0; i < callstackSymbols.Length; ++i)
                 {
-                    int symbolIdx = symbols.symbol.FindIndex(x=> x==callstackSymbols[i]);
+                    int symbolIdx = symbols.symbol.FindIndex(x => x == callstackSymbols[i]);
 
                     if (symbolIdx < 0)
                         readableStackTrace += "<unknown>\n";
                     else
                         readableStackTrace += symbols.readableStackTrace[symbolIdx];
                 }
-                
+
                 return readableStackTrace;
             }
         }
@@ -400,39 +410,84 @@ namespace Unity.MemoryProfiler.Editor
 
         public class ManagedMemorySectionEntriesCache
         {
+
+            ProfilerMarker cacheFind = new ProfilerMarker("ManagedMemorySectionEntriesCache.Find");
             public long Count;
             public byte[][] bytes;
             public ulong[] startAddress;
-            public SoaDataSet dataSet;
-            public BytesAndOffset Find(UInt64 address, VirtualMachineInformation virtualMachineInformation)
+            ulong minAddress;
+            ulong maxAddress;
+
+            public BytesAndOffset Find(ulong address, VirtualMachineInformation virtualMachineInformation)
             {
-                for (int i = 0; i != Count; ++i)
+                using (cacheFind.Auto())
                 {
-                    if (address >= startAddress[i] && address < (startAddress[i] + (ulong)bytes[i].Length))
-                        return new BytesAndOffset() { bytes = bytes[i], offset = (int)(address - startAddress[i]), pointerSize = virtualMachineInformation.pointerSize };
+                    var bytesAndOffset = new BytesAndOffset();
+
+                    if (address != 0 && address >= minAddress && address < maxAddress)
+                    {
+                        int idx = Array.BinarySearch(startAddress, address);
+                        if (idx < 0)
+                        {
+                            idx = ~idx - 1;
+                        }
+
+                        if (address >= startAddress[idx] && address < (startAddress[idx] + (ulong)bytes[idx].Length))
+                        {
+                            bytesAndOffset.bytes = bytes[idx];
+                            bytesAndOffset.offset = (int)(address - startAddress[idx]);
+                            bytesAndOffset.pointerSize = virtualMachineInformation.pointerSize;
+                        }
+                    }
+
+                    return bytesAndOffset;
                 }
-                return new BytesAndOffset();
             }
 
-            public ManagedMemorySectionEntriesCache(ManagedMemorySectionEntries ss)
+            static void SortSectionEntries(ref ulong[] startAddresses, ref byte[][] associatedByteArrays)
             {
+                var sortMapping = new int[startAddresses.Length];
 
-                Count = ss.GetNumEntries();
-                dataSet = new SoaDataSet(Count, kCacheEntrySize);
-                
+                for (int i = 0; i < sortMapping.Length; ++i)
+                    sortMapping[i] = i;
+
+                var startAddrs = startAddresses;
+                Array.Sort(sortMapping, (x, y) => startAddrs[x].CompareTo(startAddrs[y]));
+
+                var newSortedAddresses = new ulong[startAddresses.Length];
+                var newSortedByteArrays = new byte[startAddresses.Length][];
+
+                for(int i = 0; i < startAddresses.Length; ++i)
+                {
+                    long idx = sortMapping[i];
+                    newSortedAddresses[i] = startAddresses[idx];
+                    newSortedByteArrays[i] = associatedByteArrays[idx];
+                }
+
+                startAddresses = newSortedAddresses;
+                associatedByteArrays = newSortedByteArrays;
+            }
+
+            public ManagedMemorySectionEntriesCache(ManagedMemorySectionEntries sectionEntries)
+            {
+                Count = sectionEntries.GetNumEntries();
                 if (Count > 0)
                 {
+                    startAddress = new ulong[Count];
+                    //workaround using GetNumEntries instead of count due to limitations of internal API
+                    sectionEntries.startAddress.GetEntries(0, sectionEntries.GetNumEntries(), ref startAddress);
                     bytes = new byte[Count][];
                     var cacheBytes = new byte[1][];
                     for (uint i = 0; i < Count; ++i)
                     {
-                        ss.bytes.GetEntries(i, 1, ref cacheBytes);
+                        sectionEntries.bytes.GetEntries(i, 1, ref cacheBytes);
                         bytes[i] = cacheBytes[0];
-
                     }
-                    startAddress = new ulong[Count];
-                    //workaround using GetNumEntries instead of count due to limitations of internal API
-                    ss.startAddress.GetEntries(0, ss.GetNumEntries(), ref startAddress);
+
+                    SortSectionEntries(ref startAddress, ref bytes);
+
+                    minAddress = startAddress[0];
+                    maxAddress = startAddress[Count - 1] + (ulong)bytes[Count - 1].LongLength;
                 }
             }
         }
@@ -472,15 +527,66 @@ namespace Unity.MemoryProfiler.Editor
         public class ConnectionEntriesCache
         {
             public long Count;
-            public DataArray.Cache<int> from;
-            public DataArray.Cache<int> to;
+            public DataArray.Cache<int> from { private set; get; }
+            public DataArray.Cache<int> to { private set; get; }
             public SoaDataSet dataSet;
-            public ConnectionEntriesCache(ConnectionEntries ss)
+            public ConnectionEntriesCache(PackedMemorySnapshot snap, bool connectionsNeedRemaping)
             {
+                var ss = snap.connections;
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
-                from = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.from));
-                to = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.to));
+#if UNITY_2019_3_OR_NEWER
+                if (connectionsNeedRemaping)
+                {
+                    var fromAPIArr = new int[Count];
+                    ss.from.GetEntries(0, (uint)Count, ref fromAPIArr);
+                    var toAPIArr = new int[Count];
+                    ss.to.GetEntries(0, (uint)Count, ref toAPIArr);
+                    var instanceIDArr = new int[snap.nativeObjects.instanceId.GetNumEntries()];
+                    snap.nativeObjects.instanceId.GetEntries(0, snap.nativeObjects.instanceId.GetNumEntries(), ref instanceIDArr);
+                    var gchandlesIndexArr = new int[snap.nativeObjects.gcHandleIndex.GetNumEntries()];
+                    snap.nativeObjects.gcHandleIndex.GetEntries(0, snap.nativeObjects.gcHandleIndex.GetNumEntries(), ref gchandlesIndexArr);
+
+                    Dictionary<int, int> instanceIDToIndex = new Dictionary<int, int>();
+                    Dictionary<int, int> instanceIDToGcHandleIndex = new Dictionary<int, int>();
+
+                    for (int i = 0; i < instanceIDArr.Length; ++i)
+                    {
+                        if(gchandlesIndexArr[i] != -1)
+                        {
+                            instanceIDToGcHandleIndex.Add(instanceIDArr[i], gchandlesIndexArr[i]);
+                        }
+                        instanceIDToIndex.Add(instanceIDArr[i], i);
+                    }
+
+                    var gcHandlesCount = snap.gcHandles.GetNumEntries();
+                    int[] fromIndices = new int[Count + instanceIDToGcHandleIndex.Count];
+                    int[] toIndices = new int[fromIndices.Length];
+
+                    for (long i = 0; i < Count; ++i)
+                    {
+                        fromIndices[i] = (int)(gcHandlesCount + instanceIDToIndex[fromAPIArr[i]]);
+                        toIndices[i] = (int)(gcHandlesCount + instanceIDToIndex[toAPIArr[i]]);
+                    }
+
+                    var enumerator = instanceIDToGcHandleIndex.GetEnumerator();
+                    for (long i = Count; i < fromIndices.Length; ++i)
+                    {
+                        enumerator.MoveNext();
+                        fromIndices[i] = (int)(gcHandlesCount + instanceIDToIndex[enumerator.Current.Key]);
+                        toIndices[i] = enumerator.Current.Value;
+                    }
+
+                    from = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(fromIndices));
+                    to = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(toIndices));
+                }
+                else
+#endif
+                {
+                    from = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.from));
+                    to = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.to));
+                }
+
             }
         }
 
@@ -512,6 +618,7 @@ namespace Unity.MemoryProfiler.Editor
         public CachedSnapshot(PackedMemorySnapshot s)
         {
             packedMemorySnapshot = s;
+            m_SnapshotVersion = s.version;
             virtualMachineInformation = s.virtualMachineInformation;
             nativeAllocationSites   = new NativeAllocationSiteEntriesCache(s.nativeAllocationSites);
             typeDescriptions        = new TypeDescriptionEntriesCache(s.typeDescriptions);
@@ -526,7 +633,7 @@ namespace Unity.MemoryProfiler.Editor
             managedHeapSections     = new ManagedMemorySectionEntriesCache(s.managedHeapSections);
             gcHandles               = new GCHandleEntriesCache(s.gcHandles);
             fieldDescriptions       = new FieldDescriptionEntriesCache(s.fieldDescriptions);
-            connections             = new ConnectionEntriesCache(s.connections);
+            connections             = new ConnectionEntriesCache(s, HasConnectionOverhaul);
 
             SortedNativeRegionsEntries = new SortedNativeMemoryRegionEntriesCache(this);
             SortedManagedStacksEntries = new SortedManagedMemorySectionEntriesCache(managedStacks);
@@ -577,94 +684,10 @@ namespace Unity.MemoryProfiler.Editor
             return -1;
         }
 
-        public int unifiedObjectCount
-        {
-            get
-            {
-                return (int)nativeObjects.Count + CrawledData.ManagedObjects.Count;
-            }
-        }
-
-        public bool HasObjectConnection(int fromUnifiedObject, int toUnifiedObject)
-        {
-            for (int i = 0; i != connections.Count; ++i)
-            {
-                if (connections.from[i] == fromUnifiedObject && connections.to[i] == toUnifiedObject)
-                {
-                    return true;
-                }
-            }
-            int fromManaged = UnifiedObjectIndexToManagedObjectIndex(fromUnifiedObject);
-            int toManaged = UnifiedObjectIndexToManagedObjectIndex(toUnifiedObject);
-            int fromNative = UnifiedObjectIndexToNativeObjectIndex(fromUnifiedObject);
-            int toNative = UnifiedObjectIndexToNativeObjectIndex(toUnifiedObject);
-            for (int i = 0; i != CrawledData.Connections.Count; ++i)
-            {
-                switch (CrawledData.Connections[i].connectionType)
-                {
-                    case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
-                        if (CrawledData.Connections[i].fromManagedObjectIndex == fromManaged && CrawledData.Connections[i].toManagedObjectIndex == toManaged)
-                        {
-                            return true;
-                        }
-                        break;
-                    case ManagedConnection.ConnectionType.UnityEngineObject:
-                    {
-                        var cManaged = CrawledData.Connections[i].UnityEngineManagedObjectIndex;
-                        var cNative = CrawledData.Connections[i].UnityEngineNativeObjectIndex;
-                        if (cManaged == fromManaged && cNative == toNative)
-                        {
-                            return true;
-                        }
-                        if (cManaged == toManaged && cNative == fromNative)
-                        {
-                            return true;
-                        }
-                    }
-                    break;
-                }
-            }
-            return false;
-        }
-
-        public bool HasGlobalConnection(int toManagedObjectIndex)
-        {
-            for (int i = 0; i != CrawledData.Connections.Count; ++i)
-            {
-                switch (CrawledData.Connections[i].connectionType)
-                {
-                    case ManagedConnection.ConnectionType.Global_To_ManagedObject:
-                        if (CrawledData.Connections[i].toManagedObjectIndex == toManagedObjectIndex)
-                        {
-                            return true;
-                        }
-                        break;
-                }
-            }
-            return false;
-        }
-
-        public bool HasManagedTypeConnection(int fromType, int toManagedObjectIndex)
-        {
-            for (int i = 0; i != CrawledData.Connections.Count; ++i)
-            {
-                switch (CrawledData.Connections[i].connectionType)
-                {
-                    case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
-                        if (CrawledData.Connections[i].fromManagedType == fromType && CrawledData.Connections[i].toManagedObjectIndex == toManagedObjectIndex)
-                        {
-                            return true;
-                        }
-                        break;
-                }
-            }
-            return false;
-        }
-
         public interface ISortedEntriesCache
         {
             void Preload();
-            int Count { get; } 
+            int Count { get; }
             ulong Address(int index);
             ulong Size(int index);
         }
@@ -678,29 +701,30 @@ namespace Unity.MemoryProfiler.Editor
             {
                 m_Snapshot = snapshot;
             }
-            
+
             public void Preload()
             {
                 if (m_Sorting == null)
                 {
                     m_Sorting = new int[m_Snapshot.nativeMemoryRegions.Count];
 
-                    for (int i=0; i<m_Sorting.Length; ++i)
+                    for (int i = 0; i < m_Sorting.Length; ++i)
                         m_Sorting[i] = i;
 
-                    Array.Sort(m_Sorting, (x,y)=>m_Snapshot.nativeMemoryRegions.addressBase[x].CompareTo(m_Snapshot.nativeMemoryRegions.addressBase[y]));
-                }                    
+                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.nativeMemoryRegions.addressBase[x].CompareTo(m_Snapshot.nativeMemoryRegions.addressBase[y]));
+                }
             }
 
-            int this[ int index ]
+            int this[int index]
             {
-                get {
+                get
+                {
                     Preload();
                     return m_Sorting[index];
                 }
             }
 
-            public int  Count { get { return (int) m_Snapshot.nativeMemoryRegions.Count; } } 
+            public int  Count { get { return (int)m_Snapshot.nativeMemoryRegions.Count; } }
             public ulong  Address(int index) { return m_Snapshot.nativeMemoryRegions.addressBase[this[index]]; }
             public ulong  Size(int index) { return m_Snapshot.nativeMemoryRegions.addressSize[this[index]]; }
 
@@ -710,10 +734,10 @@ namespace Unity.MemoryProfiler.Editor
             public int    UnsortedNumAllocations(int index) { return m_Snapshot.nativeMemoryRegions.numAllocations[this[index]]; }
         }
 
+        //TODO: unify with the other old section entries as those are sorted by default now
         public class SortedManagedMemorySectionEntriesCache : ISortedEntriesCache
         {
             ManagedMemorySectionEntriesCache m_Entries;
-            int[] m_Sorting;
 
             public SortedManagedMemorySectionEntriesCache(ManagedMemorySectionEntriesCache entries)
             {
@@ -722,29 +746,13 @@ namespace Unity.MemoryProfiler.Editor
 
             public void Preload()
             {
-                if (m_Sorting == null)
-                {
-                    m_Sorting = new int[m_Entries.Count];
-
-                    for (int i=0; i<m_Sorting.Length; ++i)
-                        m_Sorting[i] = i;
-
-                    Array.Sort(m_Sorting, (x,y)=>m_Entries.startAddress[x].CompareTo(m_Entries.startAddress[y]));
-                }
+                //Dummy for the interface
             }
 
-            int this[ int index ]
-            {
-                get {
-                    Preload();                    
-                    return m_Sorting[index];
-                }
-            }
-
-            public int  Count { get { return (int) m_Entries.Count; } } 
-            public ulong Address(int index) { return m_Entries.startAddress[this[index]]; }
-            public ulong Size(int index) { return (ulong)m_Entries.bytes[this[index]].Length; }
-            public byte[] Bytes(int index) { return m_Entries.bytes[this[index]]; }
+            public int  Count { get { return (int)m_Entries.Count; } }
+            public ulong Address(int index) { return m_Entries.startAddress[index]; }
+            public ulong Size(int index) { return (ulong)m_Entries.bytes[index].Length; }
+            public byte[] Bytes(int index) { return m_Entries.bytes[index]; }
         }
 
         public class SortedManagedObjectsCache : ISortedEntriesCache
@@ -763,22 +771,23 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     m_Sorting = new int[m_Snapshot.CrawledData.ManagedObjects.Count];
 
-                    for (int i=0; i<m_Sorting.Length; ++i)
+                    for (int i = 0; i < m_Sorting.Length; ++i)
                         m_Sorting[i] = i;
 
-                    Array.Sort(m_Sorting, (x,y)=>m_Snapshot.CrawledData.ManagedObjects[x].PtrObject.CompareTo(m_Snapshot.CrawledData.ManagedObjects[y].PtrObject));
+                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.CrawledData.ManagedObjects[x].PtrObject.CompareTo(m_Snapshot.CrawledData.ManagedObjects[y].PtrObject));
                 }
             }
 
-            ManagedObjectInfo this[ int index ]
+            ManagedObjectInfo this[int index]
             {
-                get {
-                    Preload();                    
+                get
+                {
+                    Preload();
                     return m_Snapshot.CrawledData.ManagedObjects[m_Sorting[index]];
                 }
             }
 
-            public int  Count { get { return m_Snapshot.CrawledData.ManagedObjects.Count; } } 
+            public int  Count { get { return m_Snapshot.CrawledData.ManagedObjects.Count; } }
             public ulong Address(int index) { return this[index].PtrObject; }
             public ulong Size(int index) { return (ulong)this[index].Size; }
         }
@@ -792,30 +801,30 @@ namespace Unity.MemoryProfiler.Editor
             {
                 m_Snapshot = snapshot;
             }
-            
+
             public void Preload()
             {
                 if (m_Sorting == null)
                 {
                     m_Sorting = new int[m_Snapshot.nativeAllocations.address.Length];
 
-                    for (int i=0; i<m_Sorting.Length; ++i)
+                    for (int i = 0; i < m_Sorting.Length; ++i)
                         m_Sorting[i] = i;
 
-                    Array.Sort(m_Sorting, (x,y)=>m_Snapshot.nativeAllocations.address[x].CompareTo(m_Snapshot.nativeAllocations.address[y]));
+                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.nativeAllocations.address[x].CompareTo(m_Snapshot.nativeAllocations.address[y]));
                 }
             }
 
-            int this[ int index ]
+            int this[int index]
             {
-                get 
+                get
                 {
-                    Preload();                
+                    Preload();
                     return m_Sorting[index];
                 }
             }
 
-            public int  Count { get { return (int)m_Snapshot.nativeAllocations.Count; } } 
+            public int  Count { get { return (int)m_Snapshot.nativeAllocations.Count; } }
             public ulong Address(int index) { return m_Snapshot.nativeAllocations.address[this[index]]; }
             public ulong Size(int index) { return m_Snapshot.nativeAllocations.size[this[index]]; }
             public int MemoryRegionIndex(int index) { return m_Snapshot.nativeAllocations.memoryRegionIndex[this[index]]; }
@@ -824,7 +833,7 @@ namespace Unity.MemoryProfiler.Editor
             public int OverheadSize(int index) { return m_Snapshot.nativeAllocations.overheadSize[this[index]]; }
             public int PaddingSize(int index) { return m_Snapshot.nativeAllocations.paddingSize[this[index]]; }
         }
-            
+
         public class SortedNativeObjectsCache : ISortedEntriesCache
         {
             CachedSnapshot m_Snapshot;
@@ -841,23 +850,23 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     m_Sorting = new int[m_Snapshot.nativeObjects.nativeObjectAddress.Length];
 
-                    for (int i=0; i<m_Sorting.Length; ++i)
+                    for (int i = 0; i < m_Sorting.Length; ++i)
                         m_Sorting[i] = i;
 
-                    Array.Sort(m_Sorting, (x,y)=>m_Snapshot.nativeObjects.nativeObjectAddress[x].CompareTo(m_Snapshot.nativeObjects.nativeObjectAddress[y]));
+                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.nativeObjects.nativeObjectAddress[x].CompareTo(m_Snapshot.nativeObjects.nativeObjectAddress[y]));
                 }
             }
 
-            int this[ int index ]
+            int this[int index]
             {
-                get 
+                get
                 {
                     Preload();
                     return m_Sorting[index];
                 }
             }
 
-            public int  Count { get { return (int)m_Snapshot.nativeObjects.Count; } } 
+            public int  Count { get { return (int)m_Snapshot.nativeObjects.Count; } }
             public ulong Address(int index) { return m_Snapshot.nativeObjects.nativeObjectAddress[this[index]]; }
             public ulong Size(int index) { return m_Snapshot.nativeObjects.size[this[index]]; }
             public string Name(int index) { return m_Snapshot.nativeObjects.objectName[this[index]]; }
@@ -868,6 +877,6 @@ namespace Unity.MemoryProfiler.Editor
             public long RootReferenceId(int index) { return m_Snapshot.nativeObjects.rootReferenceId[this[index]]; }
             public int Refcount(int index) { return m_Snapshot.nativeObjects.refcount[this[index]]; }
             public int ManagedObjectIndex(int index) { return m_Snapshot.nativeObjects.managedObjectIndex[this[index]]; }
-        } 
+        }
     }
 }

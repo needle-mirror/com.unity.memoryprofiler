@@ -1,25 +1,11 @@
 using System;
-using Unity.MemoryProfiler.Editor.Debuging;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.View
 {
     //Used with select statement that are Many-To-Many. Shows only the first match for each row.
     internal class ViewColumnFirstMatch<DataT> : Database.ColumnTyped<DataT>, ViewColumn.IViewColumn where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            if (m_rowIndex == null)
-            {
-                return "ViewColumnFirstMatch<" + typeof(DataT).Name + ">[" + row + "]{" + column.GetDebugString(row) + "}";
-            }
-            else
-            {
-                return "ViewColumnFirstMatch<" + typeof(DataT).Name + ">[" + row + "]{" + column.GetDebugString(m_rowIndex[row]) + "}";
-            }
-        }
-
-#endif
         // Used as a cache when computing row on demand only
         private System.Collections.Generic.SortedDictionary<long, long> m_index = new System.Collections.Generic.SortedDictionary<long, long>();
 
@@ -48,7 +34,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             {
                 extraInfo += " column '" + metaColumn.Name + "'";
             }
-            DebugUtility.LogError("Cannot set a const value on a first match view column. Table '" + vc.viewTable.GetName() + "'" + extraInfo);
+            Debug.LogError("Cannot set a const value on a first match view column. Table '" + vc.viewTable.GetName() + "'" + extraInfo);
         }
 
         Database.Column ViewColumn.IViewColumn.GetColumn()

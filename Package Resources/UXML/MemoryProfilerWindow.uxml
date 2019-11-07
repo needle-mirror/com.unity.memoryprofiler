@@ -27,7 +27,7 @@ xsi:schemaLocation="
         </engine:ScrollView>
       </engine:VisualElement>
     </engine:VisualElement>
-    
+
     <engine:VisualElement name="mainWindow">
       <editor:Toolbar name="mainWindowToolbar">
         <editor:ToolbarSpacer class="toolbarSideBumper"/>
@@ -38,7 +38,6 @@ xsi:schemaLocation="
         <editor:ToolbarButton name="forwardsInHistoryButton" tooltip="Next view" class="iconButton">
           <engine:Image name="forwardsInHistoryButton" class="iconButton historyButtonIcon"/>
         </editor:ToolbarButton>
-        <editor:ToolbarButton name="loadViewButton" text="Load View..." tooltip="Load a view from a file."/>
         <engine:VisualElement class="toolbarFlexSpacer"/>
         <editor:Toolbar name="ToolbarExtension">
         </editor:Toolbar>

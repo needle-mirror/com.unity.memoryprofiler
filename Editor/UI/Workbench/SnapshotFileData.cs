@@ -170,10 +170,11 @@ namespace Unity.MemoryProfiler.Editor
                     m_GuiData.runtimePlatform = runtimePlatform;
 
                 m_GuiData.date = new GUIContent(m_GuiData.UtcDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
-
+#if !UNITY_2020_1_OR_NEWER
 #pragma warning disable 618
                 m_GuiData.texture = snapshotMetadata.screenshot;
 #pragma warning restore 618
+#endif
 #if UNITY_2019_3_OR_NEWER
                 RefreshScreenshot();
 #endif
@@ -207,7 +208,7 @@ namespace Unity.MemoryProfiler.Editor
                     m_GuiData.texture = new Texture2D(1, 1);
                     m_GuiData.texture.LoadImage(texData);
                     m_GuiData.texture.Apply(false, true);
-                    if(m_GuiData.dynamicVisualElements.screenshot != null)
+                    if (m_GuiData.dynamicVisualElements.screenshot != null)
                         m_GuiData.dynamicVisualElements.screenshot.image = m_GuiData.texture;
                 }
             }

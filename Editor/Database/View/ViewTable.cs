@@ -1,8 +1,8 @@
 using System;
 using System.Xml;
 using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.Debuging;
 using Unity.MemoryProfiler.Editor.Database.Operation;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.View
 {
@@ -141,7 +141,9 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
         void SetupLocalSelectSet(SelectSet selectSet)
         {
-            DebugUtility.CheckCondition(dataSelectSet == null, "SetLocalSelectSet must be called before setting up DataSelectSet");
+            if (dataSelectSet != null)
+                Debug.LogError("SetLocalSelectSet must be called before setting up DataSelectSet");
+
             localSelectSet = selectSet;
             if (selectSet != null)
             {
@@ -160,7 +162,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             }
         }
 
-
         public override string GetName() { return node.GetFullName(); }
         public override string GetDisplayName() { return node.GetFullName(); }
 
@@ -170,7 +171,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         {
             bool builtChildren = BuildChildren(); // must be done before base.BeginUpdate to initialize groups
             var updater = base.BeginUpdate();
-            if(updater == null && builtChildren)
+            if (updater == null && builtChildren)
             {
                 return new DefaultDirtyUpdater(this);
             }
@@ -181,6 +182,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         {
             return BuildChildren();
         }
+
         private bool BuildChildren()
         {
             if (!IsGroupInitialized())
@@ -219,9 +221,9 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         {
             if (ValidChildNodeIndices != null)
             {
-                return DebugUtility.IsInValidRange(ValidChildNodeIndices, groupIndex);
+                return groupIndex >= 0 && groupIndex < ValidChildNodeIndices.LongLength;
             }
-            return DebugUtility.IsInValidRange(node.data.child, groupIndex);
+            return groupIndex >= 0 && groupIndex < node.data.child.Count;
         }
 
         public override Table CreateGroupTable(long groupIndex)
@@ -308,6 +310,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     Schema = schema;
                     BaseSchema = baseSchema;
                 }
+
                 public ViewSchema Schema;
                 public Schema BaseSchema;
                 public MetaTable MetaTable;
@@ -337,20 +340,17 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 public bool EvaluateCondition(ViewSchema vs, ViewTable parentViewTable, Operation.ExpressionParsingContext expressionParsingContext)
                 {
                     if (condition == null) return true;
-                    using (ScopeDebugContext.Func(() => { return "EvaluateCondition on Node '" + GetFullName() + "'"; }))
+                    var option = new Operation.Expression.ParseIdentifierOption(vs, parentViewTable, true, true, null, expressionParsingContext);
+                    option.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) =>
                     {
-                        var option = new Operation.Expression.ParseIdentifierOption(vs, parentViewTable, true, true, null, expressionParsingContext);
-                        option.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) =>
-                            {
-                                string str = "Error while evaluating node condition.";
-                                if (vs != null) str += " schema '" + vs.name + "'";
-                                if (parentViewTable != null) str += " view table '" + parentViewTable.GetName() + "'";
-                                return str + " : " + s;
-                            };
-                        var resolvedCondition = condition.Build(option);
-                        if (resolvedCondition == null) return false;
-                        return resolvedCondition.GetValue(0);
-                    }
+                        string str = "Error while evaluating node condition.";
+                        if (vs != null) str += " schema '" + vs.name + "'";
+                        if (parentViewTable != null) str += " view table '" + parentViewTable.GetName() + "'";
+                        return str + " : " + s;
+                    };
+                    var resolvedCondition = condition.Build(option);
+                    if (resolvedCondition == null) return false;
+                    return resolvedCondition.GetValue(0);
                 }
 
                 public class Data
@@ -366,11 +366,12 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     public System.Collections.Generic.List<ViewColumn.Builder> column = new System.Collections.Generic.List<ViewColumn.Builder>();
                     public System.Collections.Generic.List<Node> child = new System.Collections.Generic.List<Node>();
 
-                    public Data() { }
+                    public Data() {}
                     public Data(DataType type)
                     {
                         this.type = type;
                     }
+
                     public static Data LoadFromXML(Node node, XmlElement root)
                     {
                         Data data = new Data();
@@ -421,7 +422,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                                         break;
                                     }
                                     default:
-                                        DebugUtility.LogInvalidXmlChild(root, e);
+                                        //DebugUtility.LogInvalidXmlChild(root, e);
                                         break;
                                 }
                             }
@@ -472,7 +473,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                                     MetaColumn metaColumn = buildingData.MetaTable.GetColumnByName(colb.name);
 
                                     colb.BuildOrUpdateDeclaration(buildingData, vTable, ref metaColumn, vTable.ExpressionParsingContext);
-
                                 }
 
                                 // for node type we need to build all child node right away as they defines the entries in this viewtable
@@ -518,6 +518,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 {
                     this.parent = parent;
                 }
+
                 public Node(Node parent, string name)
                 {
                     this.parent = parent;
@@ -541,7 +542,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                         if (buildingVTable == null)
                         {
                             //we must be building a view table when building the root.
-                            DebugUtility.LogError("Failed to build the root view table.");
+                            Debug.LogError("Failed to build the root view table.");
                             MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(8);
                         }
 
@@ -582,7 +583,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     MetaTable metaTable = BuildOrGetMetaTable(parentViewTable, null);
                     if (localSelectSet.select.Count > 0)
                     {
-                        DebugUtility.LogError("Node '" + GetFullName() + " ' cannot have any local select statement when the parent data type is 'node'. Ignoring all selects.");
+                        Debug.LogError("Node '" + GetFullName() + " ' cannot have any local select statement when the parent data type is 'node'. Ignoring all selects.");
                     }
 
                     //build columns
@@ -609,78 +610,76 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     // Check for usage error from data.
                     if (parent == null && String.IsNullOrEmpty(name))
                     {
-                        DebugUtility.LogError("Table need a name");
+                        Debug.LogError("Table need a name");
                         return null;
                     }
 
-                    using (ScopeDebugContext.Func(() => { return "View '" + GetFullName() + "'"; }))
+                    // Check for usage error from code.
+                    if (!(parent == null || parent.node == this.parent))
                     {
-                        // Check for usage error from code.
-                        DebugUtility.CheckCondition(parent == null || (parent.node == this.parent), "Parent ViewTable must points to the node's parent while building child node's ViewTable.");
-
-
-                        ViewTable vTable = new ViewTable(vs, baseSchema, this, parentExpressionParsingContext);
-
-
-                        // If has local select set, create it and add it to the expression parsing context hierarchy. see [Figure.1]
-                        vTable.SetupLocalSelectSet(localSelectSet.Build(vTable, vs, baseSchema));
-
-                        MetaTable metaTable = BuildOrGetMetaTable(parent, vTable);
-
-                        if (buildingData.MetaTable == null) buildingData.MetaTable = metaTable;
-
-                        //declare columns
-                        foreach (var colb in column)
-                        {
-                            MetaColumn metaColumn = metaTable.GetColumnByName(colb.name);
-
-                            colb.BuildOrUpdateDeclaration(buildingData, vTable, ref metaColumn, vTable.ExpressionParsingContext);
-
-                        }
-
-                        if (data != null)
-                        {
-                            data.Build(buildingData, this, vTable, parent, parentExpressionParsingContext);
-                        }
-
-                        // Fix meta columns (that does not have a data type set) to their fallback value
-                        foreach (var fb in buildingData.FallbackColumnType)
-                        {
-                            if (fb.Key.Type == null) fb.Key.Type = fb.Value;
-                        }
-
-                        //Build missing column with default behavior
-                        for (int i = 0; i != metaTable.GetColumnCount(); ++i)
-                        {
-                            var metaColumn = metaTable.GetColumnByIndex(i);
-                            var column = vTable.GetColumnByIndex(i);
-
-                            if (column == null)
-                            {
-                                if (metaColumn.DefaultMergeAlgorithm != null)
-                                {
-                                    //when we have a merge algorithm, set the entries as the result of each group's merge value.
-                                    column = ViewColumn.Builder.BuildColumnNodeMerge(vTable, metaColumn, parentExpressionParsingContext);
-                                }
-
-                                vTable.SetColumn(metaColumn, column);
-                            }
-                        }
-
-                        if (data != null && data.type == Data.DataType.Select && vTable.dataSelectSet.IsManyToMany())
-                        {
-                            DebugUtility.LogError("Cannot build a view using a many-to-many select statement. Specify a row value for your select statement where condition(s).");
-                            MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(7);
-                        }
-
-                        return vTable;
+                        Debug.LogError("Parent ViewTable must points to the node's parent while building child node's ViewTable.");
                     }
+
+                    ViewTable vTable = new ViewTable(vs, baseSchema, this, parentExpressionParsingContext);
+
+
+                    // If has local select set, create it and add it to the expression parsing context hierarchy. see [Figure.1]
+                    vTable.SetupLocalSelectSet(localSelectSet.Build(vTable, vs, baseSchema));
+
+                    MetaTable metaTable = BuildOrGetMetaTable(parent, vTable);
+
+                    if (buildingData.MetaTable == null) buildingData.MetaTable = metaTable;
+
+                    //declare columns
+                    foreach (var colb in column)
+                    {
+                        MetaColumn metaColumn = metaTable.GetColumnByName(colb.name);
+
+                        colb.BuildOrUpdateDeclaration(buildingData, vTable, ref metaColumn, vTable.ExpressionParsingContext);
+                    }
+
+                    if (data != null)
+                    {
+                        data.Build(buildingData, this, vTable, parent, parentExpressionParsingContext);
+                    }
+
+                    // Fix meta columns (that does not have a data type set) to their fallback value
+                    foreach (var fb in buildingData.FallbackColumnType)
+                    {
+                        if (fb.Key.Type == null) fb.Key.Type = fb.Value;
+                    }
+
+                    //Build missing column with default behavior
+                    for (int i = 0; i != metaTable.GetColumnCount(); ++i)
+                    {
+                        var metaColumn = metaTable.GetColumnByIndex(i);
+                        var column = vTable.GetColumnByIndex(i);
+
+                        if (column == null)
+                        {
+                            if (metaColumn.DefaultMergeAlgorithm != null)
+                            {
+                                //when we have a merge algorithm, set the entries as the result of each group's merge value.
+                                column = ViewColumn.Builder.BuildColumnNodeMerge(vTable, metaColumn, parentExpressionParsingContext);
+                            }
+
+                            vTable.SetColumn(metaColumn, column);
+                        }
+                    }
+
+                    if (data != null && data.type == Data.DataType.Select && vTable.dataSelectSet.IsManyToMany())
+                    {
+                        Debug.LogError("Cannot build a view using a many-to-many select statement. Specify a row value for your select statement where condition(s).");
+                        MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(7);
+                    }
+
+                    return vTable;
                 }
 
                 public static Node LoadFromXML(Node parent, XmlElement root)
                 {
                     Node node = new Node(parent);
-                    if(parent != null)
+                    if (parent != null)
                     {
                         node.name = root.GetAttribute("name");
                     }
@@ -689,42 +688,39 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                         DebugUtility.TryGetMandatoryXmlAttribute(root, "name", out node.name);
                     }
 
-                    using (ScopeDebugContext.Func(() => { return "Node '" + node.name + "'"; }))
+                    foreach (XmlNode xNode in root.ChildNodes)
                     {
-                        foreach (XmlNode xNode in root.ChildNodes)
+                        if (xNode.NodeType == XmlNodeType.Element)
                         {
-                            if (xNode.NodeType == XmlNodeType.Element)
+                            XmlElement e = (XmlElement)xNode;
+                            switch (e.Name)
                             {
-                                XmlElement e = (XmlElement)xNode;
-                                switch (e.Name)
-                                {
-                                    case "Column":
-                                        var c = ViewColumn.Builder.LoadFromXML(e);
-                                        if (c != null)
-                                        {
-                                            node.column.Add(c);
-                                        }
-                                        break;
-                                    case "Data":
-                                        node.data = Data.LoadFromXML(node, e);
-                                        break;
-                                    case "Filter":
-                                        LoadFilterFromXML(node, e);
-                                        break;
-                                    case "SelectSet":
-                                        node.localSelectSet = SelectSet.Builder.LoadFromXML(e);
-                                        break;
-                                    case "Condition":
-                                        node.condition = Operation.MetaExpComparison.LoadFromXML(e);
-                                        break;
-                                    default:
-                                        DebugUtility.LogInvalidXmlChild(root, e);
-                                        break;
-                                }
+                                case "Column":
+                                    var c = ViewColumn.Builder.LoadFromXML(e);
+                                    if (c != null)
+                                    {
+                                        node.column.Add(c);
+                                    }
+                                    break;
+                                case "Data":
+                                    node.data = Data.LoadFromXML(node, e);
+                                    break;
+                                case "Filter":
+                                    LoadFilterFromXML(node, e);
+                                    break;
+                                case "SelectSet":
+                                    node.localSelectSet = SelectSet.Builder.LoadFromXML(e);
+                                    break;
+                                case "Condition":
+                                    node.condition = Operation.MetaExpComparison.LoadFromXML(e);
+                                    break;
+                                default:
+                                    //DebugUtility.LogInvalidXmlChild(root, e);
+                                    break;
                             }
                         }
-                        return node;
                     }
+                    return node;
                 }
 
                 public static Operation.Filter.Sort LoadSortFilterFromXML(Node node, XmlElement root)
@@ -762,7 +758,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                             }
                             else
                             {
-                                DebugUtility.LogInvalidXmlChild(root, e);
+                                //DebugUtility.LogInvalidXmlChild(root, e);
                             }
                         }
                     }
@@ -817,7 +813,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                             }
                             else
                             {
-                                DebugUtility.LogInvalidXmlChild(root, e);
+                                //DebugUtility.LogInvalidXmlChild(root, e);
                             }
 
                             if (lastFilter != null)

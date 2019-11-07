@@ -5,7 +5,7 @@ using UnityEngine.UIElements;
 using UnityEngine.Experimental.UIElements;
 #endif
 using System;
-using Unity.MemoryProfiler.Editor.Debuging;
+using Unity.Profiling;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -30,7 +30,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected VisualElement[] m_VisualElements;
         protected Action<Rect>[] m_VisualElementsOnGUICalls;
 
-        public virtual VisualElement [] VisualElements
+        public virtual VisualElement[] VisualElements
         {
             get
             {
@@ -57,13 +57,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public abstract UI.HistoryEvent GetCurrentHistoryEvent();
 
+        static ProfilerMarker s_OnGui = new ProfilerMarker("ViewPane.OnGUI");
+
         protected virtual void OnGUI(int elementIndex)
         {
-            using (Profiling.GetMarker(Profiling.MarkerId.MemoryProfiler).Auto())
+            using (s_OnGui.Auto())
             {
                 try
                 {
-                    using (new Service<IDebugContextService>.ScopeService(new DebugContextService()))
                     using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
                     {
                         var rect = m_VisualElements[elementIndex].contentRect;
@@ -74,13 +75,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                         m_VisualElementsOnGUICalls[elementIndex](rect);
                     }
                 }
-                catch (ExitGUIException)
+                catch (Exception)
                 {
                     throw;
-                }
-                catch (Exception e)
-                {
-                    throw new Exception(DebugUtility.GetExceptionHelpMessage(e));
                 }
             }
         }

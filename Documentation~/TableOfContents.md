@@ -25,4 +25,3 @@
 **Further information**
 
 * [Tips and troubleshooting](tips-and-troubleshooting)
-

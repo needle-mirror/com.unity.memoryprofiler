@@ -1,5 +1,5 @@
 using System;
-using Unity.MemoryProfiler.Editor.Debuging;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation
 {
@@ -15,15 +15,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// <typeparam name="DataT"></typeparam>
     internal class DiffColumnTyped<DataT> : ColumnTyped<DataT>, IDiffColumn where DataT : System.IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            int tabI = m_Table.m_Entries[row].tableIndex;
-            long rowI = m_Table.m_Entries[row].rowIndex;
-            return "DiffColumnTyped<" + typeof(DataT).Name + ">[" + row + "](tab:" + tabI + ", row:" + rowI + "){ " + m_SourceColumn[tabI].GetDebugString(rowI) + "}";
-        }
-
-#endif
         protected ColumnTyped<DataT>[] m_SourceColumn;
         protected DiffTable m_Table;
 
@@ -84,13 +75,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     /// </summary>
     internal class DiffColumnResult : ColumnTyped<DiffTable.DiffResult>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "DiffColumnResult<DiffTable.DiffResult>[" + row + "]{ " + ValueToString(GetRowValue(row)) + " }";
-        }
-
-#endif
         protected DiffTable m_Table;
 
         public DiffColumnResult(DiffTable table)
@@ -373,12 +357,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 int[] primKey = tabA.GetMetaData().GetPrimaryKeyColumnIndex();
                 if (primKey.Length > 1)
                 {
-                    DebugUtility.LogWarning("Diff between tables with multiple primary key column is not supported yet. Table '" + tabA.GetName() + "'");
+                    Debug.LogWarning("Diff between tables with multiple primary key column is not supported yet. Table '" + tabA.GetName() + "'");
                     continue;
                 }
                 if (primKey.Length == 0)
                 {
-                    DebugUtility.LogWarning("Cannot diff tables without primary key. Table '" + tabA.GetName() + "'");
+                    Debug.LogWarning("Cannot diff tables without primary key. Table '" + tabA.GetName() + "'");
                     continue;
                 }
                 var tabOut = new Database.Operation.DiffTable(this, new Database.Table[] { tabA, tabB }, primKey[0]);
@@ -401,7 +385,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                         schema = m_SchemaAfter;
                         break;
                     default:
-                        DebugUtility.LogError("Requesting a table from an invalid snapshot index. Must be 0 or 1. Is " + snapshotIndex);
+                        Debug.LogError("Requesting a table from an invalid snapshot index. Must be 0 or 1. Is " + snapshotIndex);
                         return null;
                 }
                 return schema.GetTableByName(name, param);

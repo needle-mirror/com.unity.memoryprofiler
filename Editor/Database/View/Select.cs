@@ -1,29 +1,13 @@
 using System.Xml;
 using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.Debuging;
+using Unity.Profiling;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.View
 {
     // Defines what data to select and where it comes from
     internal class Select
     {
-#if MEMPROFILER_DEBUG_INFO
-        public string GetDebugString(long columnRow, long valueRow)
-        {
-            string str = "'" + name + "' => Select from table '" + sourceTable.GetName() + "'";
-            if (where.Count > 0)
-            {
-                str += " Where ";
-                str += where.GetDebugString(columnRow, valueRow);
-            }
-            if (isManyToMany)
-            {
-                str += "[ManyToMany]";
-            }
-            return str;
-        }
-
-#endif
         public string name;
         public Database.Table sourceTable;
         public WhereUnion where;
@@ -60,20 +44,18 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         // Cache for querying matching indices for a specific source row
         private long[] cacheMatchingIndices;
         private long cacheMatchingIndicesRow = -1;
+
         public long[] GetMatchingIndices(long row)
         {
             if (cacheMatchingIndicesRow != row)
             {
                 if (HasWhereCondition())
                 {
-                    using (Profiling.GetMarker(Profiling.MarkerId.Select).Auto())
+                    cacheMatchingIndices = where.GetMatchingIndices(row);
+                    cacheMatchingIndicesRow = row;
+                    if (MaxRow >= 0)
                     {
-                        cacheMatchingIndices = where.GetMatchingIndices(row);
-                        cacheMatchingIndicesRow = row;
-                        if (MaxRow >= 0)
-                        {
-                            System.Array.Resize(ref cacheMatchingIndices, MaxRow);
-                        }
+                        System.Array.Resize(ref cacheMatchingIndices, MaxRow);
                     }
                 }
             }
@@ -188,15 +170,12 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             {
                 Select sel = new Select();
                 sel.name = name;
-                if(baseSchema != null) sel.sourceTable = baseSchema.GetTableByName(sourceTableName);
+                if (baseSchema != null) sel.sourceTable = baseSchema.GetTableByName(sourceTableName);
                 sel.MaxRow = MaxRow;
                 if (sel.sourceTable == null)
                 {
-                    using (ScopeDebugContext.Func(() => { return "Select:'" + name + "'"; }))
-                    {
-                        DebugUtility.LogError("No table named '" + (sourceTableName == null ? "null" : sourceTableName)  + "'");
-                        return null;
-                    }
+                    Debug.LogError("No table named '" + (sourceTableName == null ? "null" : sourceTableName) + "'");
+                    return null;
                 }
 
                 return sel;
@@ -204,20 +183,17 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
             public void Build(ViewSchema vs, ViewTable vTable, SelectSet selectSet, Select sel, Database.Schema baseSchema, Operation.ExpressionParsingContext expressionParsingContext)
             {
-                using (ScopeDebugContext.Func(() => { return "Select:'" + name + "'"; }))
+                if (where.Count > 0)
                 {
-                    if (where.Count > 0)
+                    sel.where = new WhereUnion();
+                    foreach (var w in where)
                     {
-                        sel.where = new WhereUnion();
-                        foreach (var w in where)
+                        var w2 = w.Build(vs, vTable, selectSet, sel, baseSchema, sel.sourceTable, expressionParsingContext);
+                        if (w2.Comparison.IsManyToMany())
                         {
-                            var w2 = w.Build(vs, vTable, selectSet, sel, baseSchema, sel.sourceTable, expressionParsingContext);
-                            if (w2.Comparison.IsManyToMany())
-                            {
-                                sel.isManyToMany = true;
-                            }
-                            sel.where.Add(w2);
+                            sel.isManyToMany = true;
                         }
+                        sel.where.Add(w2);
                     }
                 }
             }
@@ -232,16 +208,14 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 {
                     b.MaxRow = -1;
                 }
-                using (ScopeDebugContext.Func(() => { return "Select:'" + b.name + "'"; }))
+                foreach (XmlNode node in root.ChildNodes)
                 {
-                    foreach (XmlNode node in root.ChildNodes)
+                    if (node.NodeType == XmlNodeType.Element)
                     {
-                        if (node.NodeType == XmlNodeType.Element)
+                        XmlElement e = (XmlElement)node;
+                        switch (e.Name)
                         {
-                            XmlElement e = (XmlElement)node;
-                            switch (e.Name)
-                            {
-                                case "Where":
+                            case "Where":
                                 {
                                     var w = Where.Builder.LoadFromXML(e);
                                     if (w != null)
@@ -250,14 +224,13 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                                     }
                                     break;
                                 }
-                                default:
-                                    DebugUtility.LogInvalidXmlChild(root, e);
-                                    break;
-                            }
+                            default:
+                                //DebugUtility.LogInvalidXmlChild(root, e);
+                                break;
                         }
                     }
-                    return b;
                 }
+                return b;
             }
         }
     }
@@ -266,7 +239,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
     // A collection of select statements
     // the first Select in the list is the "Main" select.
     // TryGetMainSelect, GetMainRows and GetMainRowCount will return data from the main select regardless of whether there is a condition set or not.
-    // 
+    //
     internal class SelectSet
     {
         public List<Select> select = new List<Select>();
@@ -279,7 +252,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         // if null, all rows from the main Select's source table are selected
         long[] m_MainIndices;
 
-        // Applies a condition on the main select result rows. Will add row indices that pass the condition into m_MainConditionalIndices. 
+        // Applies a condition on the main select result rows. Will add row indices that pass the condition into m_MainConditionalIndices.
         // When null, all rows are valid.
         public Operation.ExpComparison Condition;
 
@@ -334,7 +307,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             if (TryGetMainSelect(out mainSelect))
             {
                 long sourceTableRowCount = mainSelect.sourceTable.GetRowCount();
-                if(sourceTableRowCount < 0)
+                if (sourceTableRowCount < 0)
                 {
                     // Force computing row count
                     mainSelect.sourceTable.ComputeRowCount();
@@ -345,7 +318,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
             // No main select set.
             throw new System.InvalidOperationException("Cannot call 'SelectSet.GetMainRowCount' when it has no main select. Call 'SelectSet.Add' at least once before calling 'SelectSet.GetMainRowCount'");
-            
         }
 
         void UpdateMainConditionalIndices()
@@ -356,11 +328,11 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 if (Condition != null)
                 {
                     long[] rows = GetMainRows();
-					if(rows == null)
-					{
-					   m_MainConditionalIndices = null;
-					   return;
-					}
+                    if (rows == null)
+                    {
+                        m_MainConditionalIndices = null;
+                        return;
+                    }
                     var conditionalIndices = new List<long>();
                     for (int i = 0; i != rows.Length; ++i)
                     {
@@ -397,7 +369,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
         public void Add(Select newSelect)
         {
-            if(select.Count == 0)
+            if (select.Count == 0)
             {
                 //setting main select.
                 m_MainIndicesDirty = true;
@@ -433,7 +405,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     }
                     else
                     {
-                        DebugUtility.LogError("Could not create Select named '" + iSelect.name + "'");
+                        Debug.LogError("Could not create Select named '" + iSelect.name + "'");
                     }
                 }
 
@@ -461,17 +433,15 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
             public static Builder LoadFromXML(XmlElement root)
             {
-                using (ScopeDebugContext.Func(() => { return "Loading SelectSet"; }))
+                Builder b = new Builder();
+                foreach (XmlNode xNode in root.ChildNodes)
                 {
-                    Builder b = new Builder();
-                    foreach (XmlNode xNode in root.ChildNodes)
+                    if (xNode.NodeType == XmlNodeType.Element)
                     {
-                        if (xNode.NodeType == XmlNodeType.Element)
+                        XmlElement e = (XmlElement)xNode;
+                        switch (e.Name)
                         {
-                            XmlElement e = (XmlElement)xNode;
-                            switch (e.Name)
-                            {
-                                case "Select":
+                            case "Select":
                                 {
                                     var s = Select.Builder.LoadFromXML(e);
                                     if (s != null)
@@ -480,19 +450,18 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                                     }
                                     break;
                                 }
-                                case "Condition":
+                            case "Condition":
                                 {
                                     b.Condition = Operation.MetaExpComparison.LoadFromXML(e);
                                     break;
                                 }
-                                default:
-                                    DebugUtility.LogInvalidXmlChild(root, e);
-                                    break;
-                            }
+                            default:
+                                //DebugUtility.LogInvalidXmlChild(root, e);
+                                break;
                         }
                     }
-                    return b;
                 }
+                return b;
             }
         }
     }

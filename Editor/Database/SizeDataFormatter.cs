@@ -17,7 +17,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         {
             unchecked
             {
-                return string.Format("{0}{1}", negative? "-" : "", EditorUtility.FormatBytes((long)value));
+                return string.Format("{0}{1}", negative ? "-" : "", EditorUtility.FormatBytes((long)value));
             }
         }
 

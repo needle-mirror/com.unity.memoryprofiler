@@ -55,7 +55,7 @@ namespace Unity.MemoryProfiler.Editor
             protected bool m_Active;
             VisualElement m_LeftPane;
 
-            public event Action<float> LeftPaneWidthChanged = delegate { };
+            public event Action<float> LeftPaneWidthChanged = delegate {};
 
             public SquareResizer(VisualElement leftPane)
             {
@@ -104,7 +104,7 @@ namespace Unity.MemoryProfiler.Editor
                 Vector2 diff = e.localMousePosition - m_Start;
 
                 m_LeftPane.style.width = m_LeftPane.layout.width + diff.x;
-                
+
                 if (diff.x != 0)
                     LeftPaneWidthChanged(m_LeftPane.layout.width);
 

@@ -13,21 +13,21 @@ xsi:schemaLocation="
 "
 >
   <engine:VisualElement name="snapshotListItem">
-    
+
     <engine:VisualElement name="previewImage">
       <engine:Image name="previewImage" class="previewImage">
         <engine:Image name="editorIcon" class="platformIcon"/>
         <engine:Image name="platformIcon" class="platformIcon"/>
       </engine:Image>
     </engine:VisualElement>
-    
+
     <engine:VisualElement name="metaDataAndButtons">
       <engine:VisualElement name="snapshotMetaData">
         <engine:TextField name="snapshotName" class="snapshotMetaDataText snapshotMetaDataTextField hiddenFromLayout" text="MemoryCapture-63679245784"/>
         <engine:Label name="snapshotName" class="snapshotMetaDataText notHiddenFromLayout" text="MemoryCapture-63679245784"/>
         <engine:Label name="secondRowMetaData" class="snapshotMetaDataText" text="09/04/2018 18:05:15"/>
       </engine:VisualElement>
-      
+
       <engine:VisualElement name="snapshotButtons">
         <engine:Image name="optionButton" class="iconButton optionButtonIcon" tooltip="File Options"/>
         <engine:Button name="openSnapshotButton" class="snapshotButton" text="Open" tooltip="Open snapshot in view."/>

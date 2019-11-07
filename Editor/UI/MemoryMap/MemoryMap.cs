@@ -8,12 +8,12 @@ using UnityEditor;
 namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 {
     internal class MemoryMap : MemoryMapBase
-    {        
+    {
         [Flags]
         public enum DisplayElements
         {
-            Allocations   = 1 << 0, 
-            MangedObjects = 1 << 1,   
+            Allocations   = 1 << 0,
+            MangedObjects = 1 << 1,
             NativeObjects = 1 << 2,
             VirtualMemory = 1 << 3,
         }
@@ -29,7 +29,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public ViewState CurrentViewState
         {
-            get { 
+            get
+            {
                 ViewState state;
                 state.BytesInRow = m_BytesInRow;
                 state.HighlightedAddrMin = m_HighlightedAddrMin;
@@ -39,7 +40,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 return state;
             }
 
-            set {
+            set
+            {
                 m_BytesInRow = value.BytesInRow;
                 m_HighlightedAddrMin = value.HighlightedAddrMin;
                 m_HighlightedAddrMax = value.HighlightedAddrMax;
@@ -53,31 +55,34 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public bool GetDisplayElement(DisplayElements element)
         {
-            return (m_DisplayElements & (int)element) != 0 ;
+            return (m_DisplayElements & (int)element) != 0;
         }
 
         public int DisplayElement
         {
-            get { 
-                return m_DisplayElements; 
+            get
+            {
+                return m_DisplayElements;
             }
-            set { 
-                m_DisplayElements = value; 
-                SetupView(m_BytesInRow);                
+            set
+            {
+                m_DisplayElements = value;
+                SetupView(m_BytesInRow);
                 m_ForceReselect = true;
                 ForceRepaint = true;
-                          
+
                 UnityEditor.EditorPrefs.SetInt("Unity.MemoryProfiler.Editor.UI.MemoryMap.DisplayElements", m_DisplayElements);
             }
-        }        
+        }
 
         public void SetDisplayElement(DisplayElements element, bool state)
         {
             if (state)
                 DisplayElement = DisplayElement | (int)element;
             else
-                DisplayElement = DisplayElement & (~(int)element); 
+                DisplayElement = DisplayElement & (~(int)element);
         }
+
         public void ToggleDisplayElement(DisplayElements element)
         {
             SetDisplayElement(element, !GetDisplayElement(element));
@@ -90,62 +95,64 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             m_ForceReselect = true;
         }
 
-        public ulong BytesInRow 
+        public ulong BytesInRow
         {
             get { return m_BytesInRow; }
 
-            set 
-            { 
+            set
+            {
                 SetupView(value);
 
                 ForceRepaint = true;
 
-                UnityEditor.EditorPrefs.SetInt("Unity.MemoryProfiler.Editor.UI.MemoryMap.BytesInRow", (int)m_BytesInRow);  
-             }
+                UnityEditor.EditorPrefs.SetInt("Unity.MemoryProfiler.Editor.UI.MemoryMap.BytesInRow", (int)m_BytesInRow);
+            }
         }
-        
+
 
         public event Action<ulong, ulong> RegionSelected;
-        
+
         CachedSnapshot m_Snapshot;
         MemoryRegion[] m_SnapshotMemoryRegion;
-        List<EntryRange>  m_GroupsMangedObj = new List<EntryRange>();    
-        List<EntryRange>  m_GroupsNativeAlloc = new List<EntryRange>();    
-        List<EntryRange>  m_GroupsNativeObj = new List<EntryRange>();     
+        List<EntryRange>  m_GroupsMangedObj = new List<EntryRange>();
+        List<EntryRange>  m_GroupsNativeAlloc = new List<EntryRange>();
+        List<EntryRange>  m_GroupsNativeObj = new List<EntryRange>();
         ulong m_MouseDragStartAddr = 0;
 
         public MemoryMap()
         {
-            m_BytesInRow = (ulong)UnityEditor.EditorPrefs.GetInt("Unity.MemoryProfiler.Editor.UI.MemoryMap.BytesInRow", (int)m_BytesInRow);            
+            m_BytesInRow = (ulong)UnityEditor.EditorPrefs.GetInt("Unity.MemoryProfiler.Editor.UI.MemoryMap.BytesInRow", (int)m_BytesInRow);
             m_DisplayElements = UnityEditor.EditorPrefs.GetInt("Unity.MemoryProfiler.Editor.UI.MemoryMap.DisplayElements", m_DisplayElements);
         }
 
         void SetupSortedData()
         {
-            PrepareSortedData(new CachedSnapshot.ISortedEntriesCache[] { 
+            PrepareSortedData(new CachedSnapshot.ISortedEntriesCache[]
+            {
                 m_Snapshot.SortedManagedObjects,
                 m_Snapshot.SortedNativeAllocations,
-                m_Snapshot.SortedNativeObjects });
+                m_Snapshot.SortedNativeObjects
+            });
         }
 
         void SetupRegions()
         {
             ProgressBarDisplay.UpdateProgress(0.0f, "Flushing regions ...");
-            
+
             int regionIndex = 0;
-            
+
             m_SnapshotMemoryRegion = new MemoryRegion[m_Snapshot.nativeMemoryRegions.Count + m_Snapshot.managedHeapSections.Count + m_Snapshot.managedStacks.Count];
 
             for (int i = 0; i != m_Snapshot.nativeMemoryRegions.Count; ++i)
             {
-                if (regionIndex%10000 == 0) ProgressBarDisplay.UpdateProgress((float)regionIndex/(float)m_SnapshotMemoryRegion.Length);
+                if (regionIndex % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)regionIndex / (float)m_SnapshotMemoryRegion.Length);
 
                 ulong start = m_Snapshot.nativeMemoryRegions.addressBase[i];
                 ulong size = (ulong)m_Snapshot.nativeMemoryRegions.addressSize[i];
                 string name = m_Snapshot.nativeMemoryRegions.memoryRegionName[i];
 
                 MemoryRegion region;
-                if (name.Contains("Virtual Memory") )
+                if (name.Contains("Virtual Memory"))
                 {
                     region = new MemoryRegion(RegionType.VirtualMemory, start, size, name);
                     region.ColorRegion = m_ColorNative[(int)EntryColors.VirtualMemory];
@@ -156,29 +163,29 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     region.ColorRegion = m_ColorNative[(int)EntryColors.Region];
                 }
 
-                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex%255));
+                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 255));
                 m_SnapshotMemoryRegion[regionIndex++] = region;
             }
 
             for (int i = 0; i != m_Snapshot.managedHeapSections.Count; ++i)
             {
-                if (regionIndex%10000 == 0) ProgressBarDisplay.UpdateProgress((float)regionIndex/(float)m_SnapshotMemoryRegion.Length);
+                if (regionIndex % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)regionIndex / (float)m_SnapshotMemoryRegion.Length);
 
                 ulong start = m_Snapshot.managedHeapSections.startAddress[i];
                 ulong size = (ulong)m_Snapshot.managedHeapSections.bytes[i].Length;
                 string name = string.Format("Heap Sections {0}", i);
 
-                MemoryRegion region = new MemoryRegion(RegionType.Managed, start, size, name);                
+                MemoryRegion region = new MemoryRegion(RegionType.Managed, start, size, name);
                 region.ColorRegion = m_ColorManaged[(int)EntryColors.Region];
-                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex%255));
+                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 255));
                 m_SnapshotMemoryRegion[regionIndex++] = region;
             }
 
-            ProgressBarDisplay.UpdateProgress((float)regionIndex/(float)m_SnapshotMemoryRegion.Length);
+            ProgressBarDisplay.UpdateProgress((float)regionIndex / (float)m_SnapshotMemoryRegion.Length);
 
             for (int i = 0; i != m_Snapshot.managedStacks.Count; ++i)
             {
-                if (regionIndex%10000 == 0) ProgressBarDisplay.UpdateProgress((float)regionIndex/(float)m_SnapshotMemoryRegion.Length);
+                if (regionIndex % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)regionIndex / (float)m_SnapshotMemoryRegion.Length);
 
                 ulong start = m_Snapshot.managedStacks.startAddress[i];
                 ulong size = (ulong)m_Snapshot.managedStacks.bytes[i].Length;
@@ -186,29 +193,29 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 MemoryRegion region = new MemoryRegion(RegionType.ManagedStack, start, size, name);
                 region.ColorRegion = m_ColorManagedStack[(int)EntryColors.Region];
-                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex%255));
+                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 255));
                 m_SnapshotMemoryRegion[regionIndex++] = region;
             }
 
-            ProgressBarDisplay.UpdateProgress((float)regionIndex/(float)m_SnapshotMemoryRegion.Length);
+            ProgressBarDisplay.UpdateProgress((float)regionIndex / (float)m_SnapshotMemoryRegion.Length);
 
             ProgressBarDisplay.UpdateProgress(0.0f, "Sorting regions ...");
 
-            Array.Sort(m_SnapshotMemoryRegion, delegate(MemoryRegion a, MemoryRegion b) 
-                { 
-                    int result = a.AddressBegin.CompareTo(b.AddressBegin); 
+            Array.Sort(m_SnapshotMemoryRegion, delegate(MemoryRegion a, MemoryRegion b)
+            {
+                int result = a.AddressBegin.CompareTo(b.AddressBegin);
 
-                    if (result == 0) 
-                        result = -a.AddressEnd.CompareTo(b.AddressEnd);  
-                          
-                    return result;
-                }
+                if (result == 0)
+                    result = -a.AddressEnd.CompareTo(b.AddressEnd);
+
+                return result;
+            }
             );
 
             ProgressBarDisplay.UpdateProgress(1.0f);
         }
 
-        void CreateGroups( )
+        void CreateGroups()
         {
             m_Groups.Clear();
 
@@ -216,24 +223,24 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             int metaRegions = 0;
 
-            while(m_SnapshotMemoryRegion[metaRegions].AddressBegin == 0 && m_SnapshotMemoryRegion[metaRegions].AddressBegin == m_SnapshotMemoryRegion[metaRegions].AddressEnd)
-                metaRegions ++;
+            while (m_SnapshotMemoryRegion[metaRegions].AddressBegin == 0 && m_SnapshotMemoryRegion[metaRegions].AddressBegin == m_SnapshotMemoryRegion[metaRegions].AddressEnd)
+                metaRegions++;
 
             int   groupIdx = 0;
-            ulong groupAddressBegin = m_SnapshotMemoryRegion[metaRegions].AddressBegin; 
+            ulong groupAddressBegin = m_SnapshotMemoryRegion[metaRegions].AddressBegin;
             ulong groupAddressEnd = groupAddressBegin;
 
-            for (int i=metaRegions; i<m_SnapshotMemoryRegion.Length; ++i)
+            for (int i = metaRegions; i < m_SnapshotMemoryRegion.Length; ++i)
             {
-                if (i%10000 == 0) ProgressBarDisplay.UpdateProgress((float)i/(float)m_SnapshotMemoryRegion.Length);
+                if (i % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)i / (float)m_SnapshotMemoryRegion.Length);
 
-                if(m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !GetDisplayElement(DisplayElements.VirtualMemory))
+                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !GetDisplayElement(DisplayElements.VirtualMemory))
                     continue;
 
                 ulong addressBegin = m_SnapshotMemoryRegion[i].AddressBegin;
                 ulong addressEnd   = m_SnapshotMemoryRegion[i].AddressEnd;
 
-                if ((addressBegin > groupAddressEnd) && (addressBegin/m_BytesInRow) > (groupAddressEnd/m_BytesInRow) + 1)
+                if ((addressBegin > groupAddressEnd) && (addressBegin / m_BytesInRow) > (groupAddressEnd / m_BytesInRow) + 1)
                 {
                     AddGroup(groupAddressBegin, groupAddressEnd);
                     groupAddressBegin = addressBegin;
@@ -274,54 +281,54 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             EntryRange range;
 
-            for (int i =0; i<m_Groups.Count; ++i)
+            for (int i = 0; i < m_Groups.Count; ++i)
             {
-                if (i%1000 == 0) ProgressBarDisplay.UpdateProgress((float)i/(float)m_Groups.Count);
+                if (i % 1000 == 0) ProgressBarDisplay.UpdateProgress((float)i / (float)m_Groups.Count);
 
                 // Assigning Managed Objects Range
                 while (managedObjectsOffset < managedObjectsCount && m_Groups[i].AddressBegin > m_Snapshot.SortedManagedObjects.Address(managedObjectsOffset))
-                    managedObjectsOffset ++;
+                    managedObjectsOffset++;
 
                 range.Begin = managedObjectsOffset;
 
                 while (managedObjectsOffset < managedObjectsCount && m_Snapshot.SortedManagedObjects.Address(managedObjectsOffset) < m_Groups[i].AddressEnd)
-                    managedObjectsOffset ++;
+                    managedObjectsOffset++;
 
                 range.End = managedObjectsOffset;
-            
+
                 m_GroupsMangedObj.Add(range);
-                
+
                 // Assigning Native Allocation Range
                 while (nativeAllocationsOffset < nativeAllocationsCount && m_Groups[i].AddressBegin > m_Snapshot.SortedNativeAllocations.Address(nativeAllocationsOffset))
-                    nativeAllocationsOffset ++;
+                    nativeAllocationsOffset++;
 
                 range.Begin = nativeAllocationsOffset;
 
                 while (nativeAllocationsOffset < nativeAllocationsCount && m_Snapshot.SortedNativeAllocations.Address(nativeAllocationsOffset) < m_Groups[i].AddressEnd)
-                    nativeAllocationsOffset ++;
+                    nativeAllocationsOffset++;
 
                 range.End = nativeAllocationsOffset;
-            
+
                 m_GroupsNativeAlloc.Add(range);
 
                 // Assigning Native Objects Range
                 while (nativeObjectsOffset < nativeObjectsCount && m_Groups[i].AddressBegin > m_Snapshot.SortedNativeObjects.Address(nativeObjectsOffset))
-                    nativeObjectsOffset ++;
+                    nativeObjectsOffset++;
 
                 range.Begin = nativeObjectsOffset;
 
                 while (nativeObjectsOffset < nativeObjectsCount && m_Snapshot.SortedNativeObjects.Address(nativeObjectsOffset) < m_Groups[i].AddressEnd)
-                    nativeObjectsOffset ++;
+                    nativeObjectsOffset++;
 
                 range.End = nativeObjectsOffset;
-            
+
                 m_GroupsNativeObj.Add(range);
             }
 
             ProgressBarDisplay.UpdateProgress(1.0f);
         }
 
-        public void SetupView( ulong rowMemorySize )
+        public void SetupView(ulong rowMemorySize)
         {
             ProgressBarDisplay.ShowBar("Setup memory map view");
 
@@ -353,9 +360,9 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public override void OnRenderMap(ulong addressMin, ulong addressMax, int slot)
         {
-            for (int i = 0; i<m_SnapshotMemoryRegion.Length; ++i)
+            for (int i = 0; i < m_SnapshotMemoryRegion.Length; ++i)
             {
-                if(m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !GetDisplayElement(DisplayElements.VirtualMemory))
+                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !GetDisplayElement(DisplayElements.VirtualMemory))
                     continue;
 
                 ulong stripGroupAddrBegin = m_SnapshotMemoryRegion[i].AddressBegin.Clamp(addressMin, addressMax);
@@ -365,11 +372,11 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     continue;
 
                 MemoryGroup group = m_Groups[m_SnapshotMemoryRegion[i].Group];
-                
+
                 RenderStrip(group, stripGroupAddrBegin, stripGroupAddrEnd, m_SnapshotMemoryRegion[i].ColorRegion);
             }
 
-            for (int i = 0; i<m_Groups.Count; ++i)
+            for (int i = 0; i < m_Groups.Count; ++i)
             {
                 ulong stripGroupAddrBegin = m_Groups[i].AddressBegin.Clamp(addressMin, addressMax);
                 ulong stripGroupAddrEnd   = m_Groups[i].AddressEnd.Clamp(addressMin, addressMax);
@@ -382,9 +389,9 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     Color32 color = m_ColorNative[(int)EntryColors.Allocation];
                     Render(m_Snapshot.SortedNativeAllocations, m_GroupsNativeAlloc, i, addressMin, addressMax, (Color32 c) => new Color32(color.r, color.g, color.b, c.a));
                 }
-        
+
                 if (GetDisplayElement(DisplayElements.NativeObjects))
-                {        
+                {
                     Color32 color = m_ColorNative[(int)EntryColors.Object];
                     Render(m_Snapshot.SortedNativeObjects, m_GroupsNativeObj, i, addressMin, addressMax, (Color32 c) => new Color32(color.r, color.g, color.b, c.a));
                 }
@@ -401,7 +408,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             GUI.BeginGroup(r);
 
-            m_ScrollArea = GUI.BeginScrollView(new Rect(0,0, r.width, r.height), m_ScrollArea, new Rect(0,0,viewRect.width - Styles.VScrollBarWidth, viewRect.height), false, true);
+            m_ScrollArea = GUI.BeginScrollView(new Rect(0, 0, r.width, r.height), m_ScrollArea, new Rect(0, 0, viewRect.width - Styles.VScrollBarWidth, viewRect.height), false, true);
 
             if (m_ScrollArea.y + r.height > viewRect.height)
                 m_ScrollArea.y = Math.Max(0, viewRect.height - r.height);
@@ -412,8 +419,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             float viewBottom = m_ScrollArea.y + r.height;
 
             HandleMouseClick(r);
-    
-            if (Event.current.type == EventType.Repaint)    
+
+            if (Event.current.type == EventType.Repaint)
             {
                 BindDefaultMaterial();
 
@@ -428,50 +435,50 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         }
 
         void OnGUILegend(Rect r)
-        {            
+        {
             Color oldColor = GUI.backgroundColor;
-                
+
             int slotWidth = 150;
             GUI.BeginGroup(r);
-                
+
             int yOffset = 5;
             int xOffset = (int)Styles.HeaderWidth;
 
 
-            GUI.backgroundColor = m_ColorManaged[(int)EntryColors.Region];  
+            GUI.backgroundColor = m_ColorManaged[(int)EntryColors.Region];
             GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Managed Memory", Styles.SeriesLabel);
-            xOffset += slotWidth-50;
+            xOffset += slotWidth - 50;
 
             if (GetDisplayElement(DisplayElements.MangedObjects))
             {
-                GUI.backgroundColor = m_ColorManaged[(int)EntryColors.Object];  
+                GUI.backgroundColor = m_ColorManaged[(int)EntryColors.Object];
                 GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Managed Object", Styles.SeriesLabel);
-                xOffset += slotWidth-50;
+                xOffset += slotWidth - 50;
             }
 
-            GUI.backgroundColor = m_ColorNative[(int)EntryColors.Region];  
+            GUI.backgroundColor = m_ColorNative[(int)EntryColors.Region];
             GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Native Memory (Reserved)", Styles.SeriesLabel);
             xOffset += slotWidth;
 
             if (GetDisplayElement(DisplayElements.Allocations))
             {
-                GUI.backgroundColor = m_ColorNative[(int)EntryColors.Allocation];  
+                GUI.backgroundColor = m_ColorNative[(int)EntryColors.Allocation];
                 GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Native Memory (Allocated)", Styles.SeriesLabel);
                 xOffset += slotWidth;
             }
 
             if (GetDisplayElement(DisplayElements.NativeObjects))
             {
-                GUI.backgroundColor = m_ColorNative[(int)EntryColors.Object];  
+                GUI.backgroundColor = m_ColorNative[(int)EntryColors.Object];
                 GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Native Object", Styles.SeriesLabel);
-                xOffset += slotWidth-50;            
+                xOffset += slotWidth - 50;
             }
 
             if (GetDisplayElement(DisplayElements.VirtualMemory))
             {
-                GUI.backgroundColor = m_ColorNative[(int)EntryColors.VirtualMemory];  
+                GUI.backgroundColor = m_ColorNative[(int)EntryColors.VirtualMemory];
                 GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Virtual Memory", Styles.SeriesLabel);
-                xOffset += slotWidth-50;            
+                xOffset += slotWidth - 50;
             }
             GUI.EndGroup();
 
@@ -484,12 +491,12 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             r.y      += Styles.LegendHeight;
             r.height -= Styles.LegendHeight;
 
-            Rect viewRect = new Rect(0, 0, r.width, m_Groups[m_Groups.Count-1].MaxY + Styles.RowPixelHeight);
+            Rect viewRect = new Rect(0, 0, r.width, m_Groups[m_Groups.Count - 1].MaxY + Styles.RowPixelHeight);
 
             MemoryMapRect = new Rect(
-                viewRect.x + Styles.HeaderWidth, 
-                viewRect.y, 
-                viewRect.width - Styles.HeaderWidth - Styles.VScrollBarWidth, 
+                viewRect.x + Styles.HeaderWidth,
+                viewRect.y,
+                viewRect.width - Styles.HeaderWidth - Styles.VScrollBarWidth,
                 viewRect.height);
 
             if (MemoryMapRect.width <= 0 || MemoryMapRect.height <= 0)
@@ -512,7 +519,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             for (int i = 0; i < m_SnapshotMemoryRegion.Length; ++i)
             {
                 MemoryRegion region = m_SnapshotMemoryRegion[i];
-                
+
                 if (addr < region.AddressBegin)
                 {
                     break;
@@ -528,9 +535,9 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         void HandleMouseClick(Rect r)
         {
-            ulong pixelDragLimit = 2*m_BytesInRow/(ulong)MemoryMapRect.width;
+            ulong pixelDragLimit = 2 * m_BytesInRow / (ulong)MemoryMapRect.width;
 
-            if (Event.current.mousePosition.y-m_ScrollArea.y >= r.height)
+            if (Event.current.mousePosition.y - m_ScrollArea.y >= r.height)
                 return;
 
             if (Event.current.type == EventType.MouseDown)
@@ -541,12 +548,12 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             }
             else if (Event.current.type == EventType.MouseDrag)
             {
-                ulong addr = MouseToAddress(Event.current.mousePosition);;                
+                ulong addr = MouseToAddress(Event.current.mousePosition);;
                 m_HighlightedAddrMin = (addr < m_MouseDragStartAddr) ? addr : m_MouseDragStartAddr;
-                m_HighlightedAddrMax = (addr < m_MouseDragStartAddr) ? m_MouseDragStartAddr : addr;     
-                
+                m_HighlightedAddrMax = (addr < m_MouseDragStartAddr) ? m_MouseDragStartAddr : addr;
+
                 if (m_HighlightedAddrMax - m_HighlightedAddrMin > pixelDragLimit)
-                {           
+                {
                     Event.current.Use();
                 }
             }
@@ -567,8 +574,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                         }
                     }
                     else
-                    {                   
-                        m_HighlightedAddrMax = m_HighlightedAddrMin = ulong.MaxValue; 
+                    {
+                        m_HighlightedAddrMax = m_HighlightedAddrMin = ulong.MaxValue;
                         int reg = AddressToRegion(m_MouseDragStartAddr);
                         if (reg >= 0)
                         {
@@ -581,6 +588,6 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 RegionSelected(m_HighlightedAddrMin, m_HighlightedAddrMax);
                 Event.current.Use();
             }
-        } 
+        }
     }
 }

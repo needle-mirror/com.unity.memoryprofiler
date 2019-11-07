@@ -1,7 +1,6 @@
 namespace Unity.MemoryProfiler.Editor.Database
 {
-
-    // TableInstanceRef reference to a table with a set of parameter defined. 
+    // TableInstanceRef reference to a table with a set of parameter defined.
     // A Schema can translate a 'TableInstanceRef' to an actual table using the GetTableByReference method
     internal class TableReference
     {

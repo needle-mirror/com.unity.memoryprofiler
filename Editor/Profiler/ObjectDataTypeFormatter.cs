@@ -2,7 +2,6 @@ using Unity.MemoryProfiler.Editor.Database;
 
 namespace Unity.MemoryProfiler.Editor
 {
-
     internal interface IObjectDataTypeFormatter
     {
         string GetTypeName();

@@ -109,6 +109,7 @@ namespace UnityEditor
             optOutDecision = result == 2;
             return result != 1;
         }
+
 #endif
     }
 }

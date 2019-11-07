@@ -1,7 +1,5 @@
 using UnityEngine;
 using UnityEditor;
-using Unity.MemoryProfiler.Editor.Debuging;
-using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -21,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public int CurrentTableIndex { get; private set; }
 
         bool m_NeedRefresh = false;
-        
+
         internal class History : HistoryEvent
         {
             readonly Database.TableReference m_Table;
@@ -33,14 +31,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_Table = spreadsheetPane.m_CurrentTableLink;
                 m_SpreadsheetState = spreadsheetPane.m_Spreadsheet.CurrentState;
             }
-            
+
             public void Restore(SpreadsheetPane pane)
             {
-                DebugUtility.DebugLog("Open History: " + ToString());
                 var table = pane.m_UIState.CurrentMode.GetSchema().GetTableByReference(m_Table);
                 if (table == null)
                 {
-                    DebugUtility.LogError("No table named '" + m_Table.Name + "' found.");
+                    Debug.LogError("No table named '" + m_Table.Name + "' found.");
                     return;
                 }
                 pane.m_CurrentTableLink = m_Table;
@@ -103,31 +100,28 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public bool OpenLinkRequest(Database.LinkRequestTable link, Database.TableReference tableLink, Database.Table table)
         {
-            using (ScopeDebugContext.String("OpenLinkRequest"))
+            if (link.LinkToOpen.RowWhere != null && link.LinkToOpen.RowWhere.Count > 0)
             {
-                if (link.LinkToOpen.RowWhere != null && link.LinkToOpen.RowWhere.Count > 0)
+                Database.Table filteredTable = table;
+                if (table.GetMetaData().defaultFilter != null)
                 {
-                    Database.Table filteredTable = table;
-                    if (table.GetMetaData().defaultFilter != null)
-                    {
-                        filteredTable = table.GetMetaData().defaultFilter.CreateFilter(table);
-                    }
-                    var whereUnion = new Database.View.WhereUnion(link.LinkToOpen.RowWhere, null, null, null, null, m_UIState.CurrentMode.GetSchema(), filteredTable, link.SourceView == null ? null : link.SourceView.ExpressionParsingContext);
-                    long rowToSelect = whereUnion.GetIndexFirstMatch(link.SourceRow);
-                    if (rowToSelect < 0)
-                    {
-                        DebugUtility.LogWarning("Could not find entry in target table '" + link.LinkToOpen.TableName + "'");
-                        return false;
-                    }
-                    DebugUtility.DebugLog("Opening table '" + link.LinkToOpen.TableName + "' at row " + rowToSelect);
-                    OpenTable(tableLink, table, new Database.CellPosition(rowToSelect, 0));
+                    filteredTable = table.GetMetaData().defaultFilter.CreateFilter(table);
                 }
-                else
+                var whereUnion = new Database.View.WhereUnion(link.LinkToOpen.RowWhere, null, null, null, null, m_UIState.CurrentMode.GetSchema(), filteredTable, link.SourceView == null ? null : link.SourceView.ExpressionParsingContext);
+                long rowToSelect = whereUnion.GetIndexFirstMatch(link.SourceRow);
+                if (rowToSelect < 0)
                 {
-                    OpenTable(tableLink, table, new Database.CellPosition(0, 0));
+                    Debug.LogWarning("Could not find entry in target table '" + link.LinkToOpen.TableName + "'");
+                    return false;
                 }
-                return true;
+
+                OpenTable(tableLink, table, new Database.CellPosition(rowToSelect, 0));
             }
+            else
+            {
+                OpenTable(tableLink, table, new Database.CellPosition(0, 0));
+            }
+            return true;
         }
 
         void OnSpreadsheetClick(UI.DatabaseSpreadsheet sheet, Database.LinkRequest link, Database.CellPosition pos)
@@ -139,7 +133,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void OpenTable(Database.TableReference tableRef, Database.Table table)
         {
-            Profiling.StartProfiling("Profile_OpenTable_" + table.GetName());
             CloseCurrentTable();
             m_CurrentTableLink = tableRef;
             CurrentTableIndex = m_UIState.CurrentMode.GetTableIndex(table);
@@ -211,22 +204,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UIState.FormattingOptions.ObjectDataFormatter.ShowPrettyNames = spn;
                 m_EventListener.OnRepaint();
             }
-#if MEMPROFILER_DEBUG_INFO
-            var sdv = GUILayout.Toggle(m_UIState.FormattingOptions.ObjectDataFormatter.showDebugValue, "Debug Value");
-            if (m_UIState.FormattingOptions.ObjectDataFormatter.showDebugValue != sdv)
-            {
-                m_UIState.FormattingOptions.ObjectDataFormatter.showDebugValue = sdv;
-                m_EventListener.OnRepaint();
-            }
-#endif
             EditorGUILayout.EndHorizontal();
         }
 
         public override void OnGUI(Rect r)
         {
-            if(Event.current.type == EventType.Layout)
+            if (Event.current.type == EventType.Layout)
             {
-
                 if (m_NeedRefresh)
                 {
                     m_Spreadsheet.UpdateTable();

@@ -49,14 +49,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         string[] GetDefaultStringCache()
         {
-            if(m_CacheDefaultString == null)
+            if (m_CacheDefaultString == null)
             {
                 m_CacheDefaultString = new string[m_Cache.Length];
             }
             return m_CacheDefaultString;
         }
 
-        // Initialize the cache using the appropriate associativity for a given expression 
+        // Initialize the cache using the appropriate associativity for a given expression
         public void InitForExpression(TypedExpression<DataT> exp)
         {
             if (exp.HasMultipleRow())
@@ -267,5 +267,4 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return exp.GetValueString(row, formatter);
         }
     }
-
 }

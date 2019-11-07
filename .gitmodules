@@ -1,0 +1,3 @@
+[submodule "git-hgmeta-format"]
+	path = git-hgmeta-format
+	url = git@github.cds.internal.unity3d.com:unity/git-hgmeta-format.git

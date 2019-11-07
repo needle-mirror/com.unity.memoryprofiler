@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Extensions.String
@@ -7,7 +7,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions.String
     {
         /// https://www.researchgate.net/publication/224960000_A_Fast_String_Searching_Algorithm
         /// <summary>
-        ///IndexOf extension using the Boyer-Moore string search algorithm, 
+        ///IndexOf extension using the Boyer-Moore string search algorithm,
         ///returns the index to the start of the first occurrence of the provided pattern.
         /// </summary>
         /// <param name="pattern"></param>
@@ -15,11 +15,11 @@ namespace Unity.MemoryProfiler.Editor.Extensions.String
         /// <returns></returns>
         public static int IndexOf(this string src, int startIndex, string pattern)
         {
-            if(pattern == null)
+            if (pattern == null)
             {
                 throw new System.ArgumentNullException("pattern can not be null");
             }
-            if(startIndex < 0 || startIndex > src.Length - 1)
+            if (startIndex < 0 || startIndex > src.Length - 1)
             {
                 throw new System.IndexOutOfRangeException("startIndex is out of range");
             }
@@ -34,20 +34,20 @@ namespace Unity.MemoryProfiler.Editor.Extensions.String
 
             unsafe
             {
-                fixed (char* patternPtr = pattern)
+                fixed(char* patternPtr = pattern)
                 {
-                    fixed (char* srcPtr = src)
+                    fixed(char* srcPtr = src)
                     {
                         int patternLengthOffset = pattern.Length - 1;
                         Int16* srcIter = (Int16*)srcPtr + startIndex + patternLengthOffset;
                         Int16* srcEnd = (Int16*)srcPtr + src.Length;
                         Int16* lastCharInPattern = (Int16*)patternPtr + patternLengthOffset;
 
-                        if(patternLengthOffset == 0)
+                        if (patternLengthOffset == 0)
                         {
-                            while(srcIter < srcEnd)
+                            while (srcIter < srcEnd)
                             {
-                                if(*patternPtr == *srcIter)
+                                if (*patternPtr == *srcIter)
                                 {
                                     return (int)(srcIter - (Int16*)srcPtr);
                                 }
@@ -90,4 +90,3 @@ namespace Unity.MemoryProfiler.Editor.Extensions.String
         }
     }
 }
-

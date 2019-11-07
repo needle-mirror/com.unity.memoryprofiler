@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEditor;
-using Unity.MemoryProfiler.Editor.Debuging;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -67,8 +66,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void FocusTo(float targetScale, Vector2 targetWorldPosition, AnimCallback animMidCB, bool force2PointAnim)
         {
-            DebugUtility.CheckFloat(targetScale);
-            DebugUtility.CheckFloat(targetWorldPosition);
             mAnimMidCB = animMidCB;
 
             var effectiveTargetScale = m_WorldToViewScale * targetScale;
@@ -287,7 +284,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             return (
                 (Event.current.button == 2 && Event.current.control)
-                );
+            );
         }
 
         private bool IsZoomEvent()
@@ -297,7 +294,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                                                                  //|| (Event.current.button == 0 && Event.current.command) // left+commend drag
                                                                  //|| (Event.current.button == 2 && Event.current.command) // middle+command drag
 
-                );
+            );
         }
 
         private bool IsPanEvent()
@@ -305,7 +302,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return (
                 (Event.current.button == 0 && Event.current.alt) // left+alt drag
                 || (Event.current.button == 2 && !Event.current.command) // middle drag
-                );
+            );
         }
 
         public ZoomArea()
@@ -491,8 +488,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             //m_ViewToWorldTranslation_Effective = new Vector2(m_ViewToWorldTranslation.x - m_Translation.x, m_ViewToWorldTranslation.y - m_Translation.y);
 
             var s = new Vector3(m_WorldToViewScale_Effective.x
-                    , m_WorldToViewScale_Effective.y
-                    , 1);
+                , m_WorldToViewScale_Effective.y
+                , 1);
             worldToViewMatrix = Matrix4x4.TRS(m_WorldToViewTranslation_Effective, Quaternion.identity, s);
         }
     }

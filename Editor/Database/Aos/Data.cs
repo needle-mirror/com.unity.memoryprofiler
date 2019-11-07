@@ -20,13 +20,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Aos
 
         internal class Column<StructT, DataT> : Database.ColumnTyped<DataT> where DataT : System.IComparable, new()
         {
-#if MEMPROFILER_DEBUG_INFO
-            public override string GetDebugString(long row)
-            {
-                return "AOS.Column<" + typeof(StructT).Name + ", " + typeof(DataT).Name + ">[" + row + "]{" + GetRowValueString(row) + "}";
-            }
-
-#endif
             public delegate void Setter(ref StructT s, DataT v);
             public delegate DataT Getter(StructT s);
             Setter setter;
@@ -81,13 +74,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Aos
 
         internal class ColumnList<StructT, DataT> : Database.ColumnTyped<DataT> where DataT : System.IComparable, new()
         {
-#if MEMPROFILER_DEBUG_INFO
-            public override string GetDebugString(long row)
-            {
-                return "AOS.ColumnList<" + typeof(StructT).Name + ", " + typeof(DataT).Name + ">[" + row + "]{" + GetRowValueString(row) + "}";
-            }
-
-#endif
             public delegate void Setter(List<StructT> list, int index, DataT v);
             public delegate DataT Getter(StructT s);
             Setter setter;

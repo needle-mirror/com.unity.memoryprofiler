@@ -107,19 +107,16 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             }
             public DataChunk<DataT> GetChunk(long chunkIndex)
             {
-                if (m_DataChunk[chunkIndex] == null)
+                if(m_DataChunk[chunkIndex] == null)
                 {
-                    using (Profiling.GetMarker(Profiling.MarkerId.NewDataChunk).Auto())
+                    long indexFirst = chunkIndex * m_DataSet.ChunkSize;
+                    long indexLast = indexFirst + m_DataSet.ChunkSize;
+                    if (indexLast > m_DataSet.DataCount)
                     {
-                        long indexFirst = chunkIndex * m_DataSet.ChunkSize;
-                        long indexLast = indexFirst + m_DataSet.ChunkSize;
-                        if (indexLast > m_DataSet.DataCount)
-                        {
-                            indexLast = m_DataSet.DataCount;
-                        }
-                        m_DataChunk[chunkIndex] = new DataChunk<DataT>(indexLast - indexFirst);
-                        m_DataSource.Get(Range.FirstToLast(indexFirst, indexLast), ref m_DataChunk[chunkIndex].m_Data);
+                        indexLast = m_DataSet.DataCount;
                     }
+                    m_DataChunk[chunkIndex] = new DataChunk<DataT>(indexLast - indexFirst);
+                    m_DataSource.Get(Range.FirstToLast(indexFirst, indexLast), ref m_DataChunk[chunkIndex].m_Data);
                 }
                 return m_DataChunk[chunkIndex];
             }
@@ -160,13 +157,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
         }
         public class Column<DataT> : ColumnTyped<DataT> where DataT : IComparable
         {
-#if MEMPROFILER_DEBUG_INFO
-            public override string GetDebugString(long row)
-            {
-                return "SAO.Column<" + typeof(DataT).Name + ">[" + row + "]{" + GetRowValueString(row) + "}";
-            }
-
-#endif
             protected Cache<DataT> m_Cache;
             public Column(Cache<DataT> cache)
             {
@@ -178,7 +168,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             {
                 return m_Cache.Length;
             }
-
 
             public int LowerBoundIndex(long[] index, int first, int count, IComparable v)
             {
@@ -199,6 +188,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 }
                 return first;
             }
+
             public int UpperBoundIndex(long[] index, int first, int count, IComparable v)
             {
                 while (count > 0)
@@ -218,20 +208,32 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 }
                 return first;
             }
+
             public override long[] GetMatchIndex(ArrayRange rowRange, Operation.Operator operation, Operation.Expression expression, long expressionRowFirst, bool rowToRow)
             {
-                using (Profiling.GetMarker(Profiling.MarkerId.ColumnMatchQuery).Auto())
+                Update();
+                long count = rowRange.Count;
+                var matchedIndices = new List<long>(128);
+                Operation.Operation.ComparableComparator comparator = Operation.Operation.GetComparator(type, expression.type);
+                if (rowToRow)
                 {
-                    Update();
-                    long count = rowRange.Count;
-                    var matchedIndices = new List<long>(128);
-                    Operation.Operation.ComparableComparator comparator = Operation.Operation.GetComparator(type, expression.type);
-                    if (rowToRow)
+                    for (long i = 0; i != count; ++i)
                     {
-                        for (long i = 0; i != count; ++i)
+                        var leftValue = m_Cache[rowRange[i]];
+                        if (Operation.Operation.Match(operation, comparator, leftValue, expression, expressionRowFirst + i))
+                        {
+                            matchedIndices.Add(rowRange[i]);
+                        }
+                    }
+                }
+                else
+                {
+                    if (Operation.Operation.IsOperatorOneToMany(operation))
+                    {
+                        for (int i = 0; i != count; ++i)
                         {
                             var leftValue = m_Cache[rowRange[i]];
-                            if (Operation.Operation.Match(operation, comparator, leftValue, expression, expressionRowFirst + i))
+                            if (Operation.Operation.Match(operation, comparator, leftValue, expression, expressionRowFirst))
                             {
                                 matchedIndices.Add(rowRange[i]);
                             }
@@ -239,91 +241,45 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     }
                     else
                     {
-                        if (Operation.Operation.IsOperatorOneToMany(operation))
+                        var valueRight = expression.GetComparableValue(expressionRowFirst);
+                        //Optimization for equal operation when querying on all data
+                        if (rowRange.IsSequence && operation == Operation.Operator.Equal)
                         {
-                            for (int i = 0; i != count; ++i)
+                            //use the sorted index to trim down invalid values
+                            long[] sortedIndex = GetSortIndexAsc();
+                            int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
+                            int upperIndexIndex = (int)rowRange.Sequence.Last;
+                            for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
                             {
-                                var leftValue = m_Cache[rowRange[i]];
-                                if (Operation.Operation.Match(operation, comparator, leftValue, expression, expressionRowFirst))
+                                if (m_Cache[sortedIndex[i]].CompareTo(valueRight) == 0)
                                 {
-                                    matchedIndices.Add(rowRange[i]);
+                                    matchedIndices.Add(sortedIndex[i]);
+                                }
+                                else
+                                {
+                                    break;
                                 }
                             }
                         }
                         else
                         {
-                            var valueRight = expression.GetComparableValue(expressionRowFirst);
-                            //Optimization for equal operation when querying on all data
-                            if (rowRange.IsSequence && operation == Operation.Operator.Equal)
+                            for (int i = 0; i != count; ++i)
                             {
-                                //use the sorted index to trim down invalid values
-                                long[] sortedIndex = GetSortIndexAsc();
-                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
-                                int upperIndexIndex = (int)rowRange.Sequence.Last;
-                                for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
+                                var leftValue = m_Cache[rowRange[i]];
+                                if (Operation.Operation.Match(operation, comparator, leftValue, valueRight))
                                 {
-                                    if (m_Cache[sortedIndex[i]].CompareTo(valueRight) == 0)
-                                    {
-                                        matchedIndices.Add(sortedIndex[i]);
-                                    }
-                                    else
-                                    {
-                                        break;
-                                    }
-                                }
-#if PROFILER_DEBUG_TEST
-                                {
-                                    //Test to validate if optimization works
-                                    int matchCount = 0;
-                                    for (int i = 0; i != count; ++i)
-                                    {
-                                        var leftValue = m_Cache[rowRange[i]];
-                                        if (Operation.Operation.Match(operation, comparator, leftValue, valueRight))
-                                        {
-                                            ++matchCount;
-                                            if(matchedIndices.FindIndex(x => x == rowRange[i]) < 0)
-                                            {
-                                                UnityEngine.Debug.LogError("GetMatchIndex Optimization failure on index " + rowRange[i]);
-                                            }
-                                        }
-                                    }
-                                    if(matchCount != matchedIndices.Count)
-                                    {
-                                        UnityEngine.Debug.LogError("GetMatchIndex Optimization failure on match count " + matchCount + " != " + matchedIndices.Count);
-                                    }
-                                }
-#endif
-
-                            }
-                            else
-                            {
-                                for (int i = 0; i != count; ++i)
-                                {
-                                    var leftValue = m_Cache[rowRange[i]];
-                                    if (Operation.Operation.Match(operation, comparator, leftValue, valueRight))
-                                    {
-                                        matchedIndices.Add(rowRange[i]);
-                                    }
+                                    matchedIndices.Add(rowRange[i]);
                                 }
                             }
                         }
                     }
-
-                    var matchedIndicesArray = matchedIndices.ToArray();
-
-#if MEMPROFILER_DEBUG_INFO
-	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.Count
-	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expressionRowFirst, DefaultDataFormatter.Instance)
-	                + " expRowFirst:" + expressionRowFirst
-	                + " Column:" + this.GetDebugString(rowRange[0])
-	                + " Expression:" + expression.GetDebugString(expressionRowFirst)
-	                + " Result Count:" + (matchedIndices != null ? matchedIndices.Length : 0));
-#endif
-
-                    return matchedIndicesArray;
                 }
+
+                var matchedIndicesArray = matchedIndices.ToArray();
+
+                return matchedIndicesArray;
             }
+
             protected override long[] GetSortIndex(IComparer<DataT> comparer, ArrayRange indices, bool relativeIndex)
             {
                 if (indices.IsIndex)
@@ -393,18 +349,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                         k[i] = GetRowValue(i + indices.Sequence.First);
                     }
                 }
-
-
-#if (PROFILER_DEBUG_TEST)
-                //Test if data is good against a simple un-optimized query loop
-
-                for (long i = 0; i != count; ++i)
-                {
-                    var v = GetRowValue(i + indices.Sequence.First);
-                    long c = k[i].CompareTo(v);
-                    UnityEngine.Debug.Assert(c == 0);
-                }
-#endif
                 System.Array.Sort(k, index, comparer);
                 return index;
             }
@@ -435,12 +379,12 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
         }
 
         /// <summary>
-        /// `Struct-of-Array` column for `long` value type. duplicated from column<DataT> to improve performances 
+        /// `Struct-of-Array` column for `long` value type. duplicated from column<DataT> to improve performances
         /// </summary>
         public class ColumnLong : Column<long>
         {
             public ColumnLong(Cache<long> cache)
-                :base(cache)
+                : base(cache)
             {
             }
 
@@ -463,6 +407,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 }
                 return first;
             }
+
             public int UpperBoundIndex(long[] index, int first, int count, long v)
             {
                 while (count > 0)
@@ -482,26 +427,38 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 }
                 return first;
             }
+
             public override long[] GetMatchIndex(ArrayRange rowRange, Operation.Operator operation, Operation.Expression expression, long expressionRowFirst, bool rowToRow)
             {
                 if (expression.type != type)
                 {
                     return base.GetMatchIndex(rowRange, operation, expression, expressionRowFirst, rowToRow);
                 }
-                
-                using (Profiling.GetMarker(Profiling.MarkerId.ColumnMatchQueryLong).Auto())
+
+                Update();
+                Operation.TypedExpression<long> typedExpression = expression as Operation.TypedExpression<long>;
+                long count = rowRange.Count;
+                var matchedIndices = new List<long>(128);
+                if (rowToRow)
                 {
-                    Update();
-                    Operation.TypedExpression<long> typedExpression = expression as Operation.TypedExpression<long>;
-                    long count = rowRange.Count;
-                    var matchedIndices = new List<long>(128);
-                    if (rowToRow)
+                    for (long i = 0; i != count; ++i)
                     {
-                        for (long i = 0; i != count; ++i)
+                        var lhs = m_Cache[rowRange[i]];
+                        var rhs = typedExpression.GetValue(expressionRowFirst + i);
+                        if (Operation.Operation.Match(operation, lhs, rhs))
                         {
-                            var lhs = m_Cache[rowRange[i]];
-                            var rhs = typedExpression.GetValue(expressionRowFirst + i);
-                            if (Operation.Operation.Match(operation, lhs, rhs))
+                            matchedIndices.Add(rowRange[i]);
+                        }
+                    }
+                }
+                else
+                {
+                    if (Operation.Operation.IsOperatorOneToMany(operation))
+                    {
+                        for (int i = 0; i != count; ++i)
+                        {
+                            var leftValue = m_Cache[rowRange[i]];
+                            if (Operation.Operation.Match(operation, leftValue, typedExpression, expressionRowFirst))
                             {
                                 matchedIndices.Add(rowRange[i]);
                             }
@@ -509,93 +466,46 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     }
                     else
                     {
-                        if (Operation.Operation.IsOperatorOneToMany(operation))
+                        var valueRight = typedExpression.GetValue(expressionRowFirst);
+                        //Optimization for equal operation when querying on all data
+                        if (rowRange.IsSequence && operation == Operation.Operator.Equal)
                         {
-                            for (int i = 0; i != count; ++i)
+                            //use the sorted index to trim down invalid values
+                            long[] sortedIndex = GetSortIndexAsc();
+                            int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
+                            int upperIndexIndex = (int)rowRange.Sequence.Last;
+                            for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
                             {
-                                var leftValue = m_Cache[rowRange[i]];
-                                if (Operation.Operation.Match(operation, leftValue, typedExpression, expressionRowFirst))
+                                if (m_Cache[sortedIndex[i]] == valueRight)
                                 {
-                                    matchedIndices.Add(rowRange[i]);
+                                    matchedIndices.Add(sortedIndex[i]);
+                                }
+                                else
+                                {
+                                    break;
                                 }
                             }
                         }
                         else
                         {
-                            var valueRight = typedExpression.GetValue(expressionRowFirst);
-                            //Optimization for equal operation when querying on all data
-                            if (rowRange.IsSequence && operation == Operation.Operator.Equal)
+                            for (int i = 0; i != count; ++i)
                             {
-                                //use the sorted index to trim down invalid values
-                                long[] sortedIndex = GetSortIndexAsc();
-                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
-                                int upperIndexIndex = (int)rowRange.Sequence.Last;
-                                for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
+                                var leftValue = m_Cache[rowRange[i]];
+                                if (Operation.Operation.Match(operation, leftValue, valueRight))
                                 {
-                                    if (m_Cache[sortedIndex[i]] == valueRight)
-                                    {
-                                        matchedIndices.Add(sortedIndex[i]);
-                                    }
-                                    else
-                                    {
-                                        break;
-                                    }
-                                }
-#if PROFILER_DEBUG_TEST
-                                {
-                                    //Test to validate if optimization works
-                                    int matchCount = 0;
-                                    for (int i = 0; i != count; ++i)
-                                    {
-                                        var leftValue = m_Cache[rowRange[i]];
-                                        if (Operation.Operation.Match(operation, leftValue, valueRight))
-                                        {
-                                            ++matchCount;
-                                            if(matchedIndices.FindIndex(x => x == rowRange[i]) < 0)
-                                            {
-                                                UnityEngine.Debug.LogError("GetMatchIndex Optimization failure on index " + rowRange[i]);
-                                            }
-                                        }
-                                    }
-                                    if(matchCount != matchedIndices.Count)
-                                    {
-                                        UnityEngine.Debug.LogError("GetMatchIndex Optimization failure on match count " + matchCount + " != " + matchedIndices.Count);
-                                    }
-                                }
-#endif
-                            }
-                            else
-                            {
-                                for (int i = 0; i != count; ++i)
-                                {
-                                    var leftValue = m_Cache[rowRange[i]];
-                                    if (Operation.Operation.Match(operation, leftValue, valueRight))
-                                    {
-                                        matchedIndices.Add(rowRange[i]);
-                                    }
+                                    matchedIndices.Add(rowRange[i]);
                                 }
                             }
                         }
                     }
-                    var matchedIndicesArray = matchedIndices.ToArray();
-
-#if MEMPROFILER_DEBUG_INFO
-	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.Count
-	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expressionRowFirst, DefaultDataFormatter.Instance)
-	                + " expRowFirst:" + expressionRowFirst
-	                + " Column:" + this.GetDebugString(rowRange[0])
-	                + " Expression:" + expression.GetDebugString(expressionRowFirst)
-	                + " Result Count:" + (matchedIndices != null ? matchedIndices.Length : 0));
-#endif
-
-                    return matchedIndicesArray;
                 }
+                var matchedIndicesArray = matchedIndices.ToArray();
+                return matchedIndicesArray;
             }
         }
 
         /// <summary>
-        /// `Struct-of-Array` column for `int` value type. duplicated from column<int> to improve performances 
+        /// `Struct-of-Array` column for `int` value type. duplicated from column<int> to improve performances
         /// </summary>
         public class ColumnInt : Column<int>
         {
@@ -623,6 +533,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 }
                 return first;
             }
+
             public int UpperBoundIndex(long[] index, int first, int count, int v)
             {
                 while (count > 0)
@@ -642,25 +553,37 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 }
                 return first;
             }
+
             public override long[] GetMatchIndex(ArrayRange rowRange, Operation.Operator operation, Operation.Expression expression, long expressionRowFirst, bool rowToRow)
             {
                 if (expression.type != type)
                 {
                     return base.GetMatchIndex(rowRange, operation, expression, expressionRowFirst, rowToRow);
                 }
-                using (Profiling.GetMarker(Profiling.MarkerId.ColumnMatchQueryInt).Auto())
+                Update();
+                Operation.TypedExpression<int> typedExpression = expression as Operation.TypedExpression<int>;
+                long count = rowRange.Count;
+                var matchedIndices = new List<long>(128);
+                if (rowToRow)
                 {
-                    Update();
-                    Operation.TypedExpression<int> typedExpression = expression as Operation.TypedExpression<int>;
-                    long count = rowRange.Count;
-                    var matchedIndices = new List<long>(128);
-                    if (rowToRow)
+                    for (long i = 0; i != count; ++i)
                     {
-                        for (long i = 0; i != count; ++i)
+                        var lhs = m_Cache[rowRange[i]];
+                        var rhs = typedExpression.GetValue(expressionRowFirst + i);
+                        if (Operation.Operation.Match(operation, lhs, rhs))
                         {
-                            var lhs = m_Cache[rowRange[i]];
-                            var rhs = typedExpression.GetValue(expressionRowFirst + i);
-                            if (Operation.Operation.Match(operation, lhs, rhs))
+                            matchedIndices.Add(rowRange[i]);
+                        }
+                    }
+                }
+                else
+                {
+                    if (Operation.Operation.IsOperatorOneToMany(operation))
+                    {
+                        for (int i = 0; i != count; ++i)
+                        {
+                            var leftValue = m_Cache[rowRange[i]];
+                            if (Operation.Operation.Match(operation, leftValue, typedExpression, expressionRowFirst))
                             {
                                 matchedIndices.Add(rowRange[i]);
                             }
@@ -668,101 +591,47 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     }
                     else
                     {
-                        if (Operation.Operation.IsOperatorOneToMany(operation))
+                        var valueRight = typedExpression.GetValue(expressionRowFirst);
+                        //Optimization for equal operation when querying on all data
+                        if (rowRange.IsSequence && operation == Operation.Operator.Equal)
                         {
-                            for (int i = 0; i != count; ++i)
+                            //use the sorted index to trim down invalid values
+                            long[] sortedIndex = GetSortIndexAsc();
+                            int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
+                            int upperIndexIndex = (int)rowRange.Sequence.Last;
+                            for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
                             {
-                                var leftValue = m_Cache[rowRange[i]];
-                                if (Operation.Operation.Match(operation, leftValue, typedExpression, expressionRowFirst))
+                                if (m_Cache[sortedIndex[i]] == valueRight)
                                 {
-                                    matchedIndices.Add(rowRange[i]);
+                                    matchedIndices.Add(sortedIndex[i]);
+                                }
+                                else
+                                {
+                                    break;
                                 }
                             }
                         }
                         else
                         {
-                            var valueRight = typedExpression.GetValue(expressionRowFirst);
-                            //Optimization for equal operation when querying on all data
-                            if (rowRange.IsSequence && operation == Operation.Operator.Equal)
+                            for (int i = 0; i != count; ++i)
                             {
-                                //use the sorted index to trim down invalid values
-                                long[] sortedIndex = GetSortIndexAsc();
-                                int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
-                                int upperIndexIndex = (int)rowRange.Sequence.Last;
-                                for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
+                                var leftValue = m_Cache[rowRange[i]];
+                                if (Operation.Operation.Match(operation, leftValue, valueRight))
                                 {
-                                    if (m_Cache[sortedIndex[i]] == valueRight)
-                                    {
-                                        matchedIndices.Add(sortedIndex[i]);
-                                    }
-                                    else
-                                    {
-                                        break;
-                                    }
-                                }
-#if PROFILER_DEBUG_TEST
-                                {
-                                    //Test to validate if optimization works
-                                    int matchCount = 0;
-                                    for (int i = 0; i != count; ++i)
-                                    {
-                                        var leftValue = m_Cache[rowRange[i]];
-                                        if (Operation.Operation.Match(operation, leftValue, valueRight))
-                                        {
-                                            ++matchCount;
-                                            if(matchedIndices.FindIndex(x => x == rowRange[i]) < 0)
-                                            {
-                                                UnityEngine.Debug.LogError("GetMatchIndex Optimization failure on index " + rowRange[i]);
-                                            }
-                                        }
-                                    }
-                                    if(matchCount != matchedIndices.Count)
-                                    {
-                                        UnityEngine.Debug.LogError("GetMatchIndex Optimization failure on match count " + matchCount + " != " + matchedIndices.Count);
-                                    }
-                                }
-#endif
-                            }
-                            else
-                            {
-                                for (int i = 0; i != count; ++i)
-                                {
-                                    var leftValue = m_Cache[rowRange[i]];
-                                    if (Operation.Operation.Match(operation, leftValue, valueRight))
-                                    {
-                                        matchedIndices.Add(rowRange[i]);
-                                    }
+                                    matchedIndices.Add(rowRange[i]);
                                 }
                             }
                         }
                     }
-
-                    var matchedIndicesArray = matchedIndices.ToArray();
-
-#if MEMPROFILER_DEBUG_INFO
-	            Algorithm.DebugLog("GetMatchIndex : indexCount " + rowRange.Count
-	                + " op:" + Operation.Operation.OperatorToString(operation)
-	                + " Exp():" + expression.GetValueString(expressionRowFirst, DefaultDataFormatter.Instance)
-	                + " expRowFirst:" + expressionRowFirst
-	                + " Column:" + this.GetDebugString(rowRange[0])
-	                + " Expression:" + expression.GetDebugString(expressionRowFirst)
-	                + " Result Count:" + (matchedIndices != null ? matchedIndices.Length : 0));
-#endif
-
-                    return matchedIndicesArray;
                 }
+
+                var matchedIndicesArray = matchedIndices.ToArray();
+                return matchedIndicesArray;
             }
         }
 
         public class Column_Transform<DataOutT, DataInT> : Database.ColumnTyped<DataOutT> where DataOutT : System.IComparable where DataInT : System.IComparable
         {
-#if MEMPROFILER_DEBUG_INFO
-            public override string GetDebugString(long row)
-            {
-                return "SAO.Column_Transform<" + typeof(DataOutT).Name + "," + typeof(DataInT).Name + ">[" + row + "]{" + GetRowValueString(row) + "}";
-            }
-
-#endif
             protected Cache<DataInT> m_Cache;
             public delegate DataOutT Transformer(DataInT a);
             public delegate void Untransformer(ref DataInT a, DataOutT b);
@@ -814,13 +683,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
 
         public class ColumnArray<DataT> : ColumnTyped<DataT> where DataT : IComparable
         {
-#if MEMPROFILER_DEBUG_INFO
-            public override string GetDebugString(long row)
-            {
-                return "SAO.ColumnArray<" + typeof(DataT).Name + ">[" + row + "]{" + GetRowValueString(row) + "}";
-            }
-
-#endif
             protected DataT[] m_Data;
             public ColumnArray(DataT[] data)
             {

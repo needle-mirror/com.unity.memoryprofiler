@@ -1,11 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Tests")]
 namespace Unity.MemoryProfiler
 {
-
     internal class ReflectionUtility
     {
         public static List<Type> GetTypesImplementingInterfaceFromCurrentDomain(Type baseType)
@@ -25,7 +24,7 @@ namespace Unity.MemoryProfiler
                         Type[] interfaces = type.GetInterfaces();
                         for (int k = 0; k < interfaces.Length; ++k)
                         {
-                            if(interfaces[k] == baseType)
+                            if (interfaces[k] == baseType)
                             {
                                 derived.Add(type);
                                 break;

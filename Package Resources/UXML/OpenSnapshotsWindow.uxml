@@ -20,7 +20,7 @@ xsi:schemaLocation="
     </editor:Toolbar>
     <engine:VisualElement name="openSnapshotsWindowContent">
       <engine:VisualElement name="openSnapshotsWindowFirstSnapshotHolder" class="openSnapshotItemHolder">
-            
+
       </engine:VisualElement>
       <engine:VisualElement name="openSnapshotsWindowDiffSnapshotSpace">
         <engine:Button name="diffOpenSnapshots" text="Diff" tooltip="Show the difference between the left and right snapshot"/>

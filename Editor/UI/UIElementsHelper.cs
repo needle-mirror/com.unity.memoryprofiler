@@ -35,7 +35,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             control.OnValueChanged(callback);
         }
+
 #endif
-        
     }
 }

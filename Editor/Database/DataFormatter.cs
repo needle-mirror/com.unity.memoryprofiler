@@ -3,7 +3,6 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
-
     internal interface IDataFormatter
     {
         string Format(object obj);
@@ -14,7 +13,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         string Format(T obj);
     }
 
-    internal class DefaultDataFormatter 
+    internal class DefaultDataFormatter
         : IDataFormatter
         , IDataFormatter<object>
         , IDataFormatter<bool>
@@ -41,6 +40,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             if (obj == null) return "";
             return obj.ToString();
         }
+
         string IDataFormatter<object>.Format(object obj)
         {
             if (obj == null) return "";
@@ -58,6 +58,5 @@ namespace Unity.MemoryProfiler.Editor.Database
         string IDataFormatter<double>.Format(double value) { return value.ToString(); }
         string IDataFormatter<string>.Format(string value) { return value.ToString(); }
         string IDataFormatter<Operation.DiffTable.DiffResult>.Format(Operation.DiffTable.DiffResult value) { return value.ToString(); }
-
     }
 }

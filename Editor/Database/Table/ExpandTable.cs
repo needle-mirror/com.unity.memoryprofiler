@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
-using Unity.MemoryProfiler.Editor.Debuging;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
@@ -39,6 +39,7 @@ namespace Unity.MemoryProfiler.Editor.Database
 
             ResetAllGroup();
         }
+
         protected bool IsGroupInitialized()
         {
             return m_Data != null;
@@ -95,7 +96,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             else
             {
                 m_Columns[metaColumn.Index] = new ColumnError(this);
-                DebugUtility.LogError("Cannot create column '" + GetName() + "." + metaColumn.Name + "'. Type is unknown (null)");
+                Debug.LogError("Cannot create column '" + GetName() + "." + metaColumn.Name + "'. Type is unknown (null)");
             }
         }
 

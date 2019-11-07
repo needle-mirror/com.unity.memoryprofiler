@@ -16,10 +16,10 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal class OpenSnapshotsWindow : VisualElement
     {
-        public event Action SwapOpenSnapshots = delegate { };
-        public event Action ShowDiffOfOpenSnapshots = delegate { };
-        public event Action ShowFirstOpenSnapshot = delegate { };
-        public event Action ShowSecondOpenSnapshot = delegate { };
+        public event Action SwapOpenSnapshots = delegate {};
+        public event Action ShowDiffOfOpenSnapshots = delegate {};
+        public event Action ShowFirstOpenSnapshot = delegate {};
+        public event Action ShowSecondOpenSnapshot = delegate {};
 
         class OpenSnapshotItemUI
         {
@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor
         const string k_SelectedSnapshotClassName = "selectedSnapshot";
 
         static readonly bool k_SplitWidthEvenly = true;
-        
+
         bool firstIsOpen;
         bool secondIsOpen;
 
@@ -115,7 +115,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 itemUI = m_OpenSnapshotItemUISecond;
             }
-            if(snapshotGUIData == null)
+            if (snapshotGUIData == null)
             {
                 UIElementsHelper.SwitchVisibility(itemUI.NoData, itemUI.Name);
                 itemUI.Name.text = "";
@@ -158,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                if(first)
+                if (first)
                     SetFocusFirst(false);
                 else
                     SetFocusSecond(false);
@@ -199,7 +199,7 @@ namespace Unity.MemoryProfiler.Editor
                 m_SnapshotMinWidth = snapshotMinWidth;
                 m_Label = label;
             }
-            
+
             public void SetMaxWidth(float maxWidth)
             {
                 maxWidth -= Margin;
@@ -224,7 +224,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public SnapshotUIWidthData(OpenSnapshotItemUI uiItem, float snapshotMinWidth)
             {
-                NameData = new LabelWidthData(string.IsNullOrEmpty(uiItem.Name.text)?uiItem.NoData:uiItem.Name, snapshotMinWidth);
+                NameData = new LabelWidthData(string.IsNullOrEmpty(uiItem.Name.text) ? uiItem.NoData : uiItem.Name, snapshotMinWidth);
                 DateData = new LabelWidthData(uiItem.Date, snapshotMinWidth);
             }
 
@@ -255,7 +255,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (superfluousWidth >= 0)
                 {
                     m_DiffButtonHolder.style.maxWidth = -1;
-                
+
                     return;
                 }
                 else

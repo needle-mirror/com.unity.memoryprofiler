@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Unity.MemoryProfiler.Editor.Database;
-using Unity.MemoryProfiler.Editor.Debuging;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -293,7 +292,7 @@ namespace Unity.MemoryProfiler.Editor
                 return ObjectData.FromManagedType(Snapshot, obj.managedTypeIndex);
             }
             var row2 = m_Fields.RowToFieldIndex(row);
-            if (DebugUtility.CheckIndexOutOfRange(m_Fields.fieldIndices, row2))
+            if (row2 < 0 || row2 >= m_Fields.fieldIndices.Length)
             {
                 return ObjectData.invalid;
             }
@@ -314,31 +313,5 @@ namespace Unity.MemoryProfiler.Editor
             var iField = m_Fields.fieldIndices[row];
             return Snapshot.fieldDescriptions.isStatic[iField];
         }
-
-        //public int GetFieldType(long fieldIndex)
-        //{
-        //    var iField = fieldIndices[fieldIndex];
-        //    var iFieldType = managedData.field.typeIndex[iField];
-        //    return iFieldType;
-        //}
-
-        //public BytesAndOffset GetFieldData(long fieldIndex)
-        //{
-        //    var iField = fieldIndices[fieldIndex];
-        //    var fieldOffset = managedData.field.offset[iField];
-        //    if (!obj.dataIncludeObjectHeader)
-        //    {
-        //        fieldOffset -= managedData.virtualMachineInformation.objectHeaderSize;
-        //    }
-        //    if (managedData.field.isStatic[iField])
-        //    {
-        //        var typeStaticData = new BytesAndOffset(managedData.typeDescription.staticFieldBytes[obj.iType].array, managedData.virtualMachineInformation.pointerSize);
-        //        return typeStaticData.Add(fieldOffset);
-        //    }
-        //    else
-        //    {
-        //        return obj.data.Add(fieldOffset);
-        //    }
-        //}
     }
 }

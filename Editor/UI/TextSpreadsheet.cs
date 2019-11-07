@@ -12,7 +12,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected EllipsisStyleMetric EllipsisStyleMetricData
         {
-            get { 
+            get
+            {
                 if (m_EllipsisStyleMetricData == null)
                     m_EllipsisStyleMetricData = new EllipsisStyleMetric(Styles.NumberLabel);
 
@@ -21,11 +22,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
         protected EllipsisStyleMetric EllipsisStyleMetricHeader
         {
-            get { 
+            get
+            {
                 if (m_EllipsisStyleMetricHeader == null)
                     m_EllipsisStyleMetricHeader = new EllipsisStyleMetric(Styles.EntryEven);
 
-                return m_EllipsisStyleMetricHeader; 
+                return m_EllipsisStyleMetricHeader;
             }
         }
 
@@ -91,6 +93,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             : base(new SplitterStateEx(new[] { 100, 50, 50, 50 }), null)
         {
         }
+
         protected override long GetFirstRow()
         {
             return 0;

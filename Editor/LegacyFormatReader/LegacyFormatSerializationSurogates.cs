@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.Serialization;
 using LegacyMemoryProfiler = UnityEditor.MemoryProfiler;
 namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats.Serialization
@@ -19,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats.Serialization
         public object SetObjectData(object obj, SerializationInfo info, StreamingContext context, ISurrogateSelector selector)
         {
             var legacySnapshot = new LegacyPackedMemorySnapshot();
-            legacySnapshot.m_NativeTypes = Array.ConvertAll(info.GetValue("m_NativeTypes", typeof(LegacyMemoryProfiler.PackedNativeType[])) as LegacyMemoryProfiler.PackedNativeType[], x =>(PackedNativeType)x);
+            legacySnapshot.m_NativeTypes = Array.ConvertAll(info.GetValue("m_NativeTypes", typeof(LegacyMemoryProfiler.PackedNativeType[])) as LegacyMemoryProfiler.PackedNativeType[], x => (PackedNativeType)x);
             legacySnapshot.m_NativeObjects = Array.ConvertAll(info.GetValue("m_NativeObjects", typeof(LegacyMemoryProfiler.PackedNativeUnityEngineObject[])) as LegacyMemoryProfiler.PackedNativeUnityEngineObject[], x => (PackedNativeUnityEngineObject)x);
             if (m_isPre2018_3_impl)
             {

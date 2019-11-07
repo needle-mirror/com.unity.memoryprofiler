@@ -5,13 +5,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
     // Column that yield the value of an expression
     internal class ViewColumnExpressionType<DataT> : Database.ColumnTyped<DataT>, ViewColumn.IViewColumn where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ViewColumnExpressionType<" + typeof(DataT).Name + ">[" + row + "]{" + m_SourceExpression.GetDebugString(row) + "}";
-        }
-
-#endif
         ViewColumn m_SourceViewColumn;
         Operation.TypedExpression<DataT> m_SourceExpression;
 
@@ -35,10 +28,12 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             }
             return false;
         }
+
         int EntryIndexToCacheIndex(long index)
         {
             return HasFixedRow ? 0 : (int)index;
         }
+
         int EntryIndexToSourceRow(long index)
         {
             return HasFixedRow ? FixedRow : (int)index;

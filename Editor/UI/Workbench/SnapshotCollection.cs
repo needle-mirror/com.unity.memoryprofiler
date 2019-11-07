@@ -18,7 +18,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         int m_Index;
         List<SnapshotFileData> m_Files;
-        
+
         public SnapshotFileData Current { get { return m_Files[m_Index]; } }
         object IEnumerator.Current { get { return Current; } }
         public int Count { get { return m_Files.Count; } }
@@ -95,14 +95,14 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         m_Snapshots.Add(new SnapshotFileData(fInfo));
                     }
-                    catch(IOException e)
+                    catch (IOException e)
                     {
                         Debug.LogError("Failed to load snapshot, error: " + e.Message);
                     }
                 }
             }
         }
-        
+
         public void RenameSnapshot(SnapshotFileData snapshot, string name)
         {
             int nameStart = snapshot.FileInfo.FullName.LastIndexOf(snapshot.FileInfo.Name);
@@ -138,6 +138,13 @@ namespace Unity.MemoryProfiler.Editor
         {
             snapshot.FileInfo.Delete();
             m_Snapshots.Remove(snapshot);
+#if UNITY_2019_3_OR_NEWER
+            string possibleSSPath = Path.ChangeExtension(snapshot.FileInfo.FullName, ".png");
+            if (File.Exists(possibleSSPath))
+            {
+                File.Delete(possibleSSPath);
+            }
+#endif
             m_Info.Refresh();
         }
 
@@ -151,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor
             FileInfo file = new FileInfo(path);
             if (file.FullName.StartsWith(m_Info.FullName))
             {
-                if(m_Snapshots.Find(item => item.FileInfo == file) == null)
+                if (m_Snapshots.Find(item => item.FileInfo == file) == null)
                 {
                     m_Snapshots.Add(new SnapshotFileData(file));
                     m_Info.Refresh();

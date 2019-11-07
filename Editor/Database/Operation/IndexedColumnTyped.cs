@@ -6,13 +6,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     }
     internal class IndexedColumnTyped<DataT> : ColumnTyped<DataT>, IIndexedColumn, IColumnDecorator where DataT : System.IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "IndexedColumnTyped<" + typeof(DataT).Name + ">{" + m_SourceColumn.GetDebugString(m_IndexedTable.indices[row]) + "}";
-        }
-
-#endif
         protected ColumnTyped<DataT> m_SourceColumn;
         protected IndexedTable m_IndexedTable;
 

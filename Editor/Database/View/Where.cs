@@ -5,13 +5,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 {
     internal class Where
     {
-#if MEMPROFILER_DEBUG_INFO
-        public string GetDebugString(long columnRow, long valueRow)
-        {
-            return m_Comparison.GetDebugString(columnRow, valueRow);
-        }
-
-#endif
         public Operation.ColumnComparison m_Comparison;
         public Operation.ColumnComparison Comparison { get { return m_Comparison; } }
 
@@ -57,9 +50,9 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 Where w = new Where();
                 var option = new Operation.Expression.ParseIdentifierOption(vs, table, true, false, null, expressionParsingContext);
                 option.formatError = (msg, y) =>
-                    {
-                        return FormatErrorContextInfo(vs, vTable, select) + msg;
-                    };
+                {
+                    return FormatErrorContextInfo(vs, vTable, select) + msg;
+                };
                 option.BypassSelectSetCondition = selectSet;
                 w.m_Comparison = comparison.Build(option);
                 return w;
@@ -75,27 +68,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
     }
     internal class WhereUnion
     {
-#if MEMPROFILER_DEBUG_INFO
-        public string GetDebugString(long columnRow, long valueRow)
-        {
-            string str = "";
-            bool needComma = false;
-            foreach (var w in where)
-            {
-                if (!needComma)
-                {
-                    needComma = true;
-                }
-                else
-                {
-                    str += ", ";
-                }
-                str += w.GetDebugString(columnRow, valueRow);
-            }
-            return str;
-        }
-
-#endif
         public List<Where> where = new List<Where>();
         public WhereUnion()
         {

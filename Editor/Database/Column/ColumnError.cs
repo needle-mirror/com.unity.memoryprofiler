@@ -5,13 +5,6 @@ namespace Unity.MemoryProfiler.Editor.Database
     /// </summary>
     internal class ColumnError : Database.ColumnTyped<string>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ColumnError[" + row + "]";
-        }
-
-#endif
         private Table m_Table;
         public ColumnError(Table table)
         {

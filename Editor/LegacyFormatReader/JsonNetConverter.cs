@@ -1,14 +1,14 @@
-﻿using System.Text;
+using System.Text;
 using Unity.MemoryProfiler.Editor.Extensions.String;
 
 namespace Unity.MemoryProfiler.Editor.Legacy
 {
     /// <summary>
-    /// Format conversion class from Newtonsoft's Json format. 
+    /// Format conversion class from Newtonsoft's Json format.
     /// Used for .memsnap3 file data conversion to Unity's JsonUtil json format
     /// </summary>
     internal class JsonNetConverter
-    { 
+    {
         readonly string k_BytesToken = @"""m_Bytes"":";
         readonly string k_StaticFieldBytesToken = @"""m_StaticFieldBytes"":";
         const char k_ArrayStartToken = '[';
@@ -88,6 +88,5 @@ namespace Unity.MemoryProfiler.Editor.Legacy
 
             return builder.ToString();
         }
-
     }
 }

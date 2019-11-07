@@ -25,20 +25,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
     // List of expression set by a view when the data type is "node"
     internal class ViewColumnNodeTyped<DataT> : Database.ColumnTyped<DataT>, ViewColumnNode.IViewColumnNode where DataT : IComparable
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            if (entries[(int)row] == null)
-            {
-                return "ViewColumnNodeTyped<" + typeof(DataT).Name + ">[" + row + "]{ no entries }";
-            }
-            else
-            {
-                return "ViewColumnNodeTyped<" + typeof(DataT).Name + ">[" + row + "]{" + entries[row].GetDebugString(0) + "}";
-            }
-        }
-
-#endif
         public Operation.TypedExpression<DataT>[] entries;
         public TableLink[] linkEntries;
         private ViewColumnNode m_ViewColumn;
@@ -65,6 +51,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             m_Cache.InitDirect(entries.Length);
             linkEntries = new TableLink[vc.viewTable.GetNodeChildCount()];
         }
+
         Database.Column ViewColumnNode.IViewColumnNode.GetColumn()
         {
             return this;

@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             set
             {
-                if(value != m_ShowPrettyNames)
+                if (value != m_ShowPrettyNames)
                 {
                     m_ShowPrettyNames = value;
                     PrettyNamesOptionChanged();
@@ -29,12 +29,8 @@ namespace Unity.MemoryProfiler.Editor
         }
         bool m_ShowPrettyNames = true;
 
-        public event Action PrettyNamesOptionChanged = delegate { };
+        public event Action PrettyNamesOptionChanged = delegate {};
 
-
-#if MEMPROFILER_DEBUG_INFO
-        public bool showDebugValue = false;
-#endif
         protected void AddTypeFormatter(IObjectDataTypeFormatter Formatter)
         {
             var name = Formatter.GetTypeName();
@@ -60,7 +56,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public void Clear()
         {
-            PrettyNamesOptionChanged = delegate { };
+            PrettyNamesOptionChanged = delegate {};
         }
     }
 
@@ -110,6 +106,7 @@ namespace Unity.MemoryProfiler.Editor
             result = null;
             return false;
         }
+
         public bool IsExpandable(int iTypeIndex)
         {
             if (iTypeIndex < 0) return false;
@@ -136,7 +133,7 @@ namespace Unity.MemoryProfiler.Editor
         // Formats "[ptr+offset]"
         public string FormatPointerAndOffset(ulong ptr, int offset)
         {
-            if(offset >= 0)
+            if (offset >= 0)
             {
                 return string.Format("[{0}+{1:x}]", PointerToString(ptr), offset);
             }
@@ -159,7 +156,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 string result = "{";
                 var iid = od.GetInstanceID(m_Snapshot);
-                if(iid != ObjectData.InvalidInstanceID)
+                if (iid != ObjectData.InvalidInstanceID)
                 {
                     result += "InstanceID=" + iid;
                 }
@@ -188,12 +185,13 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
             ulong ptr;
-            if(od.TryGetObjectPointer(out ptr))
+            if (od.TryGetObjectPointer(out ptr))
             {
                 return FormatPointer(ptr);
             }
             return "{...}";
         }
+
         public string FormatValueType(ObjectData od, IDataFormatter formatter, bool objectBrief)
         {
             IObjectDataTypeFormatter td;
@@ -301,48 +299,48 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.NativeObject:
                     return FormatInstanceId(od.codeType, m_Snapshot.nativeObjects.instanceId[od.nativeObjectIndex]);
                 case ObjectDataType.Object:
+                {
+                    int index = od.GetManagedObjectIndex(m_Snapshot);
+                    if (index >= 0)
                     {
-                        int index = od.GetManagedObjectIndex(m_Snapshot);
-                        if (index >= 0)
+                        int nativeIndex = m_Snapshot.CrawledData.ManagedObjects[index].NativeObjectIndex;
+                        if (nativeIndex >= 0)
                         {
-                            int nativeIndex = m_Snapshot.CrawledData.ManagedObjects[index].NativeObjectIndex;
-                            if (nativeIndex >= 0)
-                            {
-                                return FormatInstanceId(CodeType.Managed, m_Snapshot.nativeObjects.instanceId[nativeIndex]);
-                            }
-                            ulong ptr;
-                            if (od.TryGetObjectPointer(out ptr))
-                            {
-                                return FormatPointer(ptr);
-                            }
+                            return FormatInstanceId(CodeType.Managed, m_Snapshot.nativeObjects.instanceId[nativeIndex]);
                         }
-                        goto default;
+                        ulong ptr;
+                        if (od.TryGetObjectPointer(out ptr))
+                        {
+                            return FormatPointer(ptr);
+                        }
                     }
+                    goto default;
+                }
                 case ObjectDataType.Unknown:
                     return "<uninitialized type>";
                 default:
+                {
+                    if (od.IsField())
                     {
-                        if (od.IsField())
-                        {
-                            int offset = m_Snapshot.fieldDescriptions.offset[od.fieldIndex];
-                            ulong objPtr = od.GetObjectPointer(m_Snapshot);
-                            return FormatPointerAndOffset(objPtr, offset);
-                        }
-                        else if (od.IsArrayItem())
-                        {
-                            ulong objPtr = od.GetObjectPointer(m_Snapshot);
-                            return FormatterPointerAndIndex(objPtr, od.arrayIndex);
-                        }
-                        else
-                        {
-                            ulong ptr;
-                            if (od.TryGetObjectPointer(out ptr))
-                            {
-                                return FormatPointer(ptr);
-                            }
-                            return od.GetUnifiedObjectIndex(m_Snapshot).ToString();
-                        }
+                        int offset = m_Snapshot.fieldDescriptions.offset[od.fieldIndex];
+                        ulong objPtr = od.GetObjectPointer(m_Snapshot);
+                        return FormatPointerAndOffset(objPtr, offset);
                     }
+                    else if (od.IsArrayItem())
+                    {
+                        ulong objPtr = od.GetObjectPointer(m_Snapshot);
+                        return FormatterPointerAndIndex(objPtr, od.arrayIndex);
+                    }
+                    else
+                    {
+                        ulong ptr;
+                        if (od.TryGetObjectPointer(out ptr))
+                        {
+                            return FormatPointer(ptr);
+                        }
+                        return od.GetUnifiedObjectIndex(m_Snapshot).ToString();
+                    }
+                }
             }
         }
     }

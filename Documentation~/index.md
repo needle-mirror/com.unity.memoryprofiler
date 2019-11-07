@@ -1,24 +1,24 @@
 # About Memory Profiler
 
-Use the Memory Profiler package to identify potential areas in your Unity project (and the Unity Editor itself) where you can reduce [memory usage](https://github.com/google/cadvisor/issues/913#issuecomment-150663233). For example, use the Memory Profiler to capture, inspect, and compare [memory snapshots](https://en.wikipedia.org/wiki/Snapshot_(computer_storage)). 
+Use the Memory Profiler package to identify potential areas in your Unity project (and the Unity Editor itself) where you can reduce [memory usage](https://github.com/google/cadvisor/issues/913#issuecomment-150663233). For example, use the Memory Profiler to capture, inspect, and compare [memory snapshots](https://en.wikipedia.org/wiki/Snapshot_(computer_storage)).
 
 The Memory Profiler package has a [window](memory-profiler-window.md) in the Editor with an overview of native and managed memory allocations and can help you detect [memory leaks](https://en.wikipedia.org/wiki/Memory_leak) and [fragmentation](https://en.wikipedia.org/wiki/Fragmentation_(computing)).
 
-The Memory Profiler package creates a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high-end machines. 
+The Memory Profiler package creates a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high-end machines.
 
 You can also import snapshots taken from the [Bitbucket Profiler](https://bitbucket.org/Unity-Technologies/memoryprofiler) and use them within the Memory Profiler.
 
 ## Memory Profiler vs. Profiler
 
-The Memory Profiler package is entirely separate from the inbuilt Unity [Profiler](https://docs.unity3d.com/Manual/Profiler.html), even though they share some terminology. 
+The Memory Profiler package is entirely separate from the inbuilt Unity [Profiler](https://docs.unity3d.com/Manual/Profiler.html), even though they share some terminology.
 
 ## Who can use the Memory Profiler?
 
-The Memory Profiler package is mostly for advanced Unity users that desire to understand the memory used in their Project. However, no knowledge of memory profiling tools is required to make use of this package. 
+The Memory Profiler package is mostly for advanced Unity users that desire to understand the memory used in their Project. However, no knowledge of memory profiling tools is required to make use of this package.
 
 # Installing Memory Profiler
 
-To install this package, follow the instructions in the [Package Manager documentation](https://docs.unity3d.com/Packages/com.unity.package-manager-ui@latest/index.html). 
+To install this package, follow the instructions in the [Package Manager documentation](https://docs.unity3d.com/Packages/com.unity.package-manager-ui@latest/index.html).
 
 >**Note**: While this package is in preview, the Package Manager needs to be configured to show __Preview Packages__. (Under the __Advanced__ drop-down menu, enable __Show preview packages__.) Then search for the Memory Profiler package.
 
@@ -40,14 +40,14 @@ This version of the Memory Profiler is compatible with the following versions of
 Memory Profiler version 0.1.0-preview.2 includes the following known limitations:
 
 * Only development builds, and the Editor can use the Memory Profiler. This limitation means that users can’t profile release builds. (This is the same limitation as Profiler.)
-* The capture itself allocates memory so in some cases the system may run out of memory and crash the application. 
+* The capture itself allocates memory so in some cases the system may run out of memory and crash the application.
 * Taking a capture may temporarily freeze the capture target (the Editor or remote application). The length of this freeze depends on the complexity and memory usage of the application.
-* Single threaded platforms, such as WebGL, are not supported. 
+* Single threaded platforms, such as WebGL, are not supported.
 * Taking a screenshot to accompany the memory snapshot only works with Players build with a Unity version of 2019.3 or newer.[More details](tips-and-troubleshooting.md#define-snapshot-metadata)
 * Some data that is contained in the binary copy of the managed heap included in the snapshot file is currently not displayed in the UI. [More details below](#data-concerns-when-sharing-snapshots)
 
 ## Data concerns when sharing snapshots
-The memory snapshots you take with the Memory Profiler UI or the [Memory Profiler API](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MemoryProfiler.html) contain the entire contents of the managed heap of the Player or Editor instance you are capturing. 
+The memory snapshots you take with the Memory Profiler UI or the [Memory Profiler API](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MemoryProfiler.html) contain the entire contents of the managed heap of the Player or Editor instance you are capturing.
 
 You can see most of the data through the Memory Profiler UI in this package with the exception of managed allocations that do not have a garbage collection handle. These allocations might be related to Mono type data, leaked managed data, or allocations that the garbage collector has already collected and released but the memory section they were located in hasn’t been overwritten with new data. The latter happens because garbage-collected memory is not "stomped" for performance reasons.
 
@@ -57,9 +57,9 @@ Fields are stored depending on the data type: [Value types](https://docs.microso
 
 For example, string type fields might indicate via their name what the string they are pointing to means. So searching for a field named "Password", "Credentials" or "Token" could identify strings with sensitive data. However, if the object that points to the string, or even the string itself has been garbage collected, the data might still be there, but is no longer easily identifiable, unless you have a rough idea what you're looking for or part of the string value to search for.
 
-Note: The above section only mentions string data as potentially problematic, however, this issue is not exclusive to strings and could come in other forms as well, including as field or type names. 
+Note: The above section only mentions string data as potentially problematic, however, this issue is not exclusive to strings and could come in other forms as well, including as field or type names.
 
-One way to safeguard against accidentally disclosing personally-identifying information, credentials or similar confidential data when you share snapshot files outside of your teams, is to put that data into constant fields. Constant fields bake that data into the binary executable, which is not captured by the Memory Profiler. However, be aware that a binary executable might be de-compiled by users and expose the data that way. 
+One way to safeguard against accidentally disclosing personally-identifying information, credentials or similar confidential data when you share snapshot files outside of your teams, is to put that data into constant fields. Constant fields bake that data into the binary executable, which is not captured by the Memory Profiler. However, be aware that a binary executable might be de-compiled by users and expose the data that way.
 
 Taking a memory snapshot is currently only possible in development Players, so these fields could be non-const in release builds, which will make it trickier to get to the data, albeit not entirely impossible.
 

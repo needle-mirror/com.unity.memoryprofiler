@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
@@ -32,13 +34,6 @@ namespace Unity.MemoryProfiler.Editor.Database
     }
     internal class RowIndexColumn : ColumnTyped<long>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "RowIndexColumn<long>[" + row + "]{" + row + "}";
-        }
-
-#endif
         public Database.Table table;
         public RowIndexColumn(Database.Table table)
         {
@@ -77,8 +72,6 @@ namespace Unity.MemoryProfiler.Editor.Database
             this.Schema = schema;
         }
 
-
-
         /// <summary>
         /// Tests if the table and its columns are correctly setup. useful for debug and tests
         /// </summary>
@@ -94,22 +87,35 @@ namespace Unity.MemoryProfiler.Editor.Database
         {
             bool valid = true;
             string name = GetName();
-            using (var ctxTable = Debuging.ScopeDebugContext.String("Table '" + (name==null ? "<unnamed>" : name) + "'"))
+
+            if (m_Meta == null)
             {
-                valid &= Debuging.DebugUtility.ValidateError(log, m_Meta != null, "Table must have a MetaTable set.");
-                valid &= Debuging.DebugUtility.ValidateError(log, m_Meta.GetColumnCount() == m_Columns.Count, "Table must have the same number of column as its MetaTable.");
-                
-                for (int i = 0;i != m_Columns.Count; ++i)
-                {
-                    var metaColumn = m_Meta.GetColumnByIndex(i);
-                    using (var ctxColumn = Debuging.ScopeDebugContext.String("Column index " + i + ", meta name '" + metaColumn.Name + "'"))
-                    {
-                        valid &= Debuging.DebugUtility.ValidateError(log, metaColumn.Index == i, "Column index must be the same as the MetaColumn.Index property");
-                        valid &= m_Columns[i].Validate(log, metaColumn);
-                    }
-                }
+                if (log)
+                    Debug.Log("Table must have a MetaTable set.");
+                valid = false;
             }
-                
+
+            if(m_Meta.GetColumnCount() != m_Columns.Count)
+            {
+                if (log)
+                    Debug.Log("Table must have the same number of column as its MetaTable.");
+                valid = false;
+            }
+
+            for (int i = 0; i != m_Columns.Count; ++i)
+            {
+                var metaColumn = m_Meta.GetColumnByIndex(i);
+
+                if(metaColumn.Index != i)
+                {
+                    if (log)
+                        Debug.Log("Column index must be the same as the MetaColumn.Index property");
+                    valid = false;
+                    break;
+                }
+                valid &= m_Columns[i].Validate(log, metaColumn);
+            }
+
             return valid;
         }
 
@@ -267,4 +273,39 @@ namespace Unity.MemoryProfiler.Editor.Database
     {
         void Initialize(ExpandTable table, Column column, int columnIndex);
     }
+
+
+    public static class DebugUtility
+    {
+        public static bool TryGetMandatoryXmlAttribute(System.Xml.XmlElement element, string attributeName, out string value)
+        {
+            string valueGot = element.GetAttribute(attributeName);
+            if (String.IsNullOrEmpty(valueGot))
+            {
+                Debug.LogError("Element '" + element.Name + "' is missing the '" + attributeName + "' attribute.");
+                value = null;
+
+                byte errorID = 3;
+                switch (attributeName)
+                {
+                    case "column":
+                        errorID = 4;
+                        break;
+                    case "view":
+                        errorID = 5;
+                        break;
+                    case "order":
+                        errorID = 6;
+                        break;
+                    default:
+                        break;
+                }
+                MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(errorID);
+                return false;
+            }
+            value = valueGot;
+            return true;
+        }
+    }
+
 }

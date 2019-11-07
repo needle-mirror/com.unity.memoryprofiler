@@ -1,10 +1,10 @@
 # Memory Profiler window
 
-The Memory Profiler has a window that is separate from the existing [Profiler window](https://docs.unity3d.com/Manual/ProfilerWindow.html). 
+The Memory Profiler has a window that is separate from the existing [Profiler window](https://docs.unity3d.com/Manual/ProfilerWindow.html).
 
 To open the Memory Profiler window:
 
-* First, make sure you have the [Memory Profiler package installed](index.md#installing-memory-profiler). 
+* First, make sure you have the [Memory Profiler package installed](index.md#installing-memory-profiler).
 * Then go to the menu: __Window__ > __Analysis__ > __Memory Profiler__.
 
 ## Window overview
@@ -28,4 +28,3 @@ For more information on the Memory Profiler window, see [Workflow: Understanding
 
 
 [Back to manual](manual.md)
-

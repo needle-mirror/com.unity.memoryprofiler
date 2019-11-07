@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -90,12 +90,10 @@ namespace Unity.MemoryProfiler.Containers
             public static void IntrospectiveSort<T>(NativeArray<T> array, int startIndex, int length) where T : struct, IComparable<T>
 #endif
             {
-#if MEM_PROFILER_ALGORITHM_CHECK
                 if (length < 0 || length > array.Length)
                     throw new ArgumentOutOfRangeException("length should be in the range [0, array.Length].");
                 if (startIndex < 0 || startIndex > length - 1)
                     throw new ArgumentOutOfRangeException("startIndex should in the range [0, length).");
-#endif
 
 #if !NET_4_6
                 if (!UnsafeUtility.IsBlittable<T>())
@@ -127,7 +125,6 @@ namespace Unity.MemoryProfiler.Containers
                     aux_first = default(T);
                     aux_second = aux_first;
                 }
-
             }
 #else
             unsafe struct NativeArrayData<T> where T : struct
@@ -145,7 +142,6 @@ namespace Unity.MemoryProfiler.Containers
 
                     ptr = nativeArrayPtr;
                 }
-
             }
 #endif
 
@@ -159,7 +155,7 @@ namespace Unity.MemoryProfiler.Containers
                 while (high > low)
                 {
                     int partitionSize = high - low + 1;
-                    if(partitionSize <= partitionThreshold)
+                    if (partitionSize <= partitionThreshold)
                     {
                         switch (partitionSize)
                         {
@@ -174,7 +170,6 @@ namespace Unity.MemoryProfiler.Containers
                             default:
                                 InsertionSort(ref array, low, high);
                                 return;
-
                         }
                     }
                     else if (depth == 0)
@@ -189,6 +184,7 @@ namespace Unity.MemoryProfiler.Containers
                     high = pivot - 1;
                 }
             }
+
 #if NET_4_6
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             static void Heapsort<T>(ref NativeArrayData<T> array, int low, int high) where T : unmanaged, IComparable<T>
@@ -208,6 +204,7 @@ namespace Unity.MemoryProfiler.Containers
                     DownHeap(ref array, 1, i - 1, low);
                 }
             }
+
 #if NET_4_6
             unsafe static void DownHeap<T>(ref NativeArrayData<T> array, int i, int n, int low) where T : unmanaged, IComparable<T>
             {
@@ -239,6 +236,7 @@ namespace Unity.MemoryProfiler.Containers
                 }
                 *(array.ptr + (low + i - 1)) = array.aux_first;
             }
+
 #else
             unsafe static void DownHeap<T>(ref NativeArrayData<T> array, int i, int n, int low) where T : struct, IComparable<T>
             {
@@ -273,6 +271,7 @@ namespace Unity.MemoryProfiler.Containers
                 }
                 UnsafeUtility.CopyStructureToPtr(ref array.aux_first, array.ptr + ((low + i - 1) * typeSize));
             }
+
 #endif
 
 #if NET_4_6
@@ -295,6 +294,7 @@ namespace Unity.MemoryProfiler.Containers
                     *(array.ptr + (j + 1)) = array.aux_first;
                 }
             }
+
 #else
             unsafe static void InsertionSort<T>(ref NativeArrayData<T> array, int low, int high) where T : struct, IComparable<T>
             {
@@ -316,6 +316,7 @@ namespace Unity.MemoryProfiler.Containers
                     UnsafeUtility.CopyStructureToPtr(ref array.aux_first, array.ptr + ((j + 1) * typeSize));
                 }
             }
+
 #endif
 
 #if NET_4_6
@@ -348,8 +349,9 @@ namespace Unity.MemoryProfiler.Containers
                 Swap(ref array, left, (high - 1));
                 return left;
             }
+
 #else
-            unsafe static int PartitionRangeAndPlacePivot<T>(ref NativeArrayData<T> array ,int low, int high) where T : struct, IComparable<T>
+            unsafe static int PartitionRangeAndPlacePivot<T>(ref NativeArrayData<T> array , int low, int high) where T : struct, IComparable<T>
             {
                 int mid = low + (high - low) / 2;
                 var typeSize = UnsafeUtility.SizeOf<T>();
@@ -368,7 +370,6 @@ namespace Unity.MemoryProfiler.Containers
                         UnsafeUtility.CopyPtrToStructure(array.ptr + (++left * typeSize), out array.aux_first);
                         if (!(array.aux_first.CompareTo(array.aux_second) < 0))
                             break;
-
                     }
 
                     while (true)
@@ -387,6 +388,7 @@ namespace Unity.MemoryProfiler.Containers
                 Swap(ref array, left, (high - 1));
                 return left;
             }
+
 #endif
 
 #if NET_4_6
@@ -438,6 +440,7 @@ namespace Unity.MemoryProfiler.Containers
                         return;
                 }
             }
+
 #else
             unsafe static void SwapSortAscending<T>(ref NativeArrayData<T> array, int left, int mid, int right) where T : struct, IComparable<T>
             {
@@ -460,7 +463,6 @@ namespace Unity.MemoryProfiler.Containers
 
                 switch (bitmask)
                 {
-
                     case 1:
                         UnsafeUtility.CopyStructureToPtr(ref array.aux_second, leftAddr);
                         UnsafeUtility.CopyStructureToPtr(ref array.aux_first, midAddr);
@@ -487,6 +489,7 @@ namespace Unity.MemoryProfiler.Containers
                         return;
                 }
             }
+
 #endif
 
 #if NET_4_6
@@ -504,9 +507,9 @@ namespace Unity.MemoryProfiler.Containers
                         UnsafeUtility.MemCpy(rightAddr, leftAddr, UnsafeUtility.SizeOf<T>());
                         *leftAddr = array.aux_first;
                     }
-
                 }
             }
+
 #else
             static void SwapIfGreater<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : struct, IComparable<T>
             {
@@ -530,6 +533,7 @@ namespace Unity.MemoryProfiler.Containers
                     }
                 }
             }
+
 #endif
 
 
@@ -544,6 +548,7 @@ namespace Unity.MemoryProfiler.Containers
                 UnsafeUtility.MemCpy(leftAddr, rightAddr, UnsafeUtility.SizeOf<T>());
                 *rightAddr = array.aux_first;
             }
+
 #else
             unsafe static void Swap<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : struct, IComparable<T>
             {
@@ -555,6 +560,7 @@ namespace Unity.MemoryProfiler.Containers
                 UnsafeUtility.MemCpy(leftAddr, rightAddr, typeSize);
                 UnsafeUtility.CopyStructureToPtr(ref array.aux_first, rightAddr);
             }
+
 #endif
 
 

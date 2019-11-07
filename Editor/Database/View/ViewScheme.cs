@@ -2,7 +2,6 @@ using System.Xml;
 using UnityEngine;
 using UnityEditor;
 using System.IO;
-using Unity.MemoryProfiler.Editor.Debuging;
 
 namespace Unity.MemoryProfiler.Editor.Database.View
 {
@@ -15,10 +14,12 @@ namespace Unity.MemoryProfiler.Editor.Database.View
         public ViewSchema()
         {
         }
+
         public ViewSchema(Database.Schema baseSchema)
         {
             this.baseSchema = baseSchema;
         }
+
         public override string GetDisplayName()
         {
             return baseSchema.GetDisplayName();
@@ -99,47 +100,41 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
             public ViewSchema Build(Database.Schema baseSchema)
             {
-                using (ScopeDebugContext.Func(() => { return "ViewSchema '" + name + "'"; }))
+                ViewSchema vs = new ViewSchema();
+                vs.baseSchema = baseSchema;
+                vs.tables = new ViewTable[viewTable.Count];
+                vs.name = name;
+                int i = 0;
+                foreach (var tBuilder in viewTable)
                 {
-                    ViewSchema vs = new ViewSchema();
-                    vs.baseSchema = baseSchema;
-                    vs.tables = new ViewTable[viewTable.Count];
-                    vs.name = name;
-                    int i = 0;
-                    foreach (var tBuilder in viewTable)
-                    {
-                        var table = tBuilder.Build(vs, baseSchema);
-                        vs.tables[i] = table;
-                        vs.tablesByName.Add(table.GetName(), table);
-                        ++i;
-                    }
-                    return vs;
+                    var table = tBuilder.Build(vs, baseSchema);
+                    vs.tables[i] = table;
+                    vs.tablesByName.Add(table.GetName(), table);
+                    ++i;
                 }
+                return vs;
             }
 
             public static Builder LoadFromXML(XmlElement root)
             {
                 Builder b = new Builder();
                 b.name = root.GetAttribute("name");
-                using (ScopeDebugContext.Func(() => { return "ViewSchema '" + b.name + "'"; }))
+                foreach (XmlNode node in root.ChildNodes)
                 {
-                    foreach (XmlNode node in root.ChildNodes)
+                    if (node.NodeType == XmlNodeType.Element)
                     {
-                        if (node.NodeType == XmlNodeType.Element)
+                        XmlElement e = (XmlElement)node;
+                        if (e.Name == "View")
                         {
-                            XmlElement e = (XmlElement)node;
-                            if (e.Name == "View")
+                            var v = ViewTable.Builder.LoadFromXML(e);
+                            if (v != null)
                             {
-                                var v = ViewTable.Builder.LoadFromXML(e);
-                                if (v != null)
-                                {
-                                    b.viewTable.Add(v);
-                                }
+                                b.viewTable.Add(v);
                             }
                         }
                     }
-                    return b;
                 }
+                return b;
             }
 
             /// <summary>

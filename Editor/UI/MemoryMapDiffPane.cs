@@ -1,4 +1,3 @@
-using Unity.MemoryProfiler.Editor.Debuging;
 using System.Collections.Generic;
 using UnityEngine;
 #if UNITY_2019_1_OR_NEWER
@@ -16,8 +15,9 @@ namespace Unity.MemoryProfiler.Editor.UI
     internal class MemoryMapDiffPane : ViewPane
     {
         static class Content
-		{
-            public static readonly  GUIContent[] TableModesList = new GUIContent[3] {
+        {
+            public static readonly  GUIContent[] TableModesList = new GUIContent[3]
+            {
                 new GUIContent("Regions list"),
                 new GUIContent("Allocations list"),
                 new GUIContent("Objects list")
@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public static readonly  GUIContent ColorSchemeLabel = new GUIContent("Color scheme");
         }
 
-        
+
         internal class History : HistoryEvent
         {
             MemoryMapDiffPane.TableDisplayMode m_TableDisplay;
@@ -37,7 +37,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             bool m_FirstSnapshotActive;
 
-            public History(MemoryMapDiffPane pane )
+            public History(MemoryMapDiffPane pane)
             {
                 Mode = pane.m_UIState.CurrentMode;
 
@@ -55,7 +55,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (m_FirstSnapshotActive)
                     pane.m_ActiveMode = pane.m_UIState.FirstMode as UIState.SnapshotMode;
                 else
-                    pane.m_ActiveMode = pane.m_UIState.SecondMode as UIState.SnapshotMode; 
+                    pane.m_ActiveMode = pane.m_UIState.SecondMode as UIState.SnapshotMode;
 
                 pane.OnSelectRegions(m_State.HighlightedAddrMin, m_State.HighlightedAddrMax);
                 pane.m_Spreadsheet.CurrentState = m_TableState;
@@ -72,7 +72,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         UI.DatabaseSpreadsheet m_Spreadsheet;
 
-        public override VisualElement [] VisualElements
+        public override VisualElement[] VisualElements
         {
             get
             {
@@ -117,8 +117,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
         public enum TableDisplayMode
         {
-            Regions, 
-            Allocations, 
+            Regions,
+            Allocations,
             Objects,
         }
         UIState.SnapshotMode m_ActiveMode;
@@ -127,11 +127,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         TableDisplayMode CurrentTableView
         {
-            get { 
-                return m_CurrentTableView; 
+            get
+            {
+                return m_CurrentTableView;
             }
 
-            set { 
+            set
+            {
                 m_CurrentTableView = value;
                 UnityEditor.EditorPrefs.SetInt("Unity.MemoryProfiler.Editor.UI.MemoryMapPaneDiff.TableDisplayMode", (int)m_CurrentTableView);
             }
@@ -151,10 +153,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (size < 1024)
                     Content = new GUIContent(size.ToString() + " Bytes");
-                else if (size < 1024*1024)
-                    Content = new GUIContent((size/1024).ToString() + " KB");
+                else if (size < 1024 * 1024)
+                    Content = new GUIContent((size / 1024).ToString() + " KB");
                 else
-                    Content = new GUIContent((size/(1024*1024)).ToString() + " MB");
+                    Content = new GUIContent((size / (1024 * 1024)).ToString() + " MB");
             }
         };
 
@@ -181,7 +183,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         void OnViewPaneChanged(ViewPane newPane)
-        {   
+        {
             if (m_ToolbarExtension.IndexOf(m_ToolbarExtensionPane) != -1)
             {
                 m_ToolbarExtension.Remove(m_ToolbarExtensionPane);
@@ -192,7 +194,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ToolbarExtension.Add(m_ToolbarExtensionPane);
             }
         }
-        
+
         public MemoryMapDiffPane(UIState s, IViewPaneEventListener l, VisualElement toolbarExtension)
             : base(s, l)
         {
@@ -205,24 +207,24 @@ namespace Unity.MemoryProfiler.Editor.UI
             s.ModeChanged += OnModeChanged;
 
             string[] displayElements = Enum.GetNames(typeof(MemoryMap.MemoryMapDiff.DisplayElements));
-            m_DisplayElementsList = new GUIContent[ displayElements.Length ];
-            for (int i=0; i<displayElements.Length; ++i)
+            m_DisplayElementsList = new GUIContent[displayElements.Length];
+            for (int i = 0; i < displayElements.Length; ++i)
                 m_DisplayElementsList[i] = new GUIContent(displayElements[i]);
-                
+
             string[] colorSchemes = Enum.GetNames(typeof(MemoryMap.MemoryMapDiff.ColorScheme));
-            m_ColorSchemeList = new GUIContent[ colorSchemes.Length ];
-            for (int i=0; i<colorSchemes.Length; ++i)
+            m_ColorSchemeList = new GUIContent[colorSchemes.Length];
+            for (int i = 0; i < colorSchemes.Length; ++i)
                 m_ColorSchemeList[i] = new GUIContent(colorSchemes[i]);
-            
-            ulong maxSize = 256*1024*1024; // 256,128,  64,32,16,8,  4,2,1,512,  256,128,64,32
+
+            ulong maxSize = 256 * 1024 * 1024; // 256,128,  64,32,16,8,  4,2,1,512,  256,128,64,32
             m_BytesInRowList = new RowSize[14];
-            for (int i=0; i<m_BytesInRowList.Length; ++i)            
+            for (int i = 0; i < m_BytesInRowList.Length; ++i)
                 m_BytesInRowList[i] = new RowSize(maxSize >> i);
 
             UIState.SnapshotMode mode1 = m_UIState.FirstMode as UIState.SnapshotMode;
             UIState.SnapshotMode mode2 = m_UIState.SecondMode as UIState.SnapshotMode;
             m_ActiveMode = mode1;
-            
+
             m_MemoryMap = new MemoryMap.MemoryMapDiff();
             m_MemoryMap.Setup(mode1.snapshot, mode2.snapshot);
             m_MemoryMap.RegionSelected += OnSelectRegions;
@@ -246,7 +248,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var lr = new Database.LinkRequestTable();
             lr.LinkToOpen = new Database.TableLink();
-            
+
             if (CurrentTableView == TableDisplayMode.Objects)
             {
                 lr.LinkToOpen.TableName = ObjectAllTable.TableName;
@@ -256,7 +258,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("Address", Database.Operation.Operator.Less, new Expression.MetaExpression(maxAddr.ToString(), false)));
             }
             else if (CurrentTableView == TableDisplayMode.Allocations)
-            {                    
+            {
                 lr.LinkToOpen.TableName = "RawNativeAllocation";
                 lr.LinkToOpen.RowWhere = new List<Database.View.Where.Builder>();
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("address", Database.Operation.Operator.GreaterEqual, new Expression.MetaExpression(minAddr.ToString(), false)));
@@ -273,7 +275,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             lr.SourceTable = null;
             lr.SourceColumn = null;
             lr.SourceRow = -1;
-            
+
             OpenLinkRequest(lr, true);
 
             if (m_Spreadsheet.RowCount > 0)
@@ -284,49 +286,46 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override UI.HistoryEvent GetCurrentHistoryEvent()
         {
-            return new History(this);            
+            return new History(this);
         }
 
         public void RestoreHistoryEvent(UI.HistoryEvent history)
-        { 
+        {
             (history as History).Restore(this);
         }
 
         void OpenLinkRequest(Database.LinkRequestTable link, bool focus)
         {
             //TODO this code is the same as the one inSpreadsheetPane, should be put together
-            using (ScopeDebugContext.String("OpenLinkRequest"))
-            {     
-                UIElementsHelper.SetVisibility(VisualElements[2], m_ActiveMode.snapshot.nativeAllocationSites.Count > 0 && m_CurrentTableView == TableDisplayMode.Allocations);
+            UIElementsHelper.SetVisibility(VisualElements[2], m_ActiveMode.snapshot.nativeAllocationSites.Count > 0 && m_CurrentTableView == TableDisplayMode.Allocations);
 
-                var tableRef = new Database.TableReference(link.LinkToOpen.TableName, link.Parameters);
-                var table = m_ActiveMode.SchemaToDisplay.GetTableByReference(tableRef);
-                if (table == null)
+            var tableRef = new Database.TableReference(link.LinkToOpen.TableName, link.Parameters);
+            var table = m_ActiveMode.SchemaToDisplay.GetTableByReference(tableRef);
+            if (table == null)
+            {
+                UnityEngine.Debug.LogError("No table named '" + link.LinkToOpen.TableName + "' found.");
+                return;
+            }
+            if (link.LinkToOpen.RowWhere != null && link.LinkToOpen.RowWhere.Count > 0)
+            {
+                Database.Table filteredTable = table;
+                if (table.GetMetaData().defaultFilter != null)
                 {
-                    UnityEngine.Debug.LogError("No table named '" + link.LinkToOpen.TableName + "' found.");
-                    return;
+                    filteredTable = table.GetMetaData().defaultFilter.CreateFilter(table);
                 }
-                if (link.LinkToOpen.RowWhere != null && link.LinkToOpen.RowWhere.Count > 0)
+                Database.Operation.ExpressionParsingContext expressionParsingContext = null;
+                if (link.SourceView != null)
                 {
-                    Database.Table filteredTable = table;
-                    if (table.GetMetaData().defaultFilter != null)
-                    {
-                        filteredTable = table.GetMetaData().defaultFilter.CreateFilter(table);
-                    }
-                    Database.Operation.ExpressionParsingContext expressionParsingContext = null;
-                    if (link.SourceView != null)
-                    {
-                        expressionParsingContext = link.SourceView.ExpressionParsingContext;
-                    }
-                    var whereUnion = new Database.View.WhereUnion(link.LinkToOpen.RowWhere, null, null, null, null, m_ActiveMode.SchemaToDisplay, filteredTable, expressionParsingContext);
-                    var indices = whereUnion.GetMatchingIndices(link.SourceRow);
-                    var newTab = new Database.Operation.IndexedTable(table, new ArrayRange(indices));
-                    OpenTable(tableRef, newTab, focus);
+                    expressionParsingContext = link.SourceView.ExpressionParsingContext;
                 }
-                else
-                {
-                    OpenTable(tableRef, table, new Database.CellPosition(0, 0), focus);
-                }
+                var whereUnion = new Database.View.WhereUnion(link.LinkToOpen.RowWhere, null, null, null, null, m_ActiveMode.SchemaToDisplay, filteredTable, expressionParsingContext);
+                var indices = whereUnion.GetMatchingIndices(link.SourceRow);
+                var newTab = new Database.Operation.IndexedTable(table, new ArrayRange(indices));
+                OpenTable(tableRef, newTab, focus);
+            }
+            else
+            {
+                OpenTable(tableRef, table, new Database.CellPosition(0, 0), focus);
             }
         }
 
@@ -336,7 +335,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_UIState.AddHistoryEvent(GetCurrentHistoryEvent());
             var tableLinkRequest = link as Database.LinkRequestTable;
-            if(tableLinkRequest != null)
+            if (tableLinkRequest != null)
             {
                 if (tableLinkRequest.LinkToOpen.TableName == ObjectTable.TableName)
                 {
@@ -346,12 +345,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
             else
-                DebugUtility.LogWarning("Cannot open unknown link '" + link.ToString() + "'");
+                Debug.LogWarning("Cannot open unknown link '" + link.ToString() + "'");
 
             //open the link in the spreadsheet pane
             m_EventListener.OnOpenLink(link, m_ActiveMode);
-            
-        }        
+        }
+
         void OpenTable(Database.TableReference tableRef, Database.Table table, bool focus)
         {
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
@@ -366,24 +365,24 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Spreadsheet.Goto(pos);
             m_EventListener.OnRepaint();
         }
-        
+
         public override void OnGUI(Rect r)
         {
             if (m_Spreadsheet == null)
-                OnSelectRegions(0,1);
- 
+                OnSelectRegions(0, 1);
+
             m_MemoryMap.OnGUI(r);
-        }        
+        }
 
         void OnGUISpreadsheet(Rect r)
         {
             GUILayout.BeginArea(r);
 
             int currentTableView = (int)CurrentTableView;
-            
+
             EditorGUILayout.BeginHorizontal(MemoryMapBase.Styles.ContentToolbar);
 
-            if( GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, "Snapshot A", EditorStyles.radioButton))
+            if (GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, "Snapshot A", EditorStyles.radioButton))
             {
                 if (m_ActiveMode != m_UIState.FirstMode)
                 {
@@ -392,7 +391,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            if( GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, "Snapshot B",  EditorStyles.radioButton))
+            if (GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, "Snapshot B",  EditorStyles.radioButton))
             {
                 if (m_ActiveMode != m_UIState.SecondMode)
                 {
@@ -403,21 +402,21 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (r.width > 500)
             {
-                GUILayout.Space(r.width-500);
-            }            
+                GUILayout.Space(r.width - 500);
+            }
 
             var popupRect = GUILayoutUtility.GetRect(Content.TableModesList[currentTableView], EditorStyles.toolbarPopup);
-    
+
             if (EditorGUI.DropdownButton(popupRect, Content.TableModesList[currentTableView], FocusType.Passive, EditorStyles.toolbarPopup))
             {
                 GenericMenu menu = new GenericMenu();
                 for (int i = 0; i < Content.TableModesList.Length; i++)
-                    menu.AddItem(Content.TableModesList[i], (int)currentTableView == i, (object data)=>{ CurrentTableView = (TableDisplayMode)data; m_MemoryMap.Reselect(); }, i );
+                    menu.AddItem(Content.TableModesList[i], (int)currentTableView == i, (object data) => { CurrentTableView = (TableDisplayMode)data; m_MemoryMap.Reselect(); }, i);
                 menu.DropDown(popupRect);
             }
 
             EditorGUILayout.EndHorizontal();
-                    
+
             if (m_Spreadsheet != null)
             {
                 EditorGUILayout.BeginHorizontal();
@@ -425,7 +424,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 EditorGUILayout.BeginHorizontal();
                 GUILayout.Space(2);
-                m_Spreadsheet.OnGUI(r.width-4);
+                m_Spreadsheet.OnGUI(r.width - 4);
                 GUILayout.Space(2);
                 EditorGUILayout.EndHorizontal();
 
@@ -449,26 +448,27 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var col = m_Spreadsheet.DisplayTable.GetColumnByName("allocationSiteId");
 
                     if (col != null && row < col.GetRowCount())
-                    {             
+                    {
                         long id = Convert.ToInt64(col.GetRowValueString(row, Database.DefaultDataFormatter.Instance));
-                        GUI.Label (r, m_ActiveMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_ActiveMode.snapshot.nativeCallstackSymbols,id));
+                        GUI.Label(r, m_ActiveMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_ActiveMode.snapshot.nativeCallstackSymbols, id));
                     }
                 }
             }
             GUILayout.EndArea();
         }
+
         void OnGUIToolbarExtension()
         {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
             int activeSize = 0;
 
-            for (int i=0; i<m_BytesInRowList.Length; ++i)
+            for (int i = 0; i < m_BytesInRowList.Length; ++i)
             {
                 if (m_BytesInRowList[i].Size == m_MemoryMap.BytesInRow)
                     activeSize = i;
             }
             var popupRect = GUILayoutUtility.GetRect(Content.RowSizeLabel, EditorStyles.toolbarPopup);
-    
+
             if (EditorGUI.DropdownButton(popupRect, Content.RowSizeLabel, FocusType.Passive, EditorStyles.toolbarPopup))
             {
                 GenericMenu menu = new GenericMenu();
@@ -478,7 +478,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             popupRect = GUILayoutUtility.GetRect(Content.ColorSchemeLabel, EditorStyles.toolbarPopup);
-    
+
             if (EditorGUI.DropdownButton(popupRect, Content.ColorSchemeLabel, FocusType.Passive, EditorStyles.toolbarPopup))
             {
                 GenericMenu menu = new GenericMenu();
@@ -490,13 +490,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             popupRect = GUILayoutUtility.GetRect(Content.FilterLabel, EditorStyles.toolbarPopup);
-    
+
             if (EditorGUI.DropdownButton(popupRect, Content.FilterLabel, FocusType.Passive, EditorStyles.toolbarPopup))
             {
                 GenericMenu menu = new GenericMenu();
                 for (int i = 0; i < m_DisplayElementsList.Length; i++)
                 {
-                    MemoryMap.MemoryMapDiff.DisplayElements element = (MemoryMap.MemoryMapDiff.DisplayElements)(1<<i);
+                    MemoryMap.MemoryMapDiff.DisplayElements element = (MemoryMap.MemoryMapDiff.DisplayElements)(1 << i);
                     menu.AddItem(m_DisplayElementsList[i], m_MemoryMap.GetDisplayElement(element), (object data) => m_MemoryMap.ToggleDisplayElement((MemoryMap.MemoryMapDiff.DisplayElements)data), element);
                 }
                 menu.DropDown(popupRect);

@@ -3,6 +3,21 @@ All notable changes to this package will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+
+## [0.1.0-preview.8] - 2019-11-08
+### Changed
+ - Fixed the MetaDataInjector warning when using the obsolete EditorApplication.scriptingRuntimeVersion in Unity versions newer than 2019.3.
+ - Improved native connection stiching to managed objects.
+ - Integrated v.10 snapshot support where native connections are dumped as Object ID instead of indices.
+ - Optimized the snapshot crawling process, by reducing the number of heap lookups.
+ - Optimized snapshot heap lookup functionality, to use binary search instead of linear search.
+ - Fixed an issue when importing a snapshot via the Import window would not copy the file into the Memory Captures folder.
+ - Fixed a number of UI issues related to the Editor theming update.
+ ### Removed
+ - Removed unecessary Profiling abstraction code present in the package.
+ - Removed XML loading support in preparation to deprecate XML usage in the package, and to provide users with an interface to create their own tables.
+
+
 ## [0.1.0-preview.7] - 2019-08-02
 ### Added
  - Added Screenshots getting taken on capture for Unity versions starting from 2019.3 and up.
@@ -12,7 +27,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
  - Added a button to the preferences to reset the opt-out decisions for above mentioned warning popup.
  - Added byte size formatting for size columns in the tables.
  - Added "Open Folder" option to the snapshot options menu.
- 
+
 ### Changed
  - Fixed snapshot file rename functionality ([case 1131905](https://issuetracker.unity3d.com/product/unity/issues/guid/1131905/)).
  - Fixed snapshot file and meta data fields overlapping in 2019.3.x.
@@ -46,13 +61,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
  - Lowered the number of GC allocations when crawling a snapshot.
  - Upgraded dependency on EditorCoroutines package to 0.0.2-preview.1.
- - Changed the initialization of the managed memory sections to not overallocate. 
+ - Changed the initialization of the managed memory sections to not overallocate.
  - Fixed an issue where selecting a region on the memory map would expand the table underneath onto the whole window.
  - Fixed an issue where closing either snapshot (with two snapshots loaded) would close the other one instead.
  - Resolved UI issues with upstream UI elements versions.
 
 ### Removed
- - Removed links in columns: Native Object Name, Native Size. For the Native Objects table. 
+ - Removed links in columns: Native Object Name, Native Size. For the Native Objects table.
 
 ## [0.1.0-preview.4] - 2019-01-02
 ### Added
@@ -70,7 +85,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
  - Added missing deregister step for the compilation callbacks to the OnDisable method.
 
 ## [0.1.0-preview.2] - 2018-12-12
-### Added 
+### Added
  - Added documentation for the package.
  - Added a table display underneath the "TreeMap" in order to display data about the currently selected object.
  - Added metadata injection functionality, to allow users to specify their metadata collection in a simple way.
@@ -100,5 +115,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
  - Added the concept of a "Workbench" to allow the user to save a list of known snapshots.
  - Added the "MemoryMap" view to allow users to see the allocated memory space for their application.
 
-### This is the first release of *Unity Package Memory Profier*.
+### This is the first release of *Unity Package Memory Profiler*.
  Source code release of the Memory Profiler package, with no added documentation.

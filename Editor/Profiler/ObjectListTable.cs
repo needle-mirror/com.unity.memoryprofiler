@@ -10,13 +10,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListUnifiedIndexColumn : Database.ColumnTyped<int>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListUnifiedIndexColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListUnifiedIndexColumn(ObjectListTable table)
         {
@@ -48,18 +41,11 @@ namespace Unity.MemoryProfiler.Editor
     }
 
     /// <summary>
-    /// Column that output the name of a field. 
+    /// Column that output the name of a field.
     /// For entries that are not fields (objects/array/etc), it will output its address as string
     /// </summary>
     internal class ObjectListNameColumn : Database.ColumnTyped<string>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListNameColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListNameColumn(ObjectListTable table)
         {
@@ -87,13 +73,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListValueColumn : Database.ColumnTyped<string>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListValueColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListValueColumn(ObjectListTable table)
         {
@@ -155,19 +134,12 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
     }
-    
+
     /// <summary>
     /// Column that output a string that uniquely identify each object
     /// </summary>
     internal class ObjectListUniqueStringColumn : Database.ColumnTyped<string>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListUniqueStringColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListUniqueStringColumn(ObjectListTable table)
         {
@@ -195,19 +167,12 @@ namespace Unity.MemoryProfiler.Editor
             return null;
         }
     }
-	
+
     /// <summary>
     /// Column that lists the address where an object reside in memory.
     /// </summary>
     internal class ObjectListAddressColumn : Database.ColumnTyped<ulong>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListAddressColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListAddressColumn(ObjectListTable table)
         {
@@ -234,19 +199,12 @@ namespace Unity.MemoryProfiler.Editor
             return null;
         }
     }
-    
+
     /// <summary>
     /// Column that output the type of an native or managed object
     /// </summary>
     internal class ObjectListTypeColumn : Database.ColumnTyped<string>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListTypeColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListTypeColumn(ObjectListTable table)
         {
@@ -311,13 +269,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListLengthColumn : Database.ColumnTyped<int>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListLengthColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListLengthColumn(ObjectListTable table)
         {
@@ -370,13 +321,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListStaticColumn : Database.ColumnTyped<bool>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListStaticColumn<bool>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListStaticColumn(ObjectListTable table)
         {
@@ -405,13 +349,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListRefCountColumn : Database.ColumnTyped<int>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListRefCountColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListRefCountColumn(ObjectListTable table)
         {
@@ -484,19 +421,12 @@ namespace Unity.MemoryProfiler.Editor
     }
 
     /// <summary>
-    /// Column that list the size the object is taking in memory. 
+    /// Column that list the size the object is taking in memory.
     /// It includes any padding, extra headers or anything else that is directly owned by this object.
-    /// 
+    ///
     /// </summary>
     internal class ObjectListOwnedSizeColumn : Database.ColumnTyped<long>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListOwnedSizeColumn<long>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListOwnedSizeColumn(ObjectListTable table)
         {
@@ -546,13 +476,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListTargetSizeColumn : Database.ColumnTyped<long>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListTargetSizeColumn<long>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListTargetSizeColumn(ObjectListTable table)
         {
@@ -611,13 +534,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListObjectTypeColumn : Database.ColumnTyped<string>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListObjectTypeColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListObjectTypeColumn(ObjectListTable table)
         {
@@ -721,8 +637,8 @@ namespace Unity.MemoryProfiler.Editor
                     return MakeLink(ObjectAllNativeTable.TableName, instanceId, row);
                 }
             }
-            // we are linking native objects to themselves currently as that allows us 
-            // to jump from a native object to the native object's table. (eg: MemoryMap / TreeMap spreadsheets to tables) 
+            // we are linking native objects to themselves currently as that allows us
+            // to jump from a native object to the native object's table. (eg: MemoryMap / TreeMap spreadsheets to tables)
             // TODO: Improve column link API so it supports all 3 cases ( native - native , managed - native,  native - managed)
             else if (obj.isNative)
             {
@@ -808,13 +724,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListNativeObjectNameColumn : Database.ColumnTyped<string>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListNativeObjectNameColumn<string>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_table;
         public ObjectListNativeObjectNameColumn(ObjectListTable table)
             : base()
@@ -851,13 +760,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListNativeObjectSizeColumn : ObjectListNativeLinkColumn<long>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListNativeObjectSizeColumn<long>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         public ObjectListNativeObjectSizeColumn(ObjectListTable table)
             : base(table)
         {
@@ -895,13 +797,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListNativeInstanceIdLinkColumn : ObjectListNativeLinkColumn<int>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListNativeInstanceIdLinkColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         public ObjectListNativeInstanceIdLinkColumn(ObjectListTable table)
             : base(table)
         {
@@ -935,7 +830,6 @@ namespace Unity.MemoryProfiler.Editor
                         return m_Table.Snapshot.nativeObjects.instanceId[moi.NativeObjectIndex];
                     }
                     break;
-
             }
             return CachedSnapshot.NativeObjectEntriesCache.InstanceID_None;
         }
@@ -951,13 +845,6 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal class ObjectListNativeInstanceIdColumn : Database.ColumnTyped<int>
     {
-#if MEMPROFILER_DEBUG_INFO
-        public override string GetDebugString(long row)
-        {
-            return "ObjectListNativeInstanceIdColumn<int>[" + row + "]{" + GetRowValueString(row, DefaultDataFormatter.Instance) + "}";
-        }
-
-#endif
         ObjectListTable m_Table;
         public ObjectListNativeInstanceIdColumn(ObjectListTable table)
         {
@@ -997,7 +884,7 @@ namespace Unity.MemoryProfiler.Editor
     }
 
     /// <summary>
-    /// Base class for all tables that list managed and/or native objects. 
+    /// Base class for all tables that list managed and/or native objects.
     /// It will construct the meta tables statically for both managed and native object tables
     /// </summary>
     internal abstract class ObjectTable : Database.ExpandTable
@@ -1037,7 +924,7 @@ namespace Unity.MemoryProfiler.Editor
             var metaColNativeId        = new Database.MetaColumn("NativeInstanceId", "Native Instance ID", typeof(int), false, Grouping.groupByDuplicate, null, "", 75);
             var metaColAddress         = new Database.MetaColumn("Address", "Address", typeof(ulong), false, Grouping.groupByDuplicate, null, "", 75);
             var metaColUniqueString    = new Database.MetaColumn("UniqueString", "Unique String", typeof(string), true, Grouping.groupByDuplicate, null, "", 250);
-            
+
             var metaManagedCol = new List<Database.MetaColumn>();
             metaManagedCol.Add(metaColIndex);
             metaManagedCol.Add(metaColName);

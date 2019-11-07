@@ -28,10 +28,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             Bar.normal.textColor = Bar.hover.textColor = Bar.active.textColor = Color.black;
             LeftPane.padding.left = 15;
             ClickableLabel = new GUIStyle(NumberLabel);
-            if(EditorGUIUtility.isProSkin)
+            if (EditorGUIUtility.isProSkin)
                 ClickableLabel.normal.textColor = new Color(33 / 255.0f, 150 / 255.0f, 243 / 255.0f, 1.0f);
             else
-                ClickableLabel.normal.textColor = new Color(0,0,1,1);
+                ClickableLabel.normal.textColor = new Color(0, 0, 1, 1);
         }
     }
     internal class EllipsisStyleMetric

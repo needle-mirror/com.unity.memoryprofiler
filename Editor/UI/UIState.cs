@@ -1,7 +1,7 @@
 using System;
 using Unity.MemoryProfiler.Editor.Database;
-using Unity.MemoryProfiler.Editor.Debuging;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
+using Unity.Profiling;
 using UnityEditor.Profiling.Memory.Experimental;
 using UnityEngine;
 
@@ -10,7 +10,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     internal class FormattingOptions
     {
         public Editor.ObjectDataFormatter ObjectDataFormatter;
-        System.Collections.Generic.Dictionary<string, Database.IDataFormatter> m_DataFormatters = new System.Collections.Generic.Dictionary<string, Database.IDataFormatter>();
+        System.Collections.Generic.Dictionary<string, IDataFormatter> m_DataFormatters = new System.Collections.Generic.Dictionary<string, IDataFormatter>();
 
         public void AddFormatter(string name, IDataFormatter formatter)
         {
@@ -28,6 +28,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             return DefaultDataFormatter.Instance;
         }
+
         public IDataFormatter GetDefaultFormatter()
         {
             return DefaultDataFormatter.Instance;
@@ -45,7 +46,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         internal abstract class BaseMode
         {
-            public string [] TableNames
+            public string[] TableNames
             {
                 get
                 {
@@ -55,17 +56,18 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             protected string[] m_TableNames = { "none" };
             Database.Table[] m_Tables = { null };
-            
-            public event Action<ViewPane> ViewPaneChanged = delegate { };
+
+            public event Action<ViewPane> ViewPaneChanged = delegate {};
 
             public ViewPane CurrentViewPane { get; private set; }
 
-            public BaseMode() { }
+            public BaseMode() {}
             protected BaseMode(BaseMode copy)
             {
                 m_TableNames = copy.m_TableNames;
                 m_Tables = copy.m_Tables;
             }
+
             public abstract ViewPane GetDefaultView(UIState uiState, IViewPaneEventListener viewPaneEventListener);
 
             public int GetTableIndex(Database.Table tab)
@@ -118,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             public abstract void Clear();
-            
+
             // return null if build failed
             public abstract BaseMode BuildViewSchemaClone(Database.View.ViewSchema.Builder builder);
         }
@@ -138,7 +140,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public Database.View.ViewSchema ViewSchema;
             public Database.Schema SchemaToDisplay;
-            public CachedSnapshot snapshot {
+            public CachedSnapshot snapshot
+            {
                 get
                 {
                     if (m_RawSchema == null)
@@ -155,6 +158,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SchemaToDisplay = copy.SchemaToDisplay;
                 m_RawSchema.formatter.BaseFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
             }
+
             public SnapshotMode(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshot)
             {
                 objectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
@@ -165,6 +169,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 return SchemaToDisplay;
             }
+
+            static ProfilerMarker s_CrawlManagedData = new ProfilerMarker("CrawlManagedData");
 
             void SetSnapshot(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshot)
             {
@@ -182,7 +188,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(snapshot.filePath)));
 
                 var cachedSnapshot = new CachedSnapshot(snapshot);
-                using (Profiling.GetMarker(Profiling.MarkerId.CrawlManagedData).Auto())
+                using (s_CrawlManagedData.Auto())
                 {
                     var crawling = Crawler.Crawl(cachedSnapshot);
                     crawling.MoveNext(); //start execution
@@ -202,23 +208,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SchemaToDisplay = m_RawSchema;
                 if (k_DefaultViewFilePath.Length > 0)
                 {
-                    using (ScopeDebugContext.Func(() => { return "File '" + k_DefaultViewFilePath + "'"; }))
+                    Database.View.ViewSchema.Builder builder = null;
+                    builder = Database.View.ViewSchema.Builder.LoadFromXMLFile(k_DefaultViewFilePath);
+
+                    if (builder != null)
                     {
-                        Database.View.ViewSchema.Builder builder = null;
-                        using (Profiling.GetMarker(Profiling.MarkerId.LoadViewDefinitionFile).Auto())
+                        ViewSchema = builder.Build(m_RawSchema);
+                        if (ViewSchema != null)
                         {
-                            builder = Database.View.ViewSchema.Builder.LoadFromXMLFile(k_DefaultViewFilePath);
-                        }
-                        if (builder != null)
-                        {
-                            using (Profiling.GetMarker(Profiling.MarkerId.BuildViewDefinitionFile).Auto())
-                            {
-                                 ViewSchema = builder.Build(m_RawSchema);
-                            }
-                            if (ViewSchema != null)
-                            {
-                                SchemaToDisplay = ViewSchema;
-                            }
+                            SchemaToDisplay = ViewSchema;
                         }
                     }
                 }
@@ -260,10 +258,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public override BaseMode BuildViewSchemaClone(Database.View.ViewSchema.Builder builder)
             {
                 Database.View.ViewSchema vs;
-                using (Profiling.GetMarker(Profiling.MarkerId.BuildViewDefinitionFile).Auto())
-                {
-                    vs = builder.Build(m_RawSchema);
-                }
+                vs = builder.Build(m_RawSchema);
                 if (vs != null)
                 {
                     SnapshotMode copy = new SnapshotMode(this);
@@ -272,7 +267,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     copy.UpdateTableSelectionNames();
                     return copy;
                 }
-                return null;  
+                return null;
             }
         }
         internal class DiffMode : BaseMode
@@ -366,6 +361,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 modeFirst.Clear();
                 modeSecond.Clear();
             }
+
             public override BaseMode BuildViewSchemaClone(Database.View.ViewSchema.Builder builder)
             {
                 var newModeFirst = modeFirst.BuildViewSchemaClone(builder);
@@ -389,7 +385,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public History history = new History();
 
-        public event Action<BaseMode, ViewMode> ModeChanged = delegate { };
+        public event Action<BaseMode, ViewMode> ModeChanged = delegate {};
 
         public BaseMode CurrentMode
         {
@@ -410,7 +406,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
         }
-        
+
         public BaseMode FirstMode { get; private set; }
         public BaseMode SecondMode { get; private set; }
 
@@ -430,7 +426,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             set
             {
-                if(m_CurrentViewMode != value)
+                if (m_CurrentViewMode != value)
                 {
                     m_CurrentViewMode = value;
                     ModeChanged(CurrentMode, value);
@@ -445,7 +441,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public readonly DefaultHotKey HotKey = new DefaultHotKey();
         public readonly FormattingOptions FormattingOptions;
-        
+
         public UIState()
         {
             FormattingOptions = new FormattingOptions();
@@ -471,11 +467,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void ClearDiffMode()
         {
             diffMode = null;
-            if(CurrentViewMode == ViewMode.ShowDiff)
+            if (CurrentViewMode == ViewMode.ShowDiff)
             {
                 if (FirstMode != null)
                     CurrentViewMode = ViewMode.ShowFirst;
-                else if(SecondMode != null)
+                else if (SecondMode != null)
                     CurrentViewMode = ViewMode.ShowSecond;
                 else
                     CurrentViewMode = ViewMode.ShowNone;
@@ -509,7 +505,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (CurrentViewMode == ViewMode.ShowFirst)
             {
                 history.Clear();
-                if(SecondMode != null)
+                if (SecondMode != null)
                     CurrentViewMode = ViewMode.ShowSecond;
                 else
                     CurrentViewMode = ViewMode.ShowNone;
@@ -539,7 +535,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void SetFirstSnapshot(PackedMemorySnapshot snapshot)
         {
-            if(snapshot == null)
+            if (snapshot == null)
             {
                 Debug.LogError("UIState.SetFirstSnapshot can't be called with null, if you meant to clear the open snapshots, call ClearAllOpenSnapshots");
                 return;
@@ -568,7 +564,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var temp = SecondMode;
             SecondMode = FirstMode;
             FirstMode = temp;
-            if(CurrentViewMode != ViewMode.ShowDiff)
+            if (CurrentViewMode != ViewMode.ShowDiff)
             {
                 CurrentViewMode = CurrentViewMode == ViewMode.ShowFirst ? ViewMode.ShowSecond : ViewMode.ShowFirst;
                 ModeChanged(CurrentMode, CurrentViewMode);
@@ -586,43 +582,39 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (CurrentViewMode == ViewMode.ShowNone)
             {
-                DebugUtility.LogWarning("Must open a snapshot before loading a view file");
+                Debug.LogWarning("Must open a snapshot before loading a view file");
                 MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(1);
                 return false;
             }
 
             if (String.IsNullOrEmpty(filename)) return false;
-            
-            using (ScopeDebugContext.Func(() => { return "File '" + filename + "'"; }))
+
+            var builder = Database.View.ViewSchema.Builder.LoadFromXMLFile(filename);
+            if (builder == null) return false;
+
+            BaseMode newMode = CurrentMode.BuildViewSchemaClone(builder);
+            if (newMode == null) return false;
+
+            switch (CurrentViewMode)
             {
-                var builder = Database.View.ViewSchema.Builder.LoadFromXMLFile(filename);
-                if (builder == null) return false;
-
-                BaseMode newMode = CurrentMode.BuildViewSchemaClone(builder);
-                if (newMode == null) return false;
-
-                switch (CurrentViewMode)
-                {
-                    case ViewMode.ShowFirst:
-                        FirstMode = newMode;
-                        break;
-                    case ViewMode.ShowSecond:
-                        SecondMode = newMode;
-                        break;
-                    case ViewMode.ShowDiff:
-                        diffMode = newMode as DiffMode;
-                        FirstMode = diffMode.modeFirst;
-                        SecondMode = diffMode.modeSecond;
-                        break;
-                    default:
-                        break;
-                }
-                history.Clear();
-                ModeChanged(CurrentMode, CurrentViewMode);
+                case ViewMode.ShowFirst:
+                    FirstMode = newMode;
+                    break;
+                case ViewMode.ShowSecond:
+                    SecondMode = newMode;
+                    break;
+                case ViewMode.ShowDiff:
+                    diffMode = newMode as DiffMode;
+                    FirstMode = diffMode.modeFirst;
+                    SecondMode = diffMode.modeSecond;
+                    break;
+                default:
+                    break;
             }
+            history.Clear();
+            ModeChanged(CurrentMode, CurrentViewMode);
             return true;
         }
-
 
         public void TransitModeToOwningTable(Table table)
         {
@@ -646,11 +638,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void TransitMode(UIState.BaseMode newMode)
         {
-            if(newMode == diffMode)
+            if (newMode == diffMode)
             {
                 CurrentViewMode = ViewMode.ShowDiff;
             }
-            else if(newMode == FirstMode)
+            else if (newMode == FirstMode)
             {
                 CurrentViewMode = ViewMode.ShowFirst;
             }

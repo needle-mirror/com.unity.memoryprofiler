@@ -4,7 +4,7 @@ The Tree Map takes the memory data of a snapshot and visually groups them under 
 
 ![Tree Map view in the Memory Profiler window](images/TreeMapView.png)
 
-If you click an object category in the Tree Map, a white rectangle will appear around it, indicating that it’s selected. At the same time, all the objects within that category show up within the selected item. 
+If you click an object category in the Tree Map, a white rectangle will appear around it, indicating that it’s selected. At the same time, all the objects within that category show up within the selected item.
 
 #### Tree Map Table View
 

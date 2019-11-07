@@ -8,7 +8,7 @@ This view contains different sections:
 
 ## Memory visualization
 
-In the view, you can find a visual representation of memory layout in [virtual memory](https://en.wikipedia.org/wiki/Virtual_memory). 
+In the view, you can find a visual representation of memory layout in [virtual memory](https://en.wikipedia.org/wiki/Virtual_memory).
 
 ### Addresses
 
@@ -39,13 +39,13 @@ You can select regions by clicking on them, or you can click and drag to select 
 
 ### Memory Map Table view
 
-Below the Memory Map, you can find a [Table view](table.md) that displays details about the selected range. It has multiple modes that you can switch between by using the drop-down in the top right corner of the table. 
+Below the Memory Map, you can find a [Table view](table.md) that displays details about the selected range. It has multiple modes that you can switch between by using the drop-down in the top right corner of the table.
 
 ## Memory Map Diff view
 
 ![Memory Map Diff view of Memory Profiler](images/Memory-Map-Diff-view.png)
 
-The Memory Map Diff view compares two snapshots against one another. The view is similar to the main Memory Map view, with the following differences: 
+The Memory Map Diff view compares two snapshots against one another. The view is similar to the main Memory Map view, with the following differences:
 
 * The top right corner has a drop-down labeled __Color Scheme__ that allows you to highlight new allocations or deallocated memory. This option makes it easier to see how memory changes between snapshots.
 * The radio buttons, above the table containing further details, let you quickly switch between displaying the data of either of the two snapshots for the selected range.

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Developers often discuss CPU performance when talking about issues that slow down games. What is often not considered is how the wrong memory usage can affect performance and lead to severe problems. 
+Developers often discuss CPU performance when talking about issues that slow down games. What is often not considered is how the wrong memory usage can affect performance and lead to severe problems.
 
 One example of such an issue is [memory fragmentation](https://en.wikipedia.org/wiki/Fragmentation_(computing)). It slows down code execution and can lead to situations where it is impossible to allocate memory even if a global summary (the total amount of free memory in the system) shows that it should be possible.
 
@@ -16,7 +16,7 @@ For more information on memory fragmentation, see [Understanding the managed hea
 2. Create a memory snapshot of your __Scene__.
 3. You can now close the Player (optional). It is a recommended step when you are taking the snapshot on the same device as the Player. As snapshot files can get quite large, this step is advisable to avoid the snapshot and Player competing for memory on low-end machines.
 4. Open the newly created snapshot in the Memory Profiler.
-5. Switch to the [Memory Map view](memory-map.md). This option displays a view of all allocations in your Project mapped out along the virtual address space. 
+5. Switch to the [Memory Map view](memory-map.md). This option displays a view of all allocations in your Project mapped out along the virtual address space.
 
 ![Memory Map view of Memory Profiler window](images/Memory-Map.png)
 

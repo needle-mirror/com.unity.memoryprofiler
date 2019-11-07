@@ -17,7 +17,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public int backCount = 0;
         public bool hasPresentEvent = false;
 
-        public event System.Action historyChanged = delegate { };
+        public event System.Action historyChanged = delegate {};
 
         public void Clear()
         {

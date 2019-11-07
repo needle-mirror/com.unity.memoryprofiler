@@ -7,7 +7,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
     {
         Native,
         VirtualMemory,
-        Managed,                
+        Managed,
         ManagedStack,
     };
 
