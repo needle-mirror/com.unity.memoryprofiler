@@ -25,9 +25,15 @@ using UnityEditor.Experimental.UIElements;
 using UnityEngine.Profiling.Experimental;
 #endif
 
+#if UNITY_2020_1_OR_NEWER
+using UnityEditor.Networking.PlayerConnection;
+using UnityEngine.Networking.PlayerConnection;
+#else
 using ConnectionUtility = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUIUtility;
 using ConnectionGUI = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUI;
 using UnityEngine.Experimental.Networking.PlayerConnection;
+#endif
+
 
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -253,7 +259,12 @@ namespace Unity.MemoryProfiler.Editor
 #endif // !UNITY_2019_1_OR_NEWER
 
             // Add toolbar functionality
+#if UNITY_2020_1_OR_NEWER
+            m_PlayerConnectionState = PlayerConnectionGUIUtility.GetConnectionState(this);
+#else
             m_PlayerConnectionState = ConnectionUtility.GetAttachToPlayerState(this);
+#endif
+
             m_AttachToPlayerDropdownHolder = root.Q("attachToPlayerMenuPlaceholder");
             m_AttachToPlayerDropdownHolder.Add(new IMGUIContainer(DrawAttachToPlayerDropdown) { name = "attachToPlayerMenu" });
 
@@ -651,6 +662,7 @@ namespace Unity.MemoryProfiler.Editor
 
         void OnDisable()
         {
+            ProgressBarDisplay.ClearBar();
             UIStateChanged = delegate {};
             UIState.ClearAllOpenModes();
             SidebarWidthChanged = delegate {};
@@ -985,6 +997,7 @@ namespace Unity.MemoryProfiler.Editor
 
 #if UNITY_2019_3_OR_NEWER
             if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Player || Application.isPlaying)
+
             {
                 UnityMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, m_CaptureFlags);
             }
@@ -1215,7 +1228,11 @@ namespace Unity.MemoryProfiler.Editor
             m_AttachToPlayerDropdownHolder.style.maxWidth = width;
             var rect = GUILayoutUtility.GetRect(width, m_LeftPaneToolbarHeight);
             rect.x--;
+#if UNITY_2020_1_OR_NEWER
+            PlayerConnectionGUI.ConnectionTargetSelectionDropdown(rect, m_PlayerConnectionState, EditorStyles.toolbarDropDown);
+#else
             ConnectionGUI.AttachToPlayerDropdown(rect, m_PlayerConnectionState, EditorStyles.toolbarDropDown);
+#endif
         }
 
         void DrawTableSelection()

@@ -1,3 +1,4 @@
+using UnityEditor;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -53,18 +54,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             GUILayout.Space(r.height);
             if (Event.current.type == EventType.Repaint)
             {
+                // TODO: clean this up when refactoring views to something more reliable when there are multiple MemoryProfilerWindow instances allowed.
+                bool focused = EditorWindow.focusedWindow is MemoryProfilerWindow;
 #if UNITY_2019_3_OR_NEWER
-                var background = (index % 2 == 0 && !selected ? Styles.EntryEven : Styles.EntryOdd);
-                var previousColor = GUI.backgroundColor;
                 if (selected)
-                    GUI.backgroundColor = Styles.SelectedColor;
-                background.Draw(r, GUIContent.none, false, false, false, false);
+                    Styles.EntrySelected.Draw(r, false, false, true, focused);
+                else if(index % 2 == 0)
+                    Styles.EntryEven.Draw(r, GUIContent.none, false, false, false, focused);
 
-                if (selected)
-                    GUI.backgroundColor = previousColor;
 #else
                 var background = (index % 2 == 0 ? Styles.EntryEven : Styles.EntryOdd);
-                background.Draw(r, GUIContent.none, false, false, selected, false);
+                background.Draw(r, GUIContent.none, false, false, selected, focused);
 #endif
             }
         }

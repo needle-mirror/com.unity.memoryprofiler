@@ -4,17 +4,24 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.1.0-preview.9] - 2019-11-22
+### Changed
+ - Fixed an issue where the Memory Profiler's progress bar would keep being displayed after the window was closed.
+ - Fixed a UI issue where items selected inside a table would no longer be highlighted.
+ - The package is now no longer compatible with the following version range of the Editor: 2020.1.0a0 - 2020.1.0a14.
+
 ## [0.1.0-preview.8] - 2019-11-08
 ### Changed
  - Fixed the MetaDataInjector warning when using the obsolete EditorApplication.scriptingRuntimeVersion in Unity versions newer than 2019.3.
- - Improved native connection stiching to managed objects.
+ - Improved native connection stitching to managed objects.
  - Integrated v.10 snapshot support where native connections are dumped as Object ID instead of indices.
- - Optimized the snapshot crawling process, by reducing the number of heap lookups.
+ - Optimized the snapshot crawling process, by reducing the number of heap look-ups.
  - Optimized snapshot heap lookup functionality, to use binary search instead of linear search.
  - Fixed an issue when importing a snapshot via the Import window would not copy the file into the Memory Captures folder.
  - Fixed a number of UI issues related to the Editor theming update.
+ - The package is now no longer compatible with the following version range of the Editor: 19.3.0a1 - 19.3.0b9.
  ### Removed
- - Removed unecessary Profiling abstraction code present in the package.
+ - Removed unnecessary Profiling abstraction code present in the package.
  - Removed XML loading support in preparation to deprecate XML usage in the package, and to provide users with an interface to create their own tables.
 
 

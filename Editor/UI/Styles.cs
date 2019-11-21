@@ -14,6 +14,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static readonly GUIStyle RightPane = "ProfilerRightPane";
         public static readonly GUIStyle EntryEven = "OL EntryBackEven";
         public static readonly GUIStyle EntryOdd = "OL EntryBackOdd";
+        public static readonly GUIStyle EntrySelected = "TV Selection";
         public static readonly GUIStyle NumberLabel = "OL Label";
         public static readonly GUIStyle ClickableLabel;// = "OL Label";
         public static readonly GUIStyle Border = new GUIStyle();

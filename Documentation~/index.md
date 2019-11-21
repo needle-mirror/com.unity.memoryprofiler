@@ -39,7 +39,7 @@ This version of the Memory Profiler is compatible with the following versions of
 ## Known limitations
 Memory Profiler version 0.1.0-preview.2 includes the following known limitations:
 
-* Only development builds, and the Editor can use the Memory Profiler. This limitation means that users can’t profile release builds. (This is the same limitation as Profiler.)
+* Only development builds, and the Editor can use the Memory Profiler. This limitation means that users can’t profile release builds. (This is the same limitation as the Profiler, more information about profiling applications can be found [here](https://docs.unity3d.com/Manual/profiler-profiling-applications.html).)
 * The capture itself allocates memory so in some cases the system may run out of memory and crash the application.
 * Taking a capture may temporarily freeze the capture target (the Editor or remote application). The length of this freeze depends on the complexity and memory usage of the application.
 * Single threaded platforms, such as WebGL, are not supported.
