@@ -1,15 +1,13 @@
-### Tree Map
+# Tree Map
 
-The Tree Map takes the memory data of a snapshot and visually groups them under different object categories. The size of each category represents how large its memory footprint is, compared with other categories.
+The Tree Map takes the memory data of a snapshot and visually groups it under different object categories. The size of each category represents how large its memory footprint is, compared with other categories.
 
-![Tree Map view in the Memory Profiler window](images/TreeMapView.png)
+![Tree Map view in the Memory Profiler window](images/tree-map-memory-profiler.png)<br/>*Memory Profiler Main View in Tree Map view*
 
-If you click an object category in the Tree Map, a white rectangle will appear around it, indicating that it’s selected. At the same time, all the objects within that category show up within the selected item.
+When you select an object category in the Tree Map, the Memory Profiler displays all of the objects within that category. You can then select the individual objects in that category, and a white rectangle highlights your selection.
 
-#### Tree Map Table View
+![Tree map with selected object](images/tree-map-selected-object.png)<br/> *Tree Map view with a selected object in the Texture2D category*
 
-Below the Tree Map, is a [Table view](table.md) that lists all the objects in a selected object category. If no object category is selected, it contains all objects in the given memory snapshot. If you click one of the objects in a category box, the Table view highlights the row relating to that object.
+## Tree Map table view
 
-
-
-[Back to manual](manual.md)
+The [Table view](table-view.md) below the Tree Map, lists all of the objects in a selected object category. If you haven't selected an object category, it contains all of the objects in the given memory snapshot. When you select one of the objects in an object category, the table view jumps to the row that relates to that object.

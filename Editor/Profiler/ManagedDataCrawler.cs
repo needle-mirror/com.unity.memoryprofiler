@@ -237,6 +237,9 @@ namespace Unity.MemoryProfiler.Editor
 
         public UInt64 ReadPointer()
         {
+            if (offset >= bytes.Length)
+                throw new Exception("Offset greater than available byte array.");
+
             if (pointerSize == 4)
                 return BitConverter.ToUInt32(bytes, offset);
             if (pointerSize == 8)
@@ -639,7 +642,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     fieldLocation.ReadPointer();
                 }
-                catch (ArgumentException)
+                catch (Exception)
                 {
                     gotException = true;
                 }
@@ -705,8 +708,16 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 else
                 {
-                    dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayData.ReadPointer(), ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
-                    arrayData = arrayData.NextPointer();
+                    try
+                    {
+                        dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayData.ReadPointer(), ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
+                        arrayData = arrayData.NextPointer();
+                    }
+                    catch(Exception)
+                    {
+                        return false;
+                    }
+
                 }
             }
             return true;

@@ -1,96 +1,51 @@
-# Workflow: How to find memory leaks
+# How to find memory leaks
 
-## Introduction
+If you find a memory leak in your application, it might slow it down and ultimately lead to crashes.
 
-More often than not, developers encounter [memory leaks](https://en.wikipedia.org/wiki/Memory_leak) within their applications. Memory leaks can slow down your application and ultimately lead to crashes.
-
-Memory leaks typically occur due to one of two issues:
-* An object that is not released manually from memory through the code.
+Memory leaks typically happen because of one of two issues:
+* An object is not released manually from memory through the code.
 * An object stays in memory because of an unintentional reference.
 
-The Memory Profiler can be used to track down these leaks in both managed and native memory.
+You can use the Memory Profiler to track down these leaks in both managed and native memory.
 
-The goal of this workflow will be to capture multiple memory snapshots over a specific timeframe and compare them inside the Memory Profiler window using the __Diff__ mode.
+This workflow example describes how to capture multiple memory snapshots over a specific timeframe and compare them inside the Memory Profiler window with the __Diff__ mode.
 
 For more information, see [Workbench Diff snapshots](workbench.md#diff-snapshots).
 
-## Inspect memory usage and find memory leaks
+## Find and fix memory leaks that happen after Scene unload
 
-### Allocated objects after Scene unload
+There are multiple ways that memory leaks happen. A common way is when resources, or user allocated objects, are not cleaned up after unloading a __Scene__. The following steps outline the basic workflow to attempt to identify such issues.
 
-There are multiple patterns in which memory leaks occur. A common one is when resources, or user allocated objects, are not cleaned up after unloading a __Scene__. The following steps depict a basic workflow for attempting to identify such issues.
+1. Attach the Memory Profiler to the running Player. For information on how to do this see [Capture a memory snapshot](memory-profiler-window#capture-a-memory-snapshot) documentation.
+1. In the Player, load an empty [Scene](https://docs.unity3d.com/Manual/CreatingScenes.html).
+1. [Create a memory snapshot](memory-profiler-window.md#capture-a-memory-snapshot) of the empty Scene.
+1. Load the Scene you want to test for leaks.
+1. Play through the Scene. For example, if the Scene contains a level of a game, play through a part of that level.
+1. Unload the Scene or switch to an empty Scene. **Note**: To fully unload Assets in the last opened Scene, you need to either call [Resources.UnloadUnusedAssets](https://docs.unity3d.com/ScriptReference/Resources.UnloadUnusedAssets.html) or load into two new Scenes (e.g., Load Empty Scene twice).
+1. Take another snapshot.
+1. Close the Player. This is optional but recommended if you are working with large snapshot files, to avoid the snapshot and Player competing for memory on low-end machines.
+1. In the [Memory Profiler window](memory-profiler-window), open the first snapshot. You’ll find it in the [Workbench](workbench), second from the bottom of the list. Opening a snapshot might take a few moments, depending on the size of the snapshot file. <br/>![Open a snapshot in the Workbench of the Memory Profiler window](images/WorkbenchOpenSnapshot.png)
+1. Then, open the second snapshot from the bottom of the list in the Workbench.
+1. At the bottom of the Workbench, in the __Open Snapshots pane__ the two open snapshots are side by side. Select the __Diff__ button. The __Diff__ table for all objects appears in the Main View.<br/>![Workbench Diff snapshots in Memory Profiler window](images/WorkbenchDiffSnapshots.png)
+1. Select the __Diff__ table header for the __Diff__ column and choose __Group__. The Memory Profiler groups the data entries by __Deleted__, __New__, and __Same__.<br/>![Diff Column Grouping in Memory Profiler window](images/Diff-Column-Group.png)
+1. The objects under __New__ are only present in the second snapshot. These are potential memory leaks.
 
-1. Make sure the Memory Profiler is attached to your running Player.
+### Find and fix small continuous allocations during application lifetime
 
-2. In the Player, load an empty [Scene](https://docs.unity3d.com/Manual/CreatingScenes.html).
+Another typical pattern occurs when your application has small continuous allocations that happen after a particular event in its lifetime. The following steps outline how you can identify these type of leaks.
 
-3. [Create a memory snapshot](memory-profiler-window.md#how-to-capture-a-memory-snapshot) of the empty Scene.
-
-4. Load the Scene that you wish to test for leaks.
-
-5. Play through the Scene. E.g., if the Scene contains a level of a game, play through a bit of that level.
-
-6. Unload the Scene or switch to an empty Scene.
-   > **Note**: To fully unload Assets in the last opened scene; you will need to either call [Resources.UnloadUnusedAssets](https://docs.unity3d.com/ScriptReference/Resources.UnloadUnusedAssets.html) or load into two new scenes (e.g., Load Empty Scene twice).
-
-7. Take another snapshot.
-
-8. You can now close the Player (optional). It is a recommended step when you are working with large snapshot files, to avoid the snapshot and Player competing for memory on low-end machines.
-
-9. In the [Memory Profiler window](memory-profiler-window.md), open the first snapshot. You’ll find it in the [Workbench](workbench.md), second from the bottom of the list. Opening a snapshot might take a few moments, depending on the size of the snapshot file.
-
-![Open a snapshot in the Workbench of the Memory Profiler window](images/WorkbenchOpenSnapshot.png)
-
-10. Then, open the second snapshot from the bottom of the list in the Workbench.
-
-11. At the bottom of the Workbench, the two open snapshots are side by side. Click the __Diff__ button in-between them, this might take a few moments, depending on the size of the snapshot file. You will then see the __Diff__ table for all objects.
-
-![Workbench Diff snapshots in Memory Profiler window](images/WorkbenchDiffSnapshots.png)
-
-12. Click the table header for the __Diff__ column; this presents you with a drop-down menu:
-
-    ![Diff Column Grouping in Memory Profiler window](images/Diff-Column-Group.png)
-
-13. Select the __Group__ option. You’ll see the data entries grouped by __Deleted__, __New__, and __Same__.
-
-14. Under __New__, you’ll find a list of all objects that are only present in the second snapshot. These are potential memory leaks.
-
-### Small continuous allocations during application lifetime
-
-Another typical pattern occurs when we have small continuous allocations that arise after a particular event in the lifetime of the Unity application. The following steps show a workflow in identifying such leaks.
-
-1. Make sure the [Profiler](https://docs.unity3d.com/Manual/Profiler.html) is attached to your running Player.
-
-2. Load the scene you’d like to check for leaks.
-
-3. Create a snapshot.
-
-4. Play through the Scene, observe the memory footprint growing steadily in the [Profiler window](https://docs.unity3d.com/Manual/ProfilerWindow.html) (under the Memory tab).
-
-5. Create another snapshot.
-
-6. Continue playing the Scene.
-
-7. Create another snapshot.
-
-8. You can now close the Player (optional). It is a recommended step when you are working with large snapshot files, to avoid the snapshot and Player competing for memory on low-end machines.
-
-9. In the Memory Profiler window, open the second snapshot you’ve taken. Opening a snapshot might take a few moments, depending on the size of the snapshot file.
-
-10. Open the third snapshot you've taken. Then click the __Diff__ button in the [Open Snapshots view](workbench.md#open-snapshots-view), this might also take a few moments, depending on the size of the snapshot file. You will then see the __Diff__ table.
-
-11. Click the table header of the __Diff__ column; this presents you with a drop-down menu:
-
-    ![Diff Column Grouping in Memory Profiler window](images/Diff-Column-Group.png)
-
-12. Click on the __Owned Size__ table header and select __Group__; this filters objects based on their presence in the snapshots and their size.
-
-13. Click again on the __Owned Size__ table header and select __Sort Descending__ this sorts all the groups based on their size.
-
-14. Under __Same__ and __New__, attempt to identify the larger groups of allocations present and check if they are present in both __Same__ and __New__ categories. Make a note of any you find.
-
-15. Repeat steps 11-14 for the first and second snapshots. By repeating the process, we will gain an idea of what the potential leaks or problems are within your system.
-
-
-
-[Back to manual](manual.md)
+1. Attach the [Profiler](https://docs.unity3d.com/Manual/Profiler.html) to your running Player.
+1. Load the Scene you want to check for leaks.
+1. [Create a memory snapshot](memory-profiler-window.md#capture-a-memory-snapshot).
+1. Play through the Scene, and watch the memory footprint grow steadily in the [Profiler window](https://docs.unity3d.com/Manual/ProfilerWindow.html) (under the Memory module).
+1. Create another snapshot.
+1. Continue playing the Scene.
+1. Create another snapshot.
+1. Close the Player. This is optional but recommended if you are working with large snapshot files, to avoid the snapshot and Player competing for memory on low-end machines.
+1. In the Memory Profiler window, open the second snapshot you’ve taken. Opening a snapshot might take a few moments, depending on the size of the snapshot file.
+1. Open the third snapshot you've taken. Then select the __Diff__ button in the [Open Snapshots view](workbench.md#open-snapshots-view). This might take a few moments, depending on the size of the snapshot file. You can then see the __Diff__ table in the Main View.
+1. Select the __Diff__ table header for the __Diff__ column and choose __Group__. The Memory Profiler groups the data entries by __Deleted__, __New__, and __Same__.<br/>![Diff Column Grouping in Memory Profiler window](images/Diff-Column-Group.png)
+1. Select the __Owned Size__ table header and choose __Group__. This filters objects based on their presence in the snapshots and their size.
+1. Select the __Owned Size__ table header again and choose __Sort Descending__. This sorts all of the groups based on their size.
+1. Under __Same__ and __New__ in the Diff column, attempt to identify the larger groups of allocations present and check if they are present in both __Same__ and __New__ categories. Make a note of any you find.
+1. Repeat steps 11-14 for the first and second snapshots. By repeating the process, you can understand what the potential leaks or problems are within your system.

@@ -1,15 +1,15 @@
-# The Main view
+# The Main View
 
-The right-hand pane of the [Memory Profiler window](memory-profiler-window.md) shows different views of the currently opened snapshot data.
+In the Main View of the Memory Profiler window, you can view your open memory snapshot data in different ways. At the top of the Main View, select the __View__ drop-down to choose how to view your data from either [Tree Map](tree-map), [Memory Map](memory-map), or various types of [Table views](table).
 
-The toolbar above it contains a drop-down menu that lets you choose different ways to represent snapshot data in the Main view. Choose between [Tree Map](tree-map.md), [Memory Map](memory-map.md), and various types of [Table views](table.md).
+![Main view toolbar of the Memory Profiler window](images/main-view-selector.png)<br/>*Select a view from the Main View toolbar*
 
-![Main view toolbar of the Memory Profiler window](images/MainViewToolbar.png)
+Use the two arrow buttons in the toolbar to go back and forward in the view history. For example, you follow references through a chain of referencing objects, you can use the arrows allow you to return to previous views quickly, like a web browser's back button.
 
-Next to the view drop-down are two arrow buttons that allow you to go backward and forwards in the view history. So if, for example, you follow references through a chain of referencing objects, those arrows allow you to return to previous views quickly, much like a browser back button.
+Select the __Load View__ button to import a custom view defined in an .xml file.
 
-The __Load View...__ button will open a dialog to import a custom view defined in an XML file.
+For more information on the views available, see the documentation in this section:
 
-
-
-[Back to manual](manual.md)
+* [Tree Map](tree-map)
+* [Memory Map](memory-map)
+* [Table views](table-view)

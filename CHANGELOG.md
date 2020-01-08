@@ -4,6 +4,11 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-preview.1] - 2020-01-09
+### Changed
+ - Fixed an issue with the snapshot crawler going out of bounds, when scanning an array object's binary data
+ - Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.1.
+ 
 ## [0.1.0-preview.9] - 2019-11-22
 ### Changed
  - Fixed an issue where the Memory Profiler's progress bar would keep being displayed after the window was closed.

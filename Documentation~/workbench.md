@@ -1,48 +1,35 @@
 # Workbench
 
-![Memory Profiler Workbench](images/Workbench.png)
+The Workbench is the panel on the left side of the Memory Profiler window. It contains all the memory snapshots that are part of your Project. 
 
-The Workbench is the panel on the left side of the Memory Profiler window. It contains all the memory snapshots that are [part of your project](tips-and-troubleshooting.md#change-default-snapshot-path). Each snapshot in the Workbench has:
+![Memory Profiler Workbench](images/workbench-memory-profiler.png)<br/>*The Memory Profiler Workbench*
 
-* A screenshot from the moment of the capture.
-* Icons on the screenshot denoting the platform the snapshot was taken on.
-* A Unity logo denotes a capture taken within the __Editor__.
-* The name in bold letters.
-  * Click the name to rename it.
-  * Hover over the name to see the full path.
-* Date and time of the capture.
-  * The time is stored as UTC but converted to the local machine’s time for displaying.
-  * Hover over the date and time to see the snapshot's metadata, by default that is:
-    * The Project name.
-    * The Scripting Runtime Version (for snapshots taken within the Editor).
-* An options menu accessed through the cogwheel icon lets you:
-  * Rename the snapshot.
-  * Delete the snapshot.
-* An __Open__/__Close__ button.
+The Workbench displays a screenshot of each snapshot from the moment of capture, its name, plus the date and time of the capture. **Note:** Snapshots of the Editor-only do not have a screenshot.
 
-Clicking the __Open__ button will load the corresponding snapshot into memory and process it for display. Therefore, opening it can take a few moments, depending on the size of the capture. Once opened, the Main view will display different visualizations of the snapshot data.
+Unity stores the date on each snapshot in UTC format but converts it to your computer's local time. If you hover over the date, Unity displays the Project the snapshot is from. If you hover over the file name, Unity displays the location of the snapshot file on your computer. 
 
-Open snapshots have greyed out text and the __Open__ button changes to a __Close__ button. Renaming or deleting a snapshot requires the snapshot to be closed, as those operations directly affect the saved file.
+In addition to this information, the Memory Profiler also overlays the logo of the platform you took the snapshot on, for quick reference. 
 
-## Open Snapshots view
+Select the cog icon in the top right of each snapshot entry to delete or rename the snapshot file, or open the containing folder for the snapshot file. **Note:** To rename or delete a snapshot, you must close it first.
 
-Below the list of snapshots, is the Open Snapshots view that displays the currently opened snapshots. Opening a snapshot can take a moment to load. To compare snapshots, you need a quick way to switch between them. To achieve this, up to two snapshots can be kept open (in memory) and will be displayed in this area. By clicking on either of the screenshots, the [Main view](main-view.md) will switch to the last open view of that snapshot. The snapshot that is currently displayed gets a blue outline.
+## Opening snapshots
 
-## Diff snapshots
+To open a snapshot and view its data, select the __Open__ button to the right of the snapshot. This operation might take a moment, depending on the size of the snapshot, because Unity needs to process it for display. [The Main view](main-view) then displays different visualizations of the snapshot data.
 
-If two snapshots are open, the __Diff__ button between them becomes available. Click the button to display the difference between the two snapshots. The first time it is pressed for a particular set of snapshots, it will take a bit longer to process and generate the data for the diff view. Once generated, switching to the diff view is instant. Closing one of the two snapshots (or opening a new one, which will close the second snapshot) will unload the diff data.
+When you open a snapshot, the Memory Profiler grays out its name and date, and the __Open__ button changes to a __Close__ button, which you can then use to close the snapshot when you finish using it. 
 
-## Swap snapshots
+## Open Snapshots pane
 
-The __Swap__ button in the toolbar of this area will swap the left and right snapshots with each other. This option is useful if you want to avoid the right snapshot from being closed and discard the left one when opening your third snapshot. As an example:
+Below the list of snapshots in the Workbench, is the **Open Snapshots pane** which displays the snapshots you have open. This area allows you to compare two snapshots, and Unity keeps them in memory so you can quickly switch between the two to compare data.
 
-* Open snapshot A (A is left).
-* Open snapshot B (A shifts to the right, B is left).
-* Diff B and A.
-* Swap B and A (so A is now left, and B is right).
-* Open snapshot C (snapshot B closes, C is left, A is right).
-* Diff C and A.
+When you select the __Open__ button on a snapshot, it appears in the left box in the __Open Snapshots pane__. If you then select the __Open__ button on another snapshot, the original snapshot shifts to the right box, and the newly opened snapshot appears in the left.
 
+Subsequently, when you open another snapshot, the Memory Profiler closes the snapshot in the right box, shifts the open snapshot in the left box to the right box, and then opens the new snapshot in the left box. If you want to keep the snapshot in the right box to compare to a new snapshot, select the __Swap__ button in the top right of the __Open Snapshots pane__, and the Memory Profiler swaps the order of the open snapshots.
 
+When you click on one of the snapshots, the Memory Profiler outlines it in blue and displays its memory information in the [Main view](main-view).
 
-[Back to manual](manual.md)
+### Diff snapshots
+
+When you have two snapshots open, you can select the __Diff__ button to display the difference between the two snapshots. The first time you use this function, it takes a moment for the Memory Profiler to process and generate the data for the diff view. Once the Memory Profiler generates the diff, you can switch to the diff view instantly.
+
+When you close one of the two snapshots, or open a new snapshot, the Memory Profiler unloads the diff data.

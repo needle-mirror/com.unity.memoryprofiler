@@ -280,30 +280,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             ObjectDataFormatter m_ObjectDataFormatter;
 
             private const string k_DefaultDiffViewTable = "All Object";
-            public DiffMode(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshotFirst, PackedMemorySnapshot snapshotSecond)
-            {
-                m_ObjectDataFormatter = objectDataFormatter;
-                m_ObjectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
-                modeFirst = new SnapshotMode(objectDataFormatter, snapshotFirst);
-                modeSecond = new SnapshotMode(objectDataFormatter, snapshotSecond);
-                m_SchemaFirst = modeFirst.GetSchema();
-                m_SchemaSecond = modeSecond.GetSchema();
-
-                m_SchemaDiff = new Database.Operation.DiffSchema(m_SchemaFirst, m_SchemaSecond);
-                UpdateTableSelectionNames();
-            }
 
             public DiffMode(ObjectDataFormatter objectDataFormatter, BaseMode snapshotFirst, BaseMode snapshotSecond)
             {
+                ProgressBarDisplay.ShowBar("Snapshot diff in progress");
                 m_ObjectDataFormatter = objectDataFormatter;
                 m_ObjectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
                 modeFirst = snapshotFirst;
                 modeSecond = snapshotSecond;
                 m_SchemaFirst = modeFirst.GetSchema();
                 m_SchemaSecond = modeSecond.GetSchema();
-
-                m_SchemaDiff = new Database.Operation.DiffSchema(m_SchemaFirst, m_SchemaSecond);
+                ProgressBarDisplay.UpdateProgress(0.1f, "Building diff schema.");
+                m_SchemaDiff = new Database.Operation.DiffSchema(m_SchemaFirst, m_SchemaSecond, () => { ProgressBarDisplay.UpdateProgress(0.3f, "Computing table data"); });
+                ProgressBarDisplay.UpdateProgress(0.85f, "Updating table selection.");
                 UpdateTableSelectionNames();
+                ProgressBarDisplay.ClearBar();
             }
 
             protected DiffMode(DiffMode copy)
