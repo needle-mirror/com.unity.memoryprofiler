@@ -22,8 +22,8 @@ When you capture a snapshot, you should define some metadata on the Player side 
 
 ## Add Player hook
 
-To define custom metadata in a Project that has the Memory Profiler package installed, create a class that inherits from `Unity.MemoryProfiler.IMetadataCollect`.
+To define custom metadata in a Project that has the Memory Profiler package installed, create a class that inherits from `Unity.MemoryProfiler.MetadataCollect`.
 
-You need to implement `void CollectMetadata(MetaData data)` in which you fill `data` with the information you want. You can create multiple classes that inherit from `Unity.MemoryProfiler.IMetadataCollect` but their `CollectMetadata` methods have no defined call order.
+You need to implement `void CollectMetadata(MetaData data)` in which you fill `data` with the information you want. You can create multiple classes that inherit from `Unity.MemoryProfiler.MetadataCollect` but their `CollectMetadata` methods have no defined call order.
 
-If you have a class that inherits from `Unity.MemoryProfiler.IMetadataCollect`, it does not generate the default metadata described in __Define snapshot metadata__. If you want to keep some or all of the default metadata, go to the file `com.unity.memoryprofiler/Runtime/MetadataInjector.cs` and copy the content you want to keep from `DefaultCollect(MetaData data)` into your implementation.
+If you have a class that inherits from `Unity.MemoryProfiler.MetadataCollect`, it does not generate the default metadata described in __Define snapshot metadata__. If you want to keep some or all of the default metadata, go to the file `com.unity.memoryprofiler/Runtime/MetadataInjector.cs` and copy the content you want to keep from `DefaultCollect(MetaData data)` into your implementation.

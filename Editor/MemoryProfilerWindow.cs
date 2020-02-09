@@ -148,7 +148,7 @@ namespace Unity.MemoryProfiler.Editor
         [SerializeField]
         Vector2 m_ViewDropdownSize;
 
-        [MenuItem("Window/Analysis/Memory Profiler", false, 2)]
+        [MenuItem("Window/Analysis/Memory Profiler", false, 4)]
         public static void ShowWindow()
         {
             GetWindow<MemoryProfilerWindow>(Content.Title.text);

@@ -566,8 +566,17 @@ namespace Unity.MemoryProfiler.Editor
                     for (long i = 0; i < Count; ++i)
                     {
                         fromIndices[i] = (int)(gcHandlesCount + instanceIDToIndex[fromAPIArr[i]]);
-                        toIndices[i] = (int)(gcHandlesCount + instanceIDToIndex[toAPIArr[i]]);
+
+                        //some native objects might have references to other native objects that are currently getting deleted or have been deleted
+                        int instanceIDIDX = -1;
+                        if(!instanceIDToIndex.TryGetValue(toAPIArr[i], out instanceIDIDX))
+                        {
+                            toIndices[i] = instanceIDIDX;
+                        }
+                        else
+                            toIndices[i] = (int)(gcHandlesCount + instanceIDIDX);
                     }
+
 
                     var enumerator = instanceIDToGcHandleIndex.GetEnumerator();
                     for (long i = Count; i < fromIndices.Length; ++i)
