@@ -235,16 +235,31 @@ namespace Unity.MemoryProfiler.Editor
             offset = 0;
         }
 
-        public UInt64 ReadPointer()
+        public enum PtrReadError
         {
-            if (offset >= bytes.Length)
-                throw new Exception("Offset greater than available byte array.");
+            Success,
+            OutOfBounds,
+            InvalidPtrSize
+        }
 
-            if (pointerSize == 4)
-                return BitConverter.ToUInt32(bytes, offset);
-            if (pointerSize == 8)
-                return BitConverter.ToUInt64(bytes, offset);
-            throw new ArgumentException("Unexpected pointer size: " + pointerSize);
+        public PtrReadError TryReadPointer(out ulong ptr)
+        {
+            ptr = unchecked(0xffffffffffffffff);
+
+            if (offset + pointerSize > bytes.Length)
+                return PtrReadError.OutOfBounds;
+
+            switch (pointerSize)
+            {
+                case VMTools.x64ArchPtrSize:
+                    ptr = BitConverter.ToUInt64(bytes, offset);
+                    return PtrReadError.Success;
+                case VMTools.x86ArchPtrSize:
+                    ptr = BitConverter.ToUInt32(bytes, offset);
+                    return PtrReadError.Success;
+                default: //should never happen
+                    return PtrReadError.InvalidPtrSize;
+            }
         }
 
         public byte ReadByte()
@@ -578,7 +593,8 @@ namespace Unity.MemoryProfiler.Editor
                         }
                         else
                         {
-                            var cachedPtr = heapSection.ReadPointer();
+                            ulong cachedPtr;
+                            heapSection.TryReadPointer(out cachedPtr);
                             var indexOfNativeObject = snapshot.nativeObjects.nativeObjectAddress.FindIndex(no => no == cachedPtr);
                             if (indexOfNativeObject >= 0)
                             {
@@ -636,20 +652,11 @@ namespace Unity.MemoryProfiler.Editor
                     continue;
                 }
 
-                //Workaround that was done to not error out when trying to read an array where the remaining length is less than that pointer size.
-                bool gotException = false;
-                try
-                {
-                    fieldLocation.ReadPointer();
-                }
-                catch (Exception)
-                {
-                    gotException = true;
-                }
 
-                if (!gotException)
+                ulong fieldAddr;
+                if(fieldLocation.TryReadPointer(out fieldAddr) == BytesAndOffset.PtrReadError.Success)
                 {
-                    crawlData.CrawlDataStack.Push(new StackCrawlData() { ptr = fieldLocation.ReadPointer(), ptrFrom = ptrFrom, typeFrom = iTypeDescription, indexOfFrom = indexOfFrom, fieldFrom = iField, fromArrayIndex = -1 });
+                    crawlData.CrawlDataStack.Push(new StackCrawlData() { ptr = fieldAddr, ptrFrom = ptrFrom, typeFrom = iTypeDescription, indexOfFrom = indexOfFrom, fieldFrom = iField, fromArrayIndex = -1 });
                 }
             }
         }
@@ -708,15 +715,12 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 else
                 {
-                    try
-                    {
-                        dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayData.ReadPointer(), ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
-                        arrayData = arrayData.NextPointer();
-                    }
-                    catch(Exception)
-                    {
+                    ulong arrayDataPtr;
+                    if (arrayData.TryReadPointer(out arrayDataPtr) != BytesAndOffset.PtrReadError.Success)
                         return false;
-                    }
+
+                    dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayDataPtr, ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
+                    arrayData = arrayData.NextPointer();
 
                 }
             }
@@ -803,7 +807,8 @@ namespace Unity.MemoryProfiler.Editor
             objectInfo.ManagedObjectIndex = -1;
 
             var boHeader = byteOffset;
-            var ptrIdentity = boHeader.ReadPointer();
+            ulong ptrIdentity;
+            boHeader.TryReadPointer(out ptrIdentity);
             objectInfo.PtrTypeInfo = ptrIdentity;
             objectInfo.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(objectInfo.PtrTypeInfo);
             bool error = false;
@@ -812,7 +817,8 @@ namespace Unity.MemoryProfiler.Editor
                 var boIdentity = heap.Find(ptrIdentity, snapshot.virtualMachineInformation);
                 if (boIdentity.IsValid)
                 {
-                    var ptrTypeInfo = boIdentity.ReadPointer();
+                    ulong ptrTypeInfo;
+                    boIdentity.TryReadPointer(out ptrTypeInfo);
                     objectInfo.PtrTypeInfo = ptrTypeInfo;
                     objectInfo.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(objectInfo.PtrTypeInfo);
                     error = objectInfo.ITypeDescription < 0;
@@ -905,7 +911,8 @@ namespace Unity.MemoryProfiler.Editor
 
             arrayInfo.header = arrayData;
             arrayInfo.data = arrayInfo.header.Add(virtualMachineInformation.arrayHeaderSize);
-            var bounds = arrayInfo.header.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).ReadPointer();
+            ulong bounds;
+            arrayInfo.header.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
             if (bounds == 0)
             {
@@ -995,7 +1002,8 @@ namespace Unity.MemoryProfiler.Editor
             if (iTypeDescriptionArrayType < 0) return null;
 
             var bo = heap.Find(address, virtualMachineInformation);
-            var bounds = bo.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).ReadPointer();
+            ulong bounds;
+            bo.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
             if (bounds == 0)
             {
@@ -1032,7 +1040,9 @@ namespace Unity.MemoryProfiler.Editor
             var virtualMachineInformation = data.virtualMachineInformation;
             var heap = data.managedHeapSections;
             var bo = arrayData;
-            var bounds = bo.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).ReadPointer();
+
+            ulong bounds;
+            bo.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
             if (bounds == 0)
                 return bo.Add(virtualMachineInformation.arraySizeOffsetInHeader).ReadInt32();

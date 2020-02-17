@@ -4,6 +4,11 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.1-preview.2] - 2020-02-18
+### Changed
+ - Improved crawler performance by reducing the number of Exception objects being creating during snapshot crawling.
+ - Fixed an issue where the crawler would skip some managed object fields depending on offset.
+
 ## [0.2.1-preview.1] - 2020-02-10
 ### Added
  - Added MetadataCollect abstract class in order to provide a better, performant way to inject new collectors into the metadata collection system.

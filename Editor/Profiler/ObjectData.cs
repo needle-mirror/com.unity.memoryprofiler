@@ -252,7 +252,9 @@ namespace Unity.MemoryProfiler.Editor
             {
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
-                    return managedObjectData.ReadPointer();
+                    ulong ptr;
+                    managedObjectData.TryReadPointer(out ptr);
+                    return ptr;
                 default:
                     UnityEngine.Debug.LogError("Requesting a reference pointer on an invalid data type");
                     return 0;

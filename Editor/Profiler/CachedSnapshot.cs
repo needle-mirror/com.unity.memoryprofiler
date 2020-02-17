@@ -9,6 +9,26 @@ using Unity.MemoryProfiler.Containers.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor
 {
+    internal static class VMTools
+    {
+        //supported archs
+        public const int x64ArchPtrSize = 8;
+        public const int x86ArchPtrSize = 4;
+
+        public static bool ValidateVirtualMachineInfo(VirtualMachineInformation vmInfo)
+        {
+            bool ok = vmInfo.pointerSize == x64ArchPtrSize || vmInfo.pointerSize == x86ArchPtrSize;
+            if (ok)
+            {
+                //partial checks to validate computations based on pointer size
+                int expectedObjHeaderSize = 2 * vmInfo.pointerSize;
+                ok |= expectedObjHeaderSize == vmInfo.objectHeaderSize;
+                ok |= expectedObjHeaderSize == vmInfo.allocationGranularity;
+            }
+
+            return ok;
+        }
+    }
     internal static class TypeTools
     {
         public enum FieldFindOptions
@@ -410,7 +430,6 @@ namespace Unity.MemoryProfiler.Editor
 
         public class ManagedMemorySectionEntriesCache
         {
-
             ProfilerMarker cacheFind = new ProfilerMarker("ManagedMemorySectionEntriesCache.Find");
             public long Count;
             public byte[][] bytes;
@@ -598,10 +617,8 @@ namespace Unity.MemoryProfiler.Editor
 
             }
         }
-
+        
         public VirtualMachineInformation virtualMachineInformation { get; private set; }
-
-
         public NativeAllocationSiteEntriesCache nativeAllocationSites;
         public TypeDescriptionEntriesCache typeDescriptions;
         public NativeTypeEntriesCache nativeTypes;
@@ -623,12 +640,19 @@ namespace Unity.MemoryProfiler.Editor
         public SortedManagedObjectsCache SortedManagedObjects;
         public SortedNativeAllocationsCache SortedNativeAllocations;
         public SortedNativeObjectsCache SortedNativeObjects;
-
+        
         public CachedSnapshot(PackedMemorySnapshot s)
         {
+
+            var vmInfo = s.virtualMachineInformation;
+            if(!VMTools.ValidateVirtualMachineInfo(vmInfo))
+            {
+                throw new UnityException("Invalid VM info. Snapshot file is corrupted.");
+            }
+
+            virtualMachineInformation = vmInfo;
             packedMemorySnapshot = s;
             m_SnapshotVersion = s.version;
-            virtualMachineInformation = s.virtualMachineInformation;
             nativeAllocationSites   = new NativeAllocationSiteEntriesCache(s.nativeAllocationSites);
             typeDescriptions        = new TypeDescriptionEntriesCache(s.typeDescriptions);
             nativeTypes             = new NativeTypeEntriesCache(s.nativeTypes);
