@@ -523,6 +523,26 @@ namespace Unity.MemoryProfiler.Editor
             return -1;
         }
 
+        public ManagedObjectInfo GetManagedObject(CachedSnapshot snapshot)
+        {
+            switch (dataType)
+            {
+                case ObjectDataType.Array:
+                case ObjectDataType.Object:
+                case ObjectDataType.BoxedValue:
+                    {
+                        ManagedObjectInfo moi;
+                        if (snapshot.CrawledData.ManagedObjectByAddress.TryGetValue(m_data.managed.objectPtr, out moi))
+                        {
+                            return moi;
+                        }
+                        throw new Exception("Invalid object pointer used to query object list.");
+                    }
+                default:
+                    throw new Exception("GetManagedObjectSize was called on a instance of ObjectData which does not contain an managed object.");
+            }
+        }
+
         public int GetManagedObjectIndex(CachedSnapshot snapshot)
         {
             switch (dataType)

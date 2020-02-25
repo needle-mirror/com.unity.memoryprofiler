@@ -448,10 +448,9 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Array:
                 case ObjectDataType.Value:
-                    return m_Table.Snapshot.typeDescriptions.size[obj.managedTypeIndex];
                 case ObjectDataType.ReferenceArray:
                 case ObjectDataType.ReferenceObject:
-                    return m_Table.Snapshot.virtualMachineInformation.pointerSize;
+                    return obj.GetManagedObject(m_Table.Snapshot).Size;
                 case ObjectDataType.Type:
                     return m_Table.Snapshot.typeDescriptions.size[obj.managedTypeIndex];
                 case ObjectDataType.NativeObject:
@@ -503,17 +502,10 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.ReferenceObject:
                 {
                     var ptr = obj.GetReferencePointer();
-                    if (ptr == 0) return 0;
-                    ManagedObjectInfo moi;
-                    if (m_Table.CrawledData.ManagedObjectByAddress.TryGetValue(ptr, out moi))
-                    {
-                        return moi.Size;
-                    }
-                    else
-                    {
-                        UnityEngine.Debug.LogWarning("Managed object at address '" + obj.hostManagedObjectPtr + "' not found");
-                        return 0;
-                    }
+                    if (ptr == 0)
+                            return 0;
+
+                    return obj.GetManagedObject(m_Table.Snapshot).Size;
                 }
                 case ObjectDataType.NativeObject:
                     return 0;

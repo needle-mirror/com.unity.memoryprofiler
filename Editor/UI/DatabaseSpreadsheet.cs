@@ -474,7 +474,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_GUIState.FirstVisibleRow = fvr;
                     m_GUIState.FirstVisibleRowIndex = fvrIndex;
                     m_GUIState.HeightBeforeFirstVisibleRow = fvrY;
-                    m_DataState.TotalDataHeight = totalh;
+                    m_TotalDataHeight = totalh;
                 }
                 else
                 {
@@ -485,7 +485,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_GUIState.HeightBeforeFirstVisibleRow = 0;
                     long nextRow;
                     long lastIndex = 0;
-                    m_DataState.TotalDataHeight = GetCumulativeHeight(GetFirstRow(), long.MaxValue, out nextRow, ref lastIndex);
+                    m_TotalDataHeight = GetCumulativeHeight(GetFirstRow(), long.MaxValue, out nextRow, ref lastIndex);
                 }
 
                 m_GUIState.SelectedRow = sel;

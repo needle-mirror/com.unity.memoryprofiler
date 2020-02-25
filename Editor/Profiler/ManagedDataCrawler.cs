@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.MemoryProfiler.Editor.Containers;
 using UnityEditor.Profiling.Memory.Experimental;
 using UnityEngine;
 
@@ -210,15 +211,19 @@ namespace Unity.MemoryProfiler.Editor
 
     internal class ManagedData
     {
-        public List<ManagedObjectInfo> ManagedObjects { private set; get; }  //includes gcHandle and all crawled objects
+        const int k_ManagedObjectBlockSize = 32768;
+        const int k_ManagedConnectionsBlockSize = 65536;
+        public BlockList<ManagedObjectInfo> ManagedObjects { private set; get; }
         public SortedDictionary<ulong, ManagedObjectInfo> ManagedObjectByAddress { private set; get; }
-        public List<ManagedConnection> Connections { private set; get; }
+        public BlockList<ManagedConnection> Connections { private set; get; }
 
-        public ManagedData()
+        public ManagedData(long rawGcHandleCount, long rawConnectionsCount)
         {
-            ManagedObjects = new List<ManagedObjectInfo>();
+            //compute initial block counts for larger snapshots
+            ManagedObjects = new BlockList<ManagedObjectInfo>(k_ManagedObjectBlockSize, rawGcHandleCount);
+            Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsBlockSize, rawConnectionsCount);
+
             ManagedObjectByAddress = new SortedDictionary<ulong, ManagedObjectInfo>();
-            Connections = new List<ManagedConnection>();
         }
     }
 
@@ -359,14 +364,14 @@ namespace Unity.MemoryProfiler.Editor
         {
             public List<int> TypesWithStaticFields { private set; get; }
             public Stack<StackCrawlData> CrawlDataStack { private set; get; }
-            public List<ManagedObjectInfo> ManagedObjectInfos { get { return CachedMemorySnapshot.CrawledData.ManagedObjects; } }
-            public List<ManagedConnection> ManagedConnections { get { return CachedMemorySnapshot.CrawledData.Connections; } }
+            public BlockList<ManagedObjectInfo> ManagedObjectInfos { get { return CachedMemorySnapshot.CrawledData.ManagedObjects; } }
+            public BlockList<ManagedConnection> ManagedConnections { get { return CachedMemorySnapshot.CrawledData.Connections; } }
             public CachedSnapshot CachedMemorySnapshot { private set; get; }
-            public Stack<int> DuplicatedGCHandlesStack { private set; get; }
+            public Stack<int> DuplicatedGCHandleTargetsStack { private set; get; }
             const int kInitialStackSize = 256;
             public IntermediateCrawlData(CachedSnapshot snapshot)
             {
-                DuplicatedGCHandlesStack = new Stack<int>(kInitialStackSize);
+                DuplicatedGCHandleTargetsStack = new Stack<int>(kInitialStackSize);
                 CachedMemorySnapshot = snapshot;
                 CrawlDataStack = new Stack<StackCrawlData>();
 
@@ -389,41 +394,34 @@ namespace Unity.MemoryProfiler.Editor
                 var uniqueHandlesPtr = (ulong*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<ulong>() * snapshot.gcHandles.Count, UnsafeUtility.AlignOf<ulong>(), Collections.Allocator.Temp);
 
                 ulong* uniqueHandlesBegin = uniqueHandlesPtr;
-                ulong* uniqueHandlesEnd = uniqueHandlesPtr + snapshot.gcHandles.Count;
+                int writtenRange = 0;
 
                 // Parse all handles
                 for (int i = 0; i != snapshot.gcHandles.Count; i++)
                 {
                     var moi = new ManagedObjectInfo();
                     var target = snapshot.gcHandles.target[i];
-                    if (target == 0)
+
+                    moi.ManagedObjectIndex = i;
+
+                    //this can only happen pre 19.3 scripting snapshot implementations where we dumped all handle targets but not the handles.
+                    //Eg: multiple handles can have the same target. Future facing we need to start adding that as we move forward
+                    if (snapshot.CrawledData.ManagedObjectByAddress.ContainsKey(target))
                     {
-#if SNAPSHOT_CRAWLER_DIAG
-                        Debuging.DebugUtility.LogWarning("null object in gc handles " + i);
-#endif
-                        moi.ManagedObjectIndex = i;
-                        crawlData.ManagedObjectInfos.Add(moi);
-                    }
-                    else if (snapshot.CrawledData.ManagedObjectByAddress.ContainsKey(target))
-                    {
-#if SNAPSHOT_CRAWLER_DIAG
-                        Debuging.DebugUtility.LogWarning("Duplicate gc handles " + i + " addr:" + snapshot.gcHandles.target[i]);
-#endif
-                        moi.ManagedObjectIndex = i;
                         moi.PtrObject = target;
-                        crawlData.ManagedObjectInfos.Add(moi);
-                        crawlData.DuplicatedGCHandlesStack.Push(i);
+                        crawlData.DuplicatedGCHandleTargetsStack.Push(i);
                     }
                     else
                     {
-                        moi.ManagedObjectIndex = i;
-                        crawlData.ManagedObjectInfos.Add(moi);
                         snapshot.CrawledData.ManagedObjectByAddress.Add(target, moi);
-                        UnsafeUtility.CopyStructureToPtr(ref target, uniqueHandlesBegin++);
+                        *(uniqueHandlesBegin++) = target;
+                        ++writtenRange;
                     }
+
+                    crawlData.ManagedObjectInfos.Add(moi);
                 }
                 uniqueHandlesBegin = uniqueHandlesPtr; //reset iterator
-
+                ulong* uniqueHandlesEnd = uniqueHandlesPtr + writtenRange;
                 //add handles for processing
                 while (uniqueHandlesBegin != uniqueHandlesEnd)
                 {
@@ -439,8 +437,6 @@ namespace Unity.MemoryProfiler.Editor
             var status = new EnumerationUtilities.EnumerationStatus(stepCount);
 
             IntermediateCrawlData crawlData = new IntermediateCrawlData(snapshot);
-            crawlData.ManagedObjectInfos.Capacity = (int)snapshot.gcHandles.Count * 3;
-            crawlData.ManagedConnections.Capacity = (int)snapshot.gcHandles.Count * 6;
 
             //Gather handles and duplicates
             status.StepStatus = "Gathering snapshot managed data.";
@@ -477,7 +473,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             //copy crawled object source data for duplicate objects
-            foreach (var i in crawlData.DuplicatedGCHandlesStack)
+            foreach (var i in crawlData.DuplicatedGCHandleTargetsStack)
             {
                 var ptr = snapshot.CrawledData.ManagedObjects[i].PtrObject;
                 snapshot.CrawledData.ManagedObjects[i] = snapshot.CrawledData.ManagedObjectByAddress[ptr];
@@ -764,7 +760,7 @@ namespace Unity.MemoryProfiler.Editor
             if (!snapshot.CrawledData.ManagedObjectByAddress.TryGetValue(ptrObjectHeader, out objectInfo))
             {
                 objectInfo = ParseObjectHeader(snapshot, ptrObjectHeader, ignoreBadHeaderError);
-                objectInfo.ManagedObjectIndex = objectList.Count;
+                objectInfo.ManagedObjectIndex = (int)objectList.Count;
                 objectList.Add(objectInfo);
                 objectsByAddress.Add(ptrObjectHeader, objectInfo);
                 wasAlreadyCrawled = false;

@@ -51,7 +51,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void DrawRow(long row, Rect r, long index, bool selected, ref GUIPipelineState pipe)
         {
-            GUILayout.Space(r.height);
+            if(Event.current.type == EventType.Layout)
+                GUILayout.Space(r.height);
+
             if (Event.current.type == EventType.Repaint)
             {
                 // TODO: clean this up when refactoring views to something more reliable when there are multiple MemoryProfilerWindow instances allowed.

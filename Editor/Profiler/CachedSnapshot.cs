@@ -5,7 +5,6 @@ using UnityEngine;
 using UnityEditor.Profiling.Memory.Experimental;
 using Unity.MemoryProfiler.Editor.Database.Soa;
 using Unity.Profiling;
-using Unity.MemoryProfiler.Containers.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -37,25 +36,27 @@ namespace Unity.MemoryProfiler.Editor
             OnlyStatic
         }
 
-
-        static public IEnumerable<int> AllFieldArrayIndexOf(int iTypeArrayIndex, CachedSnapshot data, FieldFindOptions findOptions, bool includeBase)
+        static void RecurseCrawlFields(ref List<int> fieldsBuffer, int ITypeArrayIndex, CachedSnapshot data, FieldFindOptions fieldFindOptions, bool crawlBase)
         {
-            int baseTypeIndex = data.typeDescriptions.baseOrElementTypeIndex[iTypeArrayIndex];
-
-            bool isValueType = data.typeDescriptions.HasFlag(iTypeArrayIndex, TypeFlags.kValueType);
-            //yield all fields from base type
-            if (includeBase
-                && baseTypeIndex != -1
-                && !isValueType)
+            bool isValueType = data.typeDescriptions.HasFlag(ITypeArrayIndex, TypeFlags.kValueType);
+            if (crawlBase)
             {
-                int baseArrayIndex = data.typeDescriptions.TypeIndex2ArrayIndex(baseTypeIndex);
-                foreach (var iField in AllFieldArrayIndexOf(baseArrayIndex, data, findOptions, includeBase))
-                    yield return iField;
+                int baseTypeIndex = data.typeDescriptions.baseOrElementTypeIndex[ITypeArrayIndex];
+                if (crawlBase && baseTypeIndex != -1 && !isValueType)
+                {
+                    int baseArrayIndex = data.typeDescriptions.TypeIndex2ArrayIndex(baseTypeIndex);
+                    RecurseCrawlFields(ref fieldsBuffer, baseArrayIndex, data, fieldFindOptions, true);
+                }
             }
-            int iTypeIndex = data.typeDescriptions.typeIndex[iTypeArrayIndex];
-            foreach (var iField in data.typeDescriptions.fieldIndices[iTypeArrayIndex])
+
+
+            int iTypeIndex = data.typeDescriptions.typeIndex[ITypeArrayIndex];
+            var fieldIndices = data.typeDescriptions.fieldIndices[ITypeArrayIndex];
+            for (int i = 0; i < fieldIndices.Length; ++i)
             {
-                if (!FieldMatchesOptions(iField, data, findOptions))
+                var iField = fieldIndices[i];
+
+                if (!FieldMatchesOptions(iField, data, fieldFindOptions))
                     continue;
 
                 if (data.fieldDescriptions.typeIndex[iField] == iTypeIndex && isValueType)
@@ -64,14 +65,21 @@ namespace Unity.MemoryProfiler.Editor
                     continue;
                 }
 
-                if (data.fieldDescriptions.offset[iField] == -1)
+                if (data.fieldDescriptions.offset[iField] == -1) //TODO: verify this assumption
                 {
                     // this is how we encode TLS fields. We don't support TLS fields yet.
                     continue;
                 }
 
-                yield return iField;
+                fieldsBuffer.Add(iField);
             }
+        }
+       
+        public static void AllFieldArrayIndexOf(ref List<int> fieldsBuffer, int ITypeArrayIndex, CachedSnapshot data, FieldFindOptions findOptions, bool includeBase)
+        {
+            //make sure we clear before we start crawling
+            fieldsBuffer.Clear();
+            RecurseCrawlFields(ref fieldsBuffer, ITypeArrayIndex, data, findOptions, includeBase);
         }
 
         static bool FieldMatchesOptions(int fieldIndex, CachedSnapshot data, FieldFindOptions options)
@@ -158,6 +166,13 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<ulong> typeInfoAddress;
             public DataArray.Cache<int> typeIndex;
             public SoaDataSet dataSet;
+
+
+            const int k_DefaultFieldProcessingBufferSize = 64;
+            const string k_SystemObjectTypeName = "System.ValueType";
+            const string k_SystemValueTypeName = "System.Object";
+            const string k_SystemEnumTypeName = "System.Enum";
+
             public TypeDescriptionEntriesCache(TypeDescriptionEntries ss)
             {
                 Count = ss.GetNumEntries();
@@ -234,35 +249,47 @@ namespace Unity.MemoryProfiler.Editor
                 return i;
             }
 
+            static ProfilerMarker typeFieldArraysBuild = new ProfilerMarker("MemoryProfiler.TypeFields.TypeFieldArrayBuilding");
             public void InitSecondaryItems(CachedSnapshot cs)
             {
                 typeInfoToArrayIndex = Enumerable.Range(0, (int)typeInfoAddress.Length).ToDictionary(x => typeInfoAddress[x], x => x);
                 typeIndexToArrayIndex = Enumerable.Range(0, (int)typeIndex.Length).ToDictionary(x => typeIndex[x], x => x);
 
-                m_HasStaticFields = new bool[Count];
-                fieldIndices_instance = new int[Count][];
-                fieldIndices_static = new int[Count][];
-                fieldIndicesOwned_static = new int[Count][];
-                for (int i = 0; i < Count; ++i)
+                using (typeFieldArraysBuild.Auto())
                 {
-                    m_HasStaticFields[i] = false;
-                    foreach (var iField in fieldIndices[i])
+                    m_HasStaticFields = new bool[Count];
+                    fieldIndices_instance = new int[Count][];
+                    fieldIndices_static = new int[Count][];
+                    fieldIndicesOwned_static = new int[Count][];
+                    List<int> fieldProcessingBuffer = new List<int>(k_DefaultFieldProcessingBufferSize);
+
+                    for (int i = 0; i < Count; ++i)
                     {
-                        if (cs.fieldDescriptions.isStatic[iField])
+                        m_HasStaticFields[i] = false;
+                        foreach (var iField in fieldIndices[i])
                         {
-                            m_HasStaticFields[i] = true;
-                            break;
+                            if (cs.fieldDescriptions.isStatic[iField])
+                            {
+                                m_HasStaticFields[i] = true;
+                                break;
+                            }
                         }
+
+                        TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, cs, TypeTools.FieldFindOptions.OnlyInstance, true);
+                        fieldIndices_instance[i] = fieldProcessingBuffer.ToArray();
+
+                        TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, cs, TypeTools.FieldFindOptions.OnlyStatic, true);
+                        fieldIndices_static[i] = fieldProcessingBuffer.ToArray();
+
+                        TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, cs, TypeTools.FieldFindOptions.OnlyStatic, false);
+                        fieldIndicesOwned_static[i] = fieldProcessingBuffer.ToArray();
                     }
-                    fieldIndices_instance[i] = TypeTools.AllFieldArrayIndexOf(i, cs, TypeTools.FieldFindOptions.OnlyInstance, true).ToArray();
-                    fieldIndices_static[i] = TypeTools.AllFieldArrayIndexOf(i, cs, TypeTools.FieldFindOptions.OnlyStatic, true).ToArray();
-                    fieldIndicesOwned_static[i] = TypeTools.AllFieldArrayIndexOf(i, cs, TypeTools.FieldFindOptions.OnlyStatic, false).ToArray();
                 }
 
+                iType_ValueType = typeDescriptionName.FindIndex(x => x == k_SystemValueTypeName);
+                iType_Object = typeDescriptionName.FindIndex(x => x == k_SystemObjectTypeName);
+                iType_Enum = typeDescriptionName.FindIndex(x => x == k_SystemEnumTypeName);
 
-                iType_ValueType = typeDescriptionName.FindIndex(x => x == "System.ValueType");
-                iType_Object = typeDescriptionName.FindIndex(x => x == "System.Object");
-                iType_Enum = typeDescriptionName.FindIndex(x => x == "System.Enum");
             }
         }
 
@@ -676,13 +703,18 @@ namespace Unity.MemoryProfiler.Editor
             SortedNativeAllocations = new SortedNativeAllocationsCache(this);
             SortedNativeObjects     = new SortedNativeObjectsCache(this);
 
-            CrawledData = new ManagedData();
+            CrawledData = new ManagedData(gcHandles.Count, connections.Count);
 
             typeDescriptions.InitSecondaryItems(this);
             nativeObjects.InitSecondaryItems();
             nativeObjects.InitSecondaryItems(this);
         }
 
+        ~CachedSnapshot()
+        {
+            CrawledData.Connections.Capacity = 0;
+            CrawledData.ManagedObjects.Capacity = 0;
+        }
         //Unified Object index are in that order: gcHandle, native object, crawled objects
         public int ManagedObjectIndexToUnifiedObjectIndex(int i)
         {
@@ -704,7 +736,7 @@ namespace Unity.MemoryProfiler.Editor
             if (i < 0) return -1;
             if (i < gcHandles.Count) return i;
             int firstCrawled = (int)(gcHandles.Count + nativeObjects.Count);
-            int lastCrawled = (int)nativeObjects.Count + CrawledData.ManagedObjects.Count;
+            int lastCrawled = (int)(nativeObjects.Count + CrawledData.ManagedObjects.Count);
             if (i >= firstCrawled && i < lastCrawled) return i - (int)nativeObjects.Count;
             return -1;
         }
@@ -820,7 +852,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public int  Count { get { return m_Snapshot.CrawledData.ManagedObjects.Count; } }
+            public int  Count { get { return (int)m_Snapshot.CrawledData.ManagedObjects.Count; } }
+
             public ulong Address(int index) { return this[index].PtrObject; }
             public ulong Size(int index) { return (ulong)this[index].Size; }
         }

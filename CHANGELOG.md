@@ -4,29 +4,43 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.2-preview.1] - 2020-02-26
+### Changed
+ - Fixed incorrect layouting behavior when scrolling down or up inside a table.
+ - Improved snapshot crawler performance, by allocating crawled data in blocks.
+ - Fixed an issue with the "Owned size" column for managed objects, which caused the displayed value to be incorrect.
+ - Fixed an UI issue where tables would throw exceptions when scrolling too fast. 
+ - Improved Treemap UI performance.
+
 ## [0.2.1-preview.2] - 2020-02-18
 ### Changed
- - Improved crawler performance by reducing the number of Exception objects being creating during snapshot crawling.
+ - Improved snapshot crawler performance by reducing the number of Exception objects being creating during snapshot crawling.
  - Fixed an issue where the crawler would skip some managed object fields depending on offset.
+
 
 ## [0.2.1-preview.1] - 2020-02-10
 ### Added
  - Added MetadataCollect abstract class in order to provide a better, performant way to inject new collectors into the metadata collection system.
+
 ### Changed
  - Fixed an issue with the native object connections cache, where invalid native object references would not be skipped.
+ 
 ### Removed
  - Removed IMetadataCollect interface and the method of injection used for it, as it would degrade runtime performance each time the injection would occur.
+
 
 ## [0.2.0-preview.1] - 2020-01-09
 ### Changed
  - Fixed an issue with the snapshot crawler going out of bounds, when scanning an array object's binary data
  - Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.1.
+
  
 ## [0.1.0-preview.9] - 2019-11-22
 ### Changed
  - Fixed an issue where the Memory Profiler's progress bar would keep being displayed after the window was closed.
  - Fixed a UI issue where items selected inside a table would no longer be highlighted.
  - The package is now no longer compatible with the following version range of the Editor: 2020.1.0a0 - 2020.1.0a14.
+
 
 ## [0.1.0-preview.8] - 2019-11-08
 ### Changed
@@ -38,6 +52,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
  - Fixed an issue when importing a snapshot via the Import window would not copy the file into the Memory Captures folder.
  - Fixed a number of UI issues related to the Editor theming update.
  - The package is now no longer compatible with the following version range of the Editor: 19.3.0a1 - 19.3.0b9.
+ 
  ### Removed
  - Removed unnecessary Profiling abstraction code present in the package.
  - Removed XML loading support in preparation to deprecate XML usage in the package, and to provide users with an interface to create their own tables.

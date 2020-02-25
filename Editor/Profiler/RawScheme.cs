@@ -640,20 +640,20 @@ namespace Unity.MemoryProfiler.Editor
 
         private void CreateManageTable_Connections(List<APITable> tables)
         {
-            var pcd = m_Snapshot.CrawledData;
-            APITable table = new APITable(this, m_Snapshot, pcd.Connections.Count);
+            var crawledData = m_Snapshot.CrawledData;
+            APITable table = new APITable(this, m_Snapshot, crawledData.Connections.Count);
 
             table.AddColumn(
                 new MetaColumn("from", "from", typeof(int), true, Grouping.groupByDuplicate, null)
-                , Data.MakeColumn(pcd.Connections, n => n.GetUnifiedIndexFrom(m_Snapshot))
+                , Data.MakeColumn(crawledData.Connections, n => n.GetUnifiedIndexFrom(m_Snapshot))
             );
             table.AddColumn(
                 new MetaColumn("to", "to", typeof(int), true, Grouping.groupByDuplicate, null)
-                , Data.MakeColumn(pcd.Connections, n => n.GetUnifiedIndexTo(m_Snapshot))
+                , Data.MakeColumn(crawledData.Connections, n => n.GetUnifiedIndexTo(m_Snapshot))
             );
             table.AddColumn(
                 new MetaColumn("type", "type", typeof(ManagedConnection.ConnectionType), true, Grouping.groupByDuplicate, null)
-                , Data.MakeColumn(pcd.Connections, n => n.connectionType)
+                , Data.MakeColumn(crawledData.Connections, n => n.connectionType)
             );
             table.CreateTable(kPrefixTableName + "ObjectConnection", kPrefixTableDisplayName + "Object Connection");
             AddTable(table, tables);

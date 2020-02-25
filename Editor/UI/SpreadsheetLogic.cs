@@ -24,14 +24,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected SplitterStateEx m_Splitter;
 
-
-        protected class DataState
-        {
-            //total height of all data without scroll region. used to optimize layout calls
-            public double TotalDataHeight = 0;//using double since this value will be maintained by offseting it.
-        };
-        protected DataState m_DataState;
-
+        //total height of all data without scroll region. used to optimize layout calls
+        protected double m_TotalDataHeight = -1; //using double since this value will be maintained by offseting it.
         protected class GUIState
         {
             //rect of the scroll region for displaying data. relative to current window.
@@ -125,7 +119,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected void UpdateDataState()
         {
-            m_DataState = new DataState();
+            m_TotalDataHeight = 0;
             long iRowCount = 0;
             float h = 0;
 
@@ -137,12 +131,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             UnityEngine.Debug.Assert(iRowCount < k_MaxRow, "GridSheet.UpdateDataState Reached " + k_MaxRow + " rows while computing data state, make sure GetNextTopLevelRow() eventually returns -1");
 
 
-            m_DataState.TotalDataHeight = h;
+            m_TotalDataHeight = h;
         }
 
         public void UpdateDirtyRowRange(DirtyRowRange d)
         {
-            m_DataState.TotalDataHeight += d.HeightOffset;
+            m_TotalDataHeight += d.HeightOffset;
         }
 
         public void SetCellExpandedState(long row, long col, bool expanded)
@@ -222,7 +216,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             GUIPipelineState pipe = new GUIPipelineState();
 
-            if (m_DataState == null)
+            if (m_TotalDataHeight == -1)
             {
                 UpdateDataState();
             }
@@ -389,16 +383,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 r.y += h;
             }
 
-            double heightAfterVisibleRow = m_DataState.TotalDataHeight - (m_GUIState.HeightBeforeFirstVisibleRow + visibleRowTotalHeight);
+            double heightAfterVisibleRow = m_TotalDataHeight - (m_GUIState.HeightBeforeFirstVisibleRow + visibleRowTotalHeight);
 
             GUILayout.Space((float)heightAfterVisibleRow);
 
             GUILayout.EndScrollView();
 
-            var rect = GUILayoutUtility.GetLastRect();
+           
             if (Event.current.type == EventType.Repaint)
             {
-                m_GUIState.RectData = rect;
+                m_GUIState.RectData = GUILayoutUtility.GetLastRect();
                 if (m_GUIState.HasRectData == false)
                 {
                     m_GUIState.HasRectData = true;
