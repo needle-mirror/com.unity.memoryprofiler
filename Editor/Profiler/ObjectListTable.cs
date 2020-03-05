@@ -447,11 +447,11 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Array:
-                case ObjectDataType.Value:
                 case ObjectDataType.ReferenceArray:
                 case ObjectDataType.ReferenceObject:
                     return obj.GetManagedObject(m_Table.Snapshot).Size;
                 case ObjectDataType.Type:
+                case ObjectDataType.Value:
                     return m_Table.Snapshot.typeDescriptions.size[obj.managedTypeIndex];
                 case ObjectDataType.NativeObject:
                     return (long)m_Table.Snapshot.nativeObjects.size[obj.nativeObjectIndex];
@@ -504,7 +504,7 @@ namespace Unity.MemoryProfiler.Editor
                     var ptr = obj.GetReferencePointer();
                     if (ptr == 0)
                             return 0;
-
+                    
                     return obj.GetManagedObject(m_Table.Snapshot).Size;
                 }
                 case ObjectDataType.NativeObject:

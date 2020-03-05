@@ -46,7 +46,7 @@ using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.Tests")]
 namespace Unity.MemoryProfiler.Editor
 {
-    using UnityMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
+    using QueryMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
     internal class MemoryProfilerWindow : EditorWindow, UI.IViewPaneEventListener
     {
         static class Content
@@ -187,11 +187,6 @@ namespace Unity.MemoryProfiler.Editor
         Dictionary<string, GUIContent> m_UIFriendlyViewOptionNames = new Dictionary<string, GUIContent>();
 
         OpenSnapshotsManager m_OpenSnapshots = new OpenSnapshotsManager();
-#if MEMPROFILER_PROFILE
-        [NonSerialized]
-        TaskTimer m_SnapshotTimer;
-#endif
-
 
         public event Action<UIState> UIStateChanged = delegate {};
 
@@ -776,61 +771,52 @@ namespace Unity.MemoryProfiler.Editor
 
         void OpenLink(Database.LinkRequest link)
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
+            var tableLinkRequest = link as Database.LinkRequestTable;
+            if (tableLinkRequest != null)
             {
-                var tableLinkRequest = link as Database.LinkRequestTable;
-                if (tableLinkRequest != null)
+                try
                 {
-                    try
+                    ProgressBarDisplay.ShowBar("Resolving Link...");
+                    var tableRef = new Database.TableReference(tableLinkRequest.LinkToOpen.TableName, link.Parameters);
+                    var table = UIState.CurrentMode.GetSchema().GetTableByReference(tableRef);
+
+                    ProgressBarDisplay.UpdateProgress(0.0f, "Updating Table...");
+                    if (table.Update())
                     {
-                        ProgressBarDisplay.ShowBar("Resolving Link...");
-                        var tableRef = new Database.TableReference(tableLinkRequest.LinkToOpen.TableName, link.Parameters);
-                        var table = UIState.CurrentMode.GetSchema().GetTableByReference(tableRef);
-
-                        ProgressBarDisplay.UpdateProgress(0.0f, "Updating Table...");
-                        if (table.Update())
-                        {
-                            UIState.CurrentMode.UpdateTableSelectionNames();
-                        }
-
-                        ProgressBarDisplay.UpdateProgress(0.75f, "Opening Table...");
-                        var pane = new UI.SpreadsheetPane(UIState, this);
-                        if (pane.OpenLinkRequest(tableLinkRequest, tableRef, table))
-                        {
-                            UIState.TransitModeToOwningTable(table);
-                            TransitPane(pane);
-                        }
+                        UIState.CurrentMode.UpdateTableSelectionNames();
                     }
-                    finally
+
+                    ProgressBarDisplay.UpdateProgress(0.75f, "Opening Table...");
+                    var pane = new UI.SpreadsheetPane(UIState, this);
+                    if (pane.OpenLinkRequest(tableLinkRequest, tableRef, table))
                     {
-                        ProgressBarDisplay.ClearBar();
+                        UIState.TransitModeToOwningTable(table);
+                        TransitPane(pane);
                     }
                 }
-                else
-                    Debug.LogWarning("Cannot open unknown link '" + link.ToString() + "'");
+                finally
+                {
+                    ProgressBarDisplay.ClearBar();
+                }
             }
+            else
+                Debug.LogWarning("Cannot open unknown link '" + link.ToString() + "'");
         }
 
         void OpenTable(Database.TableReference tableRef, Database.Table table)
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
-            {
-                UIState.TransitModeToOwningTable(table);
-                var pane = new UI.SpreadsheetPane(UIState, this);
-                pane.OpenTable(tableRef, table);
-                TransitPane(pane);
-            }
+            UIState.TransitModeToOwningTable(table);
+            var pane = new UI.SpreadsheetPane(UIState, this);
+            pane.OpenTable(tableRef, table);
+            TransitPane(pane);
         }
 
         void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos)
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
-            {
-                UIState.TransitModeToOwningTable(table);
-                var pane = new UI.SpreadsheetPane(UIState, this);
-                pane.OpenTable(tableRef, table, pos);
-                TransitPane(pane);
-            }
+            UIState.TransitModeToOwningTable(table);
+            var pane = new UI.SpreadsheetPane(UIState, this);
+            pane.OpenTable(tableRef, table, pos);
+            TransitPane(pane);
         }
 
         void OpenHistoryEvent(UI.HistoryEvent evt)
@@ -859,61 +845,49 @@ namespace Unity.MemoryProfiler.Editor
 
         void OpenTable(UI.HistoryEvent history)
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
-            {
-                var pane = new UI.SpreadsheetPane(UIState, this);
+            var pane = new UI.SpreadsheetPane(UIState, this);
 
-                if (history != null)
-                    pane.OpenHistoryEvent(history as SpreadsheetPane.History);
+            if (history != null)
+                pane.OpenHistoryEvent(history as SpreadsheetPane.History);
 
-                TransitPane(pane);
-            }
+            TransitPane(pane);
         }
 
         void OpenMemoryMap(UI.HistoryEvent history)
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
-            {
-                var pane = new UI.MemoryMapPane(UIState, this, m_ToolbarExtension);
+            var pane = new UI.MemoryMapPane(UIState, this, m_ToolbarExtension);
 
-                if (history != null)
-                    pane.RestoreHistoryEvent(history);
+            if (history != null)
+                pane.RestoreHistoryEvent(history);
 
-                TransitPane(pane);
-            }
+            TransitPane(pane);
         }
 
         void OpenMemoryMapDiff(UI.HistoryEvent history)
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
-            {
-                var pane = new UI.MemoryMapDiffPane(UIState, this, m_ToolbarExtension);
+            var pane = new UI.MemoryMapDiffPane(UIState, this, m_ToolbarExtension);
 
-                if (history != null)
-                    pane.RestoreHistoryEvent(history);
+            if (history != null)
+                pane.RestoreHistoryEvent(history);
 
-                TransitPane(pane);
-            }
+            TransitPane(pane);
         }
 
         void OpenTreeMap(UI.HistoryEvent history)
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
-            {
-                TreeMapPane.History evt = history as TreeMapPane.History;
+            TreeMapPane.History evt = history as TreeMapPane.History;
 
-                if (currentViewPane is UI.TreeMapPane)
+            if (currentViewPane is UI.TreeMapPane)
+            {
+                if (evt != null)
                 {
-                    if (evt != null)
-                    {
-                        (currentViewPane as UI.TreeMapPane).OpenHistoryEvent(evt);
-                        return;
-                    }
+                    (currentViewPane as UI.TreeMapPane).OpenHistoryEvent(evt);
+                    return;
                 }
-                var pane = new UI.TreeMapPane(UIState, this);
-                if (evt != null) pane.OpenHistoryEvent(evt);
-                TransitPane(pane);
             }
+            var pane = new UI.TreeMapPane(UIState, this);
+            if (evt != null) pane.OpenHistoryEvent(evt);
+            TransitPane(pane);
         }
 
         void CopyDataToTexture(Texture2D tex, NativeArray<byte> byteArray)
@@ -999,12 +973,12 @@ namespace Unity.MemoryProfiler.Editor
             if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Player || Application.isPlaying)
 
             {
-                UnityMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, m_CaptureFlags);
+                QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, m_CaptureFlags);
             }
             else
 #endif
             {
-                UnityMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, m_CaptureFlags);
+                QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, m_CaptureFlags);
                 m_ScreenshotInProgress = false; //screenshot is not in progress
             }
 
@@ -1237,7 +1211,6 @@ namespace Unity.MemoryProfiler.Editor
 
         void DrawTableSelection()
         {
-            using (new Service<Database.DefaultDataFormatter>.ScopeService(new Database.DefaultDataFormatter()))
             using (new EditorGUI.DisabledGroupScope(UIState.CurrentMode == null || UIState.CurrentMode.CurrentViewPane == null))
             {
                 var dropdownContent = Content.NoneView;

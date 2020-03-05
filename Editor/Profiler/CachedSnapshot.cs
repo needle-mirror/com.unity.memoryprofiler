@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEditor.Profiling.Memory.Experimental;
 using Unity.MemoryProfiler.Editor.Database.Soa;
 using Unity.Profiling;
+using Unity.MemoryProfiler.Editor.Format;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -108,7 +108,7 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         public ManagedData CrawledData { internal set; get; }
-        public PackedMemorySnapshot packedMemorySnapshot { private set; get; }
+        public QueriedMemorySnapshot packedMemorySnapshot { private set; get; }
 
         public class NativeAllocationSiteEntriesCache
         {
@@ -576,7 +576,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<int> from { private set; get; }
             public DataArray.Cache<int> to { private set; get; }
             public SoaDataSet dataSet;
-            public ConnectionEntriesCache(PackedMemorySnapshot snap, bool connectionsNeedRemaping)
+            public ConnectionEntriesCache(QueriedMemorySnapshot snap, bool connectionsNeedRemaping)
             {
                 var ss = snap.connections;
                 Count = ss.GetNumEntries();
@@ -668,7 +668,7 @@ namespace Unity.MemoryProfiler.Editor
         public SortedNativeAllocationsCache SortedNativeAllocations;
         public SortedNativeObjectsCache SortedNativeObjects;
         
-        public CachedSnapshot(PackedMemorySnapshot s)
+        public CachedSnapshot(QueriedMemorySnapshot s)
         {
 
             var vmInfo = s.virtualMachineInformation;

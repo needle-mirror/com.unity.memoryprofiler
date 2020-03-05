@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using UnityEditor.Profiling.Memory.Experimental;
 using System.Runtime.InteropServices;
+using Unity.MemoryProfiler.Editor.Format;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
@@ -537,6 +537,19 @@ namespace Unity.MemoryProfiler.Editor
                             return moi;
                         }
                         throw new Exception("Invalid object pointer used to query object list.");
+                    }
+                case ObjectDataType.ReferenceObject:
+                case ObjectDataType.ReferenceArray:
+                    {
+                        ManagedObjectInfo moi;
+                        ulong refPtr = GetReferencePointer();
+                        if (refPtr == 0)
+                            return default(ManagedObjectInfo);
+                        if (snapshot.CrawledData.ManagedObjectByAddress.TryGetValue(GetReferencePointer(), out moi))
+                        {
+                            return moi;
+                        }
+                        throw new Exception("Invalid object reference pointer used to query object list.");
                     }
                 default:
                     throw new Exception("GetManagedObjectSize was called on a instance of ObjectData which does not contain an managed object.");

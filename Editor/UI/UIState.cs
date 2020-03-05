@@ -1,6 +1,7 @@
 using System;
 using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
+using Unity.MemoryProfiler.Editor.Format;
 using Unity.Profiling;
 using UnityEditor.Profiling.Memory.Experimental;
 using UnityEngine;
@@ -127,7 +128,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         internal class SnapshotMode : BaseMode
         {
-            PackedMemorySnapshot m_RawSnapshot;
+            QueriedMemorySnapshot m_RawSnapshot;
             RawSchema m_RawSchema;
 
             public RawSchema RawSchema
@@ -159,7 +160,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_RawSchema.formatter.BaseFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
             }
 
-            public SnapshotMode(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshot)
+            public SnapshotMode(ObjectDataFormatter objectDataFormatter, QueriedMemorySnapshot snapshot)
             {
                 objectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
                 SetSnapshot(objectDataFormatter, snapshot);
@@ -172,7 +173,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             static ProfilerMarker s_CrawlManagedData = new ProfilerMarker("CrawlManagedData");
 
-            void SetSnapshot(ObjectDataFormatter objectDataFormatter, PackedMemorySnapshot snapshot)
+            void SetSnapshot(ObjectDataFormatter objectDataFormatter, QueriedMemorySnapshot snapshot)
             {
                 if (snapshot == null)
                 {
@@ -185,7 +186,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 m_RawSnapshot = snapshot;
 
-                ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(snapshot.filePath)));
+                ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(snapshot.GetReader().FilePath)));
 
                 var cachedSnapshot = new CachedSnapshot(snapshot);
                 using (s_CrawlManagedData.Auto())
@@ -524,7 +525,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public void SetFirstSnapshot(PackedMemorySnapshot snapshot)
+        public void SetFirstSnapshot(QueriedMemorySnapshot snapshot)
         {
             if (snapshot == null)
             {

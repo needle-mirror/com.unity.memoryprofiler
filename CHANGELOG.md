@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.3-preview.1] - 2020-04-4
+### Changed
+ - Fixed an issue where selecting an object of type System.String would raise exceptions when attempting to retrieve field memory metrics([case 1224644](https://issuetracker.unity3d.com/product/unity/issues/guid/1224644/)).
+ - Fixed an issue where matching string objects based on their value, was not retrieving the correct object data. 
+
+
 ## [0.2.2-preview.1] - 2020-02-26
 ### Changed
  - Fixed incorrect layouting behavior when scrolling down or up inside a table.

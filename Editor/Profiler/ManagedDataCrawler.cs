@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
-using UnityEditor.Profiling.Memory.Experimental;
+using Unity.MemoryProfiler.Editor.Format;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
@@ -325,7 +325,21 @@ namespace Unity.MemoryProfiler.Editor
         public string ReadString()
         {
             int strLength = ReadInt32();
-            return System.Text.Encoding.Default.GetString(bytes, offset + sizeof(int), strLength * 2);
+            if(offset + sizeof(int) + (strLength * 2) > bytes.Length)
+            {
+                throw new ArgumentOutOfRangeException("Attempted to read outside of binary buffer.");
+            }
+            unsafe
+            {
+                fixed (byte* ptr = bytes)
+                {
+                    string str = null;
+                    char* begin = (char*)(ptr + (offset + sizeof(int)));
+                    str = new string(begin, 0, strLength);
+
+                    return str;
+                }
+            }
         }
 
         public BytesAndOffset Add(int add)

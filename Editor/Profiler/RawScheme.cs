@@ -1,11 +1,11 @@
 using UnityEngine;
-using UnityEditor.Profiling.Memory.Experimental;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Database.Operation;
 using Unity.MemoryProfiler.Editor.Database.Soa;
 using Unity.MemoryProfiler.Editor.Database.Aos;
 using Unity.Profiling;
+using Unity.MemoryProfiler.Editor.Format;
 
 namespace Unity.MemoryProfiler.Editor
 {
