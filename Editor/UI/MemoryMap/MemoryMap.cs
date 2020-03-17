@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Unity.Collections;
-using Unity.MemoryProfiler.Editor.NativeArrayExtensions;
 using UnityEngine;
-using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 {
@@ -438,50 +435,48 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             Color oldColor = GUI.backgroundColor;
 
-            int slotWidth = 150;
-            GUI.BeginGroup(r);
-
-            int yOffset = 5;
-            int xOffset = (int)Styles.HeaderWidth;
-
+            r.xMin += Styles.HeaderWidth;
+            GUILayout.BeginArea(r);
+            GUILayout.Space(3);
+            GUILayout.BeginHorizontal();
 
             GUI.backgroundColor = m_ColorManaged[(int)EntryColors.Region];
-            GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Managed Memory", Styles.SeriesLabel);
-            xOffset += slotWidth - 50;
+            GUILayout.Toggle(true, "Managed Memory", Styles.SeriesLabel);
+            GUILayout.Space(Styles.LegendSpacerWidth);
 
             if (GetDisplayElement(DisplayElements.MangedObjects))
             {
                 GUI.backgroundColor = m_ColorManaged[(int)EntryColors.Object];
-                GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Managed Object", Styles.SeriesLabel);
-                xOffset += slotWidth - 50;
+                GUILayout.Toggle(true, "Managed Object", Styles.SeriesLabel);
+                GUILayout.Space(Styles.LegendSpacerWidth);
             }
 
             GUI.backgroundColor = m_ColorNative[(int)EntryColors.Region];
-            GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Native Memory (Reserved)", Styles.SeriesLabel);
-            xOffset += slotWidth;
+            GUILayout.Toggle(true, "Native Memory (Reserved)", Styles.SeriesLabel);
+            GUILayout.Space(Styles.LegendSpacerWidth);
 
             if (GetDisplayElement(DisplayElements.Allocations))
             {
                 GUI.backgroundColor = m_ColorNative[(int)EntryColors.Allocation];
-                GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Native Memory (Allocated)", Styles.SeriesLabel);
-                xOffset += slotWidth;
+                GUILayout.Toggle(true, "Native Memory (Allocated)", Styles.SeriesLabel);
+                GUILayout.Space(Styles.LegendSpacerWidth);
             }
 
             if (GetDisplayElement(DisplayElements.NativeObjects))
             {
                 GUI.backgroundColor = m_ColorNative[(int)EntryColors.Object];
-                GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Native Object", Styles.SeriesLabel);
-                xOffset += slotWidth - 50;
+                GUILayout.Toggle(true, "Native Object", Styles.SeriesLabel);
+                GUILayout.Space(Styles.LegendSpacerWidth);
             }
 
             if (GetDisplayElement(DisplayElements.VirtualMemory))
             {
                 GUI.backgroundColor = m_ColorNative[(int)EntryColors.VirtualMemory];
-                GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Virtual Memory", Styles.SeriesLabel);
-                xOffset += slotWidth - 50;
+                GUILayout.Toggle(true, "Virtual Memory", Styles.SeriesLabel);
+                GUILayout.Space(Styles.LegendSpacerWidth);
             }
-            GUI.EndGroup();
-
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
             GUI.backgroundColor = oldColor;
         }
 

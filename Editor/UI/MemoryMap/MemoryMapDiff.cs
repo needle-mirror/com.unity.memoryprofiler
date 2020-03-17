@@ -682,29 +682,29 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             Color oldColor = GUI.backgroundColor;
 
-            int slotWidth = 150;
-            GUI.BeginGroup(r);
-
-            int yOffset = 5;
-            int xOffset = (int)Styles.HeaderWidth;
+            r.xMin += Styles.HeaderWidth;
+            GUILayout.BeginArea(r);
+            GUILayout.Space(3);
+            GUILayout.BeginHorizontal();
 
             GUI.backgroundColor = m_colorNotModified[(int)m_ColorScheme];
-            GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Not modified", Styles.SeriesLabel);
-            xOffset += slotWidth;
+            GUILayout.Toggle(true, "Not modified", Styles.SeriesLabel);
+            GUILayout.Space(Styles.LegendSpacerWidth);
 
             GUI.backgroundColor = m_colorDeallocated[(int)m_ColorScheme];
-            GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Deallocated", Styles.SeriesLabel);
-            xOffset += slotWidth;
+            GUILayout.Toggle(true, "Deallocated", Styles.SeriesLabel);
+            GUILayout.Space(Styles.LegendSpacerWidth);
 
             GUI.backgroundColor = m_colorModified[(int)m_ColorScheme];
-            GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "Modified", Styles.SeriesLabel);
-            xOffset += slotWidth;
+            GUILayout.Toggle(true, "Modified", Styles.SeriesLabel);
+            GUILayout.Space(Styles.LegendSpacerWidth);
 
             GUI.backgroundColor = m_colorAllocated[(int)m_ColorScheme];
-            GUI.Toggle(new Rect(xOffset, yOffset, slotWidth, r.height), true, "New Allocations", Styles.SeriesLabel);
-            xOffset += slotWidth;
+            GUILayout.Toggle(true, "New Allocations", Styles.SeriesLabel);
+            GUILayout.Space(Styles.LegendSpacerWidth);
 
-            GUI.EndGroup();
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
 
             GUI.backgroundColor = oldColor;
         }

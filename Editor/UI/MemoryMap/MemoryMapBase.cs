@@ -21,7 +21,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 EditorStyles.toolbar;
 #endif
             public static readonly ulong SubAddressStepInRows = 10;
-            public static readonly int   LegendHeight = 20;
+            public static readonly int   LegendHeight = (int) EditorGUIUtility.singleLineHeight;
+            public static readonly int   LegendSpacerWidth = 10;
             public static readonly int   VScrollBarWidth = 15;
             public static readonly float RowPixelHeight = 24.0f;
             public static readonly float HeaderHeight = 24.0f;

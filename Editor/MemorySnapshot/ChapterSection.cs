@@ -78,9 +78,9 @@ namespace Unity.MemoryProfiler.Editor.Format
 
         internal override ulong GetBlockOffsetForEntryIndex(uint entryIndex)
         {
-            Debug.Assert(entryIndex == 0 || entryIndex == 1);
+            Debug.Assert(entryIndex == 0);
 
-            return (entryIndex == 0 ? m_BlockOffset : m_BlockOffset + m_EntrySize);
+            return m_BlockOffset;
         }
     }
 
