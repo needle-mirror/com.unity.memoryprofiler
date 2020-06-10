@@ -647,7 +647,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             GUI.BeginGroup(r);
 
-            m_ScrollArea = GUI.BeginScrollView(new Rect(0, 0, r.width, r.height), m_ScrollArea, new Rect(0, 0, viewRect.width - Styles.VScrollBarWidth, viewRect.height), false, true);
+            m_ScrollArea = GUI.BeginScrollView(new Rect(0, 0, r.width, r.height), m_ScrollArea, new Rect(0, 0, viewRect.width - Styles.MemoryMap.VScrollBarWidth, viewRect.height), false, true);
 
             if (m_ScrollArea.y + r.height > viewRect.height)
                 m_ScrollArea.y = Math.Max(0, viewRect.height - r.height);
@@ -682,26 +682,26 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             Color oldColor = GUI.backgroundColor;
 
-            r.xMin += Styles.HeaderWidth;
+            r.xMin += Styles.MemoryMap.HeaderWidth;
             GUILayout.BeginArea(r);
             GUILayout.Space(3);
             GUILayout.BeginHorizontal();
 
             GUI.backgroundColor = m_colorNotModified[(int)m_ColorScheme];
-            GUILayout.Toggle(true, "Not modified", Styles.SeriesLabel);
-            GUILayout.Space(Styles.LegendSpacerWidth);
+            GUILayout.Toggle(true, "Not modified", Styles.MemoryMap.SeriesLabel);
+            GUILayout.Space(Styles.MemoryMap.LegendSpacerWidth);
 
             GUI.backgroundColor = m_colorDeallocated[(int)m_ColorScheme];
-            GUILayout.Toggle(true, "Deallocated", Styles.SeriesLabel);
-            GUILayout.Space(Styles.LegendSpacerWidth);
+            GUILayout.Toggle(true, "Deallocated", Styles.MemoryMap.SeriesLabel);
+            GUILayout.Space(Styles.MemoryMap.LegendSpacerWidth);
 
             GUI.backgroundColor = m_colorModified[(int)m_ColorScheme];
-            GUILayout.Toggle(true, "Modified", Styles.SeriesLabel);
-            GUILayout.Space(Styles.LegendSpacerWidth);
+            GUILayout.Toggle(true, "Modified", Styles.MemoryMap.SeriesLabel);
+            GUILayout.Space(Styles.MemoryMap.LegendSpacerWidth);
 
             GUI.backgroundColor = m_colorAllocated[(int)m_ColorScheme];
-            GUILayout.Toggle(true, "New Allocations", Styles.SeriesLabel);
-            GUILayout.Space(Styles.LegendSpacerWidth);
+            GUILayout.Toggle(true, "New Allocations", Styles.MemoryMap.SeriesLabel);
+            GUILayout.Space(Styles.MemoryMap.LegendSpacerWidth);
 
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
@@ -712,21 +712,21 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         public void OnGUI(Rect rect)
         {
             Rect r = new Rect(rect);
-            r.y      += Styles.LegendHeight;
-            r.height -= Styles.LegendHeight;
+            r.y      += Styles.MemoryMap.LegendHeight;
+            r.height -= Styles.MemoryMap.LegendHeight;
 
-            Rect viewRect = new Rect(0, 0, r.width, m_Groups[m_Groups.Count - 1].MaxY + Styles.RowPixelHeight);
+            Rect viewRect = new Rect(0, 0, r.width, m_Groups[m_Groups.Count - 1].MaxY + Styles.MemoryMap.RowPixelHeight);
 
             MemoryMapRect = new Rect(
-                viewRect.x + Styles.HeaderWidth,
+                viewRect.x + Styles.MemoryMap.HeaderWidth,
                 viewRect.y,
-                viewRect.width - Styles.HeaderWidth - Styles.VScrollBarWidth,
+                viewRect.width - Styles.MemoryMap.HeaderWidth - Styles.MemoryMap.VScrollBarWidth,
                 viewRect.height);
 
             if (MemoryMapRect.width <= 0 || MemoryMapRect.height <= 0)
                 return;
 
-            OnGUILegend(new Rect(r.x, rect.y, r.width, Styles.LegendHeight));
+            OnGUILegend(new Rect(r.x, rect.y, r.width, Styles.MemoryMap.LegendHeight));
 
             OnGUIView(r, viewRect);
 
@@ -785,7 +785,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             {
                 if (m_HighlightedAddrMax - m_HighlightedAddrMin <= pixelDragLimit)
                 {
-                    if (Event.current.mousePosition.x < Styles.HeaderWidth)
+                    if (Event.current.mousePosition.x < Styles.MemoryMap.HeaderWidth)
                     {
                         for (int i = 0; i < m_Groups.Count; ++i)
                         {

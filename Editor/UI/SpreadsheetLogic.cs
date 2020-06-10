@@ -224,7 +224,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             GUILayout.BeginVertical(opt);
 
             m_Splitter.BeginHorizontalSplit(-m_GUIState.ScrollPosition.x);
-            Rect rectHeader = new Rect(m_Splitter.m_TopLeft.x, m_Splitter.m_TopLeft.y, 0, Styles.Header.fixedHeight);
+            Rect rectHeader = new Rect(m_Splitter.m_TopLeft.x, m_Splitter.m_TopLeft.y, 0, Styles.General.Header.fixedHeight);
 
             float totalHeaderWidth = 0;
             for (int k = 0; k < m_Splitter.realSizes.Length; ++k)

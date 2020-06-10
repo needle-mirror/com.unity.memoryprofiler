@@ -94,16 +94,6 @@ namespace Unity.MemoryProfiler.Editor
             public static readonly string[] MemorySnapshotImportWindowFileExtensions = new string[] { "MemorySnapshot", "snap", "Bitbucket MemorySnapshot", "memsnap,memsnap2,memsnap3" };
         }
 
-        static class Styles
-        {
-            public static readonly GUIStyle ToolbarPopup = new GUIStyle(EditorStyles.toolbarPopup);
-
-            public const int ViewPaneMargin = 2;
-
-            public const int InitialWorkbenchWidth = 200;
-        }
-
-
         static Dictionary<BuildTarget, string> s_PlatformIconClasses = new Dictionary<BuildTarget, string>();
 
         const string k_SnapshotFileNamePart = "Snapshot-";
@@ -147,6 +137,8 @@ namespace Unity.MemoryProfiler.Editor
 
         [SerializeField]
         Vector2 m_ViewDropdownSize;
+
+        bool m_WindowInitialized = false;
 
         [MenuItem("Window/Analysis/Memory Profiler", false, 4)]
         public static void ShowWindow()
@@ -202,15 +194,14 @@ namespace Unity.MemoryProfiler.Editor
                 return UIState.CurrentMode.CurrentViewPane;
             }
         }
-        public MemoryProfilerWindow()
+
+        void Init()
         {
+            m_WindowInitialized = true;
+
             UIState = new UI.UIState();
-        }
-
-        void OnEnable()
-        {
+            Styles.Initialize();
             EditorCoroutineUtility.StartCoroutine(UpdateTitle(), this);
-
             MemoryProfilerAnalytics.EnableAnalytics();
             m_MemorySnapshotsCollection = new SnapshotCollection(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath);
             m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
@@ -302,14 +293,14 @@ namespace Unity.MemoryProfiler.Editor
             m_LeftPane = root.Q("sidebar");
             var right = root.Q("mainWindow");
 
-            var splitter = new WorkbenchSplitter(Styles.InitialWorkbenchWidth);
+            var splitter = new WorkbenchSplitter(Styles.General.InitialWorkbenchWidth);
             splitter.LeftPane.Add(m_LeftPane);
             splitter.RightPane.Add(right);
 
             root.Add(splitter);
 
             // setup the open snapshots panel
-            var openSnapshotsPanel = m_OpenSnapshots.InitializeOpenSnapshotsWindow(Styles.InitialWorkbenchWidth);
+            var openSnapshotsPanel = m_OpenSnapshots.InitializeOpenSnapshotsWindow(Styles.General.InitialWorkbenchWidth);
             SidebarWidthChanged += openSnapshotsPanel.UpdateWidth;
             root.Q("sidebar").Add(openSnapshotsPanel);
 
@@ -323,6 +314,14 @@ namespace Unity.MemoryProfiler.Editor
             UIStateChanged += OnUIStateChanged;
             UIStateChanged += m_OpenSnapshots.RegisterUIState;
             UIStateChanged(UIState);
+        }
+
+        void OnGUI()
+        {
+            if (m_WindowInitialized)
+                return;
+
+            Init();
         }
 
         void StartedCompilationCallback(string msg)
@@ -657,6 +656,8 @@ namespace Unity.MemoryProfiler.Editor
 
         void OnDisable()
         {
+            m_WindowInitialized = false;
+            Styles.Cleanup();
             ProgressBarDisplay.ClearBar();
             UIStateChanged = delegate {};
             UIState.ClearAllOpenModes();
@@ -1028,7 +1029,7 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             }
 
-            if (EditoUtilityCompatibilityHelper.DisplayDialog(Content.HeapWarningWindowTitle, Content.HeapWarningWindowContent, Content.HeapWarningWindowOK, EditoUtilityCompatibilityHelper.DialogOptOutDecisionType.ForThisMachine, MemoryProfilerSettings.HeapWarningWindowOptOutKey))
+            if (EditorUtilityCompatibilityHelper.DisplayDialog(Content.HeapWarningWindowTitle, Content.HeapWarningWindowContent, Content.HeapWarningWindowOK, EditorUtilityCompatibilityHelper.DialogOptOutDecisionType.ForThisMachine, MemoryProfilerSettings.HeapWarningWindowOptOutKey))
             {
                 this.StartCoroutine(DelayedSnapshotRoutine());
             }
@@ -1238,7 +1239,7 @@ namespace Unity.MemoryProfiler.Editor
                 var minSize = EditorStyles.toolbarDropDown.CalcSize(dropdownContent);
                 minSize.y = Mathf.Min(minSize.y, EditorGUIUtility.singleLineHeight);
                 minSize = new Vector2(Mathf.Max(minSize.x, m_ViewDropdownSize.x), Mathf.Max(minSize.y, m_ViewDropdownSize.y));
-                Rect viewDropdownRect = GUILayoutUtility.GetRect(minSize.x, minSize.y, Styles.ToolbarPopup);
+                Rect viewDropdownRect = GUILayoutUtility.GetRect(minSize.x, minSize.y, Styles.General.ToolbarPopup);
                 viewDropdownRect.x--;
 #if UNITY_2019_3_OR_NEWER // Hotfixing theming issues...
                 viewDropdownRect.y--;
@@ -1248,7 +1249,7 @@ namespace Unity.MemoryProfiler.Editor
                     m_ViewSelectorMenu.style.width = minSize.x;
                     m_ViewSelectorMenu.style.height = minSize.y;
                 }
-                if (EditorGUI.DropdownButton(viewDropdownRect, dropdownContent, FocusType.Passive, Styles.ToolbarPopup))
+                if (EditorGUI.DropdownButton(viewDropdownRect, dropdownContent, FocusType.Passive, Styles.General.ToolbarPopup))
                 {
                     int curTableIndex = -1;
                     if (currentViewPane is UI.SpreadsheetPane)
@@ -1349,7 +1350,7 @@ namespace Unity.MemoryProfiler.Editor
                     name = name.Substring(lastSlash + 1);
                 m_UIFriendlyViewOptionNames[tableName] = new GUIContent(name);
 
-                Vector2 potentialViewDropdownSize = Styles.ToolbarPopup.CalcSize(m_UIFriendlyViewOptionNames[tableName]);
+                Vector2 potentialViewDropdownSize = Styles.General.ToolbarPopup.CalcSize(m_UIFriendlyViewOptionNames[tableName]);
                 potentialViewDropdownSize.x = Mathf.Clamp(potentialViewDropdownSize.x, 100, 300);
                 if (m_ViewDropdownSize.x < potentialViewDropdownSize.x)
                 {
