@@ -4,6 +4,16 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.5-preview.1] - 2020-07-01
+### Changed
+ - Fixed up some issues with connections not being added properly during crawling
+ - Fixed up an issue when diffing two snapshots where invalid object would cause the system to throw ([case 1236254](https://issuetracker.unity3d.com/product/unity/issues/guid/1236254/))
+ - Optimized the crawling of native connections
+ - Recuded crawling operation memory footprint by ~30%
+ - Fixed Memory Map address label text spilling over ([case 1256489](https://issuetracker.unity3d.com/product/unity/issues/guid/1256489/))
+ - Fixed Memory Map interfering with Profiler Line Charts ([case 1260533](https://issuetracker.unity3d.com/product/unity/issues/guid/1260533/))
+
+
 ## [0.2.4-preview.1] - 2020-06-10
 ### Changed
  - Fixed an issue with the Memory Profiler Window failing to load it's resources when opening during playmode

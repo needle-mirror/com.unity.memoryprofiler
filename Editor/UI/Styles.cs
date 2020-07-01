@@ -120,8 +120,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_Inited = true;
 
-            TimelineBar = "AnimationEventTooltip";
-            AddressSub = "OL Label";
+            TimelineBar = new GUIStyle("AnimationEventTooltip");
+            AddressSub = new GUIStyle("OL Label");
+            // Hard coded font sizes for now because the text will otherwise spill over
+            TimelineBar.fontSize = 11;
+            AddressSub.fontSize = 11;
             SeriesLabel = "ProfilerPaneSubLabel";
             ContentToolbar =
 #if UNITY_2019_3_OR_NEWER

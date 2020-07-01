@@ -337,6 +337,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<HideFlags> hideFlags;
             public DataArray.Cache<ObjectFlags> flags;
             public DataArray.Cache<ulong> nativeObjectAddress;
+            public Dictionary<ulong, int> nativeObjectAddressToInstanceId { private set; get; }
             public DataArray.Cache<long> rootReferenceId;
             public int[] refcount;
             public int[] managedObjectIndex;
@@ -353,9 +354,14 @@ namespace Unity.MemoryProfiler.Editor
                 flags = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.flags));
                 nativeObjectAddress = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.nativeObjectAddress));
                 rootReferenceId = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.rootReferenceId));
+                nativeObjectAddressToInstanceId = new Dictionary<ulong, int>((int)nativeObjectAddress.Length);
+                for(int i = 0; i < nativeObjectAddress.Length; ++i)
+                {
+                    nativeObjectAddressToInstanceId.Add(nativeObjectAddress[i], instanceId[i]);
+                }
             }
 
-            public static int InstanceID_None = 0;
+            public const int k_InstanceIDNone = 0;
             public SortedDictionary<int, int> instanceId2Index;
             public void InitSecondaryItems()
             {
@@ -710,11 +716,6 @@ namespace Unity.MemoryProfiler.Editor
             nativeObjects.InitSecondaryItems(this);
         }
 
-        ~CachedSnapshot()
-        {
-            CrawledData.Connections.Capacity = 0;
-            CrawledData.ManagedObjects.Capacity = 0;
-        }
         //Unified Object index are in that order: gcHandle, native object, crawled objects
         public int ManagedObjectIndexToUnifiedObjectIndex(int i)
         {

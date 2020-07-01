@@ -69,9 +69,11 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
             m_ZoomArea.BeginViewGUI();
             GUI.BeginGroup(r);
+            var oldMatrix = Handles.matrix;
             Handles.matrix = m_ZoomArea.worldToViewMatrix;// _ZoomArea.drawingToViewMatrix;
             HandleMouseClick();
             RenderTreemap();
+            Handles.matrix = oldMatrix;
             GUI.EndGroup();
 
             m_ZoomArea.EndViewGUI();

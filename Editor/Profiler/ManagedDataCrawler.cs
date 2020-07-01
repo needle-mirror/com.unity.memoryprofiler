@@ -214,7 +214,7 @@ namespace Unity.MemoryProfiler.Editor
         const int k_ManagedObjectBlockSize = 32768;
         const int k_ManagedConnectionsBlockSize = 65536;
         public BlockList<ManagedObjectInfo> ManagedObjects { private set; get; }
-        public SortedDictionary<ulong, ManagedObjectInfo> ManagedObjectByAddress { private set; get; }
+        public SortedDictionary<ulong, int> MangedObjectIndexByAddress { private set; get; }
         public BlockList<ManagedConnection> Connections { private set; get; }
 
         public ManagedData(long rawGcHandleCount, long rawConnectionsCount)
@@ -223,7 +223,7 @@ namespace Unity.MemoryProfiler.Editor
             ManagedObjects = new BlockList<ManagedObjectInfo>(k_ManagedObjectBlockSize, rawGcHandleCount);
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsBlockSize, rawConnectionsCount);
 
-            ManagedObjectByAddress = new SortedDictionary<ulong, ManagedObjectInfo>();
+            MangedObjectIndexByAddress = new SortedDictionary<ulong, int>();
         }
     }
 
@@ -420,14 +420,14 @@ namespace Unity.MemoryProfiler.Editor
 
                     //this can only happen pre 19.3 scripting snapshot implementations where we dumped all handle targets but not the handles.
                     //Eg: multiple handles can have the same target. Future facing we need to start adding that as we move forward
-                    if (snapshot.CrawledData.ManagedObjectByAddress.ContainsKey(target))
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.ContainsKey(target))
                     {
                         moi.PtrObject = target;
                         crawlData.DuplicatedGCHandleTargetsStack.Push(i);
                     }
                     else
                     {
-                        snapshot.CrawledData.ManagedObjectByAddress.Add(target, moi);
+                        snapshot.CrawledData.MangedObjectIndexByAddress.Add(target, moi.ManagedObjectIndex);
                         *(uniqueHandlesBegin++) = target;
                         ++writtenRange;
                     }
@@ -490,9 +490,9 @@ namespace Unity.MemoryProfiler.Editor
             foreach (var i in crawlData.DuplicatedGCHandleTargetsStack)
             {
                 var ptr = snapshot.CrawledData.ManagedObjects[i].PtrObject;
-                snapshot.CrawledData.ManagedObjects[i] = snapshot.CrawledData.ManagedObjectByAddress[ptr];
+                snapshot.CrawledData.ManagedObjects[i] = snapshot.CrawledData.ManagedObjects[snapshot.CrawledData.MangedObjectIndexByAddress[ptr]];
             }
-
+            
             //crawl connection data
             status.IncrementStep();
             status.StepStatus = "Crawling connection data";
@@ -533,87 +533,54 @@ namespace Unity.MemoryProfiler.Editor
 
             // Get UnityEngine.Object
             int iTypeDescription_UnityEngineObject = snapshot.typeDescriptions.typeDescriptionName.FindIndex(x => x == "UnityEngine.Object");
+#if DEBUG_VALIDATION //This shouldn't really happen
             if (iTypeDescription_UnityEngineObject < 0)
             {
-                //No Unity Object ?
-                return;
+               throw new Exception("Unable to find UnityEngine.Object");
             }
-
-            //Get UnityEngine.Object.m_InstanceID field
-            int iField_UnityEngineObject_m_InstanceID = Array.FindIndex(
-                snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
-                , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_InstanceID");
-
-            int instanceIDOffset = -1;
+#endif
             int cachedPtrOffset = -1;
-            if (iField_UnityEngineObject_m_InstanceID >= 0)
-            {
-                var fieldIndex = snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject][iField_UnityEngineObject_m_InstanceID];
-                instanceIDOffset = snapshot.fieldDescriptions.offset[fieldIndex];
-            }
-            if (instanceIDOffset < 0)
-            {
-                // on UNITY_5_4_OR_NEWER, there is the member m_CachedPtr we can use to identify the connection
-                //Since Unity 5.4, UnityEngine.Object no longer stores instance id inside when running in the player. Use cached ptr instead to find the instanceID of native object
-                int iField_UnityEngineObject_m_CachedPtr = Array.FindIndex(
-                    snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
-                    , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_CachedPtr");
+            int iField_UnityEngineObject_m_CachedPtr = Array.FindIndex(
+                snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
+                , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_CachedPtr");
 
-                if (iField_UnityEngineObject_m_CachedPtr >= 0)
-                {
-                    cachedPtrOffset = snapshot.fieldDescriptions.offset[iField_UnityEngineObject_m_CachedPtr];
-                }
+            if (iField_UnityEngineObject_m_CachedPtr >= 0)
+            {
+                cachedPtrOffset = snapshot.fieldDescriptions.offset[iField_UnityEngineObject_m_CachedPtr];
             }
-            if (instanceIDOffset < 0 && cachedPtrOffset < 0)
+
+#if DEBUG_VALIDATION
+            if (cachedPtrOffset < 0)
             {
                 Debug.LogWarning("Could not find unity object instance id field or m_CachedPtr");
                 return;
             }
-
+#endif
 
             for (int i = 0; i != objectInfos.Count; i++)
             {
                 //Must derive of unity Object
                 var objectInfo = objectInfos[i];
                 objectInfo.NativeObjectIndex = -1;
-                int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceID_None;
+                int instanceID = CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone;
 
                 if (DerivesFrom(snapshot.typeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
                 {
-                    //Find object instance id
-                    if (iField_UnityEngineObject_m_InstanceID >= 0)
+                    var heapSection = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.virtualMachineInformation);
+                    if (!heapSection.IsValid)
                     {
-                        var h = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (UInt64)instanceIDOffset, snapshot.virtualMachineInformation);
-                        if (h.IsValid)
-                        {
-                            instanceID = h.ReadInt32();
-                        }
-                        else
-                        {
-                            Debug.LogWarning("Managed object missing head (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ")");
-                        }
+                        Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
                     }
-                    else if (cachedPtrOffset >= 0)
+                    else
                     {
-                        // If you get a compilation error on the following 2 lines, update to Unity 5.4b14.
-                        var heapSection = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (UInt64)cachedPtrOffset, snapshot.virtualMachineInformation);
-                        if (!heapSection.IsValid)
-                        {
-                            Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
-                        }
-                        else
-                        {
-                            ulong cachedPtr;
-                            heapSection.TryReadPointer(out cachedPtr);
-                            var indexOfNativeObject = snapshot.nativeObjects.nativeObjectAddress.FindIndex(no => no == cachedPtr);
-                            if (indexOfNativeObject >= 0)
-                            {
-                                instanceID = snapshot.nativeObjects.instanceId[indexOfNativeObject];
-                            }
-                        }
+                        ulong cachedPtr;
+                        heapSection.TryReadPointer(out cachedPtr);
+
+                        if (!snapshot.nativeObjects.nativeObjectAddressToInstanceId.TryGetValue(cachedPtr, out instanceID))
+                            instanceID = CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone;
                     }
 
-                    if (instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceID_None && snapshot.nativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
+                    if (instanceID != CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone && snapshot.nativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
                     {
                         snapshot.nativeObjects.managedObjectIndex[objectInfo.NativeObjectIndex] = i;
                     }
@@ -621,12 +588,11 @@ namespace Unity.MemoryProfiler.Editor
 
                 objectInfos[i] = objectInfo;
                 
-                if (snapshot.HasConnectionOverhaul && instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceID_None)
+                if (snapshot.HasConnectionOverhaul && instanceID != CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone)
                 {
                     snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
                     ++snapshot.nativeObjects.refcount[objectInfo.NativeObjectIndex];
                 }
-                snapshot.CrawledData.ManagedObjectByAddress[objectInfo.PtrObject] = objectInfo;
             }
         }
 
@@ -694,7 +660,7 @@ namespace Unity.MemoryProfiler.Editor
             ++obj.RefCount;
 
             snapshot.CrawledData.ManagedObjects[obj.ManagedObjectIndex] = obj;
-            snapshot.CrawledData.ManagedObjectByAddress[obj.PtrObject] = obj;
+            snapshot.CrawledData.MangedObjectIndexByAddress[obj.PtrObject] = obj.ManagedObjectIndex;
 
             dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.indexOfFrom, data.ptrFrom, obj.ManagedObjectIndex, data.ptr, data.typeFrom, data.fieldFrom, data.fromArrayIndex));
 
@@ -768,27 +734,29 @@ namespace Unity.MemoryProfiler.Editor
         static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, ulong ptrObjectHeader, out bool wasAlreadyCrawled, bool ignoreBadHeaderError)
         {
             var objectList = snapshot.CrawledData.ManagedObjects;
-            var objectsByAddress = snapshot.CrawledData.ManagedObjectByAddress;
+            var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
 
-            ManagedObjectInfo objectInfo;
-            if (!snapshot.CrawledData.ManagedObjectByAddress.TryGetValue(ptrObjectHeader, out objectInfo))
+            ManagedObjectInfo objectInfo = default(ManagedObjectInfo);
+            int idx = 0;
+            if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(ptrObjectHeader, out idx))
             {
                 objectInfo = ParseObjectHeader(snapshot, ptrObjectHeader, ignoreBadHeaderError);
                 objectInfo.ManagedObjectIndex = (int)objectList.Count;
                 objectList.Add(objectInfo);
-                objectsByAddress.Add(ptrObjectHeader, objectInfo);
+                objectsByAddress.Add(ptrObjectHeader, objectInfo.ManagedObjectIndex);
                 wasAlreadyCrawled = false;
                 return objectInfo;
             }
 
+            objectInfo = snapshot.CrawledData.ManagedObjects[idx];
             // this happens on objects from gcHandles, they are added before any other crawled object but have their ptr set to 0.
             if (objectInfo.PtrObject == 0)
             {
-                var index = objectInfo.ManagedObjectIndex;
+                idx = objectInfo.ManagedObjectIndex;
                 objectInfo = ParseObjectHeader(snapshot, ptrObjectHeader, ignoreBadHeaderError);
-                objectInfo.ManagedObjectIndex = index;
-                objectList[index] = objectInfo;
-                objectsByAddress[ptrObjectHeader] = objectInfo;
+                objectInfo.ManagedObjectIndex = idx;
+                objectList[idx] = objectInfo;
+                objectsByAddress[ptrObjectHeader] = idx;
 
                 wasAlreadyCrawled = false;
                 return objectInfo;
