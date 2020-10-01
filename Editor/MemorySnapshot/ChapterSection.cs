@@ -29,12 +29,7 @@ namespace Unity.MemoryProfiler.Editor.Format
                     throw new IOException("Invalid chapter format");
             }
         }
-
-        internal Chapter(BinaryReader reader)
-        {
-            BuildChapter(reader);
-        }
-
+    
         internal uint GetBlockIndex()
         {
             return m_BlockIndex;
@@ -44,7 +39,7 @@ namespace Unity.MemoryProfiler.Editor.Format
 
         internal abstract void BuildChapter(BinaryReader reader);
         internal abstract uint GetNumEntries();
-        internal abstract uint GetSizeForEntryIndex(uint entryIndex);
+        internal abstract ulong GetSizeForEntryIndex(uint entryIndex);
         internal abstract ulong GetBlockOffsetForEntryIndex(uint entryIndex);
     }
 
@@ -54,8 +49,9 @@ namespace Unity.MemoryProfiler.Editor.Format
         ulong m_BlockOffset;
 
         internal SingleValueChapter(BinaryReader reader)
-            : base(reader)
-        {}
+        {
+            BuildChapter(reader);
+        }
 
         internal override void BuildChapter(BinaryReader reader)
         {
@@ -69,7 +65,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             return 1;
         }
 
-        internal override uint GetSizeForEntryIndex(uint entryIndex)
+        internal override ulong GetSizeForEntryIndex(uint entryIndex)
         {
             Debug.Assert(entryIndex == 0);
 
@@ -90,8 +86,9 @@ namespace Unity.MemoryProfiler.Editor.Format
         uint m_EntrySize;
 
         internal ConstantSizeArrayChapter(BinaryReader reader)
-            : base(reader)
-        {}
+        {
+            BuildChapter(reader);
+        }
 
         internal override void BuildChapter(BinaryReader reader)
         {
@@ -105,7 +102,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             return m_NumEntries;
         }
 
-        internal override uint GetSizeForEntryIndex(uint entryIndex)
+        internal override ulong GetSizeForEntryIndex(uint entryIndex)
         {
             return m_EntrySize;
         }
@@ -124,8 +121,9 @@ namespace Unity.MemoryProfiler.Editor.Format
         ulong[] m_BlockOffsets;
 
         internal DynamicSizeArrayChapter(BinaryReader reader)
-            : base(reader)
-        {}
+        {
+            BuildChapter(reader);
+        }
 
         internal override void BuildChapter(BinaryReader reader)
         {
@@ -145,10 +143,10 @@ namespace Unity.MemoryProfiler.Editor.Format
             return m_NumEntries;
         }
 
-        internal override uint GetSizeForEntryIndex(uint entryIndex)
+        internal override ulong GetSizeForEntryIndex(uint entryIndex)
         {
             Debug.Assert(entryIndex < m_NumEntries);
-            return (uint)(m_BlockOffsets[entryIndex + 1] - m_BlockOffsets[entryIndex]);
+            return m_BlockOffsets[entryIndex + 1] - m_BlockOffsets[entryIndex];
         }
 
         internal override ulong GetBlockOffsetForEntryIndex(uint entryIndex)

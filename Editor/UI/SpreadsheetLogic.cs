@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const long k_MaxRow = 100000000;
 
         protected const float k_SmallMargin = 4;
-        WeakReference m_Listener;
+        protected WeakReference m_Listener;
 
         protected SplitterStateEx m_Splitter;
 
@@ -203,13 +203,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ++iMax;
             }
             return i;
-        }
-
-        public void OnGUI(Rect r)
-        {
-            GUI.BeginGroup(r);
-            OnGUI(float.PositiveInfinity);
-            GUI.EndGroup();
         }
 
         public void OnGUI(float maxWidth, params GUILayoutOption[] opt)

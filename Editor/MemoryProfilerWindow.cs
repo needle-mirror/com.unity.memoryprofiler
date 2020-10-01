@@ -7,12 +7,10 @@ using System.Text;
 using System.Collections;
 using System.Runtime.CompilerServices;
 using System.IO;
-
 using UnityEditor.Compilation;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 using UnityEngine.Profiling.Memory.Experimental;
-using UnityEditor.Profiling.Memory.Experimental;
 using UnityEditorInternal;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
@@ -76,7 +74,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public const string ImportSnapshotWindowTitle = "Import snapshot file";
             public const string DeleteSnapshotDialogTitle = "Delete Snapshot";
-            public const string DeleteSnapshotDialogMessage = "Are you sure you want to delete the snapshot?";
+            public const string DeleteSnapshotDialogMessage = "Are you sure you want to permanently delete this snapshot file?";
             public const string DeleteSnapshotDialogAccept = "OK";
             public const string DeleteSnapshotDialogCancel = "Cancel";
 
@@ -286,9 +284,9 @@ namespace Unity.MemoryProfiler.Editor
             (m_SnapshotList as ScrollView).showVertical = false;
             m_SnapshotListItemTree = AssetDatabase.LoadAssetAtPath(k_SnapshotListItemUxmlPath, typeof(VisualTreeAsset)) as VisualTreeAsset;
             // fill snapshot List
-            RefreshSnapshotList();
+            RefreshSnapshotList(m_MemorySnapshotsCollection.GetEnumerator());
             m_MemorySnapshotsCollection.collectionRefresh += RefreshSnapshotList;
-
+            m_MemorySnapshotsCollection.collectionRefresh += m_OpenSnapshots.RefreshOpenSnapshots;
             // setup the splitter between sidebar and mainWindow area
             m_LeftPane = root.Q("sidebar");
             var right = root.Q("mainWindow");
@@ -365,23 +363,23 @@ namespace Unity.MemoryProfiler.Editor
             SidebarWidthChanged(m_LeftPane.layout.width);
         }
 
-        void RefreshSnapshotList()
+        void RefreshSnapshotList(SnapshotCollectionEnumerator snaps)
         {
             m_SnapshotList.Clear();
             m_ShowEmptySnapshotListHint = true;
-            using (var snapshots = m_MemorySnapshotsCollection.GetEnumerator())
+
+            snaps.Reset();
+            while (snaps.MoveNext())
             {
-                while (snapshots.MoveNext())
-                {
-                    AddSnapshotToUI(snapshots.Current);
-                }
+                AddSnapshotToUI(snaps.Current);
             }
+
             if (m_ShowEmptySnapshotListHint)
             {
                 ShowWorkBenchHintText();
             }
         }
-
+        
         void ShowWorkBenchHintText()
         {
             if (m_SnapshotList.childCount <= 0 && m_ShowEmptySnapshotListHint)
@@ -466,6 +464,8 @@ namespace Unity.MemoryProfiler.Editor
             if (m_SnapshotList == null || m_SnapshotListItemTree == null)
                 return;
 
+            bool isOpen = m_OpenSnapshots.IsSnapshotOpen(snapshot);
+
             if (m_ShowEmptySnapshotListHint)
             {
                 // take out the empty-snapshot-list-please-take-a-capture-hint text
@@ -484,14 +484,11 @@ namespace Unity.MemoryProfiler.Editor
             m_SnapshotList.Add(snapshotListItem);
             if (snapshot.GuiData != null)
             {
-                Image image = null;
-                if (snapshot.GuiData.MetaScreenshot)
-                {
-                    image = snapshotListItem.Q<Image>("previewImage", "previewImage");
-                    image.image = snapshot.GuiData.MetaScreenshot;
-                    image.scaleMode = ScaleMode.ScaleToFit;
-                    image.tooltip = snapshot.GuiData.MetaPlatform.text;
-                }
+                var image = snapshotListItem.Q<Image>("previewImage", "previewImage");
+                image.image = snapshot.GuiData.MetaScreenshot != null ? snapshot.GuiData.MetaScreenshot : Texture2D.blackTexture;
+                image.scaleMode = ScaleMode.ScaleToFit;
+                image.tooltip = snapshot.GuiData.MetaPlatform.text;
+
                 SetPlatformIcons(snapshotListItem, snapshot.GuiData);
 
                 var firstLabel = snapshotListItem.Query<Label>("snapshotName", k_SnapshotMetaDataTextClassName).First();
@@ -525,7 +522,11 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     if (evt.newValue != evt.previousValue)
                     {
-                        m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.dynamicVisualElements.snapshotRenameField.text);
+                        if (!m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.dynamicVisualElements.snapshotRenameField.text))
+                        {
+                            snapshot.GuiData.RenamingFieldVisible = false;
+                            m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.Name.text);
+                        }
                     }
                 });
 
@@ -533,7 +534,11 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     if (evt.keyCode == KeyCode.KeypadEnter || evt.keyCode == KeyCode.Return)
                     {
-                        m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.dynamicVisualElements.snapshotRenameField.text);
+                        if (!m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.dynamicVisualElements.snapshotRenameField.text))
+                        {
+                            snapshot.GuiData.RenamingFieldVisible = false;
+                            m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.Name.text);
+                        }
                     }
                     if (evt.keyCode == KeyCode.Escape)
                     {
@@ -544,10 +549,16 @@ namespace Unity.MemoryProfiler.Editor
                 });
                 snapshot.GuiData.dynamicVisualElements.snapshotRenameField.RegisterCallback<BlurEvent>((evt) =>
                 {
-                    m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.dynamicVisualElements.snapshotRenameField.text);
+                    if (!m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.dynamicVisualElements.snapshotRenameField.text))
+                    {
+                        snapshot.GuiData.RenamingFieldVisible = false;
+                        m_MemorySnapshotsCollection.RenameSnapshot(snapshot, snapshot.GuiData.Name.text);
+                    }
                 });
 
-                UIElementsHelper.SetVisibility(snapshot.GuiData.dynamicVisualElements.closeButton, false);
+
+                UIElementsHelper.SetVisibility(snapshot.GuiData.dynamicVisualElements.openButton, !isOpen);
+                UIElementsHelper.SetVisibility(snapshot.GuiData.dynamicVisualElements.closeButton, isOpen);
             }
         }
 
@@ -631,7 +642,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             var menu = new GenericMenu();
             menu.AddItem(Content.SnapshotOptionMenuItemDelete, false, () => DeleteCapture(snapshot));
-            menu.AddItem(Content.SnapshotOptionMenuItemRename, false, () => RenameCapture(snapshot));
+            menu.AddItem(Content.SnapshotOptionMenuItemRename, false, () => EditorApplication.delayCall += () => RenameCapture(snapshot));
             menu.AddItem(Content.SnapshotOptionMenuItemBrowse, false, () => BrowseCaptureFolder(snapshot));
             menu.ShowAsContext();
         }
@@ -639,17 +650,13 @@ namespace Unity.MemoryProfiler.Editor
         void OnSceneChanged(Scene sceneA, Scene sceneB)
         {
             m_MemorySnapshotsCollection.RefreshScreenshots();
-            m_OpenSnapshots.RefreshScreenshots();
         }
 
         void PollForApplicationFocus()
         {
             if (m_PrevApplicationFocusState != InternalEditorUtility.isApplicationActive)
             {
-                if (!m_PrevApplicationFocusState)
-                {
-                    m_MemorySnapshotsCollection.RefreshCollection();
-                }
+                m_MemorySnapshotsCollection.RefreshCollection();
                 m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
             }
         }
@@ -660,7 +667,8 @@ namespace Unity.MemoryProfiler.Editor
             Styles.Cleanup();
             ProgressBarDisplay.ClearBar();
             UIStateChanged = delegate {};
-            UIState.ClearAllOpenModes();
+            if(UIState != null)
+                UIState.ClearAllOpenModes();
             SidebarWidthChanged = delegate {};
             if (m_PlayerConnectionState != null)
             {
@@ -673,6 +681,7 @@ namespace Unity.MemoryProfiler.Editor
             CompilationPipeline.assemblyCompilationFinished -= FinishedCompilationCallback;
             EditorApplication.update -= PollForApplicationFocus;
             EditorSceneManager.activeSceneChangedInEditMode -= OnSceneChanged;
+            m_MemorySnapshotsCollection.Dispose();
         }
 
         void UI.IViewPaneEventListener.OnRepaint()
@@ -1014,8 +1023,7 @@ namespace Unity.MemoryProfiler.Editor
                     File.Move(capturePath, screenshotPath);
                 }
 #endif
-                var snapshot = m_MemorySnapshotsCollection.AddSnapshotToCollection(snapshotPath);
-                AddSnapshotToUI(snapshot);
+                var snapshot = m_MemorySnapshotsCollection.AddSnapshotToCollection(snapshotPath, ImportMode.Move);
             }
 
             ProgressBarDisplay.ClearBar();
@@ -1078,7 +1086,6 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             var snapshot = m_MemorySnapshotsCollection.AddSnapshotToCollection(targetPath, legacy ? ImportMode.Move : ImportMode.Copy);
-            AddSnapshotToUI(snapshot);
 
             ProgressBarDisplay.ClearBar();
             MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ImportedSnapshotEvent());
@@ -1094,6 +1101,19 @@ namespace Unity.MemoryProfiler.Editor
             {
                 EditorGUIUtility.ExitGUI();
                 return;
+            }
+
+            using (var snapshots = m_MemorySnapshotsCollection.GetEnumerator())
+            {
+                while (snapshots.MoveNext())
+                {
+                    //get full path used to normalize seperators
+                    if (snapshots.Current != null && Path.GetFullPath(snapshots.Current.FileInfo.FullName) == Path.GetFullPath(path))
+                    {
+                        Debug.Log($"{path} has already been imported.");
+                        return;
+                    }
+                }
             }
 
             MemoryProfilerSettings.LastImportPath = path;

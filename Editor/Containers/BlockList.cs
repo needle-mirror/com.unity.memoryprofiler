@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Containers
@@ -106,7 +105,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public void Clear()
         {
-            //TODO: optimize as memset 0x0
             for (int i = 0; i < m_Blocks.Count; ++i)
             {
                 var block = m_Blocks[i];

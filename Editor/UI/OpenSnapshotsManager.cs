@@ -2,6 +2,7 @@ using UnityEngine;
 using System;
 using Unity.MemoryProfiler.Editor.UI;
 using UnityEditor.Profiling.Memory.Experimental;
+using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -149,32 +150,6 @@ namespace Unity.MemoryProfiler.Editor
                 throw;
             }
         }
-
-        void SetSnapshot(PackedMemorySnapshot snapshot)
-        {
-            //UpdateSnapshotCollectionUI();
-        }
-
-        //void UpdateSnapshotCollectionUI()
-        //{
-        //    bool diffmode = Second != null;
-        //    bool oneSnapshotIsLoaded = !diffmode && First != null;
-        //    using (var enumerator = m_MemorySnapshotsCollection.GetEnumerator())
-        //    {
-        //        while (enumerator.MoveNext())
-        //        {
-        //            bool isFirst = enumerator.Current == First;
-        //            bool isSecond = enumerator.Current == Second;
-        //            bool currentSnapshotIsLoaded = isFirst || isSecond;
-
-        //            UIElementsHelper.SwitchVisibility(enumerator.Current.GuiData.dynamicVisualElements.closeButton, enumerator.Current.GuiData.dynamicVisualElements.openButton, currentSnapshotIsLoaded);
-
-        //            bool enableDiff = oneSnapshotIsLoaded && !currentSnapshotIsLoaded;
-
-        //            bool currentSnapshotIsInDiffMode = diffmode && currentSnapshotIsLoaded;
-        //        }
-        //    }
-        //}
 
         public void CloseAllOpenSnapshots()
         {
@@ -340,18 +315,25 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        internal void RefreshScreenshots()
+        internal void RefreshOpenSnapshots(SnapshotCollectionEnumerator snaps)
         {
             SnapshotFileGUIData firstGUIData = null, secondGUIData = null;
-            if (First != null)
+
+            snaps.Reset();
+            while (snaps.MoveNext())
             {
-                First.RefreshScreenshot();
-                firstGUIData = First.GuiData;
-            }
-            if (Second != null)
-            {
-                Second.RefreshScreenshot();
-                secondGUIData = Second.GuiData;
+                if (First == snaps.Current)
+                {
+                    First = snaps.Current;
+                    firstGUIData = First.GuiData;
+                    firstGUIData.CurrentState = SnapshotFileGUIData.State.Open;
+                }
+                else if (Second == snaps.Current)
+                {
+                    Second = snaps.Current;
+                    secondGUIData = Second.GuiData;
+                    secondGUIData.CurrentState = SnapshotFileGUIData.State.Open;
+                }
             }
             m_OpenSnapshotsPane.RefreshScreenshots(firstGUIData, secondGUIData);
         }

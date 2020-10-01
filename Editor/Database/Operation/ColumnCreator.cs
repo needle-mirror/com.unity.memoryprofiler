@@ -145,22 +145,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
-    internal class ConstMatcherFactory<T> : MatcherFactory where T : IComparable
-    {
-        public override Matcher CreateTypedMatcher(string matchString)
-        {
-            IParser p;
-            if (!kParseTypes.TryGetValue(typeof(T), out p))
-            {
-                throw new UnityException("Parser for specified type does not exist");
-            }
-            T constVal;
-            if (!((Parser<T>)p).tryParse(matchString, out constVal))
-                return null;
-            return new ConstMatcher<T>(constVal);
-        }
-    }
-
     internal struct TypePair
     {
         public Type Key, Value;
@@ -312,20 +296,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             { new TypePair { Key = typeof(ViewColumnFirstMatch<>), Value = typeof(ushort) }, new ColumnFactory<ViewColumnFirstMatch<ushort>>()},
             { new TypePair { Key = typeof(ViewColumnFirstMatch<>), Value = typeof(DiffTable.DiffResult) }, new ColumnFactory<ViewColumnFirstMatch<DiffTable.DiffResult>>()},
             { new TypePair { Key = typeof(ViewColumnFirstMatch<>), Value = typeof(ManagedConnection.ConnectionType) }, new ColumnFactory<ViewColumnFirstMatch<ManagedConnection.ConnectionType>>()},
-
-            //ConstMatcher string to - X
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(bool) }, new ConstMatcherFactory<bool>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(double) }, new ConstMatcherFactory<double>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(float) }, new ConstMatcherFactory<float>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(int) }, new ConstMatcherFactory<int>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(long) }, new ConstMatcherFactory<long>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(short) }, new ConstMatcherFactory<short>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(uint) }, new ConstMatcherFactory<uint>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(ulong) }, new ConstMatcherFactory<ulong>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(ushort) }, new ConstMatcherFactory<ushort>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(DiffTable.DiffResult) }, new ConstMatcherFactory<DiffTable.DiffResult>()},
-            { new TypePair { Key = typeof(ConstMatcher<>), Value = typeof(ManagedConnection.ConnectionType) }, new ConstMatcherFactory<ManagedConnection.ConnectionType>()},
-
+            
             //Const column
             { new TypePair { Key = typeof(ViewColumnConst<>), Value = typeof(bool) }, new ColumnFactory<ViewColumnConst<bool>>()},
             { new TypePair { Key = typeof(ViewColumnConst<>), Value = typeof(double) }, new ColumnFactory<ViewColumnConst<double>>()},
@@ -377,11 +348,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public static Column CreateColumn(Type columnType, Type type)
         {
             return ((TypedColumnFactory)GetFactory(columnType, type)).CreateTypedColumn();
-        }
-
-        public static Matcher CreateConstMatcher(Type type, string matchString)
-        {
-            return ((MatcherFactory)GetFactory(typeof(ConstMatcher<>), type)).CreateTypedMatcher(matchString);
         }
 
         public static Column CreateViewColumnExpression(Expression expression)

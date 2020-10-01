@@ -39,7 +39,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             for (int i = 0; i != m_Meta.GetColumnCount(); ++i)
             {
                 var metaCol = m_Meta.GetColumnByIndex(i);
-                IIndexedColumn newCol = (IIndexedColumn)ColumnCreator.CreateColumn(typeof(IndexedColumnTyped<>), metaCol.Type);
+                IIndexedColumn newCol = (IIndexedColumn)ColumnCreator.CreateColumn(typeof(IndexedColumnTyped<>), metaCol.Type.scriptingType);
 
                 newCol.Initialize(this, m_SourceTable.GetColumnByIndex(i));
                 m_Columns.Add((Column)newCol);

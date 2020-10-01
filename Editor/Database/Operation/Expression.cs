@@ -1,5 +1,7 @@
 using System;
+using System.Globalization;
 using System.Xml;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 using UnityEngine;
 
@@ -272,7 +274,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
                 if (col != null && metaCol != null)
                 {
-                    Type columnValueType = metaCol.Type;
+                    Type columnValueType = metaCol.Type.scriptingType;
 
                     Type desiredValueType;
                     if (resultExpressionType != null)
@@ -550,7 +552,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override string GetValueString(long row, IDataFormatter formatter)
         {
-            return formatter.Format(GetValue(row));
+            return column.GetRowValueString(row, formatter);
         }
 
         public override DataT GetValue(long row)
@@ -1106,14 +1108,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     internal abstract class Matcher
     {
         /// <summary>
-        /// Test if the specified row in the expression pass the matching test
-        /// </summary>
-        /// <param name="exp"></param>
-        /// <param name="row"></param>
-        /// <returns></returns>
-        public abstract bool Match(Expression exp, long row);
-
-        /// <summary>
         /// Returns matching indices from the expression parameter.
         /// </summary>
         /// <param name="exp"></param>
@@ -1130,80 +1124,70 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         /// <returns></returns>
         public abstract long[] GetMatchIndex(Expression exp, ArrayRange indices, Operator operation);
 
-        public Type type;
+        public abstract void SetMatchPredicate(string match);
     }
 
     /// <summary>
-    /// Matcher with a specific value type
+    /// Matcher that test the input expression of value type `string` by searching for a constant sub-string value.
     /// </summary>
-    /// <typeparam name="DataT"></typeparam>
-    internal abstract class TypedMatcher<DataT> : Matcher where DataT : IComparable
+    internal class SubStringMatcher : Matcher
     {
-        public abstract bool Match(DataT a);
-    }
-
-    /// <summary>
-    /// Matcher that test the input expression with a constant value
-    /// </summary>
-    /// <typeparam name="DataT"></typeparam>
-    internal class ConstMatcher<DataT> : TypedMatcher<DataT> where DataT : IComparable
-    {
-        public DataT value;
-        public ConstMatcher(DataT c)
+        string m_Value;
+        //Assumes both implementations are to lower
+        unsafe static bool ContainsSubStr(char* strBegin, int strLength, char* subStrBegin, int subStrLength)
         {
-            value = c;
-            type = typeof(DataT);
-        }
-
-        public override bool Match(DataT a)
-        {
-            return value.CompareTo(a) == 0;
-        }
-
-        public override bool Match(Expression exp, long row)
-        {
-            var v = exp.GetComparableValue(row);
-            return v.CompareTo(value) == 0;
+            ushort* begin = (ushort*)strBegin;
+            ushort* vBegin = (ushort*)subStrBegin;
+            while(strLength > 0)
+            {
+                if(*begin == *vBegin)
+                {
+                    if (strLength >= subStrLength)
+                    {
+                        if (UnsafeUtility.MemCmp(begin, vBegin, subStrLength * UnsafeUtility.SizeOf<ushort>()) == 0)
+                            return true;
+                    }
+                    else
+                        return false;
+                }
+                ++begin;
+                --strLength;
+            }
+            return false;
         }
 
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices)
         {
+            var val = m_Value.ToLower();
             long count = indices.Count;
             long[] o = new long[count];
             long lastO = 0;
-
-            if (exp is TypedExpression<DataT>)
+            
+            unsafe
             {
-                var e = (TypedExpression<DataT>)exp;
-
-                for (int i = 0; i != count; ++i)
+                fixed(char* valPtr = val)
                 {
-                    long ii = indices[i];
-                    var v = e.GetValue(ii);
-                    if (v.CompareTo(value) == 0)
+                    var format = DefaultDataFormatter.Instance;
+                    for (int i = 0; i != count; ++i)
                     {
-                        o[lastO] = ii;
-                        ++lastO;
+                        long ii = indices[i];
+                        var rowValue = exp.GetValueString(ii, format).ToLower();
+                        fixed (char* rowValuePtr = rowValue)
+                        {
+                            if(ContainsSubStr(rowValuePtr, rowValue.Length, valPtr, val.Length))
+                            {
+                                o[lastO] = ii;
+                                ++lastO;
+                            }
+                        }
                     }
                 }
             }
-            else
-            {
-                for (int i = 0; i != count; ++i)
-                {
-                    long ii = indices[i];
-                    var v = exp.GetComparableValue(ii);
-                    if (v.CompareTo(value) == 0)
-                    {
-                        o[lastO] = ii;
-                        ++lastO;
-                    }
-                }
-            }
+
             if (lastO != count)
             {
                 long[] trimmed = new long[lastO];
-                System.Array.Copy(o, trimmed, lastO);
+                Array.Copy(o, trimmed, lastO);
                 return trimmed;
             }
             return o;
@@ -1211,78 +1195,39 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices, Operator operation)
         {
-            long count = indices.Count;
-            long[] o = new long[count];
-            long lastO = 0;
+            throw new InvalidOperationException("Do not use operators with string matcher");
+        }
 
-            if (exp is TypedExpression<DataT>)
-            {
-                var e = (TypedExpression<DataT>)exp;
-
-                for (int i = 0; i != count; ++i)
-                {
-                    long ii = indices[i];
-                    var v = e.GetValue(ii);
-                    if (Operation.Match(operation, v.CompareTo(value)))
-                    {
-                        o[lastO] = ii;
-                        ++lastO;
-                    }
-                }
-            }
-            else
-            {
-                for (int i = 0; i != count; ++i)
-                {
-                    long ii = indices[i];
-                    var v = exp.GetComparableValue(ii);
-                    if (Operation.Match(operation, v.CompareTo(value)))
-                    {
-                        o[lastO] = ii;
-                        ++lastO;
-                    }
-                }
-            }
-            if (lastO != count)
-            {
-                long[] trimmed = new long[lastO];
-                System.Array.Copy(o, trimmed, lastO);
-                return trimmed;
-            }
-            return o;
+        public override void SetMatchPredicate(string match)
+        {
+            m_Value = match;
         }
     }
 
     /// <summary>
-    /// Matcher that test the input expression of value type `string` by searching for a constant sub-string value.
+    /// Matcher that test the input expression of value type `long` by searching for the same value.
     /// </summary>
-    internal class SubStringMatcher : TypedMatcher<string>
+    internal class NumericMatcher : Matcher
     {
-        public string value;
-        public IDataFormatter Formatter = DefaultDataFormatter.Instance;
-        public override bool Match(string a)
-        {
-            return a.Contains(value);
-        }
-
-        public override bool Match(Expression exp, long row)
-        {
-            var v = exp.GetValueString(row, Formatter);
-            return v.Contains(value);
-        }
-
+        long m_Value;
+        bool m_InvalidMatch = false;
+        
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices)
         {
-            var value2 = value.ToLower();
+            if (m_InvalidMatch)
+                return indices.ToArray();
+
             long count = indices.Count;
             long[] o = new long[count];
             long lastO = 0;
 
+            var matchValue = exp.type.IsEnum ? Enum.Parse(exp.type, m_Value.ToString()) : Convert.ChangeType(m_Value, exp.type);
             for (int i = 0; i != count; ++i)
             {
                 long ii = indices[i];
-                var v = exp.GetValueString(ii, Formatter);
-                if (v.ToLower().Contains(value2))
+
+                var rowValue = exp.GetComparableValue(ii);
+                if(rowValue.CompareTo(matchValue) == 0)
                 {
                     o[lastO] = ii;
                     ++lastO;
@@ -1292,7 +1237,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             if (lastO != count)
             {
                 long[] trimmed = new long[lastO];
-                System.Array.Copy(o, trimmed, lastO);
+                Array.Copy(o, trimmed, lastO);
                 return trimmed;
             }
             return o;
@@ -1301,6 +1246,13 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices, Operator operation)
         {
             throw new InvalidOperationException("Do not use operators with string matcher");
+        }
+
+        public override void SetMatchPredicate(string match)
+        {
+            long v;
+            m_InvalidMatch = !long.TryParse(match, out v);
+            m_Value = v;
         }
     }
 
@@ -1465,7 +1417,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
             if (option.overrideValueType == null)
             {
-                option.overrideValueType = metaColumn.Type;
+                option.overrideValueType = metaColumn.Type.scriptingType;
             }
 
             if (Operation.IsOperatorOneToMany(operation))

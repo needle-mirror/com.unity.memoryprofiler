@@ -233,11 +233,41 @@ namespace Unity.MemoryProfiler.Editor
             {
                 case ObjectDataType.ReferenceArray:
                 case ObjectDataType.ReferenceObject:
+                    return GetReferencePointer();
                 case ObjectDataType.Object:
                 case ObjectDataType.Array:
                 case ObjectDataType.BoxedValue:
-                case ObjectDataType.Value:
                     return hostManagedObjectPtr;
+                case ObjectDataType.Value:
+                    ulong offset = 0;
+                    bool isStatic = false;
+                    if(IsField())
+                    {
+                        int fieldIdx = fieldIndex;
+                        offset = (ulong)snapshot.fieldDescriptions.offset[fieldIdx];
+                        isStatic = snapshot.fieldDescriptions.isStatic[fieldIdx];
+                        if(isStatic)
+                        {
+                            offset = snapshot.typeDescriptions.typeInfoAddress[m_Parent.obj.managedTypeIndex];
+                            offset += (ulong)snapshot.typeDescriptions.size[m_Parent.obj.managedTypeIndex];
+
+                            var staticFieldIndices = snapshot.typeDescriptions.fieldIndices_static[m_Parent.obj.managedTypeIndex];
+
+                            for(int i = 0; i < staticFieldIndices.Length; ++i)
+                            {
+                                var cFieldIdx = staticFieldIndices[i];
+                                if (cFieldIdx == fieldIdx)
+                                    break;
+                                offset+=(ulong)snapshot.fieldDescriptions.offset[cFieldIdx];
+                            }
+                        }
+                    }
+                    else if(arrayIndex >= 0) //compute our offset within the array
+                    {
+                        offset += (ulong)(snapshot.virtualMachineInformation.arrayHeaderSize + arrayIndex * snapshot.typeDescriptions.size[managedTypeIndex]);
+                    }
+
+                    return isStatic? offset : hostManagedObjectPtr + offset;
                 case ObjectDataType.NativeObject:
                     return snapshot.nativeObjects.nativeObjectAddress[nativeObjectIndex];
                 default:
@@ -270,7 +300,7 @@ namespace Unity.MemoryProfiler.Editor
                     break;
                 default:
                     UnityEngine.Debug.LogError("Requesting a boxed value on an invalid data type");
-                    return invalid;
+                    return Invalid;
             }
             ObjectData od = this;
             od.m_Parent = new ObjectDataParent(this, -1, -1, expandToTarget);
@@ -303,7 +333,7 @@ namespace Unity.MemoryProfiler.Editor
                     break;
                 default:
                     Debug.Log("Requesting an array element on an invalid data type");
-                    return invalid;
+                    return Invalid;
             }
             ObjectData o = new ObjectData();
             o.m_Parent = new ObjectDataParent(this, -1, index, expandToTarget);
@@ -379,24 +409,22 @@ namespace Unity.MemoryProfiler.Editor
         {
             ObjectData obj;
             ulong objectPtr;
+
             switch (m_dataType)
             {
                 case ObjectDataType.ReferenceObject:
+                case ObjectDataType.ReferenceArray:
                     objectPtr = GetReferencePointer();
                     obj = FromManagedPointer(snapshot, objectPtr);
                     break;
-                case ObjectDataType.BoxedValue:
-                case ObjectDataType.Object:
-                case ObjectDataType.Value:
-                    objectPtr = m_data.managed.objectPtr;
-                    obj = this;
-                    break;
-                //case ObjectDataType.ReferenceArray:
-                default:
-                    //TODO: add proper handling for missing types
-                    //DebugUtility.LogError("Requesting a field on an invalid data type");
+                case ObjectDataType.Unknown: //skip unknown/uninitialized types as some snapshots will have them
                     return new ObjectData();
+                default:
+                    obj = this;
+                    objectPtr = m_data.managed.objectPtr;
+                    break;
             }
+
             var fieldOffset = snapshot.fieldDescriptions.offset[iField];
             var fieldType = snapshot.fieldDescriptions.typeIndex[iField];
             bool isStatic = snapshot.fieldDescriptions.isStatic[iField];
@@ -412,7 +440,7 @@ namespace Unity.MemoryProfiler.Editor
                     if (!isStatic)
                     {
                         Debug.LogError("Requesting a non-static field on a type");
-                        return invalid;
+                        return Invalid;
                     }
                     break;
                 default:
@@ -430,7 +458,7 @@ namespace Unity.MemoryProfiler.Editor
                 var iOwningType = obj.m_data.managed.iType;
                 while (iOwningType >= 0)
                 {
-                    var fieldIndex = System.Array.FindIndex(snapshot.typeDescriptions.fieldIndicesOwned_static[iOwningType], x => x == iField);
+                    var fieldIndex = Array.FindIndex(snapshot.typeDescriptions.fieldIndicesOwned_static[iOwningType], x => x == iField);
                     if (fieldIndex >= 0)
                     {
                         //field iField is owned by type iCurrentBase
@@ -441,7 +469,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (iOwningType < 0)
                 {
                     Debug.LogError("Field requested is not owned by the type not any of its bases");
-                    return invalid;
+                    return Invalid;
                 }
 
                 o.m_data.managed.objectPtr = 0;
@@ -482,18 +510,21 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.Object:
                 case ObjectDataType.Type:
-                    break;
                 case ObjectDataType.Value:
-                    return invalid;
+                case ObjectDataType.BoxedValue:
+                    break;
                 default:
                     UnityEngine.Debug.LogError("Requesting a base on an invalid data type");
-                    return invalid;
+                    return Invalid;
             }
 
             var b = snapshot.typeDescriptions.baseOrElementTypeIndex[m_data.managed.iType];
-            if (b == snapshot.typeDescriptions.iType_ValueType) return invalid;
-            if (b == snapshot.typeDescriptions.iType_Object) return invalid;
-            if (b == snapshot.typeDescriptions.iType_Enum) return invalid;
+            if (b == snapshot.typeDescriptions.iType_ValueType
+                || b == snapshot.typeDescriptions.iType_Object
+                || b == snapshot.typeDescriptions.iType_Enum
+                || b == snapshot.typeDescriptions.iType_Invalid)
+                return Invalid;
+
             ObjectData o = this;
             o.SetManagedType(snapshot, b);
             return o;
@@ -547,7 +578,8 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             return snapshot.CrawledData.ManagedObjects[idx];
                         }
-                        throw new Exception("Invalid object reference pointer used to query object list.");
+                        //do not throw, if the ref pointer is not valid the object might have been null-ed
+                        return default(ManagedObjectInfo);
                     }
                 default:
                     throw new Exception("GetManagedObjectSize was called on a instance of ObjectData which does not contain an managed object.");
@@ -597,7 +629,7 @@ namespace Unity.MemoryProfiler.Editor
             m_Parent = null;
         }
 
-        public static ObjectData invalid
+        public static ObjectData Invalid
         {
             get
             {
@@ -635,12 +667,12 @@ namespace Unity.MemoryProfiler.Editor
                 return FromManagedObjectIndex(snapshot, iManaged);
             }
 
-            return ObjectData.invalid;
+            return ObjectData.Invalid;
         }
 
         public static ObjectData FromNativeObjectIndex(CachedSnapshot snapshot, int index)
         {
-            if (index < 0 || index >= snapshot.nativeObjects.Count) return ObjectData.invalid;
+            if (index < 0 || index >= snapshot.nativeObjects.Count) return ObjectData.Invalid;
             ObjectData o = new ObjectData();
             o.m_dataType = ObjectDataType.NativeObject;
             o.m_data.native.index = index;
@@ -649,7 +681,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static ObjectData FromManagedObjectInfo(CachedSnapshot snapshot, ManagedObjectInfo moi)
         {
-            if (moi.ITypeDescription < 0) return ObjectData.invalid;
+            if (moi.ITypeDescription < 0) return ObjectData.Invalid;
             ObjectData o = new ObjectData();
             o.m_dataType = TypeToDataType(snapshot, moi.ITypeDescription);// ObjectDataType.Object;
             o.m_data.managed.objectPtr = moi.PtrObject;
@@ -660,7 +692,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static ObjectData FromManagedObjectIndex(CachedSnapshot snapshot, int index)
         {
-            if (index < 0 || index >= snapshot.CrawledData.ManagedObjects.Count) return ObjectData.invalid;
+            if (index < 0 || index >= snapshot.CrawledData.ManagedObjects.Count) return ObjectData.Invalid;
             var moi = snapshot.CrawledData.ManagedObjects[index];
 
             if (index < snapshot.gcHandles.Count)
@@ -668,7 +700,7 @@ namespace Unity.MemoryProfiler.Editor
                 //When snapshotting we might end up getting some handle targets as they are about to be collected
                 //we do restart the world temporarily this can cause us to end up with targets that are not present in the dumped heaps
                 if (moi.PtrObject == 0)
-                    return ObjectData.invalid;
+                    return ObjectData.Invalid;
 
                 if (moi.PtrObject != snapshot.gcHandles.target[index])
                 {
@@ -681,7 +713,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static ObjectData FromManagedPointer(CachedSnapshot snapshot, ulong ptr, int asTypeIndex = -1)
         {
-            if (ptr == 0) return ObjectData.invalid;
+            if (ptr == 0) return Invalid;
             int idx;
             if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(ptr, out idx))
             {
@@ -692,9 +724,9 @@ namespace Unity.MemoryProfiler.Editor
                 ObjectData o = new ObjectData();
                 o.m_data.managed.objectPtr = ptr;
                 o.managedObjectData = snapshot.managedHeapSections.Find(ptr, snapshot.virtualMachineInformation);
-                if (o.managedObjectData.IsValid)
+                ManagedObjectInfo info = default(ManagedObjectInfo);
+                if(Crawler.TryParseObjectHeader(snapshot, ptr, out info))
                 {
-                    var info = Crawler.ParseObjectHeader(snapshot, o.managedObjectData, false);
                     if (asTypeIndex >= 0)
                     {
                         o.SetManagedType(snapshot, asTypeIndex);
@@ -708,18 +740,14 @@ namespace Unity.MemoryProfiler.Editor
                     return o;
                 }
             }
-            return invalid;
+            return Invalid;
         }
 
         public bool isNative
         {
             get
             {
-                switch (dataType)
-                {
-                    case ObjectDataType.NativeObject: return true;
-                }
-                return false;
+                return dataType == ObjectDataType.NativeObject;
             }
         }
         public bool isManaged

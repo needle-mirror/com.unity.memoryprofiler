@@ -4,7 +4,9 @@ using UnityEditor;
 using UnityEngine;
 using System.IO;
 using System;
+using System.Linq;
 using Unity.MemoryProfiler.Editor;
+using System.Text;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 #else
@@ -36,8 +38,10 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool MoveNext()
         {
-            ++m_Index;
+            if (m_Files == null)
+                return false;
 
+            ++m_Index;
             return m_Index < m_Files.Count;
         }
 
@@ -53,23 +57,21 @@ namespace Unity.MemoryProfiler.Editor
         Move
     }
 
-    internal class SnapshotCollection
+    internal class SnapshotCollection : IDisposable
     {
         DirectoryInfo m_Info;
         List<SnapshotFileData> m_Snapshots;
-        public Action collectionRefresh;
+        public Action<SnapshotCollectionEnumerator> collectionRefresh;
 
         public string Name { get { return m_Info.Name; } }
 
         public SnapshotCollection(string collectionPath)
         {
             m_Info = new DirectoryInfo(collectionPath);
+            m_Snapshots = new List<SnapshotFileData>();
+
             if (!m_Info.Exists)
-            {
-                m_Info = Directory.CreateDirectory(collectionPath);
-                if (!m_Info.Exists)
-                    throw new UnityException("Failed to create directory, with provided preferences path: " + collectionPath);
-            }
+                m_Info.Create();
 
             RefreshFileListInternal(m_Info);
         }
@@ -84,6 +86,7 @@ namespace Unity.MemoryProfiler.Editor
 
         void RefreshFileListInternal(DirectoryInfo info)
         {
+            Cleanup();
             m_Snapshots = new List<SnapshotFileData>();
             var fileEnumerator = info.GetFiles('*' + MemoryProfilerWindow.k_SnapshotFileExtension, SearchOption.AllDirectories);
             for (int i = 0; i < fileEnumerator.Length; ++i)
@@ -101,10 +104,23 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
+
+            m_Snapshots.Sort();
+
+            if (collectionRefresh != null)
+            {
+                using (var it = GetEnumerator())
+                    collectionRefresh(it);
+            }
         }
 
-        public void RenameSnapshot(SnapshotFileData snapshot, string name)
+        public bool RenameSnapshot(SnapshotFileData snapshot, string name)
         {
+            if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                EditorUtility.DisplayDialog("Error", $"Filename '{name}' contains invalid characters", "OK");
+                return false;
+            }
             int nameStart = snapshot.FileInfo.FullName.LastIndexOf(snapshot.FileInfo.Name);
             string targetPath = snapshot.FileInfo.FullName.Substring(0, nameStart) + name + MemoryProfilerWindow.k_SnapshotFileExtension;
 
@@ -112,7 +128,14 @@ namespace Unity.MemoryProfiler.Editor
             {
                 snapshot.GuiData.dynamicVisualElements.snapshotNameLabel.text = snapshot.GuiData.name.text;
                 snapshot.GuiData.RenamingFieldVisible = false;
-                return;
+                return false;
+            }
+
+            var dir = snapshot.FileInfo.FullName.Substring(0, nameStart);
+            if (Directory.GetFiles(dir).Contains($"{dir}{name}{ MemoryProfilerWindow.k_SnapshotFileExtension}"))
+            {
+                EditorUtility.DisplayDialog("Error", $"Filename '{name}' already exists", "OK");
+                return false;
             }
 
             snapshot.GuiData.name = new GUIContent(name);
@@ -120,7 +143,7 @@ namespace Unity.MemoryProfiler.Editor
             snapshot.GuiData.RenamingFieldVisible = false;
 
 #if UNITY_2019_3_OR_NEWER
-            if (snapshot.GuiData.texture != null)
+            if (snapshot.GuiData.guiTexture != null)
             {
                 string possibleSSPath = Path.ChangeExtension(snapshot.FileInfo.FullName, ".png");
                 if (File.Exists(possibleSSPath))
@@ -132,6 +155,7 @@ namespace Unity.MemoryProfiler.Editor
             //move snapshot after screenshot
             snapshot.FileInfo.MoveTo(targetPath);
             m_Info.Refresh();
+            return true;
         }
 
         public void RemoveSnapshotFromCollection(SnapshotFileData snapshot)
@@ -153,55 +177,106 @@ namespace Unity.MemoryProfiler.Editor
             RemoveSnapshotFromCollection(iter.Current);
         }
 
-        public SnapshotFileData AddSnapshotToCollection(string path, ImportMode mode = ImportMode.Copy)
+        public SnapshotFileData AddSnapshotToCollection(string path, ImportMode mode)
         {
             FileInfo file = new FileInfo(path);
-            if (file.FullName.StartsWith(m_Info.FullName))
+
+            StringBuilder newPath = new StringBuilder(256);
+            newPath.Append(Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, Path.GetFileNameWithoutExtension(file.Name)));
+            string finalPath = string.Format("{0}{1}", newPath.ToString(), MemoryProfilerWindow.k_SnapshotFileExtension);
+            bool samePath = finalPath.ToLowerInvariant() == path.ToLowerInvariant();
+            if (File.Exists(finalPath) && !samePath)
             {
-                if (m_Snapshots.Find(item => item.FileInfo == file) == null)
+                string searchStr = string.Format("{0}*{1}",
+                    Path.GetFileNameWithoutExtension(file.Name), MemoryProfilerWindow.k_SnapshotFileExtension);
+
+                var files = m_Info.GetFiles(searchStr);
+
+                int snapNum = 1;
+                StringBuilder postFixStr = new StringBuilder("(1)");
+                for (int i = 0; i < files.Length; ++i)
                 {
-                    m_Snapshots.Add(new SnapshotFileData(file));
-                    m_Info.Refresh();
-                    return m_Snapshots[m_Snapshots.Count - 1];
+                    if (files[i].Name.Contains(postFixStr.ToString()))
+                    {
+                        ++snapNum;
+                        postFixStr.Clear();
+                        postFixStr.Append('(');
+                        postFixStr.Append(snapNum);
+                        postFixStr.Append(')');
+                    }
                 }
+
+                newPath.Append(' ');
+                newPath.Append(postFixStr);
+                newPath.Append(MemoryProfilerWindow.k_SnapshotFileExtension);
+                finalPath = newPath.ToString();
             }
-            else
+
+
+            string originalSSPath = path.Replace(MemoryProfilerWindow.k_SnapshotFileExtension, ".png");
+            bool ssExists = File.Exists(originalSSPath);
+            switch (mode)
             {
-                string newPath = m_Info.FullName + Path.DirectorySeparatorChar + Path.GetFileNameWithoutExtension(file.Name) + "-import-" + DateTime.Now.Ticks + MemoryProfilerWindow.k_SnapshotFileExtension;
-                switch (mode)
-                {
-                    case ImportMode.Copy:
-                        file = file.CopyTo(newPath);
-                        break;
-                    case ImportMode.Move:
-                        file.MoveTo(newPath);
-                        break;
-                }
-                m_Snapshots.Add(new SnapshotFileData(file));
-                m_Info.Refresh();
-                return m_Snapshots[m_Snapshots.Count - 1];
+                case ImportMode.Copy:
+                    file = file.CopyTo(finalPath, false);
+                    if (ssExists)
+                        File.Copy(originalSSPath, finalPath.Replace(MemoryProfilerWindow.k_SnapshotFileExtension, ".png"));
+                    break;
+                case ImportMode.Move:
+                    file.MoveTo(finalPath);
+                    if (ssExists)
+                        File.Move(originalSSPath, finalPath.Replace(MemoryProfilerWindow.k_SnapshotFileExtension, ".png"));
+                    break;
             }
-            return null;
+
+
+            var snapFileData = new SnapshotFileData(file);
+            m_Snapshots.Add(snapFileData);
+            m_Info.Refresh();
+            m_Snapshots.Sort();
+
+            if (collectionRefresh != null)
+            {
+                using(var it = GetEnumerator())
+                    collectionRefresh(it);
+            }
+
+            return snapFileData;
         }
 
         public void RefreshCollection()
         {
             DirectoryInfo rootDir = new DirectoryInfo(m_Info.FullName);
+            if (!rootDir.Exists)
+                rootDir.Create();
+
             if (rootDir.LastWriteTime != m_Info.LastWriteTime)
             {
                 m_Info = new DirectoryInfo(m_Info.FullName);
                 RefreshFileListInternal(m_Info);
-
-                if (collectionRefresh != null)
-                {
-                    collectionRefresh();
-                }
             }
         }
 
         public SnapshotCollectionEnumerator GetEnumerator()
         {
             return new SnapshotCollectionEnumerator(m_Snapshots);
+        }
+
+        void Cleanup()
+        {
+            if (m_Snapshots != null && m_Snapshots.Count > 0)
+            {
+                for (int i = 0; i < m_Snapshots.Count; ++i)
+                    m_Snapshots[i].Dispose();
+
+                m_Snapshots.Clear();
+            }
+            m_Snapshots = null;
+        }
+
+        public void Dispose()
+        {
+            Cleanup();
         }
     }
 }

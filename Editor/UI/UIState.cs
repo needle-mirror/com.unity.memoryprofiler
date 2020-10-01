@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public IDataFormatter GetFormatter(string name)
         {
-            if (String.IsNullOrEmpty(name)) return GetDefaultFormatter();
+            if (String.IsNullOrEmpty(name)) return DefaultDataFormatter.Instance;
 
             IDataFormatter formatter;
             if (m_DataFormatters.TryGetValue(name, out formatter))
@@ -29,11 +29,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             return DefaultDataFormatter.Instance;
         }
+    }
 
-        public IDataFormatter GetDefaultFormatter()
-        {
-            return DefaultDataFormatter.Instance;
-        }
+    enum FirstSnapshotAge
+    {
+        None,
+        Older,
+        Newer
     }
 
     /// <summary>
@@ -63,6 +65,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public ViewPane CurrentViewPane { get; private set; }
 
             public BaseMode() {}
+
             protected BaseMode(BaseMode copy)
             {
                 m_TableNames = copy.m_TableNames;
@@ -131,13 +134,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             QueriedMemorySnapshot m_RawSnapshot;
             RawSchema m_RawSchema;
 
-            public RawSchema RawSchema
-            {
-                get
-                {
-                    return m_RawSchema;
-                }
-            }
+
 
             public Database.View.ViewSchema ViewSchema;
             public Database.Schema SchemaToDisplay;
@@ -379,6 +376,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public event Action<BaseMode, ViewMode> ModeChanged = delegate {};
 
+        public FirstSnapshotAge SnapshotAge { get; private set; }
+
         public BaseMode CurrentMode
         {
             get
@@ -481,6 +480,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             CurrentViewMode = ViewMode.ShowNone;
             diffMode = null;
             history.Clear();
+            SnapshotAge = FirstSnapshotAge.None;
         }
 
         public void ClearFirstMode()
@@ -492,6 +492,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (diffMode != null)
             {
                 ClearDiffMode();
+                SnapshotAge = FirstSnapshotAge.None;
             }
 
             if (CurrentViewMode == ViewMode.ShowFirst)
@@ -513,6 +514,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (diffMode != null)
             {
                 ClearDiffMode();
+                SnapshotAge = FirstSnapshotAge.None;
             }
 
             if (CurrentViewMode == ViewMode.ShowSecond)
@@ -556,6 +558,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             var temp = SecondMode;
             SecondMode = FirstMode;
             FirstMode = temp;
+
+            if (SnapshotAge == FirstSnapshotAge.Newer)
+                SnapshotAge = FirstSnapshotAge.Older;
+            else if (SnapshotAge == FirstSnapshotAge.Older)
+                SnapshotAge = FirstSnapshotAge.Newer;
+
             if (CurrentViewMode != ViewMode.ShowDiff)
             {
                 CurrentViewMode = CurrentViewMode == ViewMode.ShowFirst ? ViewMode.ShowSecond : ViewMode.ShowFirst;
@@ -568,44 +576,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             history.Clear();
             diffMode = new DiffMode(FormattingOptions.ObjectDataFormatter, firstIsOlder ? FirstMode : SecondMode , firstIsOlder ? SecondMode : FirstMode);
             CurrentViewMode = ViewMode.ShowDiff;
-        }
-
-        public bool LoadView(string filename)
-        {
-            if (CurrentViewMode == ViewMode.ShowNone)
-            {
-                Debug.LogWarning("Must open a snapshot before loading a view file");
-                MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(1);
-                return false;
-            }
-
-            if (String.IsNullOrEmpty(filename)) return false;
-
-            var builder = Database.View.ViewSchema.Builder.LoadFromXMLFile(filename);
-            if (builder == null) return false;
-
-            BaseMode newMode = CurrentMode.BuildViewSchemaClone(builder);
-            if (newMode == null) return false;
-
-            switch (CurrentViewMode)
-            {
-                case ViewMode.ShowFirst:
-                    FirstMode = newMode;
-                    break;
-                case ViewMode.ShowSecond:
-                    SecondMode = newMode;
-                    break;
-                case ViewMode.ShowDiff:
-                    diffMode = newMode as DiffMode;
-                    FirstMode = diffMode.modeFirst;
-                    SecondMode = diffMode.modeSecond;
-                    break;
-                default:
-                    break;
-            }
-            history.Clear();
-            ModeChanged(CurrentMode, CurrentViewMode);
-            return true;
+            if (firstIsOlder)
+                SnapshotAge = FirstSnapshotAge.Older;
         }
 
         public void TransitModeToOwningTable(Table table)

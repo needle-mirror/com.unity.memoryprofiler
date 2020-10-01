@@ -9,10 +9,11 @@ Shader "Resources/MemoryMapDiff"
         _ZTest ("ZTest", Int) = 4.0 // LEqual
         _Cull ("Cull", Int) = 0.0 // Off
         _ZBias ("ZBias", Float) = 0.0
-        _ColorNotModified ("ColorNotModified", Color) = (1,1,1,1)
-        _ColorDeallocated ("ColorDeallocated", Color) = (1,1,1,1)
-        _ColorModified ("ColorModified", Color) = (1,1,1,1)
-        _ColorAllocated ("ColorAllocated", Color) = (1,1,1,1)
+        // using Vector instead of Color to avoid automatic Color space correction on setting the color.
+        _ColorNotModified ("ColorNotModified", Vector) = (1,1,1,1)
+        _ColorDeallocated ("ColorDeallocated", Vector) = (1,1,1,1)
+        _ColorModified ("ColorModified", Vector) = (1,1,1,1)
+        _ColorAllocated ("ColorAllocated", Vector) = (1,1,1,1)
     }
 
     SubShader

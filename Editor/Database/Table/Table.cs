@@ -137,6 +137,21 @@ namespace Unity.MemoryProfiler.Editor.Database
             return m_Columns[index];
         }
 
+        public virtual Column[] GetColumnsByIndex(int[] indices)
+        {
+            Column[] cols = new Column[indices.Length];
+            for (int i = 0; i < cols.Length; ++i)
+            {
+                var index = indices[i];
+                if (index < 0 || index >= m_Columns.Count)
+                    continue;
+
+                cols[i] = m_Columns[index];
+            }
+
+            return cols;
+        }
+
         public Column GetColumnByName(string name)
         {
             if (name == MetaTable.kRowIndexColumnName)

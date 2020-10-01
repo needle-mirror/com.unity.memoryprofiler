@@ -646,7 +646,13 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     // Fix meta columns (that does not have a data type set) to their fallback value
                     foreach (var fb in buildingData.FallbackColumnType)
                     {
-                        if (fb.Key.Type == null) fb.Key.Type = fb.Value;
+                        if (fb.Key.Type.scriptingType == null)
+                        {
+                            var metaType = new MetaType();
+                            metaType.scriptingType = fb.Value;
+                            metaType.comparisonMethod = fb.Value == typeof(string) ? DataMatchMethod.AsString : DataMatchMethod.AsNumber;
+                            fb.Key.Type = metaType;
+                        }
                     }
 
                     //Build missing column with default behavior

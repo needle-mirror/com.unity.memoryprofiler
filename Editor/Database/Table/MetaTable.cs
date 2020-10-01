@@ -41,12 +41,28 @@ namespace Unity.MemoryProfiler.Editor.Database
             return m_Columns[index];
         }
 
+        public Database.MetaColumn[] GetColumnsByIndex(int[] indices)
+        {
+            MetaColumn[] cols = new MetaColumn[indices.Length];
+            for(int i = 0; i < cols.Length; ++i)
+            {
+                var index = indices[i];
+                if (index < 0 || index >= m_Columns.Count)
+                    continue;
+
+                cols[i] = m_Columns[index];
+            }
+
+            return cols;
+        }
+
         public Database.MetaColumn GetColumnByName(string name)
         {
             Database.MetaColumn o;
             if (name == kRowIndexColumnName)
             {
-                o = new Database.MetaColumn(kRowIndexColumnName, "Row", typeof(long), false, null, null);
+                var metaType = new MetaType() { scriptingType = typeof(long), comparisonMethod = DataMatchMethod.AsNumber };
+                o = new Database.MetaColumn(kRowIndexColumnName, "Row", metaType, false, null, null);
                 return o;
             }
 

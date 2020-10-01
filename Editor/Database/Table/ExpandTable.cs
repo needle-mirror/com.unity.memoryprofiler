@@ -72,7 +72,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             for (int i = 0; i != m_Meta.GetColumnCount(); ++i)
             {
                 var metaCol = m_Meta.GetColumnByIndex(i);
-                IExpandColumn newCol = (IExpandColumn)Database.Operation.ColumnCreator.CreateColumn(typeof(ExpandColumnTyped<>), metaCol.Type);
+                IExpandColumn newCol = (IExpandColumn)Database.Operation.ColumnCreator.CreateColumn(typeof(ExpandColumnTyped<>), metaCol.Type.scriptingType);
 
                 newCol.Initialize(this, baseColumn[i], i);
                 m_Columns.Add((Column)newCol);
@@ -87,9 +87,9 @@ namespace Unity.MemoryProfiler.Editor.Database
             {
                 m_Columns.AddRange(Enumerable.Range(0, missingColumnCount).Select(x => (Column)null));
             }
-            if (metaColumn.Type != null)
+            if (metaColumn.Type.scriptingType != null)
             {
-                IExpandColumn newExpandColumn = (IExpandColumn)Database.Operation.ColumnCreator.CreateColumn(typeof(ExpandColumnTyped<>), metaColumn.Type);
+                IExpandColumn newExpandColumn = (IExpandColumn)Database.Operation.ColumnCreator.CreateColumn(typeof(ExpandColumnTyped<>), metaColumn.Type.scriptingType);
                 newExpandColumn.Initialize(this, newColumn, metaColumn.Index);
                 m_Columns[metaColumn.Index] = (Column)newExpandColumn;
             }

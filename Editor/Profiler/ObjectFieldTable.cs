@@ -294,7 +294,7 @@ namespace Unity.MemoryProfiler.Editor
             var row2 = m_Fields.RowToFieldIndex(row);
             if (row2 < 0 || row2 >= m_Fields.fieldIndices.Length)
             {
-                return ObjectData.invalid;
+                return ObjectData.Invalid;
             }
             return obj.GetInstanceFieldBySnapshotFieldIndex(Snapshot, m_Fields.fieldIndices[row2], true);
         }

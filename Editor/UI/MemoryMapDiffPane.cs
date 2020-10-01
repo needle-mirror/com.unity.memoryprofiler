@@ -232,6 +232,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override void OnClose()
         {
+            m_MemoryMap.Dispose();
             m_MemoryMap = null;
             m_Spreadsheet = null;
             m_ActiveMode = null;
@@ -382,7 +383,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             EditorGUILayout.BeginHorizontal(Styles.MemoryMap.ContentToolbar);
 
-            if (GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, "Snapshot A", EditorStyles.radioButton))
+            var age = m_UIState.SnapshotAge;
+
+            if (GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, age == FirstSnapshotAge.Older ? "Old" : "New", EditorStyles.radioButton))
             {
                 if (m_ActiveMode != m_UIState.FirstMode)
                 {
@@ -391,7 +394,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            if (GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, "Snapshot B",  EditorStyles.radioButton))
+            if (GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, age == FirstSnapshotAge.Older ? "New" : "Old",  EditorStyles.radioButton))
             {
                 if (m_ActiveMode != m_UIState.SecondMode)
                 {
@@ -449,7 +452,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     if (col != null && row < col.GetRowCount())
                     {
-                        long id = Convert.ToInt64(col.GetRowValueString(row, Database.DefaultDataFormatter.Instance));
+                        long id = 0;
+                        string rowValue = col.GetRowValueString(row, Database.DefaultDataFormatter.Instance);
+                        long.TryParse(rowValue, out id);
                         GUI.Label(r, m_ActiveMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_ActiveMode.snapshot.nativeCallstackSymbols, id));
                     }
                 }

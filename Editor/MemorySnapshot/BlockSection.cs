@@ -40,7 +40,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         // effectively bypassing the need for getItemFunc and the temp byte array.
         // However, Stream.CopyTo(Stream, int) is not available as of .NET runtime 3.5, making our only
         // option the copy into the temp byte array.
-        internal void GetData(ulong startBlockOffset, uint blockLength, ref byte[] dataOut, BinaryReader reader)
+        internal void GetData(ulong startBlockOffset, ulong blockLength, ref byte[] dataOut, BinaryReader reader)
         {
             Debug.Assert(startBlockOffset + blockLength <= m_TotalBytes);
 

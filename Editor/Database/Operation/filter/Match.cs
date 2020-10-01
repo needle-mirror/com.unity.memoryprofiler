@@ -31,23 +31,35 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                 UnityEngine.Debug.LogError("No column index " + m_columnIndex + " on table '" + m_SourceTable.GetName() + "'");
                 indices = new long[0];
             }
-            var t = metaCol.Type;
-            Matcher m;
-            if (t == typeof(string))
+
+            Matcher m = null;
+
+            string matchStr = m_matchString;
+
+            switch (metaCol.Type.comparisonMethod)
             {
-                var ssm = new SubStringMatcher();
-                ssm.value = m_matchString;
-                m = ssm;
+                case DataMatchMethod.AsString:
+                    m = new SubStringMatcher();
+                    break;
+                case DataMatchMethod.AsEnum:
+                    m = new NumericMatcher();
+                    var enumType = typeof(DiffTable.DiffResult);
+                    var parsed = (DiffTable.DiffResult)Enum.Parse(enumType, matchStr, true);
+                    if (Enum.IsDefined(enumType, parsed))
+                    {
+                        matchStr = ((int)parsed).ToString();
+                    }
+                    else
+                        matchStr = "0";
+
+                    break;
+                case DataMatchMethod.AsNumber:
+                    m = new NumericMatcher();
+                    break;
             }
-            else
-            {
-                m = ColumnCreator.CreateConstMatcher(t, m_matchString);
-                if (m == null)
-                {
-                    indices = new long[0];
-                    return;
-                }
-            }
+            
+            m.SetMatchPredicate(matchStr);
+            
             var matchIndices = col.GetMatchIndex(m_Range, m);
             indices = matchIndices;
         }
@@ -207,19 +219,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             EditorGUILayout.BeginHorizontal();
             bool bRemove = OnGui_RemoveButton();
             var metaCol = sourceTable.GetMetaData().GetColumnByIndex(m_ColumnIndex);
-            string label;
-
             var t = metaCol.Type;
-            if (t == typeof(string))
-            {
-                label = "'" + metaCol.DisplayName + "' contains:";
-            }
-            else
-            {
-                label = "'" + metaCol.DisplayName + "' is:";
-            }
-            GUILayout.Label(label);
-            if (t.IsEnum)
+
+            GUILayout.Label(string.Format(t.comparisonMethod == DataMatchMethod.AsString ? "'{0}' contains:" : "'{0}' is:", metaCol.DisplayName));
+            if (t.scriptingType.IsEnum)
             {
                 string[] popupSelection;
                 if (m_CacheSourceTable == sourceTable)
@@ -228,10 +231,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                 }
                 else
                 {
-                    var names = System.Enum.GetNames(t);
-                    popupSelection = new string[names.Length + 1];
-                    popupSelection[0] = "<All>";
-                    System.Array.Copy(names, 0, popupSelection, 1, names.Length);
+                    var names = System.Enum.GetNames(t.scriptingType);
+                    popupSelection = new string[names.Length];
+                    popupSelection[0] = "All";
+                    System.Array.Copy(names, 1, popupSelection, 1, names.Length - 1);
 
                     if (m_CacheSourceTable == null)
                     {
@@ -241,7 +244,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                 }
 
                 GUI.SetNextControlName(k_MatchStringField);
-                int newSelectedPopup = EditorGUILayout.Popup(m_SelectedPopup, popupSelection);
+                int newSelectedPopup = EditorGUILayout.Popup(m_SelectedPopup, popupSelection, GUILayout.Width(75));
                 if (m_ForceFocus)
                 {
                     m_ForceFocus = false;

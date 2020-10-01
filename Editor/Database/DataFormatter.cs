@@ -40,6 +40,14 @@ namespace Unity.MemoryProfiler.Editor.Database
                 return m_Instance;
             }
         }
+
+        // Formats "[ptr]" or "null" if ptr == 0
+        public string FormatPointer(ulong ptr)
+        {
+            if (ptr == 0) return "null";
+            return string.Format("[0x{0:x16}]", ptr);
+        }
+
         string IDataFormatter.Format(object obj)
         {
             if (obj == null) return "";

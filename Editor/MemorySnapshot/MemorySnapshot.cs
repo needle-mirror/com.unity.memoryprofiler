@@ -20,13 +20,35 @@ namespace Unity.MemoryProfiler.Editor.Format
         public string content;
         [NonSerialized]
         public string platform;
-        #if !UNITY_2020_1_OR_NEWER
         public Texture2D screenshot;
-        #endif
     }
 
     // !!!!! NOTE: Keep in sync with native unity code-base
-    public class QueriedMemorySnapshot : IDisposable
+    public interface IQueriedMemorySnapshot
+    {
+        IConnectionEntries connections { get; }
+        IFieldDescriptionEntries fieldDescriptions { get; }
+        IGCHandleEntries gcHandles { get; }
+        IManagedMemorySectionEntries managedHeapSections { get; }
+        IManagedMemorySectionEntries managedStacks { get; }
+        INativeAllocationEntries nativeAllocations { get; }
+        INativeAllocationSiteEntries nativeAllocationSites { get; }
+        INativeCallstackSymbolEntries nativeCallstackSymbols { get; }
+        INativeMemoryLabelEntries nativeMemoryLabels { get; }
+        INativeMemoryRegionEntries nativeMemoryRegions { get; }
+        INativeObjectEntries nativeObjects { get; }
+        INativeRootReferenceEntries nativeRootReferences { get; }
+        INativeTypeEntries nativeTypes { get; }
+        ITypeDescriptionEntries typeDescriptions { get; }
+        uint version { get; }
+        MetaData metadata { get; }
+        DateTime recordDate { get; }
+        CaptureFlags captureFlags { get; }
+        VirtualMachineInformation virtualMachineInformation { get; }
+        void Dispose();
+    }
+
+    public class QueriedMemorySnapshot : IDisposable, IQueriedMemorySnapshot
     {
         const uint kMinSupportedVersion = 8;
         const uint kCurrentVersion = 10;
@@ -59,20 +81,20 @@ namespace Unity.MemoryProfiler.Editor.Format
 
         MemorySnapshotFileReader m_Reader = null;
 
-        public ConnectionEntries connections { get; internal set; }
-        public FieldDescriptionEntries fieldDescriptions { get; internal set; }
-        public GCHandleEntries gcHandles { get; internal set; }
-        public ManagedMemorySectionEntries managedHeapSections { get; internal set; }
-        public ManagedMemorySectionEntries managedStacks { get; internal set; }
-        public NativeAllocationEntries nativeAllocations { get; internal set; }
-        public NativeAllocationSiteEntries nativeAllocationSites { get; internal set; }
-        public NativeCallstackSymbolEntries nativeCallstackSymbols { get; internal set; }
-        public NativeMemoryLabelEntries nativeMemoryLabels { get; internal set; }
-        public NativeMemoryRegionEntries nativeMemoryRegions { get; internal set; }
-        public NativeObjectEntries nativeObjects { get; internal set; }
-        public NativeRootReferenceEntries nativeRootReferences { get; internal set; }
-        public NativeTypeEntries nativeTypes { get; internal set; }
-        public TypeDescriptionEntries typeDescriptions { get; internal set; }
+        public IConnectionEntries connections { get; internal set; }
+        public IFieldDescriptionEntries fieldDescriptions { get; internal set; }
+        public IGCHandleEntries gcHandles { get; internal set; }
+        public IManagedMemorySectionEntries managedHeapSections { get; internal set; }
+        public IManagedMemorySectionEntries managedStacks { get; internal set; }
+        public INativeAllocationEntries nativeAllocations { get; internal set; }
+        public INativeAllocationSiteEntries nativeAllocationSites { get; internal set; }
+        public INativeCallstackSymbolEntries nativeCallstackSymbols { get; internal set; }
+        public INativeMemoryLabelEntries nativeMemoryLabels { get; internal set; }
+        public INativeMemoryRegionEntries nativeMemoryRegions { get; internal set; }
+        public INativeObjectEntries nativeObjects { get; internal set; }
+        public INativeRootReferenceEntries nativeRootReferences { get; internal set; }
+        public INativeTypeEntries nativeTypes { get; internal set; }
+        public ITypeDescriptionEntries typeDescriptions { get; internal set; }
 
         internal QueriedMemorySnapshot(MemorySnapshotFileReader reader)
         {
@@ -152,13 +174,11 @@ namespace Unity.MemoryProfiler.Editor.Format
                         offset = ReadIntFromByteArray(array, offset, out width);
                         offset = ReadIntFromByteArray(array, offset, out height);
                         offset = ReadIntFromByteArray(array, offset, out format);
+                        
+                        data.screenshot = new Texture2D(width, height, (TextureFormat)format, false);
+                        data.screenshot.LoadRawTextureData(screenshot);
+                        data.screenshot.Apply();
 
-                        //Suppress compiler warning about member
-#if !UNITY_2020_1_OR_NEWER
-                    data.screenshot = new Texture2D(width, height, (TextureFormat)format, false);
-                    data.screenshot.LoadRawTextureData(screenshot);
-                    data.screenshot.Apply();
-#endif
                     }
                 }
 

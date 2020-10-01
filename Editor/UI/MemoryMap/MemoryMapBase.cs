@@ -7,7 +7,7 @@ using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 {
-    internal abstract class MemoryMapBase
+    internal abstract class MemoryMapBase : IDisposable
     {        
         public const int k_RowCacheSize = 512;       // Height of texture that store visible rows + extra data to preload data.
         protected ulong m_BytesInRow = 8 * 1024 * 1024;
@@ -70,7 +70,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         }
 
         string m_MaterialName;
-
+        const string k_MemoryMapTextureSlot = "MemoryMapBackingTextureSlot";
         Texture2D[] m_TextureSlots;
 
         public MemoryMapBase(int textureSlots = 1, string materialName = "Resources/MemoryMap")
@@ -256,7 +256,11 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 if (flushTexture)
                 {
-                    m_Texture = m_TextureSlots[slot] = new Texture2D((int)MemoryMapRect.width, k_RowCacheSize, TextureFormat.RGBA32, false);
+                    if (m_Texture != null)
+                        UnityEngine.Object.DestroyImmediate(m_Texture);
+
+                    m_Texture = m_TextureSlots[slot] = new Texture2D((int)MemoryMapRect.width, k_RowCacheSize, TextureFormat.RGBA32, false, true);
+                    m_Texture.name = k_MemoryMapTextureSlot;
                     m_Texture.wrapMode = TextureWrapMode.Clamp;
                     m_Texture.filterMode = FilterMode.Point;
                 }
@@ -520,6 +524,15 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             }
 
             return 0;
+        }
+
+        public void Dispose()
+        {
+            if(m_TextureSlots != null)
+            {
+                for (int i = 0; i < m_TextureSlots.Length; ++i)
+                    UnityEngine.Object.DestroyImmediate(m_TextureSlots[i]);
+            }
         }
     }
 }

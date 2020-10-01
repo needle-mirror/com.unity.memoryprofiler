@@ -94,7 +94,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             for (int i = 0; i != m_Meta.GetColumnCount(); ++i)
             {
                 var metaCol = m_Meta.GetColumnByIndex(i);
-                IGroupedColumn newCol = (IGroupedColumn)ColumnCreator.CreateColumn(typeof(GroupedColumnTyped<>), metaCol.Type);
+                IGroupedColumn newCol = (IGroupedColumn)ColumnCreator.CreateColumn(typeof(GroupedColumnTyped<>), metaCol.Type.scriptingType);
 
                 newCol.Initialize(this, m_table.GetColumnByIndex(i), i, metaCol.DefaultMergeAlgorithm, i == sourceColToGroup);
                 m_Columns.Add((Column)newCol);

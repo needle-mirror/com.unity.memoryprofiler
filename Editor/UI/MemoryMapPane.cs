@@ -210,6 +210,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override void OnClose()
         {
+            m_MemoryMap.Dispose();
             m_MemoryMap = null;
             m_Spreadsheet = null;
 
@@ -418,9 +419,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     if (col != null && row < col.GetRowCount())
                     {
+                        string readableCallstack = string.Empty;
+                        long id = 0;
+
                         scrool = GUILayout.BeginScrollView(scrool, false, true, GUILayout.Width(r.width), GUILayout.Height(r.height));
-                        long id = Convert.ToInt64(col.GetRowValueString(row, Database.DefaultDataFormatter.Instance));
-                        string readableCallstack = m_UIState.snapshotMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_UIState.snapshotMode.snapshot.nativeCallstackSymbols, id);
+                        string rowValue = col.GetRowValueString(row, Database.DefaultDataFormatter.Instance);                        
+                        if(long.TryParse(rowValue, out id))
+                        {                            
+                            readableCallstack = m_UIState.snapshotMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_UIState.snapshotMode.snapshot.nativeCallstackSymbols, id);
+                        }
 
                         GUILayout.Label(readableCallstack);
                         GUILayout.EndScrollView();

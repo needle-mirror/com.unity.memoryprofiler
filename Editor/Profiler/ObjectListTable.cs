@@ -134,40 +134,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
     }
-
-    /// <summary>
-    /// Column that output a string that uniquely identify each object
-    /// </summary>
-    internal class ObjectListUniqueStringColumn : Database.ColumnTyped<string>
-    {
-        ObjectListTable m_Table;
-        public ObjectListUniqueStringColumn(ObjectListTable table)
-        {
-            m_Table = table;
-        }
-
-        public override long GetRowCount()
-        {
-            return m_Table.GetObjectCount();
-        }
-
-        public override string GetRowValue(long row)
-        {
-            var obj = m_Table.GetObjectData(row).displayObject;
-            var result = m_Table.Formatter.FormatUniqueString(obj);
-            return result;
-        }
-
-        public override void SetRowValue(long row, string value)
-        {
-        }
-
-        public override Database.LinkRequest GetRowLink(long row)
-        {
-            return null;
-        }
-    }
-
+    
     /// <summary>
     /// Column that lists the address where an object reside in memory.
     /// </summary>
@@ -188,6 +155,14 @@ namespace Unity.MemoryProfiler.Editor
         {
             var obj = m_Table.GetObjectData(row).displayObject;
             return obj.GetObjectPointer(m_Table.Snapshot, false);
+        }
+
+        public override string GetRowValueString(long row, IDataFormatter formatter)
+        {
+            var i = GetRowValue(row);
+            if (i < 0) return "";
+
+            return m_Table.Formatter.FormatPointer(i);
         }
 
         public override void SetRowValue(long row, ulong value)
@@ -621,7 +596,7 @@ namespace Unity.MemoryProfiler.Editor
             var obj = m_Table.GetObjectData(row).displayObject;
             if (obj.isManaged)
             {
-                ManagedObjectInfo moi = GetInfo(obj);
+                ManagedObjectInfo moi = m_Table.GetMoiFromObjectData(obj);
                 if (moi.IsValid() && moi.NativeObjectIndex >= 0)
                 {
                     var instanceId = m_Table.Snapshot.nativeObjects.instanceId[moi.NativeObjectIndex];
@@ -641,26 +616,6 @@ namespace Unity.MemoryProfiler.Editor
                 return MakeLink(ObjectAllNativeTable.TableName, instanceId, row);
             }
             return null;
-        }
-
-        protected ManagedObjectInfo GetInfo(ObjectData obj)
-        {
-            int idx = 0;
-            switch (obj.dataType)
-            {
-                case ObjectDataType.Object:
-                    m_Table.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out idx);
-                    return m_Table.CrawledData.ManagedObjects[idx];
-                case ObjectDataType.ReferenceObject:
-                {
-                    var ptr = obj.GetReferencePointer();
-                    if (ptr == 0) return default(ManagedObjectInfo);
-                    m_Table.CrawledData.MangedObjectIndexByAddress.TryGetValue(ptr, out idx);
-                    return m_Table.CrawledData.ManagedObjects[idx];
-                }
-                default:
-                    return default(ManagedObjectInfo);
-            }
         }
     }
 
@@ -698,7 +653,7 @@ namespace Unity.MemoryProfiler.Editor
                     return m_Table.Snapshot.nativeObjects.objectName[obj.nativeObjectIndex];
             }
 
-            ManagedObjectInfo moi = GetInfo(obj);
+            ManagedObjectInfo moi = m_Table.GetMoiFromObjectData(obj);
             if (moi.IsValid() && moi.NativeObjectIndex >= 0)
             {
                 return m_Table.Snapshot.nativeObjects.objectName[moi.NativeObjectIndex];
@@ -770,7 +725,7 @@ namespace Unity.MemoryProfiler.Editor
         public override long GetRowValue(long row)
         {
             var obj = m_Table.GetObjectData(row).displayObject;
-            ManagedObjectInfo moi = GetInfo(obj);
+            ManagedObjectInfo moi = m_Table.GetMoiFromObjectData(obj);
             if (moi.IsValid() && moi.NativeObjectIndex >= 0)
             {
                 return (long)m_Table.Snapshot.nativeObjects.size[moi.NativeObjectIndex];
@@ -816,7 +771,7 @@ namespace Unity.MemoryProfiler.Editor
                     return m_Table.Snapshot.nativeObjects.instanceId[obj.nativeObjectIndex];
                 case ObjectDataType.Object:
                 case ObjectDataType.ReferenceObject:
-                    ManagedObjectInfo moi = GetInfo(obj);
+                    ManagedObjectInfo moi = m_Table.GetMoiFromObjectData(obj);
                     if (moi.IsValid() && moi.NativeObjectIndex >= 0)
                     {
                         return m_Table.Snapshot.nativeObjects.instanceId[moi.NativeObjectIndex];
@@ -892,61 +847,73 @@ namespace Unity.MemoryProfiler.Editor
 
             var metaManaged = new Database.MetaTable();
             var metaNative = new Database.MetaTable();
+            var metaAll = new Database.MetaTable();
+
             s_Meta[(int)ObjectMetaType.Managed] = metaManaged;
             s_Meta[(int)ObjectMetaType.Native] = metaNative;
-            s_Meta[(int)ObjectMetaType.All] = metaManaged;
+            s_Meta[(int)ObjectMetaType.All] = metaAll;
 
             metaManaged.name = TableName;
             metaManaged.displayName = TableDisplayName;
             metaNative.name = TableName;
             metaNative.displayName = TableDisplayName;
+            metaAll.name = TableName;
+            metaAll.displayName = TableDisplayName;
 
-            var metaColIndex           = new Database.MetaColumn("Index", "Index", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(int)), "", 40);
-            var metaColName            = new Database.MetaColumn("Name", "Name", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 200);
-            var metaColValue           = new Database.MetaColumn("Value", "Value", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 180);
-            var metaColType            = new Database.MetaColumn("Type", "Type", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 250);
-            var metaColDataType        = new Database.MetaColumn("DataType", "Data Type", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 150);
-            var metaColNOName          = new Database.MetaColumn("NativeObjectName", "Native Object Name", typeof(string), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 125);
-            var metaColLength          = new Database.MetaColumn("Length", "Length", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 50);
-            var metaColStatic          = new Database.MetaColumn("Static", "Static", typeof(bool), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(bool)), "", 50);
-            var metaColRefCount        = new Database.MetaColumn("RefCount", "RefCount", typeof(int), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 50);
-            var metaColOwnerSize       = new Database.MetaColumn("OwnedSize", "Owned Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 50);
-            var metaColTargetSize      = new Database.MetaColumn("TargetSize", "Target Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 50);
-            var metaColNativeSize      = new Database.MetaColumn("NativeSize", "Native Size", typeof(long), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 75);
-            var metaColNativeId        = new Database.MetaColumn("NativeInstanceId", "Native Instance ID", typeof(int), false, Grouping.groupByDuplicate, null, "", 75);
-            var metaColAddress         = new Database.MetaColumn("Address", "Address", typeof(ulong), false, Grouping.groupByDuplicate, null, "", 75);
-            var metaColUniqueString    = new Database.MetaColumn("UniqueString", "Unique String", typeof(string), true, Grouping.groupByDuplicate, null, "", 250);
+            var metaColName = new MetaColumn("Name", "Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 200);
+            var metaColIndex = new MetaColumn("Index", "Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(int)), "", 40);
+            var metaColValue = new MetaColumn("Value", "Value", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 180);
+            var metaColType = new MetaColumn("Type", "Type", new MetaType(typeof(string)), true, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 250);
+            var metaColDataType = new MetaColumn("DataType", "Data Type", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 75);
+            var metaColNOName = new MetaColumn("NativeObjectName", "Native Object Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 125);
+            var metaColLength = new MetaColumn("Length", "Length", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 50);
+            var metaColStatic = new MetaColumn("Static", "Static", new MetaType(typeof(bool)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(bool)), "", 50);
+            var metaColRefCount = new MetaColumn("RefCount", "RefCount", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 50);
+            var metaColOwnerSize = new MetaColumn("OwnedSize", "Owned Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 50);
+            var metaColTargetSize = new MetaColumn("TargetSize", "Target Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 50);
+            var metaColNativeSize = new MetaColumn("NativeSize", "Native Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 75);
+            var metaColNativeId = new MetaColumn("NativeInstanceId", "Native Instance ID", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null, "", 75);
+            var metaColAddress = new MetaColumn("Address", "Address", new MetaType(typeof(ulong)), true, Grouping.groupByDuplicate, null, "", 75);
 
-            var metaManagedCol = new List<Database.MetaColumn>();
+            var metaManagedCol = new List<MetaColumn>();
             metaManagedCol.Add(metaColIndex);
+            metaManagedCol.Add(metaColAddress);
             metaManagedCol.Add(metaColName);
             metaManagedCol.Add(metaColValue);
-            metaManagedCol.Add(metaColType);
-            metaManagedCol.Add(metaColDataType);
-            metaManagedCol.Add(metaColNOName);
             metaManagedCol.Add(metaColLength);
+            metaManagedCol.Add(metaColType);
+            metaManagedCol.Add(metaColNOName);
             metaManagedCol.Add(metaColStatic);
             metaManagedCol.Add(metaColRefCount);
             metaManagedCol.Add(metaColOwnerSize);
             metaManagedCol.Add(metaColTargetSize);
-            metaManagedCol.Add(metaColNativeSize);
-            metaManagedCol.Add(metaColNativeId);
-            metaManagedCol.Add(metaColAddress);
-            metaManagedCol.Add(metaColUniqueString);
+
             var metaNativeCol = new List<Database.MetaColumn>();
             metaNativeCol.Add(new Database.MetaColumn(metaColIndex));
-            metaNativeCol.Add(new Database.MetaColumn(metaColName));
-            metaNativeCol.Add(new Database.MetaColumn(metaColValue));
-            metaNativeCol.Add(new Database.MetaColumn(metaColType));
+            metaNativeCol.Add(new Database.MetaColumn(metaColAddress));
+            metaNativeCol.Add(new Database.MetaColumn(metaColNativeId));
             metaNativeCol.Add(new Database.MetaColumn(metaColNOName));
-            metaNativeCol.Add(new Database.MetaColumn(metaColDataType));
+            metaNativeCol.Add(new Database.MetaColumn(metaColType));
             metaNativeCol.Add(new Database.MetaColumn(metaColRefCount));
             metaNativeCol.Add(new Database.MetaColumn(metaColOwnerSize));
-            metaNativeCol.Add(new Database.MetaColumn(metaColTargetSize));
-            metaNativeCol.Add(new Database.MetaColumn(metaColNativeId));
-            metaNativeCol.Add(new Database.MetaColumn(metaColAddress));
-            metaNativeCol.Add(new Database.MetaColumn(metaColUniqueString));
 
+            var metaAllCol = new List<Database.MetaColumn>();
+            metaAllCol.Add(new Database.MetaColumn(metaColIndex));
+            metaAllCol.Add(new Database.MetaColumn(metaColAddress));
+            metaAllCol.Add(new Database.MetaColumn(metaColName));
+            metaAllCol.Add(new Database.MetaColumn(metaColValue));
+            metaAllCol.Add(new Database.MetaColumn(metaColLength));
+            metaAllCol.Add(new Database.MetaColumn(metaColDataType));
+            metaAllCol.Add(new Database.MetaColumn(metaColType));
+            metaAllCol.Add(new Database.MetaColumn(metaColStatic));
+            metaAllCol.Add(new Database.MetaColumn(metaColNativeId));
+            metaAllCol.Add(new Database.MetaColumn(metaColNOName));
+            metaAllCol.Add(new Database.MetaColumn(metaColRefCount));
+            metaAllCol.Add(new Database.MetaColumn(metaColOwnerSize));
+            metaAllCol.Add(new Database.MetaColumn(metaColTargetSize));
+            metaAllCol.Add(new Database.MetaColumn(metaColNativeSize));
+
+            metaAll.SetColumns(metaAllCol.ToArray());
             metaManaged.SetColumns(metaManagedCol.ToArray());
             metaNative.SetColumns(metaNativeCol.ToArray());
         }
@@ -983,40 +950,46 @@ namespace Unity.MemoryProfiler.Editor
             Snapshot = snapshot;
             CrawledData = crawledData;
 
-            var col = new List<Database.Column>();
+            var col = new List<Column>();
             switch (metaType)
             {
-                case ObjectMetaType.All:
                 case ObjectMetaType.Managed:
                     col.Add(new ObjectListUnifiedIndexColumn(this));
+                    col.Add(new ObjectListAddressColumn(this));
                     col.Add(new ObjectListNameColumn(this));
                     col.Add(new ObjectListValueColumn(this));
-                    col.Add(new ObjectListTypeColumn(this));
-                    col.Add(new ObjectListObjectTypeColumn(this));
-                    col.Add(new ObjectListNativeObjectNameLinkColumn(this));
                     col.Add(new ObjectListLengthColumn(this));
+                    col.Add(new ObjectListTypeColumn(this));
+                    col.Add(new ObjectListNativeObjectNameLinkColumn(this));
                     col.Add(new ObjectListStaticColumn(this));
                     col.Add(new ObjectListRefCountColumn(this));
                     col.Add(new ObjectListOwnedSizeColumn(this));
                     col.Add(new ObjectListTargetSizeColumn(this));
-                    col.Add(new ObjectListNativeObjectSizeColumn(this));
-                    col.Add(new ObjectListNativeInstanceIdLinkColumn(this));
-                    col.Add(new ObjectListAddressColumn(this));
-                    col.Add(new ObjectListUniqueStringColumn(this));
                     break;
                 case ObjectMetaType.Native:
                     col.Add(new ObjectListUnifiedIndexColumn(this));
+                    col.Add(new ObjectListAddressColumn(this));
+                    col.Add(new ObjectListNativeInstanceIdColumn(this));
+                    col.Add(new ObjectListNativeObjectNameColumn(this));
+                    col.Add(new ObjectListTypeColumn(this));
+                    col.Add(new ObjectListRefCountColumn(this));
+                    col.Add(new ObjectListOwnedSizeColumn(this));
+                    break;
+                case ObjectMetaType.All:
+                    col.Add(new ObjectListUnifiedIndexColumn(this));
+                    col.Add(new ObjectListAddressColumn(this));
                     col.Add(new ObjectListNameColumn(this));
                     col.Add(new ObjectListValueColumn(this));
-                    col.Add(new ObjectListTypeColumn(this));
-                    col.Add(new ObjectListNativeObjectNameColumn(this));
+                    col.Add(new ObjectListLengthColumn(this));
                     col.Add(new ObjectListObjectTypeColumn(this));
+                    col.Add(new ObjectListTypeColumn(this));
+                    col.Add(new ObjectListStaticColumn(this));
+                    col.Add(new ObjectListNativeInstanceIdLinkColumn(this));
+                    col.Add(new ObjectListNativeObjectNameLinkColumn(this));
                     col.Add(new ObjectListRefCountColumn(this));
                     col.Add(new ObjectListOwnedSizeColumn(this));
                     col.Add(new ObjectListTargetSizeColumn(this));
-                    col.Add(new ObjectListNativeInstanceIdColumn(this));
-                    col.Add(new ObjectListAddressColumn(this));
-                    col.Add(new ObjectListUniqueStringColumn(this));
+                    col.Add(new ObjectListNativeObjectSizeColumn(this));
                     break;
             }
 
@@ -1026,6 +999,26 @@ namespace Unity.MemoryProfiler.Editor
         protected void InitObjectList()
         {
             InitGroup(GetObjectCount());
+        }
+
+        public ManagedObjectInfo GetMoiFromObjectData(ObjectData obj)
+        {
+            int idx = 0;
+            switch (obj.dataType)
+            {
+                case ObjectDataType.Object:
+                    CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out idx);
+                    return CrawledData.ManagedObjects[idx];
+                case ObjectDataType.ReferenceObject:
+                    {
+                        var ptr = obj.GetReferencePointer();
+                        if (ptr == 0) return default(ManagedObjectInfo);
+                        CrawledData.MangedObjectIndexByAddress.TryGetValue(ptr, out idx);
+                        return CrawledData.ManagedObjects[idx];
+                    }
+                default:
+                    return default(ManagedObjectInfo);
+            }
         }
 
         public override Database.Table CreateGroupTable(long groupIndex)
@@ -1135,14 +1128,21 @@ namespace Unity.MemoryProfiler.Editor
             switch (obj.dataType)
             {
                 case ObjectDataType.Array:
+                case ObjectDataType.ReferenceArray:
                 case ObjectDataType.BoxedValue:
+                case ObjectDataType.Value:
+                    return string.Empty;
                 case ObjectDataType.Object:
+                case ObjectDataType.ReferenceObject:
+
+                    ManagedObjectInfo moi = GetMoiFromObjectData(obj);
+                    if (moi.IsValid() && moi.NativeObjectIndex >= 0)
+                        return Snapshot.nativeObjects.objectName[moi.NativeObjectIndex];
+
+                    return string.Empty;
                 case ObjectDataType.NativeObject:
                 case ObjectDataType.NativeObjectReference:
-                case ObjectDataType.ReferenceArray:
-                case ObjectDataType.ReferenceObject:
-                case ObjectDataType.Value:
-                    return Formatter.FormatPointer(obj.GetObjectPointer(Snapshot));
+                    return Snapshot.nativeObjects.objectName[obj.nativeObjectIndex];
                 case ObjectDataType.Global:
                 case ObjectDataType.Type:
                 case ObjectDataType.Unknown:

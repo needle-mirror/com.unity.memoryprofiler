@@ -18,7 +18,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public int CurrentTableIndex { get; private set; }
 
-        bool m_NeedRefresh = false;
+        protected bool m_NeedRefresh = false;
 
         internal class History : HistoryEvent
         {

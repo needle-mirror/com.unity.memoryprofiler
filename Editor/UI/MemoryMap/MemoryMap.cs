@@ -160,7 +160,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     region.ColorRegion = m_ColorNative[(int)EntryColors.Region];
                 }
 
-                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 255));
+                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 254));
                 m_SnapshotMemoryRegion[regionIndex++] = region;
             }
 
@@ -174,7 +174,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 MemoryRegion region = new MemoryRegion(RegionType.Managed, start, size, name);
                 region.ColorRegion = m_ColorManaged[(int)EntryColors.Region];
-                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 255));
+                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 254));
                 m_SnapshotMemoryRegion[regionIndex++] = region;
             }
 
@@ -190,7 +190,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 MemoryRegion region = new MemoryRegion(RegionType.ManagedStack, start, size, name);
                 region.ColorRegion = m_ColorManagedStack[(int)EntryColors.Region];
-                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 255));
+                region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 254));
                 m_SnapshotMemoryRegion[regionIndex++] = region;
             }
 

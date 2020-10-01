@@ -164,11 +164,5 @@ namespace Unity.MemoryProfiler.Editor
             base.EndUpdate(updater);
             m_cache = null;
         }
-
-        //public override int GetObjectType(long row)
-        //{
-        //    var mo = crawledData.managedObjects[row];
-        //    return mo.iTypeDescription;
-        //}
     }
 }

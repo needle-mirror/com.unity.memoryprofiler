@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using UnityEngine;
 using UnityEditor;
+using System.Collections.Generic;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 #else
@@ -11,6 +12,30 @@ using Unity.MemoryProfiler.Editor.Format;
 
 namespace Unity.MemoryProfiler.Editor
 {
+    internal class GUITexture2DAsset
+    {
+        public enum SourceType
+        {
+            None,
+            Image,
+            Snapshot
+        }
+
+        public void SetTexture(Texture2D tex, SourceType src, long timeStamp)
+        {
+            if (Texture != null)
+                UnityEngine.Object.DestroyImmediate(Texture);
+            Texture = tex;
+            Source = src;
+            TimeStampTicks = timeStamp;
+        }
+
+        public Texture2D Texture { get; private set; }
+        public SourceType Source { get; private set; }
+
+        public long TimeStampTicks { get; private set; }
+    }
+
     internal class SnapshotFileGUIData
     {
         internal GUIContent name;
@@ -18,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor
         internal GUIContent date;
         internal GUIContent platform;
         internal RuntimePlatform runtimePlatform = (RuntimePlatform)(-1);
-        internal Texture2D texture;
+        internal GUITexture2DAsset guiTexture;
         internal DynamicVisualElements dynamicVisualElements;
 
         internal struct DynamicVisualElements
@@ -141,13 +166,19 @@ namespace Unity.MemoryProfiler.Editor
         public GUIContent MetaContent { get { return metaInfo; } }
         public GUIContent MetaPlatform { get { return platform; } }
         public GUIContent SnapshotDate { get { return date; } }
-        public Texture MetaScreenshot { get { return texture; } }
+        public Texture MetaScreenshot { get { return guiTexture.Texture; } }
     }
 
-    internal class SnapshotFileData
+    //Add GetHashCode() override if we ever want to hash these
+#pragma warning disable CS0659 // Type overrides Object.Equals(object o) but does not override Object.GetHashCode()
+#pragma warning disable CS0661 // Type defines operator == or operator != but does not override Object.GetHashCode()
+    internal class SnapshotFileData : IDisposable, IComparable<SnapshotFileData>
+#pragma warning restore CS0661 // Type defines operator == or operator != but does not override Object.GetHashCode()
+#pragma warning restore CS0659 // Type overrides Object.Equals(object o) but does not override Object.GetHashCode()
     {
         public FileInfo FileInfo;
         SnapshotFileGUIData m_GuiData;
+        long recordDateTicks;
 
         public SnapshotFileGUIData GuiData { get { return m_GuiData; } }
 
@@ -157,8 +188,10 @@ namespace Unity.MemoryProfiler.Editor
             using (var snapshot = LoadSnapshot())
             {
                 MetaData snapshotMetadata = snapshot.metadata;
+                var recordDate = snapshot.recordDate;
+                recordDateTicks = recordDate.Ticks;
 
-                m_GuiData = new SnapshotFileGUIData(snapshot.recordDate);
+                m_GuiData = new SnapshotFileGUIData(recordDate);
 
                 m_GuiData.name = new GUIContent(Path.GetFileNameWithoutExtension(FileInfo.Name));
                 m_GuiData.metaInfo = new GUIContent(snapshotMetadata.content);
@@ -169,12 +202,13 @@ namespace Unity.MemoryProfiler.Editor
                     m_GuiData.runtimePlatform = runtimePlatform;
 
                 m_GuiData.date = new GUIContent(m_GuiData.UtcDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
-#if !UNITY_2020_1_OR_NEWER
-                m_GuiData.texture = snapshotMetadata.screenshot;
-#endif
-#if UNITY_2019_3_OR_NEWER
+
+                m_GuiData.guiTexture = new GUITexture2DAsset();
+                if(snapshotMetadata.screenshot != null)
+                    m_GuiData.guiTexture.SetTexture(snapshotMetadata.screenshot, GUITexture2DAsset.SourceType.Snapshot, 0);
+
                 RefreshScreenshot();
-#endif
+
             }
         }
 
@@ -195,19 +229,59 @@ namespace Unity.MemoryProfiler.Editor
 
         internal void RefreshScreenshot()
         {
-            if (m_GuiData.texture == null)
+            string possibleSSPath = Path.ChangeExtension(FileInfo.FullName, ".png");
+            var ssInfo = new FileInfo(possibleSSPath);
+            var texAsset = m_GuiData.guiTexture;
+            if (!ssInfo.Exists && texAsset.Source == GUITexture2DAsset.SourceType.Image)
+                texAsset.SetTexture(null, GUITexture2DAsset.SourceType.None, 0);
+
+            if(ssInfo.Exists && texAsset.Source != GUITexture2DAsset.SourceType.Snapshot
+                && (ssInfo.LastWriteTime.Ticks != m_GuiData.guiTexture.TimeStampTicks || texAsset.Texture == null))
             {
-                string possibleSSPath = Path.ChangeExtension(FileInfo.FullName, ".png");
-                if (File.Exists(possibleSSPath))
-                {
-                    var texData = File.ReadAllBytes(possibleSSPath);
-                    m_GuiData.texture = new Texture2D(1, 1);
-                    m_GuiData.texture.LoadImage(texData);
-                    m_GuiData.texture.Apply(false, true);
-                    if (m_GuiData.dynamicVisualElements.screenshot != null)
-                        m_GuiData.dynamicVisualElements.screenshot.image = m_GuiData.texture;
-                }
+                var texData = File.ReadAllBytes(possibleSSPath);
+                var tex = new Texture2D(1, 1);
+                tex.LoadImage(texData);
+                tex.Apply(false, true);
+                tex.name = ssInfo.Name;
+                texAsset.SetTexture(tex, GUITexture2DAsset.SourceType.Image, ssInfo.LastWriteTime.Ticks);
             }
+
+            //HACK: call this bit here to make sure we can update our screen shots, as it seems that changing the editor scene will get the current snapshot imagines collected
+            // as they are not unity scene root objects
+            if (m_GuiData.dynamicVisualElements.screenshot != null)
+                m_GuiData.dynamicVisualElements.screenshot.image = m_GuiData.guiTexture.Texture;
         }
+
+        public void Dispose()
+        {
+            m_GuiData.guiTexture.SetTexture(null, GUITexture2DAsset.SourceType.None, 0);
+        }
+
+        public int CompareTo(SnapshotFileData other)
+        {
+            return recordDateTicks.CompareTo(other.recordDateTicks);
+        }
+        
+        public static bool operator== (SnapshotFileData lhs, SnapshotFileData rhs)
+        {
+            if (ReferenceEquals(lhs, rhs))
+                return true;
+
+            if (ReferenceEquals(lhs, null) || ReferenceEquals(rhs, null))
+                return false;
+
+            return lhs.FileInfo.FullName.Equals(rhs.FileInfo.FullName);
+        }
+
+        public static bool operator!= (SnapshotFileData lhs, SnapshotFileData rhs)
+        {
+            return !(lhs == rhs);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return this == obj as SnapshotFileData;
+        }
+
     }
 }

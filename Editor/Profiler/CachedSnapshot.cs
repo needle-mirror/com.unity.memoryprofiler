@@ -16,16 +16,19 @@ namespace Unity.MemoryProfiler.Editor
 
         public static bool ValidateVirtualMachineInfo(VirtualMachineInformation vmInfo)
         {
-            bool ok = vmInfo.pointerSize == x64ArchPtrSize || vmInfo.pointerSize == x86ArchPtrSize;
-            if (ok)
-            {
-                //partial checks to validate computations based on pointer size
-                int expectedObjHeaderSize = 2 * vmInfo.pointerSize;
-                ok |= expectedObjHeaderSize == vmInfo.objectHeaderSize;
-                ok |= expectedObjHeaderSize == vmInfo.allocationGranularity;
-            }
+            if (!(vmInfo.pointerSize == x64ArchPtrSize || vmInfo.pointerSize == x86ArchPtrSize))
+                return false;
 
-            return ok;
+            //partial checks to validate computations based on pointer size
+            int expectedObjHeaderSize = 2 * vmInfo.pointerSize;
+
+            if (expectedObjHeaderSize != vmInfo.objectHeaderSize)
+                return false;
+
+            if (expectedObjHeaderSize != vmInfo.allocationGranularity)
+                return false;
+
+            return true;
         }
     }
     internal static class TypeTools
@@ -74,7 +77,7 @@ namespace Unity.MemoryProfiler.Editor
                 fieldsBuffer.Add(iField);
             }
         }
-       
+
         public static void AllFieldArrayIndexOf(ref List<int> fieldsBuffer, int ITypeArrayIndex, CachedSnapshot data, FieldFindOptions findOptions, bool includeBase)
         {
             //make sure we clear before we start crawling
@@ -108,7 +111,7 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         public ManagedData CrawledData { internal set; get; }
-        public QueriedMemorySnapshot packedMemorySnapshot { private set; get; }
+        public IQueriedMemorySnapshot packedMemorySnapshot { private set; get; }
 
         public class NativeAllocationSiteEntriesCache
         {
@@ -117,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<int> memoryLabelIndex;
             public DataArray.Cache<ulong[]> callstackSymbols;
             public SoaDataSet dataSet;
-            public NativeAllocationSiteEntriesCache(NativeAllocationSiteEntries ss)
+            public NativeAllocationSiteEntriesCache(INativeAllocationSiteEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -130,7 +133,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 int entryIdx = this.id.FindIndex(x => x == id);
 
-                return entryIdx < 0 ? "" : GetReadableCallstack(symbols, entryIdx);
+                return entryIdx < 0 ? string.Empty : GetReadableCallstack(symbols, entryIdx);
             }
 
             public string GetReadableCallstack(NativeCallstackSymbolEntriesCache symbols, long idx)
@@ -169,11 +172,11 @@ namespace Unity.MemoryProfiler.Editor
 
 
             const int k_DefaultFieldProcessingBufferSize = 64;
-            const string k_SystemObjectTypeName = "System.ValueType";
-            const string k_SystemValueTypeName = "System.Object";
+            const string k_SystemObjectTypeName = "System.Object";
+            const string k_SystemValueTypeName = "System.ValueType";
             const string k_SystemEnumTypeName = "System.Enum";
 
-            public TypeDescriptionEntriesCache(TypeDescriptionEntries ss)
+            public TypeDescriptionEntriesCache(ITypeDescriptionEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -195,6 +198,7 @@ namespace Unity.MemoryProfiler.Editor
             public int iType_ValueType;
             public int iType_Object;
             public int iType_Enum;
+            public readonly int iType_Invalid = -1;
 
             public Dictionary<UInt64, int> typeInfoToArrayIndex;
             public Dictionary<int, int> typeIndexToArrayIndex;
@@ -299,7 +303,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<string> typeName;
             public DataArray.Cache<int> nativeBaseTypeArrayIndex;
             public SoaDataSet dataSet;
-            public NativeTypeEntriesCache(NativeTypeEntries ss)
+            public NativeTypeEntriesCache(INativeTypeEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -316,7 +320,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<string> objectName;
             public DataArray.Cache<ulong> accumulatedSize;
             public SoaDataSet dataSet;
-            public NativeRootReferenceEntriesCache(NativeRootReferenceEntries ss)
+            public NativeRootReferenceEntriesCache(INativeRootReferenceEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -342,7 +346,7 @@ namespace Unity.MemoryProfiler.Editor
             public int[] refcount;
             public int[] managedObjectIndex;
             public SoaDataSet dataSet;
-            public NativeObjectEntriesCache(NativeObjectEntries ss)
+            public NativeObjectEntriesCache(INativeObjectEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -395,7 +399,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<int> firstAllocationIndex;
             public DataArray.Cache<int> numAllocations;
             public SoaDataSet dataSet;
-            public NativeMemoryRegionEntriesCache(NativeMemoryRegionEntries ss)
+            public NativeMemoryRegionEntriesCache(INativeMemoryRegionEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -413,7 +417,7 @@ namespace Unity.MemoryProfiler.Editor
             public long Count;
             public DataArray.Cache<string> memoryLabelName;
             public SoaDataSet dataSet;
-            public NativeMemoryLabelEntriesCache(NativeMemoryLabelEntries ss)
+            public NativeMemoryLabelEntriesCache(INativeMemoryLabelEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -427,7 +431,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<ulong> symbol;
             public DataArray.Cache<string> readableStackTrace;
             public SoaDataSet dataSet;
-            public NativeCallstackSymbolEntriesCache(NativeCallstackSymbolEntries ss)
+            public NativeCallstackSymbolEntriesCache(INativeCallstackSymbolEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -447,7 +451,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<int> overheadSize;
             public DataArray.Cache<int> paddingSize;
             public SoaDataSet dataSet;
-            public NativeAllocationEntriesCache(NativeAllocationEntries ss)
+            public NativeAllocationEntriesCache(INativeAllocationEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -520,7 +524,7 @@ namespace Unity.MemoryProfiler.Editor
                 associatedByteArrays = newSortedByteArrays;
             }
 
-            public ManagedMemorySectionEntriesCache(ManagedMemorySectionEntries sectionEntries)
+            public ManagedMemorySectionEntriesCache(IManagedMemorySectionEntries sectionEntries)
             {
                 Count = sectionEntries.GetNumEntries();
                 if (Count > 0)
@@ -549,7 +553,7 @@ namespace Unity.MemoryProfiler.Editor
             public long Count;
             public DataArray.Cache<ulong> target;
             public SoaDataSet dataSet;
-            public GCHandleEntriesCache(GCHandleEntries ss)
+            public GCHandleEntriesCache(IGCHandleEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -565,7 +569,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<int> typeIndex;
             public DataArray.Cache<bool> isStatic;
             public SoaDataSet dataSet;
-            public FieldDescriptionEntriesCache(FieldDescriptionEntries ss)
+            public FieldDescriptionEntriesCache(IFieldDescriptionEntries ss)
             {
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
@@ -582,7 +586,7 @@ namespace Unity.MemoryProfiler.Editor
             public DataArray.Cache<int> from { private set; get; }
             public DataArray.Cache<int> to { private set; get; }
             public SoaDataSet dataSet;
-            public ConnectionEntriesCache(QueriedMemorySnapshot snap, bool connectionsNeedRemaping)
+            public ConnectionEntriesCache(IQueriedMemorySnapshot snap, bool connectionsNeedRemaping)
             {
                 var ss = snap.connections;
                 Count = ss.GetNumEntries();
@@ -650,7 +654,7 @@ namespace Unity.MemoryProfiler.Editor
 
             }
         }
-        
+
         public VirtualMachineInformation virtualMachineInformation { get; private set; }
         public NativeAllocationSiteEntriesCache nativeAllocationSites;
         public TypeDescriptionEntriesCache typeDescriptions;
@@ -673,8 +677,8 @@ namespace Unity.MemoryProfiler.Editor
         public SortedManagedObjectsCache SortedManagedObjects;
         public SortedNativeAllocationsCache SortedNativeAllocations;
         public SortedNativeObjectsCache SortedNativeObjects;
-        
-        public CachedSnapshot(QueriedMemorySnapshot s)
+
+        public CachedSnapshot(IQueriedMemorySnapshot s)
         {
 
             var vmInfo = s.virtualMachineInformation;

@@ -63,6 +63,10 @@ namespace Unity.MemoryProfiler.Editor
 
     internal class SnapshotObjectDataFormatter
     {
+        const string k_NullPtrAddr = "0x0000000000000000";
+        const string k_NullRef = "null";
+        const string k_ArrayClosedSqBrackets = "[]";
+
         public ObjectDataFormatter BaseFormatter;
 
         public Dictionary<int, IObjectDataTypeFormatter> m_TypeFormatter = new Dictionary<int, IObjectDataTypeFormatter>();
@@ -118,35 +122,35 @@ namespace Unity.MemoryProfiler.Editor
             return true;
         }
 
-        public string PointerToString(ulong ptr)
-        {
-            return string.Format("0x{0:x16}", ptr);
-        }
-
         // Formats "[ptr]" or "null" if ptr == 0
         public string FormatPointer(ulong ptr)
         {
-            if (ptr == 0) return "null";
-            return string.Format("[{0}]", PointerToString(ptr));
+            if (ptr == 0) return k_NullPtrAddr;
+            return string.Format("0x{0:x16}", ptr);
         }
 
         // Formats "[ptr+offset]"
         public string FormatPointerAndOffset(ulong ptr, int offset)
         {
+            if (ptr == 0)
+                return k_NullRef;
+
             if (offset >= 0)
             {
-                return string.Format("[{0}+{1:x}]", PointerToString(ptr), offset);
+                return string.Format("0x{0:x16}+{1:x}", ptr, offset);
             }
             else
             {
-                return string.Format("[{0}-{1:x}]", PointerToString(ptr), -offset);
+                return string.Format("0x{0:x16}-{1:x}", ptr, -offset);
             }
         }
 
         // Formats "[ptr][index]"
         public string FormatterPointerAndIndex(ulong ptr, int index)
         {
-            return string.Format("[{0}][{1}]", PointerToString(ptr), index);
+            if (ptr == 0)
+                return string.Format("{0}][{1}", k_NullPtrAddr, index);
+            return string.Format("0x{0:x16}][{1}", ptr, index);
         }
 
         // Formats "{field=value, ...}"
@@ -212,6 +216,25 @@ namespace Unity.MemoryProfiler.Editor
             return FormatObjectBrief(od, formatter, objectBrief);
         }
 
+        public int CountArrayOfArrays(string typename)
+        {
+            int count = 0;
+
+            int iter = 0;
+            while (true)
+            {
+                int idxFound = typename.IndexOf(k_ArrayClosedSqBrackets, iter);
+                if (idxFound == -1)
+                    break;
+                ++count;
+                iter = idxFound + k_ArrayClosedSqBrackets.Length;
+                if (iter >= typename.Length)
+                    break;
+            }
+
+            return count;
+        }
+
         public string FormatArray(ObjectData od, IDataFormatter formatter)
         {
             IObjectDataTypeFormatter td;
@@ -219,13 +242,37 @@ namespace Unity.MemoryProfiler.Editor
             {
                 return td.Format(m_Snapshot, od, formatter);
             }
-            var str = FormatPointer(od.hostManagedObjectPtr);
+
+            var originalTypeName = m_Snapshot.typeDescriptions.typeDescriptionName[od.managedTypeIndex];
+            var sb = new System.Text.StringBuilder(originalTypeName);
+
+            
+
             if (od.hostManagedObjectPtr != 0)
             {
                 var arrayInfo = ArrayTools.GetArrayInfo(m_Snapshot, od.managedObjectData, od.managedTypeIndex);
-                str += "[" + arrayInfo.ArrayRankToString() + "]";
+                switch (arrayInfo.rank.Length)
+                {
+                    case 1:
+                        int nestedArrayCount = CountArrayOfArrays(originalTypeName);
+                        sb.Replace(k_ArrayClosedSqBrackets, string.Empty);
+                        sb.Append('[');
+                        sb.Append(arrayInfo.ArrayRankToString());
+                        sb.Append(']');
+                        for(int i = 1; i < nestedArrayCount; ++i)
+                        {
+                            sb.Append(k_ArrayClosedSqBrackets);
+                        }
+                        break;
+                    default:
+                        sb.Append('[');
+                        sb.Append(arrayInfo.ArrayRankToString());
+                        sb.Append(']');
+                        break;
+                }
+
             }
-            return str;
+            return sb.ToString();
         }
 
         public string Format(ObjectData od, IDataFormatter formatter, bool objectBrief = true)
@@ -245,7 +292,7 @@ namespace Unity.MemoryProfiler.Editor
                     ulong ptr = od.GetReferencePointer();
                     if (ptr == 0)
                     {
-                        return FormatPointer(ptr);
+                        return k_NullRef;
                     }
                     else
                     {
@@ -258,7 +305,7 @@ namespace Unity.MemoryProfiler.Editor
                     ulong ptr = od.GetReferencePointer();
                     if (ptr == 0)
                     {
-                        return FormatPointer(ptr);
+                        return k_NullRef;
                     }
                     var arr = ObjectData.FromManagedPointer(m_Snapshot, ptr);
                     return FormatArray(arr, formatter);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation
@@ -139,7 +140,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
         private int m_FilterInclude = 0;
         private int m_FilterExclude = 0;
-        public int columnKey;
+        public int[] columnKey;
         public struct Entry
         {
             public Entry(DiffResult diffResult, int tableIndex, long rowIndex)
@@ -155,7 +156,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
         public Entry[] m_Entries;
 
-        public DiffTable(Schema schema, Table[] table, int columnKey)
+        public DiffTable(Schema schema, Table[] table, int[] columnKey)
             : base(schema)
         {
             this.sourceTables = table;
@@ -168,7 +169,8 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             mt.defaultAllLevelSortFilter = meta.defaultAllLevelSortFilter;
             mt.defaultFilter = meta.defaultFilter;
             MetaColumn[] mc = new MetaColumn[meta.GetColumnCount() + 1];
-            mc[0] = new MetaColumn("Diff", "Diff", typeof(DiffResult), false, Grouping.groupByDuplicate, null);
+            var metaType = new MetaType() { scriptingType = typeof(DiffResult), comparisonMethod = DataMatchMethod.AsEnum };
+            mc[0] = new MetaColumn("Diff", "Diff", metaType, false, Grouping.groupByDuplicate, null);
             for (int i = 0; i < meta.GetColumnCount(); ++i)
             {
                 mc[i + 1] = new MetaColumn(meta.GetColumnByIndex(i));
@@ -211,7 +213,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             for (int i = 1; i != m_Meta.GetColumnCount(); ++i)
             {
                 var metaCol = m_Meta.GetColumnByIndex(i);
-                IDiffColumn newCol = (IDiffColumn)ColumnCreator.CreateColumn(typeof(DiffColumnTyped<>), metaCol.Type);
+                IDiffColumn newCol = (IDiffColumn)ColumnCreator.CreateColumn(typeof(DiffColumnTyped<>), metaCol.Type.scriptingType);
                 Column[] c = new Column[sourceTables.Length];
                 for (int j = 0; j < sourceTables.Length; ++j)
                 {
@@ -228,17 +230,34 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return m_Entries.Length;
         }
 
-        protected System.Collections.Generic.List<Entry> Diff(MetaColumn mc, Column colA, long[] indexA, Column colB, long[] indexB)
+        int MultiColumnElementCompare(Column[] lhs, long lhsIdx, long rhsIdx, Expression[] expressions)
+        {
+            for(int i = 0; i < lhs.Length; ++i)
+            {
+                int cmp = lhs[i].Compare(lhsIdx, expressions[i], rhsIdx);
+                if (cmp != 0)
+                    return cmp;
+            }
+
+            return 0;
+        }
+
+        protected List<Entry> Diff(MetaColumn[] mc, Column[] colA, long[] indexA, Column[] colB, long[] indexB)
         {
             int curA = 0;
             int curB = 0;
             int maxA = indexA.Length;
             int maxB = indexB.Length;
-            var exp = ColumnCreator.CreateTypedExpressionColumn(mc.Type, colB);
-            System.Collections.Generic.List<Entry> entries = new System.Collections.Generic.List<Entry>();
+            Expression[] expressions = new Expression[mc.Length];
+            for(int i = 0; i < mc.Length; ++i)
+            {
+                expressions[i] = ColumnCreator.CreateTypedExpressionColumn(mc[i].Type.scriptingType, colB[i]);
+            }
+
+            List<Entry> entries = new List<Entry>();
             while (curA < maxA && curB < maxB)
             {
-                int r = colA.Compare(indexA[curA], exp, indexB[curB]);
+                int r = MultiColumnElementCompare(colA, indexA[curA], indexB[curB], expressions);
                 switch (r)
                 {
                     case -1:
@@ -309,14 +328,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             if (m_Entries != null) return false;
             sourceTables[0].Update();
             sourceTables[1].Update();
-            var mc = sourceTables[0].GetMetaData().GetColumnByIndex(columnKey);
-            var col0 = sourceTables[0].GetColumnByIndex(columnKey);
-            var index0 = col0.GetSortIndex(SortOrder.Ascending, new ArrayRange(0, col0.GetRowCount()), false);
+            var mc = sourceTables[0].GetMetaData().GetColumnsByIndex(columnKey);
+            var lhsTableCols = sourceTables[0].GetColumnsByIndex(columnKey);
+            var lhsTableIndices = lhsTableCols[0].GetSortIndex(SortOrder.Ascending, new ArrayRange(0, lhsTableCols[0].GetRowCount()), false);
 
-            var col1 = sourceTables[1].GetColumnByIndex(columnKey);
-            var index1 = col1.GetSortIndex(SortOrder.Ascending, new ArrayRange(0, col1.GetRowCount()), false);
+            var rhsTableCols = sourceTables[1].GetColumnsByIndex(columnKey);
+            var rhsTableIndices = rhsTableCols[0].GetSortIndex(SortOrder.Ascending, new ArrayRange(0, rhsTableCols[0].GetRowCount()), false);
 
-            m_Entries = Diff(mc, col0, index0, col1, index1).ToArray();
+            m_Entries = Diff(mc, lhsTableCols, lhsTableIndices, rhsTableCols, rhsTableIndices).ToArray();
             return true;
         }
 
@@ -357,17 +376,13 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 if (tabB == null) continue;
 
                 int[] primKey = tabA.GetMetaData().GetPrimaryKeyColumnIndex();
-                if (primKey.Length > 1)
-                {
-                    Debug.LogWarning("Diff between tables with multiple primary key column is not supported yet. Table '" + tabA.GetName() + "'");
-                    continue;
-                }
+
                 if (primKey.Length == 0)
                 {
                     Debug.LogWarning("Cannot diff tables without primary key. Table '" + tabA.GetName() + "'");
                     continue;
                 }
-                var tabOut = new Database.Operation.DiffTable(this, new Database.Table[] { tabA, tabB }, primKey[0]);
+                var tabOut = new Database.Operation.DiffTable(this, new Database.Table[] { tabA, tabB }, primKey);
                 AddTable(tabOut);
             }
         }

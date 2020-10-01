@@ -221,7 +221,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 region.ColorRegion = m_ColorNative[(int)EntryColors.Region];
             }
 
-            region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 255));
+            region.ColorRegion = new Color32(region.ColorRegion.r, region.ColorRegion.g, region.ColorRegion.b, (byte)(1 + regionIndex % 254));
             return region;
         }
 
@@ -232,7 +232,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             string name = string.Format("Heap Sections {0}", i);
 
             DiffMemoryRegion region = new DiffMemoryRegion(RegionType.Managed, start, size, name);
-            region.ColorRegion = new Color32(0, 0, 0, (byte)(1 + regionIndex % 255));
+            region.ColorRegion = new Color32(0, 0, 0, (byte)(1 + regionIndex % 254));
             return region;
         }
 
@@ -243,7 +243,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             string name = string.Format("Stack Sections {0}", i);
 
             DiffMemoryRegion region = new DiffMemoryRegion(RegionType.ManagedStack, start, size, name);
-            region.ColorRegion = new Color32(0, 0, 0, (byte)(1 + regionIndex % 255));
+            region.ColorRegion = new Color32(0, 0, 0, (byte)(1 + regionIndex % 254));
             return region;
         }
 

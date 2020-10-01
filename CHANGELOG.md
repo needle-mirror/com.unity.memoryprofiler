@@ -4,27 +4,61 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.6-preview.1] - 2020-10-01
+### Added
+  - Added search field delay when filtering table entries via the match filter.
+  - Added a dialog box when attempting to rename a snapshot to same name as an existing one ([case 1273417](https://fogbugz.unity3d.com/f/cases/1273417/)).
+  - Added a dialog box when attempting to rename a snapshot with invalid characters ([case 1274987](https://fogbugz.unity3d.com/f/cases/1274987/)).
+  - Added name tags for snapshot preview screenshots, to avoid confusion when the user takes a snapshot with the memory profiler window open.
+  - Added name tag for memory map backing memory texture.
+  
+### Changed
+  - Removed unneeded finalizer from CachedSnasphot, which could crash the Editor.
+  - Fixed an issue inside the VM data validation tools, where we would not catch invalid VM info data.
+  - Fixed incorrect parsing of table headers as callstack site ids when attempting to retrieve callstacks for a native allocation.
+  - Fixed texture color space to linear inside the MemoryMap view creation ([case 1261948](https://fogbugz.unity3d.com/f/cases/1261948/)).
+  - Fixed potential alpha overflows inside the MemoryMap, where some regions on the memory map might have become transparent.
+  - Secured the MemorySnapshot backend so that we handle array sizes larger than int.Max gracefully.
+  - Fixed an issue with reading entries null entries from reference arrays, where this would cause a NullReferenceException.
+  - Changed the snapshot crawler to discard unknown type data as some types are VM internal.
+    Note: The following versions are able to capture all type data: 2020.2b2, 2020.1.5f1, 2019.4.10f1.
+  - Changed table diffing to be multi-key, thus making the diffing operation accurate with regards to matching object as "Same".
+  - Changed the Address column formatting to show pointer values in hex rather than decimal.
+  - Changed the Name column so that it only shows object or field name depending on the expanded item.
+  - Fixed some static fields not showing up in the Reference table.
+  - Fixed a leak where the snapshot collection would never clean up it's Texture2D.
+  - Fixed a leak where the memory map's backing texture would never be cleaned up during flush.
+  - Fixed an issue where snapshots could be imported twice ([case 1271886](https://fogbugz.unity3d.com/f/cases/1271886/)).
+  - Fixed an issue showing "None" in the diff table's match filter, when matching by "Diff" column value.
+  - Fixed an issue where the snapshot deletion message would not to explicitly state that the file will be permanently removed.
+  - Fixed an issue where the naming convention used for snapshots inside the memory map diff view was incorrect.
+  - Fixed an issue where the snapshots used inside memory map would not swap when the swap button was pressed.
+  - Fixed an issue where snapshot file list was sorted alphabetically ([case 1276092](https://fogbugz.unity3d.com/f/cases/1276092/)).
+  - Fixed an issue where open snapshots could end up losing their open state while still open in the tool ([case 1275288](https://fogbugz.unity3d.com/f/cases/1275288/)).
+  - Fixed an issue where the snapshot file list wouldn't update when the editor would change focus ([case 1275835](https://fogbugz.unity3d.com/f/cases/1275835/)).
+
+
 ## [0.2.5-preview.1] - 2020-07-01
 ### Changed
- - Fixed up some issues with connections not being added properly during crawling
- - Fixed up an issue when diffing two snapshots where invalid object would cause the system to throw ([case 1236254](https://issuetracker.unity3d.com/product/unity/issues/guid/1236254/))
- - Optimized the crawling of native connections
- - Recuded crawling operation memory footprint by ~30%
- - Fixed Memory Map address label text spilling over ([case 1256489](https://issuetracker.unity3d.com/product/unity/issues/guid/1256489/))
- - Fixed Memory Map interfering with Profiler Line Charts ([case 1260533](https://issuetracker.unity3d.com/product/unity/issues/guid/1260533/))
+ - Fixed up some issues with connections not being added properly during crawling.
+ - Fixed up an issue when diffing two snapshots where invalid object would cause the system to throw ([case 1236254](https://issuetracker.unity3d.com/product/unity/issues/guid/1236254/)).
+ - Optimized the crawling of native connections.
+ - Reduced crawling operation memory footprint by ~30%.
+ - Fixed Memory Map address label text spilling over ([case 1256489](https://issuetracker.unity3d.com/product/unity/issues/guid/1256489/)).
+ - Fixed Memory Map interfering with Profiler Line Charts ([case 1260533](https://issuetracker.unity3d.com/product/unity/issues/guid/1260533/)).
 
 
 ## [0.2.4-preview.1] - 2020-06-10
 ### Changed
- - Fixed an issue with the Memory Profiler Window failing to load it's resources when opening during playmode
- - Upgraded the dependnecy on EditorCoroutines package to 1.0.0
- - Fixed a compilation issue with Unity 2019.4 ([case 1254424](https://issuetracker.unity3d.com/product/unity/issues/guid/1254424/))
- - Fixed up two unused variable warnings
+ - Fixed an issue with the Memory Profiler Window failing to load it's resources when opening during playmode.
+ - Upgraded the dependency on EditorCoroutines package to 1.0.0.
+ - Fixed a compilation issue with Unity 2019.4 ([case 1254424](https://issuetracker.unity3d.com/product/unity/issues/guid/1254424/)).
+ - Fixed up two unused variable warnings.
 
 
 ## [0.2.3-preview.2] - 2020-03-18
 ### Changed
- - Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.2
+ - Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.2.
  - Fixed an issue with the layouting of the Memory Map's legend. 
 
 

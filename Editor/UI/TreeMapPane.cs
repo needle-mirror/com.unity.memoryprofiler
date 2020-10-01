@@ -441,24 +441,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             return -1;
         }
-
-        public void OpenTable(Database.TableReference tableRef, Database.Table table, bool focus, bool select)
-        {
-            if (select)
-            {
-                var objectUID = GetTableObjectUID(table, 0);
-                if (objectUID >= 0)
-                {
-                    SelectObjectByUID(objectUID, focus);
-                }
-            }
-
-            //m_CurrentTableIndex = m_UIState.GetTableIndex(table);
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
-            m_Spreadsheet.onClickLink += OnSpreadsheetClick;
-            m_EventListener.OnRepaint();
-        }
-
+        
         public void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos, bool focus, bool select)
         {
             if (select)

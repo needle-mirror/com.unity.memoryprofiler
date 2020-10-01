@@ -2,12 +2,30 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
+    public enum DataMatchMethod
+    {
+        AsString, //default
+        AsNumber,
+        AsEnum
+    }
+
+    internal struct MetaType
+    {
+        public Type scriptingType;
+        public DataMatchMethod comparisonMethod;
+
+        public MetaType(Type st, DataMatchMethod mm = DataMatchMethod.AsString)
+        {
+            scriptingType = st;
+            comparisonMethod = mm;
+        }
+    }
     /// <summary>
     /// Holds information about the structure and significance of a column as part of a MetaTable
     /// </summary>
     internal class MetaColumn
     {
-        public Type Type { get; set; }
+        public MetaType Type { get; set; }
 
         public int Index { get; set; }
         public readonly string Name;
@@ -24,7 +42,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         public readonly Operation.Grouping.IGroupAlgorithm DefaultGroupAlgorithm;
         public Operation.Grouping.IMergeAlgorithm DefaultMergeAlgorithm { get; set; }
 
-        public MetaColumn(string name, string displayName, Type type, bool isPrimaryKey, Operation.Grouping.IGroupAlgorithm groupAlgo, Operation.Grouping.IMergeAlgorithm mergeAlgo, string formatName = "", int displayDefaultWidth = k_DefaultDisplayWidth)
+        public MetaColumn(string name, string displayName, MetaType type, bool isPrimaryKey, Operation.Grouping.IGroupAlgorithm groupAlgo, Operation.Grouping.IMergeAlgorithm mergeAlgo, string formatName = "", int displayDefaultWidth = k_DefaultDisplayWidth)
         {
             Index = 0;
             Name = name;
@@ -37,7 +55,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             DefaultDisplayWidth = displayDefaultWidth;
         }
 
-        public MetaColumn(string name, string displayName, Type type, ColumnRef reference, Operation.Grouping.IGroupAlgorithm groupAlgo, Operation.Grouping.IMergeAlgorithm mergeAlgo, string formatName = "", int displayDefaultWidth = k_DefaultDisplayWidth)
+        public MetaColumn(string name, string displayName, MetaType type, ColumnRef reference, Operation.Grouping.IGroupAlgorithm groupAlgo, Operation.Grouping.IMergeAlgorithm mergeAlgo, string formatName = "", int displayDefaultWidth = k_DefaultDisplayWidth)
         {
             Index = 0;
             Name = name;

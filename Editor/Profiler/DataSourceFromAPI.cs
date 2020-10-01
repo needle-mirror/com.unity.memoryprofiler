@@ -29,8 +29,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public class AdaptorAPIArray<DataT> : Adaptor<DataT>
         {
-            private ArrayEntries<DataT> m_Array;
-            public AdaptorAPIArray(ArrayEntries<DataT> array)
+            private IArrayEntries<DataT> m_Array;
+            public AdaptorAPIArray(IArrayEntries<DataT> array)
             {
                 m_Array = array;
             }
@@ -43,8 +43,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public class Adaptor_String : Database.Soa.DataSource<string>
         {
-            private ArrayEntries<string> m_Array;
-            public Adaptor_String(ArrayEntries<string> array)
+            private IArrayEntries<string> m_Array;
+            public Adaptor_String(IArrayEntries<string> array)
             {
                 m_Array = array;
             }
@@ -59,8 +59,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public class Adaptor_Array<DataT> : Database.Soa.DataSource<DataT[]> where DataT : IComparable
         {
-            private ArrayEntries<DataT[]> m_Array;
-            public Adaptor_Array(ArrayEntries<DataT[]> array)
+            private IArrayEntries<DataT[]> m_Array;
+            public Adaptor_Array(IArrayEntries<DataT[]> array)
             {
                 m_Array = array;
             }
@@ -71,7 +71,7 @@ namespace Unity.MemoryProfiler.Editor
                 m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
             }
         }
-        public static Adaptor<DataT> ApiToDatabase<DataT>(ArrayEntries<DataT> array)
+        public static Adaptor<DataT> ApiToDatabase<DataT>(IArrayEntries<DataT> array)
         {
             return new AdaptorAPIArray<DataT>(array);
         }
@@ -81,12 +81,12 @@ namespace Unity.MemoryProfiler.Editor
             return new AdaptorArray<DataT>(array);
         }
 
-        public static Adaptor_String ApiToDatabase(ArrayEntries<string> array)
+        public static Adaptor_String ApiToDatabase(IArrayEntries<string> array)
         {
             return new Adaptor_String(array);
         }
 
-        public static Adaptor_Array<DataT> ApiToDatabase<DataT>(ArrayEntries<DataT[]> array) where DataT : IComparable
+        public static Adaptor_Array<DataT> ApiToDatabase<DataT>(IArrayEntries<DataT[]> array) where DataT : IComparable
         {
             return new Adaptor_Array<DataT>(array);
         }

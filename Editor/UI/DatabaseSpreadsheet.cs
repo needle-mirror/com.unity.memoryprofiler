@@ -19,6 +19,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_DisplayWidthPrefKeyBase = "Unity.MemoryProfiler.Editor.Database.DisplayWidth";
         string[] m_DisplayWidthPrefKeysPerColumn;
 
+        CallDelay m_DelayCall = new CallDelay();
+        const float k_Delay = 0.25f;
+        bool m_WasDirty = false;
+
         public int GetDisplayWidth(int columnIndex, int defaultDisplayWidth)
         {
             return EditorPrefs.GetInt(m_DisplayWidthPrefKeysPerColumn[columnIndex], defaultDisplayWidth);
@@ -796,13 +800,36 @@ namespace Unity.MemoryProfiler.Editor.UI
             bool dirty = false;
 
             EditorGUILayout.BeginVertical();
-            m_Filters.OnGui(m_TableDisplay, ref dirty);
+
+            bool matching = dirty;
+            m_Filters.OnGui(m_TableDisplay, ref matching);
+            if(matching != dirty)
+            {
+                EditorApplication.update -= m_DelayCall.Trigger;
+                m_DelayCall.Start(DelayedOnGUICall, k_Delay);
+                EditorApplication.update += m_DelayCall.Trigger;
+            }
+            dirty = matching;
+
             m_AllLevelSortFilter.OnGui(m_TableDisplay, ref dirty);
             EditorGUILayout.EndVertical();
             if (dirty)
+                m_WasDirty = true;
+        }
+
+        void DelayedOnGUICall()
+        {
+            if (m_WasDirty)
             {
+                m_WasDirty = false;
+                
                 UpdateDisplayTable();
                 ReportFilterChanges();
+
+                if (m_Listener != null && m_Listener.IsAlive)
+                {
+                    ((IViewEventListener)m_Listener.Target).OnRepaint();
+                }
             }
         }
     }

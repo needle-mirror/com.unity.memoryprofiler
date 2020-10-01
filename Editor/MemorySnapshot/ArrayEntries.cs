@@ -5,7 +5,13 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Format
 {
-    public class ArrayEntries<T>
+    public interface IArrayEntries<T>
+    {
+        uint GetNumEntries();
+        void GetEntries(uint indexStart, uint numEntries, ref T[] dataOut);
+    }
+
+    public class ArrayEntries<T> : IArrayEntries<T>
     {
         internal MemorySnapshotFileReader m_Reader;
         internal EntryType m_EntryType;
@@ -58,7 +64,14 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class ConnectionEntries
+    public interface IConnectionEntries
+    {
+        ArrayEntries<int> from { get; }
+        ArrayEntries<int> to { get; }
+        uint GetNumEntries();
+    }
+
+    public class ConnectionEntries : IConnectionEntries
     {
         public ArrayEntries<int> from { get; }
         public ArrayEntries<int> to { get; }
@@ -75,7 +88,13 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class GCHandleEntries
+    public interface IGCHandleEntries
+    {
+        ArrayEntries<ulong> target { get; }
+        uint GetNumEntries();
+    }
+
+    public class GCHandleEntries : IGCHandleEntries
     {
         public ArrayEntries<ulong> target { get; }
 
@@ -90,7 +109,14 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class ManagedMemorySectionEntries
+    public interface IManagedMemorySectionEntries
+    {
+        ArrayEntries<byte[]> bytes { get; }
+        ArrayEntries<ulong> startAddress { get; }
+        uint GetNumEntries();
+    }
+
+    public class ManagedMemorySectionEntries : IManagedMemorySectionEntries
     {
         public ArrayEntries<byte[]> bytes { get; }
         public ArrayEntries<ulong> startAddress { get; }
@@ -107,17 +133,31 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeObjectEntries
+    public interface INativeObjectEntries
     {
-        public ArrayEntries<string> objectName { get; }
-        public ArrayEntries<int> instanceId { get; }
-        public ArrayEntries<ulong> size { get; }
-        public ArrayEntries<int> nativeTypeArrayIndex { get; }
-        public ArrayEntries<HideFlags> hideFlags { get; }
-        public ArrayEntries<ObjectFlags> flags { get; }
-        public ArrayEntries<ulong> nativeObjectAddress { get; }
-        public ArrayEntries<long> rootReferenceId { get; }
-        public ArrayEntries<int> gcHandleIndex { get; }
+        IArrayEntries<string> objectName { get; }
+        IArrayEntries<int> instanceId { get; }
+        IArrayEntries<ulong> size { get; }
+        IArrayEntries<int> nativeTypeArrayIndex { get; }
+        IArrayEntries<HideFlags> hideFlags { get; }
+        IArrayEntries<ObjectFlags> flags { get; }
+        IArrayEntries<ulong> nativeObjectAddress { get; }
+        IArrayEntries<long> rootReferenceId { get; }
+        IArrayEntries<int> gcHandleIndex { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeObjectEntries : INativeObjectEntries
+    {
+        public IArrayEntries<string> objectName { get; }
+        public IArrayEntries<int> instanceId { get; }
+        public IArrayEntries<ulong> size { get; }
+        public IArrayEntries<int> nativeTypeArrayIndex { get; }
+        public IArrayEntries<HideFlags> hideFlags { get; }
+        public IArrayEntries<ObjectFlags> flags { get; }
+        public IArrayEntries<ulong> nativeObjectAddress { get; }
+        public IArrayEntries<long> rootReferenceId { get; }
+        public IArrayEntries<int> gcHandleIndex { get; }
 
         internal NativeObjectEntries(MemorySnapshotFileReader reader, bool hasGcHandleIndex)
         {
@@ -141,7 +181,14 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeTypeEntries
+    public interface INativeTypeEntries
+    {
+        ArrayEntries<string> typeName { get; }
+        ArrayEntries<int> nativeBaseTypeArrayIndex { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeTypeEntries : INativeTypeEntries
     {
         public ArrayEntries<string> typeName { get; }
         public ArrayEntries<int> nativeBaseTypeArrayIndex { get; }
@@ -158,7 +205,21 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class TypeDescriptionEntries
+    public interface ITypeDescriptionEntries
+    {
+        ArrayEntries<TypeFlags> flags { get; }
+        ArrayEntries<string> typeDescriptionName { get; }
+        ArrayEntries<string> assembly { get; }
+        ArrayEntries<int[]> fieldIndices { get; }
+        ArrayEntries<byte[]> staticFieldBytes { get; }
+        ArrayEntries<int> baseOrElementTypeIndex { get; }
+        ArrayEntries<int> size { get; }
+        ArrayEntries<ulong> typeInfoAddress { get; }
+        ArrayEntries<int> typeIndex { get; }
+        uint GetNumEntries();
+    }
+
+    public class TypeDescriptionEntries : ITypeDescriptionEntries
     {
         public ArrayEntries<TypeFlags> flags { get; }
         public ArrayEntries<string> typeDescriptionName { get; }
@@ -189,7 +250,16 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class FieldDescriptionEntries
+    public interface IFieldDescriptionEntries
+    {
+        ArrayEntries<string> fieldDescriptionName { get; }
+        ArrayEntries<int> offset { get; }
+        ArrayEntries<int> typeIndex { get; }
+        ArrayEntries<bool> isStatic { get; }
+        uint GetNumEntries();
+    }
+
+    public class FieldDescriptionEntries : IFieldDescriptionEntries
     {
         public ArrayEntries<string> fieldDescriptionName { get; }
         public ArrayEntries<int> offset { get; }
@@ -210,7 +280,13 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeMemoryLabelEntries
+    public interface INativeMemoryLabelEntries
+    {
+        ArrayEntries<string> memoryLabelName { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeMemoryLabelEntries : INativeMemoryLabelEntries
     {
         public ArrayEntries<string> memoryLabelName { get; }
 
@@ -225,7 +301,16 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeRootReferenceEntries
+    public interface INativeRootReferenceEntries
+    {
+        ArrayEntries<long> id { get; }
+        ArrayEntries<string> areaName { get; }
+        ArrayEntries<string> objectName { get; }
+        ArrayEntries<ulong> accumulatedSize { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeRootReferenceEntries : INativeRootReferenceEntries
     {
         public ArrayEntries<long> id { get; }
         public ArrayEntries<string> areaName { get; }
@@ -246,7 +331,19 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeAllocationEntries
+    public interface INativeAllocationEntries
+    {
+        ArrayEntries<int> memoryRegionIndex { get; }
+        ArrayEntries<long> rootReferenceId { get; }
+        ArrayEntries<long> allocationSiteId { get; }
+        ArrayEntries<ulong> address { get; }
+        ArrayEntries<ulong> size { get; }
+        ArrayEntries<int> overheadSize { get; }
+        ArrayEntries<int> paddingSize { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeAllocationEntries : INativeAllocationEntries
     {
         public ArrayEntries<int> memoryRegionIndex { get; }
         public ArrayEntries<long> rootReferenceId { get; }
@@ -273,7 +370,18 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeMemoryRegionEntries
+    public interface INativeMemoryRegionEntries
+    {
+        ArrayEntries<string> memoryRegionName { get; }
+        ArrayEntries<int> parentIndex { get; }
+        ArrayEntries<ulong> addressBase { get; }
+        ArrayEntries<ulong> addressSize { get; }
+        ArrayEntries<int> firstAllocationIndex { get; }
+        ArrayEntries<int> numAllocations { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeMemoryRegionEntries : INativeMemoryRegionEntries
     {
         public ArrayEntries<string> memoryRegionName { get; }
         public ArrayEntries<int> parentIndex { get; }
@@ -298,7 +406,15 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeAllocationSiteEntries
+    public interface INativeAllocationSiteEntries
+    {
+        ArrayEntries<long> id { get; }
+        ArrayEntries<int> memoryLabelIndex { get; }
+        ArrayEntries<ulong[]> callstackSymbols { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeAllocationSiteEntries : INativeAllocationSiteEntries
     {
         public ArrayEntries<long> id { get; }
         public ArrayEntries<int> memoryLabelIndex { get; }
@@ -317,7 +433,14 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    public class NativeCallstackSymbolEntries
+    public interface INativeCallstackSymbolEntries
+    {
+        ArrayEntries<ulong> symbol { get; }
+        ArrayEntries<string> readableStackTrace { get; }
+        uint GetNumEntries();
+    }
+
+    public class NativeCallstackSymbolEntries : INativeCallstackSymbolEntries
     {
         public ArrayEntries<ulong> symbol { get; }
         public ArrayEntries<string> readableStackTrace { get; }

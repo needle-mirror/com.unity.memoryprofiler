@@ -29,7 +29,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             m_ListColumns.Add(c);
 
             var t1 = c.type;
-            var t2 = mc.Type;
+            var t2 = mc.Type.scriptingType;
 
             if (!(t1 == t2 || t1.Equals(t2)))
                 Debug.LogError("Type of Column must be the same as its MetaColumn.\nColumn: '" + mc.Name + "'");

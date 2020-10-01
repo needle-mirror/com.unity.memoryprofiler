@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         public virtual bool Validate(bool log, MetaColumn metaColumn)
         {
             bool valid = true;
-            if (type != metaColumn.Type)
+            if (type != metaColumn.Type.scriptingType)
             {
                 valid = false;
                 Debug.Log("Column must have the same value type as its MetaColumn");
@@ -37,17 +37,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         }
 
         public abstract long[] GetSortIndex(SortOrder order, ArrayRange indices, bool relativeIndex);
-
-        // equality is an array the same size as the returned index. the value is the index that it's equal to.
-        // so that R[x] == R[equality[x]]
-        // If equality[x] == x then it is unique
-        // if equality == null then all entries are considered equal
-        public virtual long[] GetSortIndexAndEquality(SortOrder order, ArrayRange indices, bool relativeIndex, out long[] equality)
-        {
-            equality = null;
-            return GetSortIndex(order, indices, relativeIndex);
-        }
-
+        
         //call this to get a displayable value
         public abstract string GetRowValueString(long row, IDataFormatter formatter);
         public abstract int CompareRow(long rowA, long rowB);

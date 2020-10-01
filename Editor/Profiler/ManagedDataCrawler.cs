@@ -214,7 +214,7 @@ namespace Unity.MemoryProfiler.Editor
         const int k_ManagedObjectBlockSize = 32768;
         const int k_ManagedConnectionsBlockSize = 65536;
         public BlockList<ManagedObjectInfo> ManagedObjects { private set; get; }
-        public SortedDictionary<ulong, int> MangedObjectIndexByAddress { private set; get; }
+        public Dictionary<ulong, int> MangedObjectIndexByAddress { private set; get; }
         public BlockList<ManagedConnection> Connections { private set; get; }
 
         public ManagedData(long rawGcHandleCount, long rawConnectionsCount)
@@ -223,7 +223,7 @@ namespace Unity.MemoryProfiler.Editor
             ManagedObjects = new BlockList<ManagedObjectInfo>(k_ManagedObjectBlockSize, rawGcHandleCount);
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsBlockSize, rawConnectionsCount);
 
-            MangedObjectIndexByAddress = new SortedDictionary<ulong, int>();
+            MangedObjectIndexByAddress = new Dictionary<ulong, int>();
         }
     }
 
@@ -659,13 +659,14 @@ namespace Unity.MemoryProfiler.Editor
             obj = ParseObjectHeader(snapshot, data.ptr, out wasAlreadyCrawled, false);
             ++obj.RefCount;
 
+            if (!obj.IsValid())
+                return false;
+
             snapshot.CrawledData.ManagedObjects[obj.ManagedObjectIndex] = obj;
             snapshot.CrawledData.MangedObjectIndexByAddress[obj.PtrObject] = obj.ManagedObjectIndex;
 
             dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.indexOfFrom, data.ptrFrom, obj.ManagedObjectIndex, data.ptr, data.typeFrom, data.fieldFrom, data.fromArrayIndex));
-
-            if (!obj.IsKnownType())
-                return false;
+            
             if (wasAlreadyCrawled)
                 return true;
 
@@ -737,13 +738,16 @@ namespace Unity.MemoryProfiler.Editor
             var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
 
             ManagedObjectInfo objectInfo = default(ManagedObjectInfo);
+
             int idx = 0;
             if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(ptrObjectHeader, out idx))
             {
-                objectInfo = ParseObjectHeader(snapshot, ptrObjectHeader, ignoreBadHeaderError);
-                objectInfo.ManagedObjectIndex = (int)objectList.Count;
-                objectList.Add(objectInfo);
-                objectsByAddress.Add(ptrObjectHeader, objectInfo.ManagedObjectIndex);
+                if(TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
+                {
+                    objectInfo.ManagedObjectIndex = (int)objectList.Count;
+                    objectList.Add(objectInfo);
+                    objectsByAddress.Add(ptrObjectHeader, objectInfo.ManagedObjectIndex);
+                }
                 wasAlreadyCrawled = false;
                 return objectInfo;
             }
@@ -753,10 +757,12 @@ namespace Unity.MemoryProfiler.Editor
             if (objectInfo.PtrObject == 0)
             {
                 idx = objectInfo.ManagedObjectIndex;
-                objectInfo = ParseObjectHeader(snapshot, ptrObjectHeader, ignoreBadHeaderError);
-                objectInfo.ManagedObjectIndex = idx;
-                objectList[idx] = objectInfo;
-                objectsByAddress[ptrObjectHeader] = idx;
+                if(TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
+                {
+                    objectInfo.ManagedObjectIndex = idx;
+                    objectList[idx] = objectInfo;
+                    objectsByAddress[ptrObjectHeader] = idx;
+                }
 
                 wasAlreadyCrawled = false;
                 return objectInfo;
@@ -765,66 +771,63 @@ namespace Unity.MemoryProfiler.Editor
             wasAlreadyCrawled = true;
             return objectInfo;
         }
-
-        public static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, ulong ptrObjectHeader, bool ignoreBadHeaderError)
+        
+        public static bool TryParseObjectHeader(CachedSnapshot snapshot, ulong ptrObjectHeader, out ManagedObjectInfo info)
         {
+            bool resolveFailed = false;
             var heap = snapshot.managedHeapSections;
+            info = new ManagedObjectInfo();
+            info.ManagedObjectIndex = -1;
+
+            ulong ptrIdentity = 0;
             var boHeader = heap.Find(ptrObjectHeader, snapshot.virtualMachineInformation);
-            var objectInfo = ParseObjectHeader(snapshot, boHeader, ignoreBadHeaderError);
-            objectInfo.PtrObject = ptrObjectHeader;
-            return objectInfo;
-        }
-
-        public static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, BytesAndOffset byteOffset, bool ignoreBadHeaderError)
-        {
-            var heap = snapshot.managedHeapSections;
-            ManagedObjectInfo objectInfo;
-
-            objectInfo = new ManagedObjectInfo();
-            objectInfo.PtrObject = 0;
-            objectInfo.ManagedObjectIndex = -1;
-
-            var boHeader = byteOffset;
-            ulong ptrIdentity;
-            boHeader.TryReadPointer(out ptrIdentity);
-            objectInfo.PtrTypeInfo = ptrIdentity;
-            objectInfo.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(objectInfo.PtrTypeInfo);
-            bool error = false;
-            if (objectInfo.ITypeDescription < 0)
-            {
-                var boIdentity = heap.Find(ptrIdentity, snapshot.virtualMachineInformation);
-                if (boIdentity.IsValid)
-                {
-                    ulong ptrTypeInfo;
-                    boIdentity.TryReadPointer(out ptrTypeInfo);
-                    objectInfo.PtrTypeInfo = ptrTypeInfo;
-                    objectInfo.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(objectInfo.PtrTypeInfo);
-                    error = objectInfo.ITypeDescription < 0;
-                }
-                else
-                {
-                    error = true;
-                }
-            }
-            if (!error)
-            {
-                objectInfo.Size = SizeOfObjectInBytes(snapshot, objectInfo.ITypeDescription, boHeader, heap);
-                objectInfo.data = boHeader;
-            }
+            if(!boHeader.IsValid)
+                resolveFailed = true;
             else
             {
-                if (!ignoreBadHeaderError)
+                boHeader.TryReadPointer(out ptrIdentity);
+
+                info.PtrTypeInfo = ptrIdentity;
+                info.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
+
+                if (info.ITypeDescription < 0)
                 {
+                    var boIdentity = heap.Find(ptrIdentity, snapshot.virtualMachineInformation);
+                    if (boIdentity.IsValid)
+                    {
+                        ulong ptrTypeInfo;
+                        boIdentity.TryReadPointer(out ptrTypeInfo);
+                        info.PtrTypeInfo = ptrTypeInfo;
+                        info.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
+                        resolveFailed = info.ITypeDescription < 0;
+                    }
+                    else
+                    {
+                        resolveFailed = true;
+                    }
+                }
+            }
+            
+            if (resolveFailed)
+            {
 #if DEBUG_VALIDATION
                     UnityEngine.Debug.LogError("Bad object header at address: "+ ptrIdentity);
 #endif
-                }
 
-                objectInfo.PtrTypeInfo = 0;
-                objectInfo.ITypeDescription = -1;
-                objectInfo.Size = 0;
+                info.PtrTypeInfo = 0;
+                info.ITypeDescription = -1;
+                info.Size = 0;
+                info.PtrObject = 0;
+                info.data = default(BytesAndOffset);
+
+                return false;
             }
-            return objectInfo;
+
+
+            info.Size = SizeOfObjectInBytes(snapshot, info.ITypeDescription, boHeader, heap);
+            info.data = boHeader;
+            info.PtrObject = ptrObjectHeader;
+            return true;
         }
     }
 

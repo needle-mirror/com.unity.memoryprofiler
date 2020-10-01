@@ -68,7 +68,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         NativeObjects_GCHandleIndex
     }
 
-    public class MemorySnapshotFileReader : IDisposable
+    public sealed class MemorySnapshotFileReader : IDisposable
     {
         const uint kMemorySnapshotHeadSignature = 0xAEABCDCD;
         const uint kMemorySnapshotDirectorySignature = 0xCDCDAEAB;
@@ -103,9 +103,9 @@ namespace Unity.MemoryProfiler.Editor.Format
             if(!m_Disposed)
             {
                 Debug.LogWarning("MemorySnapshotFileReader was not disposed. Attempting to dispose.");
-                Dispose();
             }
 
+            Dispose();
         }
 
         public void Dispose()
@@ -147,14 +147,17 @@ namespace Unity.MemoryProfiler.Editor.Format
                 throw new IOException("Not enough space in dataOut array.");
             }
 
-            uint  blockIndex = chapter.GetBlockIndex();
+            uint blockIndex = chapter.GetBlockIndex();
             ulong startBlockOffset = chapter.GetBlockOffsetForEntryIndex(entryIndex);
             ulong offset = startBlockOffset;
 
             for (uint i = 0; i < numEntries; ++i)
             {
-                uint entrySize = chapter.GetSizeForEntryIndex(entryIndex + i);
-
+                var entrySize = chapter.GetSizeForEntryIndex(entryIndex + i);
+                if (entrySize > int.MaxValue)
+                {
+                    throw new OverflowException(string.Format("Data size for element: {0} is larger than the max value of int ({1}), element size: {2}", entryIndex + i, int.MaxValue, entrySize));
+                }
                 dataOut[i] = new byte[entrySize];
                 m_Blocks[blockIndex].GetData(offset, entrySize, ref dataOut[i], m_Reader);
 
@@ -186,13 +189,13 @@ namespace Unity.MemoryProfiler.Editor.Format
 
             while (i < numEntries)
             {
-                uint cacheMemory = 0;
+                ulong cacheMemory = 0;
 
                 uint element = i;
 
                 while (element < numEntries)
                 {
-                    uint entrySize = chapter.GetSizeForEntryIndex(entryIndex + element);
+                    ulong entrySize = chapter.GetSizeForEntryIndex(entryIndex + element);
 
                     if (entrySize > m_CacheDataCapacity)
                     {
@@ -220,7 +223,7 @@ namespace Unity.MemoryProfiler.Editor.Format
 
                 while (i < element)
                 {
-                    uint entrySize = chapter.GetSizeForEntryIndex(entryIndex + i);
+                    uint entrySize = (uint)chapter.GetSizeForEntryIndex(entryIndex + i);
                     dataOut[i] = getItemFunc(data, dataOffset, entrySize);
                     dataOffset += entrySize;
                     i++;
@@ -241,7 +244,7 @@ namespace Unity.MemoryProfiler.Editor.Format
 
             uint  blockIndex = chapter.GetBlockIndex();
             ulong blockOffset = chapter.GetBlockOffsetForEntryIndex(0);
-            uint  dataSize = chapter.GetSizeForEntryIndex(0);
+            uint  dataSize = (uint)chapter.GetSizeForEntryIndex(0);
 
             byte[] data = GetDataCache(dataSize);
 
@@ -361,10 +364,10 @@ namespace Unity.MemoryProfiler.Editor.Format
         const uint kCachePage = 4 * 1024;
         const uint kCacheInitialSize = 4 * 1024 * 1024;
 
-        internal uint m_CacheDataCapacity = kCacheInitialSize;
+        internal ulong m_CacheDataCapacity = kCacheInitialSize;
         internal byte[] data = new byte[kCacheInitialSize];
 
-        internal byte[] GetDataCache(uint dataSize)
+        internal byte[] GetDataCache(ulong dataSize)
         {
             if (m_CacheDataCapacity < dataSize)
             {
