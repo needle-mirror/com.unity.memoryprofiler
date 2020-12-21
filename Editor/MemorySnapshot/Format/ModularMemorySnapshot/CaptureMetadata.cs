@@ -24,9 +24,10 @@ namespace Unity.MemoryProfiler.Editor.Format.ModularMemorySnapshot
         GCHandle m_Content;
         GCHandle m_Texture;
 
-        public string Platform { get{ return m_Platform.Target as string; } }
+        public string Platform { get { return m_Platform.Target as string; } }
         public string Content { get { return m_Content.Target as string; } }
-        public Texture2D Screenshot {
+        public Texture2D Screenshot
+        {
             get { return m_Texture.Target as Texture2D; }
             /*can be set internally as formats above 8 store the file separately*/
             internal set
@@ -49,23 +50,22 @@ namespace Unity.MemoryProfiler.Editor.Format.ModularMemorySnapshot
 
                 int offset = 0;
                 var dataPtr = (byte*)binaryData.GetUnsafePtr();
-
-                if (!ReadString(dataPtr, binaryData.Length, ref offset, out string cnt))
+                string cnt;
+                if (!ReadString(dataPtr, binaryData.Length, ref offset, out cnt))
                     return;
-                 m_Content = GCHandle.Alloc(cnt);
+                m_Content = GCHandle.Alloc(cnt);
                 dataPtr += offset;
-
-                if (!ReadString(dataPtr, binaryData.Length, ref offset, out string plat))
+                string plat;
+                if (!ReadString(dataPtr, binaryData.Length, ref offset, out plat))
                     return;
                 m_Platform = GCHandle.Alloc(plat);
                 dataPtr += offset;
-
-                if (!ReadTexture(dataPtr, binaryData.Length, ref offset, out Texture2D tex))
+                Texture2D tex;
+                if (!ReadTexture(dataPtr, binaryData.Length, ref offset, out tex))
                     return;
                 Screenshot = tex;
             }
         }
-
 
         unsafe static bool ReadString(byte* binaryData, int length, ref int offset, out string output)
         {
@@ -107,7 +107,7 @@ namespace Unity.MemoryProfiler.Editor.Format.ModularMemorySnapshot
             offset += sizeof(TextureDesc);
 
             int remainingData = dataLength - (offset - initialOffset);
-            if  (remainingData < 1)
+            if (remainingData < 1)
                 return false; //we don't have enough data to read
 
             var texData = new byte[remainingData];

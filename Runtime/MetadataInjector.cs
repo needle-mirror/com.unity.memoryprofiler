@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler
     /// Abstract class for creating a metadata collector type to populate the `PackedMemorySnapshot.Metadata` member. You can add multiple collectors, but it is recommended to add only one. A collector instance will auto-register during construction.
     /// </summary>
     /// <remarks> Creating a collector instance will override the default metadata collection functionality. If you want to keep the default metadata, go to the `DefaultCollect` method in the file _com.unity.memoryprofiler\Runtime\MetadataInjector.cs_ and copy that code into your collector method.
-    /// Removing a collector can be achieved by calling dispose on the collector instance you want to unregister. 
+    /// Removing a collector can be achieved by calling dispose on the collector instance you want to unregister.
     /// </remarks>
     public abstract class MetadataCollect : IDisposable
     {

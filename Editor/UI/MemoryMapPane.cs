@@ -9,6 +9,7 @@ using UnityEditor;
 using Unity.MemoryProfiler.Editor.Database.Operation;
 using System;
 using Unity.MemoryProfiler.Editor.UI.MemoryMap;
+using Unity.MemoryProfiler.Editor.Database.Operation.Filter;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -56,6 +57,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             public override string ToString()
             {
                 return Mode.GetSchema().GetDisplayName() + seperator + "Memory Map";
+            }
+
+            protected override bool IsEqual(HistoryEvent evt)
+            {
+                var hEvt = evt as History;
+                if (hEvt == null)
+                    return false;
+
+                //TODO: change this to value type comparison once we figure out which data needs to be compared
+                return ReferenceEquals(this, hEvt);
             }
         }
         MemoryMap.MemoryMap m_MemoryMap;
@@ -221,9 +232,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void OnSelectRegions(ulong minAddr, ulong maxAddr)
         {
-            if (minAddr == maxAddr)
-                return;
-
             var lr = new Database.LinkRequestTable();
             lr.LinkToOpen = new Database.TableLink();
 
@@ -329,27 +337,30 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_EventListener.OnOpenLink(link);
         }
 
-        public void OpenTable(Database.TableReference tableRef, Database.Table table, bool focus)
-        {
-            m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
-            m_Spreadsheet.onClickLink += OnSpreadsheetClick;
-            m_EventListener.OnRepaint();
-        }
-
         public void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos, bool focus)
         {
+            Filter existingFilters = null;
+            if(m_Spreadsheet != null)
+            {
+               existingFilters = m_Spreadsheet.GetCurrentFilterCopy();
+            }
+
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.onClickLink += OnSpreadsheetClick;
             m_Spreadsheet.Goto(pos);
+            if (existingFilters != null)
+            {
+                var state = m_Spreadsheet.CurrentState;
+                state.Filter = existingFilters;
+                m_Spreadsheet.CurrentState = state;
+            }
             m_EventListener.OnRepaint();
         }
 
         public override void OnGUI(Rect r)
         {
             if (m_Spreadsheet == null)
-            {
-                OnSelectRegions(0, 1);
-            }
+                OnSelectRegions(0, 0);
 
             m_MemoryMap.OnGUI(r);
         }
@@ -391,6 +402,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 EditorGUILayout.BeginVertical();
 
                 EditorGUILayout.BeginHorizontal();
+                GUILayout.Label("Filters:");
+                m_Spreadsheet.OnGui_Filters();
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
                 GUILayout.Space(2);
                 m_Spreadsheet.OnGUI(r.width - 4);
                 GUILayout.Space(2);
@@ -423,9 +440,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                         long id = 0;
 
                         scrool = GUILayout.BeginScrollView(scrool, false, true, GUILayout.Width(r.width), GUILayout.Height(r.height));
-                        string rowValue = col.GetRowValueString(row, Database.DefaultDataFormatter.Instance);                        
-                        if(long.TryParse(rowValue, out id))
-                        {                            
+                        string rowValue = col.GetRowValueString(row, Database.DefaultDataFormatter.Instance);
+                        if (long.TryParse(rowValue, out id))
+                        {
                             readableCallstack = m_UIState.snapshotMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_UIState.snapshotMode.snapshot.nativeCallstackSymbols, id);
                         }
 

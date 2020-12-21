@@ -18,7 +18,6 @@ namespace Unity.MemoryProfiler.Editor
         ReferenceArray,
         Type,
         NativeObject,
-        NativeObjectReference,
     }
 
     internal enum CodeType
@@ -241,33 +240,33 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Value:
                     ulong offset = 0;
                     bool isStatic = false;
-                    if(IsField())
+                    if (IsField())
                     {
                         int fieldIdx = fieldIndex;
                         offset = (ulong)snapshot.fieldDescriptions.offset[fieldIdx];
                         isStatic = snapshot.fieldDescriptions.isStatic[fieldIdx];
-                        if(isStatic)
+                        if (isStatic)
                         {
                             offset = snapshot.typeDescriptions.typeInfoAddress[m_Parent.obj.managedTypeIndex];
                             offset += (ulong)snapshot.typeDescriptions.size[m_Parent.obj.managedTypeIndex];
 
                             var staticFieldIndices = snapshot.typeDescriptions.fieldIndices_static[m_Parent.obj.managedTypeIndex];
 
-                            for(int i = 0; i < staticFieldIndices.Length; ++i)
+                            for (int i = 0; i < staticFieldIndices.Length; ++i)
                             {
                                 var cFieldIdx = staticFieldIndices[i];
                                 if (cFieldIdx == fieldIdx)
                                     break;
-                                offset+=(ulong)snapshot.fieldDescriptions.offset[cFieldIdx];
+                                offset += (ulong)snapshot.fieldDescriptions.offset[cFieldIdx];
                             }
                         }
                     }
-                    else if(arrayIndex >= 0) //compute our offset within the array
+                    else if (arrayIndex >= 0) //compute our offset within the array
                     {
                         offset += (ulong)(snapshot.virtualMachineInformation.arrayHeaderSize + arrayIndex * snapshot.typeDescriptions.size[managedTypeIndex]);
                     }
 
-                    return isStatic? offset : hostManagedObjectPtr + offset;
+                    return isStatic ? offset : hostManagedObjectPtr + offset;
                 case ObjectDataType.NativeObject:
                     return snapshot.nativeObjects.nativeObjectAddress[nativeObjectIndex];
                 default:
@@ -559,28 +558,28 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Array:
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
+                {
+                    int idx;
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
                     {
-                        int idx;
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
-                        {
-                            return snapshot.CrawledData.ManagedObjects[idx];
-                        }
-                        throw new Exception("Invalid object pointer used to query object list.");
+                        return snapshot.CrawledData.ManagedObjects[idx];
                     }
+                    throw new Exception("Invalid object pointer used to query object list.");
+                }
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
-                    {
-                        int idx;
-                        ulong refPtr = GetReferencePointer();
-                        if (refPtr == 0)
-                            return default(ManagedObjectInfo);
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(GetReferencePointer(), out idx))
-                        {
-                            return snapshot.CrawledData.ManagedObjects[idx];
-                        }
-                        //do not throw, if the ref pointer is not valid the object might have been null-ed
+                {
+                    int idx;
+                    ulong refPtr = GetReferencePointer();
+                    if (refPtr == 0)
                         return default(ManagedObjectInfo);
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(GetReferencePointer(), out idx))
+                    {
+                        return snapshot.CrawledData.ManagedObjects[idx];
                     }
+                    //do not throw, if the ref pointer is not valid the object might have been null-ed
+                    return default(ManagedObjectInfo);
+                }
                 default:
                     throw new Exception("GetManagedObjectSize was called on a instance of ObjectData which does not contain an managed object.");
             }
@@ -725,7 +724,7 @@ namespace Unity.MemoryProfiler.Editor
                 o.m_data.managed.objectPtr = ptr;
                 o.managedObjectData = snapshot.managedHeapSections.Find(ptr, snapshot.virtualMachineInformation);
                 ManagedObjectInfo info = default(ManagedObjectInfo);
-                if(Crawler.TryParseObjectHeader(snapshot, ptr, out info))
+                if (Crawler.TryParseObjectHeader(snapshot, ptr, out info))
                 {
                     if (asTypeIndex >= 0)
                     {

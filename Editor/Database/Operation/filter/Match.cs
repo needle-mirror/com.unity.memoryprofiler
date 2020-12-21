@@ -57,9 +57,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                     m = new NumericMatcher();
                     break;
             }
-            
+
             m.SetMatchPredicate(matchStr);
-            
+
             var matchIndices = col.GetMatchIndex(m_Range, m);
             indices = matchIndices;
         }
@@ -165,14 +165,15 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             }
         }
 
-        int m_ColumnIndex;
+        public int ColumnIndex { get; private set; }
+
         string m_MatchString;
         readonly string k_MatchStringField;
         int m_SelectedPopup;
         bool m_ForceFocus;
         public Match(int col, string matchString = "")
         {
-            m_ColumnIndex = col;
+            ColumnIndex = col;
             m_MatchString = matchString;
             k_MatchStringField = "MatchInputFieldColumn" + col;
             m_ForceFocus = true;
@@ -180,7 +181,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
         public override Filter Clone(FilterCloning fc)
         {
-            Match o = new Match(m_ColumnIndex);
+            Match o = new Match(ColumnIndex);
             m_ForceFocus = false;
             o.m_MatchString = m_MatchString;
             o.m_SelectedPopup = m_SelectedPopup;
@@ -198,7 +199,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             {
                 return tableIn;
             }
-            var tableOut = new MatchTable(tableIn, m_ColumnIndex, m_MatchString, range);
+            var tableOut = new MatchTable(tableIn, ColumnIndex, m_MatchString, range);
             return tableOut;
         }
 
@@ -209,7 +210,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
         public string GetColumnName(Database.Table sourceTable)
         {
-            return sourceTable.GetMetaData().GetColumnByIndex(m_ColumnIndex).Name;
+            return sourceTable.GetMetaData().GetColumnByIndex(ColumnIndex).Name;
         }
 
         Database.Table m_CacheSourceTable;
@@ -218,7 +219,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
         {
             EditorGUILayout.BeginHorizontal();
             bool bRemove = OnGui_RemoveButton();
-            var metaCol = sourceTable.GetMetaData().GetColumnByIndex(m_ColumnIndex);
+            var metaCol = sourceTable.GetMetaData().GetColumnByIndex(ColumnIndex);
             var t = metaCol.Type;
 
             GUILayout.Label(string.Format(t.comparisonMethod == DataMatchMethod.AsString ? "'{0}' contains:" : "'{0}' is:", metaCol.DisplayName));

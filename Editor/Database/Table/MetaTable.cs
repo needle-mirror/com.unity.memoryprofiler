@@ -44,7 +44,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         public Database.MetaColumn[] GetColumnsByIndex(int[] indices)
         {
             MetaColumn[] cols = new MetaColumn[indices.Length];
-            for(int i = 0; i < cols.Length; ++i)
+            for (int i = 0; i < cols.Length; ++i)
             {
                 var index = indices[i];
                 if (index < 0 || index >= m_Columns.Count)

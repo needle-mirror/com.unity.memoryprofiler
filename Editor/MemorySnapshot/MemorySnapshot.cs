@@ -51,6 +51,7 @@ namespace Unity.MemoryProfiler.Editor.Format
     public class QueriedMemorySnapshot : IDisposable, IQueriedMemorySnapshot
     {
         const uint kMinSupportedVersion = 8;
+        const uint kConectionRemapStartVersion = 10;
         const uint kCurrentVersion = 10;
 
         public static QueriedMemorySnapshot Load(string path)
@@ -114,7 +115,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             nativeCallstackSymbols = new NativeCallstackSymbolEntries(m_Reader);
             nativeMemoryLabels = new NativeMemoryLabelEntries(m_Reader);
             nativeMemoryRegions = new NativeMemoryRegionEntries(m_Reader);
-            nativeObjects = new NativeObjectEntries(m_Reader, version == kCurrentVersion);
+            nativeObjects = new NativeObjectEntries(m_Reader, version >= kConectionRemapStartVersion);
             nativeRootReferences = new NativeRootReferenceEntries(m_Reader);
             nativeTypes = new NativeTypeEntries(m_Reader);
             typeDescriptions = new TypeDescriptionEntries(m_Reader);
@@ -174,11 +175,10 @@ namespace Unity.MemoryProfiler.Editor.Format
                         offset = ReadIntFromByteArray(array, offset, out width);
                         offset = ReadIntFromByteArray(array, offset, out height);
                         offset = ReadIntFromByteArray(array, offset, out format);
-                        
+
                         data.screenshot = new Texture2D(width, height, (TextureFormat)format, false);
                         data.screenshot.LoadRawTextureData(screenshot);
                         data.screenshot.Apply();
-
                     }
                 }
 

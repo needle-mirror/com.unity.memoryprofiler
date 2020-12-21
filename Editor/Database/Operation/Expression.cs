@@ -253,7 +253,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                     if (logError)
                     {
                         Debug.LogError(opt.formatError("Unknown identifier '" + identifier[0] + "', must be a table or select name.", opt));
-
                     }
                 }
             }
@@ -558,13 +557,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public override DataT GetValue(long row)
         {
             return column.GetRowValue(row);
-
         }
 
         public override IComparable GetComparableValue(long row)
         {
             return column.GetRowValue(row);
-
         }
 
         public override bool HasMultipleRow()
@@ -1001,7 +998,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public override string GetValueString(long row, IDataFormatter formatter)
         {
             return formatter.Format(GetValue(row));
-
         }
 
         public override DataT GetValue(long row)
@@ -1138,9 +1134,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             ushort* begin = (ushort*)strBegin;
             ushort* vBegin = (ushort*)subStrBegin;
-            while(strLength > 0)
+            while (strLength > 0)
             {
-                if(*begin == *vBegin)
+                if (*begin == *vBegin)
                 {
                     if (strLength >= subStrLength)
                     {
@@ -1162,7 +1158,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             long count = indices.Count;
             long[] o = new long[count];
             long lastO = 0;
-            
+
             unsafe
             {
                 fixed(char* valPtr = val)
@@ -1172,9 +1168,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                     {
                         long ii = indices[i];
                         var rowValue = exp.GetValueString(ii, format).ToLower();
-                        fixed (char* rowValuePtr = rowValue)
+                        fixed(char* rowValuePtr = rowValue)
                         {
-                            if(ContainsSubStr(rowValuePtr, rowValue.Length, valPtr, val.Length))
+                            if (ContainsSubStr(rowValuePtr, rowValue.Length, valPtr, val.Length))
                             {
                                 o[lastO] = ii;
                                 ++lastO;
@@ -1211,7 +1207,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     {
         long m_Value;
         bool m_InvalidMatch = false;
-        
+
         public override long[] GetMatchIndex(Expression exp, ArrayRange indices)
         {
             if (m_InvalidMatch)
@@ -1227,7 +1223,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                 long ii = indices[i];
 
                 var rowValue = exp.GetComparableValue(ii);
-                if(rowValue.CompareTo(matchValue) == 0)
+                if (rowValue.CompareTo(matchValue) == 0)
                 {
                     o[lastO] = ii;
                     ++lastO;

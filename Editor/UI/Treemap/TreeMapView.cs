@@ -20,13 +20,13 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
         private Vector2 mouseTreemapPosition { get { return m_ZoomArea.mousePositionInWorld; } } //_ZoomArea.ViewToDrawingTransformPoint(Event.current.mousePosition); } }
 
-        public delegate void OnOpenItemDelegate(Item a);
+        public delegate void OnOpenItemDelegate(Item a, bool recordHistory);
         public OnOpenItemDelegate OnOpenItem;
 
-        public delegate void OnClickItemDelegate(Item a);
+        public delegate void OnClickItemDelegate(Item a, bool recordHistory);
         public OnClickItemDelegate OnClickItem;
 
-        public delegate void OnClickGroupDelegate(Group a);
+        public delegate void OnClickGroupDelegate(Group a, bool recordHistory);
         public OnClickGroupDelegate OnClickGroup;
 
         public TreeMapView(CachedSnapshot snapshot)
@@ -108,14 +108,14 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                                     {
                                         if (OnOpenItem != null)
                                         {
-                                            OnOpenItem(item);
+                                            OnOpenItem(item, true);
                                         }
                                     }
                                     else
                                     {
                                         if (OnClickItem != null)
                                         {
-                                            OnClickItem(item);
+                                            OnClickItem(item, true);
                                         }
                                     }
                                     //_hostWindow.SelectThing(item._thingInMemory);
@@ -131,7 +131,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                             case EventType.MouseUp:
                                 if (OnClickGroup != null)
                                 {
-                                    OnClickGroup(group);
+                                    OnClickGroup(group, true);
                                 }
                                 //_hostWindow.SelectGroup(group);
                                 Event.current.Use();
@@ -159,7 +159,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             {
                 if (OnClickItem != null)
                 {
-                    OnClickItem(group.Items[0]);
+                    OnClickItem(group.Items[0], false);
                 }
             }
             RefreshSelectionMesh();
@@ -213,8 +213,20 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             //r.width
         }
 
-        public void FocusOnAll()
+        public void FocusOnAll(bool clearSelection)
         {
+            if (clearSelection)
+            {
+                _selectedGroup = null;
+                _selectedItem = null;
+
+                if(m_SelectionGroupMesh != null)
+                    m_SelectionGroupMesh.CleanupMeshes();
+
+                if(m_SelectionMesh != null)
+                    m_SelectionMesh.CleanupMeshes();
+            }
+            
             m_ZoomArea.FocusTo(1, Vector2.zero, null, true);
         }
 
@@ -274,6 +286,12 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
         private void UpdateGroupRect()
         {
+            if(_groups.Count == 0)
+            {
+                RefreshMesh();
+                return;
+            }
+
             Rect space = new Rect(-100f, -100f, 200f, 200f);
 
             List<Group> groups = _groups.Values.ToList();
@@ -344,7 +362,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             m_SelectionGroupMesh = mb.CreateMesh();
         }
 
-        private void RefreshMesh()
+        internal void RefreshMesh()
         {
             if (m_Mesh != null) m_Mesh.CleanupMeshes();
 

@@ -280,6 +280,9 @@ namespace Unity.MemoryProfiler.Editor.Database
 
         public override ExpandableCellState GetCellExpandState(long row, int col)
         {
+            if(row >= m_RowData.Length)
+                return new ExpandableCellState();
+
             long groupIndex = m_RowData[row].groupIndex;
             if (m_RowData[row].isGroupHead())
             {

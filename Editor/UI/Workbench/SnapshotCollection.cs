@@ -7,6 +7,7 @@ using System;
 using System.Linq;
 using Unity.MemoryProfiler.Editor;
 using System.Text;
+using Unity.MemoryProfiler.Editor.Extensions.String;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 #else
@@ -118,7 +119,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             {
-                EditorUtility.DisplayDialog("Error", $"Filename '{name}' contains invalid characters", "OK");
+                EditorUtility.DisplayDialog("Error", string.Format("Filename '{0}' contains invalid characters", name), "OK");
                 return false;
             }
             int nameStart = snapshot.FileInfo.FullName.LastIndexOf(snapshot.FileInfo.Name);
@@ -132,9 +133,9 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             var dir = snapshot.FileInfo.FullName.Substring(0, nameStart);
-            if (Directory.GetFiles(dir).Contains($"{dir}{name}{ MemoryProfilerWindow.k_SnapshotFileExtension}"))
+            if (Directory.GetFiles(dir).Contains(string.Format("{0}{1}{2}", dir, name, MemoryProfilerWindow.k_SnapshotFileExtension)))
             {
-                EditorUtility.DisplayDialog("Error", $"Filename '{name}' already exists", "OK");
+                EditorUtility.DisplayDialog("Error", string.Format("Filename '{0}' already exists", name), "OK");
                 return false;
             }
 
@@ -237,7 +238,7 @@ namespace Unity.MemoryProfiler.Editor
 
             if (collectionRefresh != null)
             {
-                using(var it = GetEnumerator())
+                using (var it = GetEnumerator())
                     collectionRefresh(it);
             }
 

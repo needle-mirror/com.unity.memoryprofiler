@@ -8,8 +8,9 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// </summary>
     internal abstract class TextSpreadsheet : SpreadsheetLogic
     {
-        private EllipsisStyleMetric m_EllipsisStyleMetricData;
-        private EllipsisStyleMetric m_EllipsisStyleMetricHeader;
+        EllipsisStyleMetric m_EllipsisStyleMetricData;
+        EllipsisStyleMetric m_EllipsisStyleMetricHeader;
+        GUIContent m_TextElipsisSwapContent = new GUIContent();
 
         protected EllipsisStyleMetric EllipsisStyleMetricData
         {
@@ -51,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void DrawRow(long row, Rect r, long index, bool selected, ref GUIPipelineState pipe)
         {
-            if(Event.current.type == EventType.Layout)
+            if (Event.current.type == EventType.Layout)
                 GUILayout.Space(r.height);
 
             if (Event.current.type == EventType.Repaint)
@@ -61,7 +62,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 #if UNITY_2019_3_OR_NEWER
                 if (selected)
                     Styles.General.EntrySelected.Draw(r, false, false, true, focused);
-                else if(index % 2 == 0)
+                else if (index % 2 == 0)
                     Styles.General.EntryEven.Draw(r, GUIContent.none, false, false, false, focused);
 
 #else
@@ -71,73 +72,27 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        protected void DrawTextEllipsis(string text, Rect r, GUIStyle textStyle, EllipsisStyleMetric ellipsisStyle, bool selected)
+        protected void DrawTextEllipsis(string text, string tooltip, Rect r, GUIStyle textStyle, EllipsisStyleMetric ellipsisStyle, bool selected)
         {
             Vector2 tSize = Styles.General.NumberLabel.CalcSize(new GUIContent(text));
-            if (tSize.x > r.width)
+            m_TextElipsisSwapContent.text = text;
+            m_TextElipsisSwapContent.tooltip = tooltip;
+
+            if(tSize.x > r.width || tooltip != null)
             {
+                //if we have resized our column to be smaller than the text, provide a tooltip
+                if (tooltip == null)
+                    m_TextElipsisSwapContent.tooltip = text;
+
                 Rect rclipped = new Rect(r.x, r.y, r.width - ellipsisStyle.pixelSize.x, r.height);
-                textStyle.Draw(rclipped, text, false, false, false, false);
+                EditorGUI.LabelField(rclipped, m_TextElipsisSwapContent, textStyle);
                 Rect rEllipsis = new Rect(r.xMax - ellipsisStyle.pixelSize.x, r.y, ellipsisStyle.pixelSize.x, r.height);
                 ellipsisStyle.style.Draw(rEllipsis, ellipsisStyle.ellipsisString, false, false, false, false);
             }
             else
             {
-                textStyle.Draw(r, text, false, false, false, false);
+                EditorGUI.LabelField(r, m_TextElipsisSwapContent, textStyle);
             }
-        }
-    }
-
-
-    class TestTextSpreadsheet : TextSpreadsheet
-    {
-        public TestTextSpreadsheet()
-            : base(new SplitterStateEx(new[] { 100, 50, 50, 50 }), null)
-        {
-        }
-
-        protected override long GetFirstRow()
-        {
-            return 0;
-        }
-
-        protected override long GetNextVisibleRow(long row)
-        {
-            if (row >= 1000)
-            {
-                return -1;
-            }
-            return row + 1;
-        }
-
-        protected override long GetPreviousVisibleRow(long row)
-        {
-            return row - 1;
-        }
-
-        protected override DirtyRowRange SetCellExpanded(long row, long col, bool expanded)
-        {
-            return DirtyRowRange.NonDirty;
-        }
-
-        protected override bool GetCellExpanded(long row, long col)
-        {
-            return false;
-        }
-
-        protected override void DrawCell(long row, long col, Rect r, long index, bool selected, ref GUIPipelineState pipe)
-        {
-            if (Event.current.type == EventType.Repaint)
-            {
-                string t = "R" + row + "C" + col + "Y" + r.y;
-
-                DrawTextEllipsis(t, r, Styles.General.NumberLabel, EllipsisStyleMetricData, selected);
-            }
-        }
-
-        protected override void DrawHeader(long col, Rect r, ref GUIPipelineState pipe)
-        {
-            Styles.General.Header.Draw(r, "Header" + col, false, false, false, false);
         }
     }
 }

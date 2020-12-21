@@ -1,10 +1,20 @@
 using System;
+using System.Text;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Extensions.String
 {
     public static class StringExtensions
     {
+#if NET_LEGACY
+        public static StringBuilder Clear(this StringBuilder sb)
+        {
+            sb.Length = 0;
+            return sb;
+        }
+
+#endif
+
         /// https://www.researchgate.net/publication/224960000_A_Fast_String_Searching_Algorithm
         /// <summary>
         ///IndexOf extension using the Boyer-Moore string search algorithm,

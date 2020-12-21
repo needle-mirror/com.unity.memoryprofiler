@@ -7,13 +7,32 @@ using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 {
+    //selection begin, selection end, selection data is valid, unused
+    internal struct MemoryMapSelectionData
+    {
+        public static MemoryMapSelectionData k_Default { get { return new MemoryMapSelectionData() { m_Data = new Vector4(0, 0, -1, -1) }; } }
+        public Vector4 Data { get { return m_Data; }  }
+
+        public float SelectionBegin { get { return m_Data.x; } set { m_Data.x = value; UpdateValidState(); } }
+        public float SelectionEnd { get { return m_Data.y; } set { m_Data.y = value; UpdateValidState(); } }
+
+        void UpdateValidState()
+        {
+            if (m_Data.x == m_Data.y || m_Data.x == 0.0f || m_Data.y == 0.0f)
+                m_Data.z = -1;
+            else
+                m_Data.z = 1;
+        }
+
+        Vector4 m_Data;
+    }
+
     internal abstract class MemoryMapBase : IDisposable
-    {        
+    {
         public const int k_RowCacheSize = 512;       // Height of texture that store visible rows + extra data to preload data.
         protected ulong m_BytesInRow = 8 * 1024 * 1024;
         protected ulong m_HighlightedAddrMin = ulong.MinValue;
-        protected ulong m_HighlightedAddrMax = ulong.MaxValue;
-
+        protected ulong m_HighlightedAddrMax = ulong.MinValue;
         Material m_Material;
         Texture2D m_Texture;
         public Rect MemoryMapRect = new Rect();
@@ -112,12 +131,16 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 entriesCount += caches[i].Count;
             }
 
-            for (int i = 0; i < caches.Length; ++i)
+            if(entriesCount > 0)
             {
-                CachedSnapshot.ISortedEntriesCache cache = caches[i];
-                cache.Preload();
-                entriesProcessed += cache.Count;
-                ProgressBarDisplay.UpdateProgress((float)((100 * entriesProcessed) / entriesCount) / 100.0f);
+                for (int i = 0; i < caches.Length; ++i)
+                {
+                    CachedSnapshot.ISortedEntriesCache cache = caches[i];
+                    cache.Preload();
+                    entriesProcessed += cache.Count;
+
+                    ProgressBarDisplay.UpdateProgress((float)((100 * entriesProcessed) / entriesCount) / 100.0f);
+                }
             }
         }
 
@@ -177,10 +200,17 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             {
                 m_Material = new Material(Shader.Find(m_MaterialName));
                 m_Material.hideFlags = HideFlags.HideAndDontSave;
+#if UNITY_2021_1_OR_NEWER
+                m_Material.SetInteger("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                m_Material.SetInteger("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                m_Material.SetInteger("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+                m_Material.SetInteger("_ZWrite", 0);
+#else
                 m_Material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
                 m_Material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
                 m_Material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
                 m_Material.SetInt("_ZWrite", 0);
+#endif
             }
 
             m_Material.SetPass(0);
@@ -188,25 +218,22 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             for (int i = 0; i < m_TextureSlots.Length; ++i)
                 m_Material.SetTexture("_Input" + i, m_TextureSlots[i]);
 
-            float selectMin = 0;
-            float selectMax = 0;
+            MemoryMapSelectionData selectionData = MemoryMapSelectionData.k_Default;
 
             for (int i = 0; i < m_Groups.Count; ++i)
             {
                 if (m_Groups[i].AddressBegin <= m_HighlightedAddrMin && m_HighlightedAddrMin <= m_Groups[i].AddressEnd)
                 {
-                    selectMin = m_Groups[i].RowsOffset + (float)(m_HighlightedAddrMin - m_Groups[i].AddressBegin) / (float)m_BytesInRow;
+                    selectionData.SelectionBegin = m_Groups[i].RowsOffset + (float)(m_HighlightedAddrMin - m_Groups[i].AddressBegin) / (float)m_BytesInRow;
                 }
 
                 if (m_Groups[i].AddressBegin <= m_HighlightedAddrMax && m_HighlightedAddrMax <= m_Groups[i].AddressEnd)
                 {
-                    selectMax = m_Groups[i].RowsOffset + (float)(m_HighlightedAddrMax - m_Groups[i].AddressBegin) / (float)m_BytesInRow;
+                    selectionData.SelectionEnd = m_Groups[i].RowsOffset + (float)(m_HighlightedAddrMax - m_Groups[i].AddressBegin) / (float)m_BytesInRow;
                 }
             }
 
-            m_Material.SetFloat("SelectBegin", selectMin);
-            m_Material.SetFloat("SelectEnd", selectMax);
-
+            m_Material.SetVector("_SelectionData", selectionData.Data);
             return m_Material;
         }
 
@@ -528,7 +555,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public void Dispose()
         {
-            if(m_TextureSlots != null)
+            if (m_TextureSlots != null)
             {
                 for (int i = 0; i < m_TextureSlots.Length; ++i)
                     UnityEngine.Object.DestroyImmediate(m_TextureSlots[i]);

@@ -24,7 +24,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 {
                     Grow(blocks - m_Blocks.Count);
                 }
-                else if(blocks < m_Blocks.Count)
+                else if (blocks < m_Blocks.Count)
                 {
                     Shrink(m_Blocks.Count - blocks);
                 }
@@ -34,7 +34,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public BlockList(int blockSize) : this(blockSize, k_InitialBlockSlotsInList)
         {
-
         }
 
         static int ComputeBlockCount(long elementCount, int blockSize)
@@ -95,7 +94,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
             get
             {
                 return m_Blocks[(int)(idx / m_BlockSize)][idx % m_BlockSize];
-
             }
             set
             {
@@ -113,5 +111,4 @@ namespace Unity.MemoryProfiler.Editor.Containers
             Count = 0;
         }
     }
-
 }

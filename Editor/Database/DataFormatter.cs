@@ -28,8 +28,9 @@ namespace Unity.MemoryProfiler.Editor.Database
         , IDataFormatter<string>
         , IDataFormatter<Operation.DiffTable.DiffResult>
     {
-
         static DefaultDataFormatter m_Instance;
+        const string k_NullPtrAddr = "0x0000000000000000";
+
         public static DefaultDataFormatter Instance
         {
             get
@@ -41,11 +42,11 @@ namespace Unity.MemoryProfiler.Editor.Database
             }
         }
 
-        // Formats "[ptr]" or "null" if ptr == 0
+        // Formats "0x{ptr}" or "null" if ptr == 0
         public string FormatPointer(ulong ptr)
         {
-            if (ptr == 0) return "null";
-            return string.Format("[0x{0:x16}]", ptr);
+            if (ptr == 0) return k_NullPtrAddr;
+            return string.Format("0x{0:x16}", ptr);
         }
 
         string IDataFormatter.Format(object obj)

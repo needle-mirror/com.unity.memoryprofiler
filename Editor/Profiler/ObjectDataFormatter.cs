@@ -95,22 +95,6 @@ namespace Unity.MemoryProfiler.Editor
             BaseFormatter.Clear();
         }
 
-        // Formats using available IObjectDataTypeFormatter or return false if none available
-        public bool TryCustomFormat(ObjectData od, out string result, IDataFormatter formatter)
-        {
-            if (od.isManaged)
-            {
-                IObjectDataTypeFormatter td;
-                if (m_TypeFormatter.TryGetValue(od.managedTypeIndex, out td))
-                {
-                    result = td.Format(m_Snapshot, od, formatter);
-                    return true;
-                }
-            }
-            result = null;
-            return false;
-        }
-
         public bool IsExpandable(int iTypeIndex)
         {
             if (iTypeIndex < 0) return false;
@@ -246,7 +230,6 @@ namespace Unity.MemoryProfiler.Editor
             var originalTypeName = m_Snapshot.typeDescriptions.typeDescriptionName[od.managedTypeIndex];
             var sb = new System.Text.StringBuilder(originalTypeName);
 
-            
 
             if (od.hostManagedObjectPtr != 0)
             {
@@ -259,7 +242,7 @@ namespace Unity.MemoryProfiler.Editor
                         sb.Append('[');
                         sb.Append(arrayInfo.ArrayRankToString());
                         sb.Append(']');
-                        for(int i = 1; i < nestedArrayCount; ++i)
+                        for (int i = 1; i < nestedArrayCount; ++i)
                         {
                             sb.Append(k_ArrayClosedSqBrackets);
                         }
@@ -270,7 +253,6 @@ namespace Unity.MemoryProfiler.Editor
                         sb.Append(']');
                         break;
                 }
-
             }
             return sb.ToString();
         }
@@ -331,63 +313,6 @@ namespace Unity.MemoryProfiler.Editor
                     return "iid=" + iid + ",N";
                 default:
                     return "iid=" + iid;
-            }
-        }
-
-        // Formats a string that *should* uniquely identify an object through multiple snapshots and multiple sessions
-        public string FormatUniqueString(ObjectData od)
-        {
-            switch (od.dataType)
-            {
-                case ObjectDataType.Type:
-                    return m_Snapshot.typeDescriptions.typeDescriptionName[od.managedTypeIndex];
-                case ObjectDataType.Global:
-                    return "<global>";
-                case ObjectDataType.NativeObject:
-                    return FormatInstanceId(od.codeType, m_Snapshot.nativeObjects.instanceId[od.nativeObjectIndex]);
-                case ObjectDataType.Object:
-                {
-                    int index = od.GetManagedObjectIndex(m_Snapshot);
-                    if (index >= 0)
-                    {
-                        int nativeIndex = m_Snapshot.CrawledData.ManagedObjects[index].NativeObjectIndex;
-                        if (nativeIndex >= 0)
-                        {
-                            return FormatInstanceId(CodeType.Managed, m_Snapshot.nativeObjects.instanceId[nativeIndex]);
-                        }
-                        ulong ptr;
-                        if (od.TryGetObjectPointer(out ptr))
-                        {
-                            return FormatPointer(ptr);
-                        }
-                    }
-                    goto default;
-                }
-                case ObjectDataType.Unknown:
-                    return "<uninitialized type>";
-                default:
-                {
-                    if (od.IsField())
-                    {
-                        int offset = m_Snapshot.fieldDescriptions.offset[od.fieldIndex];
-                        ulong objPtr = od.GetObjectPointer(m_Snapshot);
-                        return FormatPointerAndOffset(objPtr, offset);
-                    }
-                    else if (od.IsArrayItem())
-                    {
-                        ulong objPtr = od.GetObjectPointer(m_Snapshot);
-                        return FormatterPointerAndIndex(objPtr, od.arrayIndex);
-                    }
-                    else
-                    {
-                        ulong ptr;
-                        if (od.TryGetObjectPointer(out ptr))
-                        {
-                            return FormatPointer(ptr);
-                        }
-                        return od.GetUnifiedObjectIndex(m_Snapshot).ToString();
-                    }
-                }
             }
         }
     }

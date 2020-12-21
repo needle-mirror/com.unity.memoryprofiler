@@ -59,8 +59,9 @@ namespace Unity.MemoryProfiler.Editor.Database
     internal abstract class Table
     {
         protected Database.MetaTable m_Meta;
-        public Database.MetaTable GetMetaData() { return m_Meta; }
 
+        public Database.MetaTable GetMetaData() { return m_Meta; }
+        public string NoDataMessage { get; internal set; }
         public virtual string GetName() { return m_Meta.name; }
         public virtual string GetDisplayName() { return m_Meta.displayName; }
 
@@ -94,7 +95,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                 valid = false;
             }
 
-            if(m_Meta.GetColumnCount() != m_Columns.Count)
+            if (m_Meta.GetColumnCount() != m_Columns.Count)
             {
                 if (log)
                     Debug.Log("Table must have the same number of column as its MetaTable.");
@@ -105,7 +106,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             {
                 var metaColumn = m_Meta.GetColumnByIndex(i);
 
-                if(metaColumn.Index != i)
+                if (metaColumn.Index != i)
                 {
                     if (log)
                         Debug.Log("Column index must be the same as the MetaColumn.Index property");
@@ -321,5 +322,4 @@ namespace Unity.MemoryProfiler.Editor.Database
             return true;
         }
     }
-
 }

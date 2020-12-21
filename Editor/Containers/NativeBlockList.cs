@@ -7,7 +7,6 @@ using Unity.MemoryProfiler.Editor.Utilities.Math;
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
-
     [StructLayout(LayoutKind.Explicit, Pack = 4, Size = 8)]
     unsafe struct MemBlock
     {
@@ -15,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public void* mem;
     }
 
-    public unsafe struct NativeBlockList<T> : IDisposable where T : struct 
+    public unsafe struct NativeBlockList<T> : IDisposable where T : struct
     {
         public const int k_InitialBlockSlots = 8;
         MemBlock* m_BlockList;
@@ -25,7 +24,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         uint m_Capacity;
 
         public uint Count { get; private set; }
-        
+
         public uint Capacity
         {
             get { return m_Capacity; }
@@ -75,7 +74,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
             {
                 Checks.CheckIndexOutOfBoundsAndThrow(idx, Count);
                 return UnsafeUtility.ReadArrayElement<T>(m_BlockList[(idx / m_BlockSize)].mem, (int)(idx % m_BlockSize));
-
             }
             set
             {
@@ -91,7 +89,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         void Grow(int blocks)
         {
-            if(m_UnusedBlockSlots < blocks)
+            if (m_UnusedBlockSlots < blocks)
             {
                 var blockSlotsCount = m_BlockSlots;
                 m_BlockSlots = m_BlockSlots * 2 > m_BlockSlots + blocks ?
@@ -125,7 +123,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             if (Count > m_Capacity)
                 Count = m_Capacity;
         }
-        
+
         public void Push(T value)
         {
             if (Count + 1 >= m_Capacity)
@@ -159,9 +157,9 @@ namespace Unity.MemoryProfiler.Editor.Containers
             if (m_BlockList != null)
             {
                 int occupiedBlocks = (int)(m_BlockSlots - m_UnusedBlockSlots);
-                for(int i = 0; i < occupiedBlocks; ++i)
+                for (int i = 0; i < occupiedBlocks; ++i)
                 {
-                   UnsafeUtility.Free((m_BlockList + i)->mem, Allocator.Persistent);
+                    UnsafeUtility.Free((m_BlockList + i)->mem, Allocator.Persistent);
                 }
                 UnsafeUtility.Free(m_BlockList, Allocator.Persistent);
                 m_BlockList = null;

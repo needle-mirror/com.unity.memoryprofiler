@@ -91,7 +91,7 @@ namespace Unity.MemoryProfiler.Editor
             ulong ptr;
             if (od.managedObjectData.TryReadPointer(out ptr) != BytesAndOffset.PtrReadError.Success)
             {
-                return k_InvalidIntPtr;  
+                return k_InvalidIntPtr;
             }
 
             return formatter.Format(ptr);

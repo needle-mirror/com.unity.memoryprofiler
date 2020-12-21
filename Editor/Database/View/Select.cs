@@ -216,14 +216,14 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                         switch (e.Name)
                         {
                             case "Where":
+                            {
+                                var w = Where.Builder.LoadFromXML(e);
+                                if (w != null)
                                 {
-                                    var w = Where.Builder.LoadFromXML(e);
-                                    if (w != null)
-                                    {
-                                        b.where.Add(w);
-                                    }
-                                    break;
+                                    b.where.Add(w);
                                 }
+                                break;
+                            }
                             default:
                                 //DebugUtility.LogInvalidXmlChild(root, e);
                                 break;
@@ -442,19 +442,19 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                         switch (e.Name)
                         {
                             case "Select":
+                            {
+                                var s = Select.Builder.LoadFromXML(e);
+                                if (s != null)
                                 {
-                                    var s = Select.Builder.LoadFromXML(e);
-                                    if (s != null)
-                                    {
-                                        b.select.Add(s);
-                                    }
-                                    break;
+                                    b.select.Add(s);
                                 }
+                                break;
+                            }
                             case "Condition":
-                                {
-                                    b.Condition = Operation.MetaExpComparison.LoadFromXML(e);
-                                    break;
-                                }
+                            {
+                                b.Condition = Operation.MetaExpComparison.LoadFromXML(e);
+                                break;
+                            }
                             default:
                                 //DebugUtility.LogInvalidXmlChild(root, e);
                                 break;

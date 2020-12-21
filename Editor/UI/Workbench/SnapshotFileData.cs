@@ -204,11 +204,10 @@ namespace Unity.MemoryProfiler.Editor
                 m_GuiData.date = new GUIContent(m_GuiData.UtcDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
 
                 m_GuiData.guiTexture = new GUITexture2DAsset();
-                if(snapshotMetadata.screenshot != null)
+                if (snapshotMetadata.screenshot != null)
                     m_GuiData.guiTexture.SetTexture(snapshotMetadata.screenshot, GUITexture2DAsset.SourceType.Snapshot, 0);
 
                 RefreshScreenshot();
-
             }
         }
 
@@ -235,7 +234,7 @@ namespace Unity.MemoryProfiler.Editor
             if (!ssInfo.Exists && texAsset.Source == GUITexture2DAsset.SourceType.Image)
                 texAsset.SetTexture(null, GUITexture2DAsset.SourceType.None, 0);
 
-            if(ssInfo.Exists && texAsset.Source != GUITexture2DAsset.SourceType.Snapshot
+            if (ssInfo.Exists && texAsset.Source != GUITexture2DAsset.SourceType.Snapshot
                 && (ssInfo.LastWriteTime.Ticks != m_GuiData.guiTexture.TimeStampTicks || texAsset.Texture == null))
             {
                 var texData = File.ReadAllBytes(possibleSSPath);
@@ -261,8 +260,8 @@ namespace Unity.MemoryProfiler.Editor
         {
             return recordDateTicks.CompareTo(other.recordDateTicks);
         }
-        
-        public static bool operator== (SnapshotFileData lhs, SnapshotFileData rhs)
+
+        public static bool operator==(SnapshotFileData lhs, SnapshotFileData rhs)
         {
             if (ReferenceEquals(lhs, rhs))
                 return true;
@@ -273,7 +272,7 @@ namespace Unity.MemoryProfiler.Editor
             return lhs.FileInfo.FullName.Equals(rhs.FileInfo.FullName);
         }
 
-        public static bool operator!= (SnapshotFileData lhs, SnapshotFileData rhs)
+        public static bool operator!=(SnapshotFileData lhs, SnapshotFileData rhs)
         {
             return !(lhs == rhs);
         }
@@ -282,6 +281,5 @@ namespace Unity.MemoryProfiler.Editor
         {
             return this == obj as SnapshotFileData;
         }
-
     }
 }

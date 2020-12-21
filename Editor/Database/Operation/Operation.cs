@@ -144,6 +144,33 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
         }
 
+        public static bool Match(Operator op, ulong leftValue, TypedExpression<ulong> rightExpression, long rightExpressionRow)
+        {
+            switch (op)
+            {
+                case Operator.IsIn:
+                case Operator.NotIn:
+                    {
+                        long rightRowCount = rightExpression.RowCount();
+                        for (long expRow = 0; expRow != rightRowCount; ++expRow)
+                        {
+                            var rightValue = rightExpression.GetValue(expRow);
+                            if (leftValue == rightValue)
+                            {
+                                return op == Operator.IsIn;
+                            }
+                        }
+                        return op == Operator.NotIn;
+                    }
+                default:
+                    {
+                        var rightValue = rightExpression.GetValue(rightExpressionRow);
+                        return Match(op, leftValue, rightValue);
+                    }
+            }
+        }
+
+
         public static bool Match(Operator op, int leftValue, TypedExpression<int> rightExpression, long rightExpressionRow)
         {
             switch (op)
@@ -197,6 +224,21 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
             throw new System.Exception("bad operator");
         }
+
+        public static bool Match(Operator op, ulong lhs, ulong rhs)
+        {
+            switch (op)
+            {
+                case Operator.Equal: return lhs == rhs;
+                case Operator.NotEqual: return lhs != rhs;
+                case Operator.Greater: return lhs > rhs;
+                case Operator.GreaterEqual: return lhs >= rhs;
+                case Operator.Less: return lhs < rhs;
+                case Operator.LessEqual: return lhs <= rhs;
+            }
+            throw new System.Exception("bad operator");
+        }
+
 
         public static bool Match(Operator op, int lhs, int rhs)
         {

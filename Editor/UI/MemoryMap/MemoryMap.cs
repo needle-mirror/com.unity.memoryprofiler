@@ -216,6 +216,9 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             m_Groups.Clear();
 
+            if (m_SnapshotMemoryRegion.Length == 0)
+                return;
+
             ProgressBarDisplay.UpdateProgress(0.0f, "Create groups ...");
 
             int metaRegions = 0;
@@ -482,24 +485,27 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public void OnGUI(Rect rect)
         {
-            Rect r = new Rect(rect);
-            r.y      += Styles.MemoryMap.LegendHeight;
-            r.height -= Styles.MemoryMap.LegendHeight;
+            if (m_Groups.Count != 0)
+            {
+                Rect r = new Rect(rect);
+                r.y += Styles.MemoryMap.LegendHeight;
+                r.height -= Styles.MemoryMap.LegendHeight;
 
-            Rect viewRect = new Rect(0, 0, r.width, m_Groups[m_Groups.Count - 1].MaxY + Styles.MemoryMap.RowPixelHeight);
+                Rect viewRect = new Rect(0, 0, r.width, m_Groups[m_Groups.Count - 1].MaxY + Styles.MemoryMap.RowPixelHeight);
 
-            MemoryMapRect = new Rect(
-                viewRect.x + Styles.MemoryMap.HeaderWidth,
-                viewRect.y,
-                viewRect.width - Styles.MemoryMap.HeaderWidth - Styles.MemoryMap.VScrollBarWidth,
-                viewRect.height);
+                MemoryMapRect = new Rect(
+                    viewRect.x + Styles.MemoryMap.HeaderWidth,
+                    viewRect.y,
+                    viewRect.width - Styles.MemoryMap.HeaderWidth - Styles.MemoryMap.VScrollBarWidth,
+                    viewRect.height);
 
-            if (MemoryMapRect.width <= 0 || MemoryMapRect.height <= 0)
-                return;
+                if (MemoryMapRect.width <= 0 || MemoryMapRect.height <= 0)
+                    return;
 
-            OnGUILegend(new Rect(r.x, rect.y, r.width, Styles.MemoryMap.LegendHeight));
+                OnGUILegend(new Rect(r.x, rect.y, r.width, Styles.MemoryMap.LegendHeight));
 
-            OnGUIView(r, viewRect);
+                OnGUIView(r, viewRect);
+            }
 
             if (m_ForceReselect)
             {

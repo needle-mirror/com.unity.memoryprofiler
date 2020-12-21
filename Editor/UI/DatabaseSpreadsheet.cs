@@ -17,10 +17,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected FormattingOptions m_FormattingOptions;
 
         const string k_DisplayWidthPrefKeyBase = "Unity.MemoryProfiler.Editor.Database.DisplayWidth";
+        const string k_NewLineSeparator = "\n";
         string[] m_DisplayWidthPrefKeysPerColumn;
 
         CallDelay m_DelayCall = new CallDelay();
-        const float k_Delay = 0.25f;
+        const float k_Delay = 0.30f;
         bool m_WasDirty = false;
 
         public int GetDisplayWidth(int columnIndex, int defaultDisplayWidth)
@@ -50,7 +51,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public long RowCount
+        public override long RowCount
         {
             get
             {
@@ -76,6 +77,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         //in order of m_TableSource columns
         protected Filter.ColumnState[] m_ColumnState;
 
+        HashSet<long> m_ColumnsWithMatchFilters = new HashSet<long>();
         Filter.Multi m_Filters = new Filter.Multi();
         Filter.Sort m_AllLevelSortFilter = new Filter.Sort();
         //filter.DefaultSort allLevelDefaultSort = new filter.DefaultSort();
@@ -183,6 +185,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Splitter.RealSizeChanged += SetDisplayWidth;
         }
 
+        void UpdateMatchFilterState()
+        {
+            m_ColumnsWithMatchFilters.Clear();
+            var filterList = m_Filters.filters;
+            foreach (var f in filterList)
+            {
+                var fM = f as Filter.Match;
+                if (fM != null)
+                    m_ColumnsWithMatchFilters.Add(fM.ColumnIndex);
+            }
+        }
+
         private void InitEmptyFilter(List<Database.CellPosition> expandedCells = null)
         {
             m_Filters = new Filter.Multi();
@@ -190,11 +204,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Filters.filters.Add(ds);
             UpdateDisplayTable(expandedCells);
         }
-
+        
         protected void InitFilter(Database.Operation.Filter.Filter filter, List<Database.CellPosition> expandedCells = null)
         {
             Database.Operation.Filter.FilterCloning fc = new Database.Operation.Filter.FilterCloning();
-
             var deffilter = filter.Clone(fc);
             if (deffilter != null)
             {
@@ -355,10 +368,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                     SetDefaultSortFilter((int)col, SortOrder.Descending);
             });
 
-            menu.AddItem(new GUIContent(strMatch), false, () =>
+            if(m_ColumnsWithMatchFilters.Contains(col))
             {
-                AddMatchFilter((int)col);
-            });
+                menu.AddDisabledItem(new GUIContent(strMatch));
+            }
+            else
+            {
+                m_ColumnsWithMatchFilters.Add(col);
+                menu.AddItem(new GUIContent(strMatch), false, () =>
+                {
+                    AddMatchFilter((int)col);
+                });
+            }
+
             menu.DropDown(r);
         }
 
@@ -536,7 +558,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (column != null)
                 {
                     var str = column.GetRowValueString(row, m_FormattingOptions.GetFormatter(metaColumn.FormatName));
-                    DrawTextEllipsis(str, r,
+                    var idx = str.IndexOf(k_NewLineSeparator, StringComparison.InvariantCultureIgnoreCase);
+                    string tooltip = null;
+                    if (idx != -1)
+                    {
+                        tooltip = str;
+                        str = str.Substring(0, idx);
+                    }
+
+                    DrawTextEllipsis(str, tooltip, r,
                         link == null ? Styles.General.NumberLabel : Styles.General.ClickableLabel
                         , EllipsisStyleMetricData, selected);
                 }
@@ -803,7 +833,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             bool matching = dirty;
             m_Filters.OnGui(m_TableDisplay, ref matching);
-            if(matching != dirty)
+            if (matching != dirty)
             {
                 EditorApplication.update -= m_DelayCall.Trigger;
                 m_DelayCall.Start(DelayedOnGUICall, k_Delay);
@@ -814,7 +844,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_AllLevelSortFilter.OnGui(m_TableDisplay, ref dirty);
             EditorGUILayout.EndVertical();
             if (dirty)
+            {
                 m_WasDirty = true;
+            }
+            UpdateMatchFilterState();
         }
 
         void DelayedOnGUICall()
@@ -822,7 +855,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_WasDirty)
             {
                 m_WasDirty = false;
-                
+
                 UpdateDisplayTable();
                 ReportFilterChanges();
 
@@ -831,6 +864,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                     ((IViewEventListener)m_Listener.Target).OnRepaint();
                 }
             }
+        }
+
+        protected override string GetNoDataReason()
+        {
+            return m_TableDisplay.NoDataMessage;
         }
     }
 }

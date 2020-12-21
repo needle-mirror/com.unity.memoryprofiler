@@ -22,7 +22,6 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             OffsetCount = (uint)((Header.TotalBytes / Header.ChunkSize) + (Header.TotalBytes % Header.ChunkSize != 0UL ? 1UL : 0UL));
             m_Offsets = (long*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<long>() * OffsetCount,
                 UnsafeUtility.AlignOf<long>(), Allocator.Persistent);
-
         }
 
         public void Dispose()

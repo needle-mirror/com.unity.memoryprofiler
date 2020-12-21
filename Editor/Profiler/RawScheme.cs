@@ -76,19 +76,7 @@ namespace Unity.MemoryProfiler.Editor
             CreateTable_NativeConnections(tables);
             CreateTable_TypeDescriptions(tables);
             m_Tables = tables.ToArray();
-
-
-            List<Table> extraTable = new List<Table>();
-
-            extraTable.Add(new ObjectAllManagedTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Managed));
-            extraTable.Add(new ObjectAllNativeTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Native));
-            extraTable.Add(new ObjectAllTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.All));
-
-            m_ExtraTable = extraTable.ToArray();
-            foreach (var t in m_ExtraTable)
-            {
-                m_TablesByName.Add(t.GetName(), t);
-            }
+            CreateAllObjectTables(crawledData);
         }
 
         public void Clear()
@@ -293,22 +281,24 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeRootReferences.dataSet);
             table.AddColumn(
                 new MetaColumn("id", "Id", new MetaType(typeof(long), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.id)
+                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.id, false)
             );
             table.AddColumn(
                 new MetaColumn("areaName", "Area Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.areaName)
+                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.areaName, false)
             );
             table.AddColumn(
                 new MetaColumn("objectName", "Object Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.objectName)
+                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.objectName, false)
             );
             table.AddColumn(
                 new MetaColumn("accumulatedSize", "Accumulated Size", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
-                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.accumulatedSize)
+                , DataArray.MakeColumn(m_Snapshot.nativeRootReferences.accumulatedSize, false)
             );
             table.CreateTable(kPrefixTableName + "RootReference", kPrefixTableDisplayName + "Root Reference");
+            table.NoDataMessage = "No Native Root References because they were not captured in this snapshot. Select the Native Allocations option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -317,14 +307,16 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeAllocationSites.dataSet);
             table.AddColumn(
                 new MetaColumn("id", "Id", new MetaType(typeof(long), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocationSites.id)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocationSites.id, false)
             );
             table.AddColumn(
                 new MetaColumn("memoryLabelIndex", "Memory Label Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocationSites.memoryLabelIndex)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocationSites.memoryLabelIndex, false)
             );
 
             table.CreateTable(kPrefixTableName + "NativeAllocationSite", kPrefixTableDisplayName + "Native Allocation Site");
+            table.NoDataMessage = "No Native Allocation Sites because they were not captured in this snapshot. Native Allocation Site collection currently unavailable.";
+
             AddTable(table, tables);
         }
 
@@ -333,13 +325,15 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeCallstackSymbols.dataSet);
             table.AddColumn(
                 new MetaColumn("symbol", "Symbol", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeCallstackSymbols.symbol)
+                , DataArray.MakeColumn(m_Snapshot.nativeCallstackSymbols.symbol, false)
             );
             table.AddColumn(
                 new MetaColumn("readableStackTrace", "Readable Stack Trace", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeCallstackSymbols.readableStackTrace)
+                , DataArray.MakeColumn(m_Snapshot.nativeCallstackSymbols.readableStackTrace, false)
             );
             table.CreateTable(kPrefixTableName + "NativeCallstackSymbol", kPrefixTableDisplayName + "Native Callstack Symbol");
+            table.NoDataMessage = "No Native Callstack Symbols because they were not captured in this snapshot. Native Callstack collection currently unavailable.";
+
             AddTable(table, tables);
         }
 
@@ -348,9 +342,13 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeMemoryLabels.dataSet);
             table.AddColumn(
                 new MetaColumn("name", "Name", new MetaType(typeof(string)), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeMemoryLabels.memoryLabelName)
+                , DataArray.MakeColumn(m_Snapshot.nativeMemoryLabels.memoryLabelName, false)
             );
+
+            //todo: add column for label size
             table.CreateTable(kPrefixTableName + "NativeMemoryLabel", kPrefixTableDisplayName + "Native Memory Label");
+            table.NoDataMessage = "No Native Memory Labels because they were not captured in this snapshot. Select the Native Allocations option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -359,31 +357,33 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeMemoryRegions.dataSet);
             table.AddColumn(
                 new MetaColumn("parentIndex", "Parent Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.parentIndex)
+                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.parentIndex, false)
             );
             table.AddColumn(
                 new MetaColumn("name", "Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.memoryRegionName)
+                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.memoryRegionName, false)
             );
             table.AddColumn(
-                new MetaColumn("addressBase", "Address Base", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.addressBase)
+                new MetaColumn("addressBase", "Address Base", new MetaType(typeof(ulong), DataMatchMethod.AsString), true, Grouping.groupByDuplicate, null)
+                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.addressBase, true)
             );
             table.AddColumn(
                 new MetaColumn("addressSize", "Address Size", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
-                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.addressSize)
+                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.addressSize, false)
             );
             table.AddColumn(
                 new MetaColumn("firstAllocationIndex", "First Allocation Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.firstAllocationIndex)
+                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.firstAllocationIndex, false)
             );
             table.AddColumn(
                 new MetaColumn("numAllocations", "Number Of Allocations", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)))
-                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.numAllocations)
+                , DataArray.MakeColumn(m_Snapshot.nativeMemoryRegions.numAllocations, false)
             );
             table.CreateTable(kPrefixTableName + "NativeMemoryRegion", kPrefixTableDisplayName + "Native Memory Region");
+            table.NoDataMessage = "No Native Memory Regions because they were not captured in this snapshot. Select the Native Allocations option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -392,30 +392,30 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeObjects.dataSet);
             table.AddColumn(
                 new MetaColumn("name", "Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeObjects.objectName)
+                , DataArray.MakeColumn(m_Snapshot.nativeObjects.objectName, false)
             );
             table.AddColumn(
                 new MetaColumn("instanceId", "Instance Id", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeObjects.instanceId)
+                , DataArray.MakeColumn(m_Snapshot.nativeObjects.instanceId, false)
             );
             table.AddColumn(
                 new MetaColumn("size", "Size", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
-                , DataArray.MakeColumn(m_Snapshot.nativeObjects.size)
+                , DataArray.MakeColumn(m_Snapshot.nativeObjects.size, false)
             );
 
             table.AddColumn(
-                new MetaColumn("nativeObjectAddress", "Native Object Address", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeObjects.nativeObjectAddress)
+                new MetaColumn("nativeObjectAddress", "Native Object Address", new MetaType(typeof(ulong), DataMatchMethod.AsString), true, Grouping.groupByDuplicate, null)
+                , DataArray.MakeColumn(m_Snapshot.nativeObjects.nativeObjectAddress, true)
             );
             table.AddColumn(
                 new MetaColumn("rootReferenceId", "Root Reference Id", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeObjects.rootReferenceId)
+                , DataArray.MakeColumn(m_Snapshot.nativeObjects.rootReferenceId, false)
             );
 
             table.AddColumn(
                 new MetaColumn("nativeTypeArrayIndex", "Native Type Array Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeObjects.nativeTypeArrayIndex)
+                , DataArray.MakeColumn(m_Snapshot.nativeObjects.nativeTypeArrayIndex, false)
             );
 
             table.AddColumn(
@@ -457,6 +457,8 @@ namespace Unity.MemoryProfiler.Editor
             );
 
             table.CreateTable(kPrefixTableName + "NativeObject", kPrefixTableDisplayName + "Native Object");
+            table.NoDataMessage = "No Native Objects because they were not captured in this snapshot. Select the Native Objects option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -465,13 +467,15 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeTypes.dataSet);
             table.AddColumn(
                 new MetaColumn("name", "Name", new MetaType(typeof(string)), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeTypes.typeName)
+                , DataArray.MakeColumn(m_Snapshot.nativeTypes.typeName, false)
             );
             table.AddColumn(
                 new MetaColumn("nativeBaseTypeArrayIndex", "Native Base Type Array Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeTypes.nativeBaseTypeArrayIndex)
+                , DataArray.MakeColumn(m_Snapshot.nativeTypes.nativeBaseTypeArrayIndex, false)
             );
             table.CreateTable(kPrefixTableName + "NativeType", kPrefixTableDisplayName + "Native Type");
+            table.NoDataMessage = "No Native Types because they were not captured in this snapshot. Select the Native Objects option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -480,36 +484,38 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.nativeAllocations.dataSet);
             table.AddColumn(
                 new MetaColumn("rootReferenceId", "Root Reference Id", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.rootReferenceId)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.rootReferenceId, false)
             );
             table.AddColumn(
                 new MetaColumn("memoryRegionIndex", "Memory Region Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.memoryRegionIndex)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.memoryRegionIndex, false)
             );
             table.AddColumn(
                 new MetaColumn("allocationSiteId", "Allocation Site Id", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.allocationSiteId)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.allocationSiteId, false)
             );
             table.AddColumn(
-                new MetaColumn("address", "Address", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.address)
+                new MetaColumn("address", "Address", new MetaType(typeof(ulong), DataMatchMethod.AsString), true, Grouping.groupByDuplicate, null)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.address, true)
             );
             table.AddColumn(
                 new MetaColumn("size", "Size", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(ulong)), "size")
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.size)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.size, false)
             );
             table.AddColumn(
                 new MetaColumn("overheadSize", "Overhead Size", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.overheadSize)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.overheadSize, false)
             );
             table.AddColumn(
                 new MetaColumn("paddingSize", "Padding Size", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
-                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.paddingSize)
+                , DataArray.MakeColumn(m_Snapshot.nativeAllocations.paddingSize, false)
             );
             table.CreateTable(kPrefixTableName + "NativeAllocation", kPrefixTableDisplayName + "Native Allocation");
+            table.NoDataMessage = "No Native Allocations because they were not captured in this snapshot. Select the Native Allocations option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -518,13 +524,15 @@ namespace Unity.MemoryProfiler.Editor
             APITable table = new APITable(this, m_Snapshot, m_Snapshot.connections.dataSet);
             table.AddColumn(
                 new MetaColumn("from", "From", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.connections.from)
+                , DataArray.MakeColumn(m_Snapshot.connections.from, false)
             );
             table.AddColumn(
                 new MetaColumn("to", "To", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.connections.to)
+                , DataArray.MakeColumn(m_Snapshot.connections.to, false)
             );
             table.CreateTable(kPrefixTableName + "NativeConnection", kPrefixTableDisplayName + "Native Connection");
+            table.NoDataMessage = "No Native Connections because they were not captured in this snapshot. Select the Native Objects option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -535,11 +543,11 @@ namespace Unity.MemoryProfiler.Editor
 
             table.AddColumn(
                 new MetaColumn("name", "Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeDescriptionName)
+                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeDescriptionName, false)
             );
             table.AddColumn(
                 new MetaColumn("assembly", "Assembly", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.assembly)
+                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.assembly, false)
             );
 
             table.AddColumn(
@@ -557,22 +565,24 @@ namespace Unity.MemoryProfiler.Editor
             );
             table.AddColumn(
                 new MetaColumn("baseOrElementTypeIndex", "Base Or Element Type Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.baseOrElementTypeIndex)
+                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.baseOrElementTypeIndex, false)
             );
             table.AddColumn(
                 new MetaColumn("size", "Size", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
-                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.size)
+                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.size, false)
             );
             table.AddColumn(
-                new MetaColumn("typeInfoAddress", "Type Info Address", new MetaType(typeof(ulong), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeInfoAddress)
+                new MetaColumn("typeInfoAddress", "Type Info Address", new MetaType(typeof(ulong), DataMatchMethod.AsString), true, Grouping.groupByDuplicate, null)
+                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeInfoAddress, true)
             );
             table.AddColumn(
                 new MetaColumn("typeIndex", "Type Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeIndex)
+                , DataArray.MakeColumn(m_Snapshot.typeDescriptions.typeIndex, false)
             );
             table.CreateTable(kPrefixTableName + "ManagedType", kPrefixTableDisplayName + "Managed Type");
+            table.NoDataMessage = "No Managed Types because they were not captured in this snapshot. Select the Managed Objects option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
         }
 
@@ -590,7 +600,29 @@ namespace Unity.MemoryProfiler.Editor
                 , DataArray.MakeColumn(m_TypeBase.BaseIndex)
             );
             table.CreateTable(kPrefixTableName + "NativeTypeBase", kPrefixTableDisplayName + "Native Type Base");
+            table.NoDataMessage = "No Native Type Bases because they were not captured in this snapshot. Select the Native Objects option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+
             AddTable(table, tables);
+        }
+
+        private void CreateAllObjectTables(ManagedData crawledData)
+        {
+            var allManaged = new ObjectAllManagedTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Managed);
+            allManaged.NoDataMessage = "No Managed Objects because they were not captured in this snapshot. Select the Managed Objects option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+            m_TablesByName.Add(allManaged.GetName(), allManaged);
+
+            var allNative = new ObjectAllNativeTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.Native);
+            allNative.NoDataMessage = "No Native Objects because they were not captured in this snapshot. Select the Native Objects option in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+            m_TablesByName.Add(allNative.GetName(), allNative);
+
+            var allObjects = new ObjectAllTable(this, formatter, m_Snapshot, crawledData, ObjectTable.ObjectMetaType.All);
+            allObjects.NoDataMessage = "No Managed or Native Objects because they were not captured in this snapshot. Select the Managed and Native Objects options in the drop-down of the Capture button or via CaptureFlags when using the API to take a capture.";
+            m_TablesByName.Add(allObjects.GetName(), allObjects);
+
+            m_ExtraTable = new Table[3];
+            m_ExtraTable[0] = allManaged;
+            m_ExtraTable[1] = allNative;
+            m_ExtraTable[2] = allObjects;
         }
 
         private void AddTable(APITable t, List<APITable> tables)

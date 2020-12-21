@@ -24,6 +24,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             this.indices = indices.ToArray();
             m_SourceTable = sourceTable;
+            NoDataMessage = sourceTable.NoDataMessage;
             m_Meta = m_SourceTable.GetMetaData();
             CreateColumn();
         }

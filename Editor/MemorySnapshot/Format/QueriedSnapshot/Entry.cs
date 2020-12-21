@@ -71,7 +71,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                     else
                         size = (ulong)(m_AdditionalEntryStorage[offset + count] - m_AdditionalEntryStorage[offset]);
 
-                    return size + (includeOffsetsMemory? (ulong)(UnsafeUtility.SizeOf<long>() * (count + 1)) : 0);
+                    return size + (includeOffsetsMemory ? (ulong)(UnsafeUtility.SizeOf<long>() * (count + 1)) : 0);
                 default:
                     return 0;
             }
@@ -112,7 +112,5 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         }
 
         public unsafe long* GetAdditionalStoragePtr() { return m_AdditionalEntryStorage; }
-
     }
-
 }

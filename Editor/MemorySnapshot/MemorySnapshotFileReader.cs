@@ -94,13 +94,13 @@ namespace Unity.MemoryProfiler.Editor.Format
             }
             catch (Exception e)
             {
-                Debug.LogError("Exception occurred, msg: "+ e.Message);
+                Debug.LogError("Exception occurred, msg: " + e.Message);
             }
         }
 
         ~MemorySnapshotFileReader()
         {
-            if(!m_Disposed)
+            if (!m_Disposed)
             {
                 Debug.LogWarning("MemorySnapshotFileReader was not disposed. Attempting to dispose.");
             }

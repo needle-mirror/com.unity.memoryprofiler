@@ -30,8 +30,7 @@ Shader "Resources/MemoryMap"
             sampler2D _Input0;
             float4    _Input0_TexelSize;
             sampler2D _GUIClipTexture;
-            uniform float SelectBegin;
-            uniform float SelectEnd;
+            uniform float4 _SelectionData;
             uniform float4x4 unity_GUIClipTextureMatrix;
 
             struct appdata_t {
@@ -100,7 +99,11 @@ Shader "Resources/MemoryMap"
 
                 color = lerp(float4(0,0,0,1), color, linesVertical);
 
-                if (SelectBegin <= addr && addr <= SelectEnd )
+                float SelectBegin = _SelectionData[0];
+                float SelectEnd = _SelectionData[1];
+                bool isValid = floor(_SelectionData[2]) == 1;
+
+                if (isValid && SelectBegin <= addr && addr <= SelectEnd )
                 {
                     color.rgb = color.a > 0
                         ? color.rgb+selectColor*0.35
@@ -110,18 +113,18 @@ Shader "Resources/MemoryMap"
                     lineBottomColor = selectColor;
                 }
 
-                if (SelectBegin-1 <= addr && addr <= SelectEnd-1 && group.z < 0.5)
+                if (isValid && SelectBegin-1 <= addr && addr <= SelectEnd-1 && group.z < 0.5)
                 {
                     lineBottomColor = selectColor;
                 }
 
-                if (SelectBegin <= addr && addr - _Input0_TexelSize.x*0.95 < SelectBegin)
+                if (isValid && SelectBegin <= addr && addr - _Input0_TexelSize.x*0.95 < SelectBegin)
                 {
                     lineBottom = 0;
                     lineBottomColor = selectColor;
                 }
 
-                if (SelectEnd < addr + _Input0_TexelSize.x*0.95 && addr <= SelectEnd)
+                if (isValid && SelectEnd < addr + _Input0_TexelSize.x*0.95 && addr <= SelectEnd)
                 {
                     lineBottom = 0;
                     lineBottomColor = selectColor;

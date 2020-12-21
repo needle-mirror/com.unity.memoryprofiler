@@ -60,12 +60,17 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     if (group != null)
                     {
-                        pane.OnClickGroup(group);
+                        pane.OnClickGroup(group, false);
                     }
                     else
                     {
                         pane.ShowAllObjects(default(Treemap.ObjectMetric), true);
                     }
+                }
+                else
+                {
+                    pane.m_TreeMap.FocusOnAll(true);
+                    pane.ShowAllObjects(default(Treemap.ObjectMetric), false);
                 }
 
                 pane.m_EventListener.OnRepaint();
@@ -81,6 +86,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 return name;
+            }
+
+            protected override bool IsEqual(HistoryEvent evt)
+            {
+                var hEvt = evt as History;
+                if (hEvt == null)
+                    return false;
+
+                return Mode == hEvt.Mode
+                    && m_GroupName == hEvt.m_GroupName
+                    && m_SelectedItem.Equals(hEvt.m_SelectedItem);
             }
         }
 
@@ -236,19 +252,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             return new History(this);
         }
 
-        public void OnClickItem(Treemap.Item a)
+        public void OnClickItem(Treemap.Item a, bool record)
         {
+            if (record)
+                m_UIState.AddHistoryEvent(GetCurrentHistoryEvent());
             m_TreeMap.SelectItem(a);
             OpenMetricData(a.Metric, false);
         }
 
-        public void OnOpenItem(Treemap.Item a)
+        public void OnOpenItem(Treemap.Item a, bool record)
         {
             //m_EventListener.OnOpenTable;
         }
 
-        public void OnClickGroup(Treemap.Group a)
+        public void OnClickGroup(Treemap.Group a, bool record)
         {
+            if (record)
+                m_UIState.AddHistoryEvent(GetCurrentHistoryEvent());
             m_TreeMap.SelectGroup(a);
             OpenGroupData(a);
         }
@@ -441,7 +461,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             return -1;
         }
-        
+
         public void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos, bool focus, bool select)
         {
             if (select)
@@ -489,7 +509,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (m_TreeMap.SelectedItem != null)
                 {
-                    m_TreeMap.FocusOnAll();
+                    m_TreeMap.FocusOnAll(false);
                 }
             }
             m_UIState.FormattingOptions.ObjectDataFormatter.forceLinkAllObject = true;

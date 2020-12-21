@@ -162,6 +162,18 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             this.sourceTables = table;
             this.columnKey = columnKey;
 
+            bool hasNoData = true;
+            for(int i = 0; i < table.Length; ++i)
+            {
+                if (table[i].GetRowCount() > 0)
+                    hasNoData = false;
+            }
+
+            if(hasNoData)
+            {
+                NoDataMessage = table[0].NoDataMessage;
+            }
+
             var meta = table[0].GetMetaData();
             MetaTable mt = new MetaTable();
             mt.displayName = "Diff " + table[0].GetDisplayName();
@@ -232,7 +244,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         int MultiColumnElementCompare(Column[] lhs, long lhsIdx, long rhsIdx, Expression[] expressions)
         {
-            for(int i = 0; i < lhs.Length; ++i)
+            for (int i = 0; i < lhs.Length; ++i)
             {
                 int cmp = lhs[i].Compare(lhsIdx, expressions[i], rhsIdx);
                 if (cmp != 0)
@@ -249,7 +261,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             int maxA = indexA.Length;
             int maxB = indexB.Length;
             Expression[] expressions = new Expression[mc.Length];
-            for(int i = 0; i < mc.Length; ++i)
+            for (int i = 0; i < mc.Length; ++i)
             {
                 expressions[i] = ColumnCreator.CreateTypedExpressionColumn(mc[i].Type.scriptingType, colB[i]);
             }

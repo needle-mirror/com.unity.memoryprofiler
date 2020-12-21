@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public override void Get(Range range, ref DataT[] dataOut)
             {
-                for(long i = range.First; i < range.Length; ++i)
+                for (long i = range.First; i < range.Length; ++i)
                 {
                     dataOut[i] = m_Array[i];
                 }

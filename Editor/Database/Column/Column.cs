@@ -37,7 +37,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         }
 
         public abstract long[] GetSortIndex(SortOrder order, ArrayRange indices, bool relativeIndex);
-        
+
         //call this to get a displayable value
         public abstract string GetRowValueString(long row, IDataFormatter formatter);
         public abstract int CompareRow(long rowA, long rowB);

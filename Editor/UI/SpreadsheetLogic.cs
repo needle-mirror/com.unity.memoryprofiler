@@ -84,7 +84,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
         protected abstract DirtyRowRange SetCellExpanded(long row, long col, bool expanded);
         protected abstract bool GetCellExpanded(long row, long col);
-
+        protected abstract string GetNoDataReason();
+        public abstract long RowCount { get; }
         //return -1 when reach the end.
         protected abstract long GetFirstRow();
         protected abstract long GetNextVisibleRow(long row);
@@ -248,12 +249,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             Vector2 scrollBefore = m_GUIState.ScrollPosition;
             m_GUIState.ScrollPosition = GUILayout.BeginScrollView(scrollBefore);
 
-            EditorGUILayout.BeginHorizontal();
-            for (int k = 0; k < m_Splitter.realSizes.Length; ++k)
+            if (Event.current.type == EventType.Layout)
             {
-                GUILayout.Space(m_Splitter.realSizes[k]);
+                EditorGUILayout.BeginHorizontal();
+                for (int k = 0; k < m_Splitter.realSizes.Length; ++k)
+                {
+                    GUILayout.Space(m_Splitter.realSizes[k]);
+                }
+                EditorGUILayout.EndHorizontal();
             }
-            EditorGUILayout.EndHorizontal();
 
             if (scrollBefore.y < m_GUIState.ScrollPosition.y)
             {
@@ -332,48 +336,54 @@ namespace Unity.MemoryProfiler.Editor.UI
 
 
             GUILayout.Space((float)m_GUIState.HeightBeforeFirstVisibleRow);
-
             double visibleRowTotalHeight = 0;
-
-            float yMax = m_GUIState.ScrollPosition.y + m_GUIState.RectData.height;
             Rect r = new Rect(0
                 , m_GUIState.FirstVisibleRowY
                 , 0
                 , 0);
-            long firstRow = GetFirstRow();
-            if (firstRow >= 0)
+
+            if (RowCount > 0)
             {
+                float yMax = m_GUIState.ScrollPosition.y + m_GUIState.RectData.height;
+
+                long firstRow = GetFirstRow();
                 firstRow = m_GUIState.FirstVisibleRow;
-            }
-            for (long i = firstRow, j = 0; r.y < yMax && i < k_MaxRow && i >= 0; i = GetNextVisibleRow(i), ++j)
-            {
-                float h = GetRowHeight(i);
-                r.height = h;
-                visibleRowTotalHeight += h;
-                r.x = 0;
-                r.width = m_GUIState.RectData.width;
-                Rect rRow = new Rect(m_GUIState.ScrollPosition.x, r.y, r.width, r.height);
-
-                DrawRow(i, rRow, m_GUIState.FirstVisibleRowIndex + j, i == m_GUIState.SelectedRow, ref pipe);
-                for (long k = 0; k < m_Splitter.realSizes.Length; ++k)
+                for (long i = firstRow, j = 0; r.y < yMax && i < k_MaxRow && i >= 0; i = GetNextVisibleRow(i), ++j)
                 {
-                    if (k == 0)
+                    float h = GetRowHeight(i);
+                    r.height = h;
+                    visibleRowTotalHeight += h;
+                    r.x = 0;
+                    r.width = m_GUIState.RectData.width;
+                    Rect rRow = new Rect(m_GUIState.ScrollPosition.x, r.y, r.width, r.height);
+
+                    DrawRow(i, rRow, m_GUIState.FirstVisibleRowIndex + j, i == m_GUIState.SelectedRow, ref pipe);
+                    for (long k = 0; k < m_Splitter.realSizes.Length; ++k)
                     {
-                        r.xMax = m_Splitter.realSizes[k];
-                    }
-                    else
-                    {
-                        r.width = m_Splitter.realSizes[k] - k_SmallMargin;
-                    }
-                    if (m_Splitter.realSizes[k] > 0)
-                    {
-                        DrawCell(i, k, r, m_GUIState.FirstVisibleRowIndex + j, i == m_GUIState.SelectedRow, ref pipe);
+                        if (k == 0)
+                        {
+                            r.xMax = m_Splitter.realSizes[k];
+                        }
+                        else
+                        {
+                            r.width = m_Splitter.realSizes[k] - k_SmallMargin;
+                        }
+                        if (m_Splitter.realSizes[k] > 0)
+                        {
+                            DrawCell(i, k, r, m_GUIState.FirstVisibleRowIndex + j, i == m_GUIState.SelectedRow, ref pipe);
+                        }
+
+                        r.x += m_Splitter.realSizes[k];
                     }
 
-                    r.x += m_Splitter.realSizes[k];
+                    r.y += h;
                 }
-
-                r.y += h;
+            }
+            else
+            {
+                r.width = maxWidth;
+                r.height = GetRowHeight(0);
+                GUI.Label(r, GetNoDataReason());
             }
 
             double heightAfterVisibleRow = m_TotalDataHeight - (m_GUIState.HeightBeforeFirstVisibleRow + visibleRowTotalHeight);
@@ -382,7 +392,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             GUILayout.EndScrollView();
 
-           
+
             if (Event.current.type == EventType.Repaint)
             {
                 m_GUIState.RectData = GUILayoutUtility.GetLastRect();
@@ -408,7 +418,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     case EventType.MouseDown:
                     {
                         var row = GetRowAtPosition(Event.current.mousePosition);
-                        if (row >= 0)
+                        if (row >= 0 && RowCount > 0)
                         {
                             m_GUIState.SelectedRow = row;
                             if (m_Listener != null && m_Listener.IsAlive)
@@ -423,7 +433,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     case EventType.MouseUp:
                     {
                         var row = GetRowAtPosition(Event.current.mousePosition);
-                        if (row >= 0)
+                        if (row >= 0 && RowCount > 0)
                         {
                             var col = (int)GetColAtPosition(Event.current.mousePosition);
                             if (col >= 0)
@@ -436,7 +446,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     case EventType.MouseMove:
                     {
                         var row = GetRowAtPosition(Event.current.mousePosition);
-                        if (row >= 0)
+                        if (row >= 0 && RowCount > 0)
                         {
                             var col = (int)GetColAtPosition(Event.current.mousePosition);
                             if (col >= 0)

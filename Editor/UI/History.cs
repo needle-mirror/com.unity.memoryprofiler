@@ -1,10 +1,19 @@
+using System;
+
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal abstract class HistoryEvent
+    internal abstract class HistoryEvent : IEquatable<HistoryEvent>
     {
         protected const string seperator = "::";
         //public abstract bool IsSame(HistoryEvent e);
         public UIState.BaseMode Mode;
+
+        protected abstract bool IsEqual(HistoryEvent evt);
+
+        public bool Equals(HistoryEvent other)
+        {
+            return IsEqual(other);
+        }
     }
 
     /// <summary>

@@ -296,7 +296,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             { new TypePair { Key = typeof(ViewColumnFirstMatch<>), Value = typeof(ushort) }, new ColumnFactory<ViewColumnFirstMatch<ushort>>()},
             { new TypePair { Key = typeof(ViewColumnFirstMatch<>), Value = typeof(DiffTable.DiffResult) }, new ColumnFactory<ViewColumnFirstMatch<DiffTable.DiffResult>>()},
             { new TypePair { Key = typeof(ViewColumnFirstMatch<>), Value = typeof(ManagedConnection.ConnectionType) }, new ColumnFactory<ViewColumnFirstMatch<ManagedConnection.ConnectionType>>()},
-            
+
             //Const column
             { new TypePair { Key = typeof(ViewColumnConst<>), Value = typeof(bool) }, new ColumnFactory<ViewColumnConst<bool>>()},
             { new TypePair { Key = typeof(ViewColumnConst<>), Value = typeof(double) }, new ColumnFactory<ViewColumnConst<double>>()},

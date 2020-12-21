@@ -1,4 +1,7 @@
+using System.Collections.Generic;
+using System.Text;
 using Unity.MemoryProfiler.Editor.Database;
+using Unity.MemoryProfiler.Editor.Extensions.String;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -10,6 +13,8 @@ namespace Unity.MemoryProfiler.Editor
 
         ObjectData m_Object;
         ObjectData[] m_References;
+        List<int> m_FieldIndicesPath = new List<int>(64);
+        StringBuilder m_NamePathBuiler = new StringBuilder(256);
 
         public ObjectReferenceTable(Database.Schema schema, SnapshotObjectDataFormatter formatter, CachedSnapshot snapshot, ManagedData crawledData, ObjectData obj, ObjectMetaType metaType)
             : base(schema, formatter, snapshot, crawledData, metaType)
@@ -33,6 +38,43 @@ namespace Unity.MemoryProfiler.Editor
             return m_References.LongLength;
         }
 
+        void BuildMemberPath(int typeIndex, int fieldIndexToMatch, List<int> typeList)
+        {
+            HashSet<int> visitedFields = new HashSet<int>();
+            RecurseBuildMemberPath(typeIndex, fieldIndexToMatch, typeList, visitedFields);
+        }
+
+        bool RecurseBuildMemberPath(int typeIndex, int fieldIndexToMatch, List<int> typeList, HashSet<int> visited)
+        {
+            var fields = Snapshot.typeDescriptions.fieldIndices[typeIndex];
+            for (int i = 0; i < fields.Length; ++i)
+            {
+                if (fieldIndexToMatch == fields[i])
+                    return true;
+            }
+
+            //second pass recurse scan
+            for (int i = 0; i < fields.Length; ++i)
+            {
+                var field = fields[i];
+
+                if (visited.Contains(field))
+                    continue;
+                else
+                    visited.Add(field);
+
+
+                var fieldTypeIndex = Snapshot.fieldDescriptions.typeIndex[field];
+                typeList.Add(field);
+                if (!RecurseBuildMemberPath(fieldTypeIndex, fieldIndexToMatch, typeList, visited))
+                    typeList.RemoveAt(typeList.Count - 1);
+                else
+                    return true;
+            }
+
+            return false;
+        }
+
         public override string GetObjectName(long row)
         {
             if (m_References[row].isManaged)
@@ -46,7 +88,20 @@ namespace Unity.MemoryProfiler.Editor
                     if (iField >= 0)
                     {
                         var fieldName = Snapshot.fieldDescriptions.fieldDescriptionName[iField];
-                        return typeName + "." + fieldName;
+
+                        m_FieldIndicesPath.Clear();
+                        m_NamePathBuiler.Clear();
+
+                        BuildMemberPath(typeIndex, iField, m_FieldIndicesPath);
+                        m_NamePathBuiler.Append(typeName);
+                        m_NamePathBuiler.Append('.');
+                        for (int i = 0; i < m_FieldIndicesPath.Count; ++i)
+                        {
+                            m_NamePathBuiler.Append(Snapshot.fieldDescriptions.fieldDescriptionName[m_FieldIndicesPath[i]]);
+                            m_NamePathBuiler.Append('.');
+                        }
+                        m_NamePathBuiler.Append(fieldName);
+                        return m_NamePathBuiler.ToString();
                     }
                     else if (arrayIndex >= 0)
                     {

@@ -19,21 +19,24 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             return new Cache<DataT>(dataSet, source);
         }
 
-        public static Column<DataT> MakeColumn<DataT>(SoaDataSet dataSet, DataSource<DataT> source) where DataT : System.IComparable
+        public static SimpleColumn<DataT> MakeColumn<DataT>(SoaDataSet dataSet, DataSource<DataT> source, bool hexDisplay) where DataT : System.IComparable
         {
-            return MakeColumn(MakeCache(dataSet, source));
+            return MakeColumn(MakeCache(dataSet, source), hexDisplay);
         }
 
-        public static Column<DataT> MakeColumn<DataT>(Cache<DataT> source) where DataT : System.IComparable
+        public static SimpleColumn<DataT> MakeColumn<DataT>(Cache<DataT> source, bool hexdisplay) where DataT : System.IComparable
         {
             switch (Type.GetTypeCode(typeof(DataT)))
             {
                 case TypeCode.Int64:
-                    return new ColumnLong(source as Cache<long>) as Column<DataT>;
+                    return new ColumnLong(source as Cache<long>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
                 case TypeCode.Int32:
-                    return new ColumnInt(source as Cache<int>) as Column<DataT>;
+                    return new ColumnInt(source as Cache<int>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+                case TypeCode.UInt64:
+                    return new ColumnULong(source as Cache<ulong>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+
                 default:
-                    return new Column<DataT>(source);
+                    return new SimpleColumn<DataT>(source, SimpleColumnDisplay.Default);
             }
         }
 
@@ -107,7 +110,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             }
             public DataChunk<DataT> GetChunk(long chunkIndex)
             {
-                if(m_DataChunk[chunkIndex] == null)
+                if (m_DataChunk[chunkIndex] == null)
                 {
                     long indexFirst = chunkIndex * m_DataSet.ChunkSize;
                     long indexLast = indexFirst + m_DataSet.ChunkSize;
@@ -155,13 +158,22 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 return result.ToArray();
             }
         }
-        public class Column<DataT> : ColumnTyped<DataT> where DataT : IComparable
+
+        public enum SimpleColumnDisplay
+        {
+            Default = 0,
+            Hex = 1
+        }
+
+        public class SimpleColumn<DataT> : ColumnTyped<DataT> where DataT : IComparable
         {
             protected Cache<DataT> m_Cache;
-            public Column(Cache<DataT> cache)
+            SimpleColumnDisplay m_Display;
+            public SimpleColumn(Cache<DataT> cache, SimpleColumnDisplay colDisplay)
             {
                 m_Cache = cache;
                 type = typeof(DataT);
+                m_Display = colDisplay;
             }
 
             public override long GetRowCount()
@@ -355,7 +367,15 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
 
             public override string GetRowValueString(long row, IDataFormatter formatter)
             {
-                return formatter.Format(m_Cache[row]);
+                switch(m_Display)
+                {
+                    case SimpleColumnDisplay.Hex:
+                        return DefaultDataFormatter.Instance.FormatPointer(Convert.ToUInt64(m_Cache[row]));
+                    case SimpleColumnDisplay.Default:
+                        return formatter.Format(m_Cache[row]);
+                    default:
+                        throw new Exception("Unable to convert data type.");
+                }
             }
 
             public override DataT GetRowValue(long row)
@@ -381,10 +401,137 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
         /// <summary>
         /// `Struct-of-Array` column for `long` value type. duplicated from column<DataT> to improve performances
         /// </summary>
-        public class ColumnLong : Column<long>
+        public class ColumnULong : SimpleColumn<ulong>
         {
-            public ColumnLong(Cache<long> cache)
-                : base(cache)
+            public ColumnULong(Cache<ulong> cache, SimpleColumnDisplay display)
+                : base(cache, display)
+            {
+            }
+
+            public int LowerBoundIndex(long[] index, int first, int count, ulong v)
+            {
+                while (count > 0)
+                {
+                    int it = first;
+                    int step = count / 2;
+                    it += step;
+                    if (m_Cache[index[it]] < v)
+                    {
+                        first = it + 1;
+                        count -= step + 1;
+                    }
+                    else
+                    {
+                        count = step;
+                    }
+                }
+                return first;
+            }
+
+            public int UpperBoundIndex(long[] index, int first, int count, ulong v)
+            {
+                while (count > 0)
+                {
+                    int it = first;
+                    int step = count / 2;
+                    it += step;
+                    if (v >= m_Cache[index[it]])
+                    {
+                        first = it + 1;
+                        count -= step + 1;
+                    }
+                    else
+                    {
+                        count = step;
+                    }
+                }
+                return first;
+            }
+
+            public override long[] GetMatchIndex(ArrayRange rowRange, Operation.Operator operation, Operation.Expression expression, long expressionRowFirst, bool rowToRow)
+            {
+                if (expression.type != type)
+                {
+                    return base.GetMatchIndex(rowRange, operation, expression, expressionRowFirst, rowToRow);
+                }
+
+                Update();
+                Operation.TypedExpression<ulong> typedExpression = expression as Operation.TypedExpression<ulong>;
+                long count = rowRange.Count;
+                var matchedIndices = new List<long>(128);
+                if (rowToRow)
+                {
+                    for (long i = 0; i != count; ++i)
+                    {
+                        var lhs = m_Cache[rowRange[i]];
+                        var rhs = typedExpression.GetValue(expressionRowFirst + i);
+                        if (Operation.Operation.Match(operation, lhs, rhs))
+                        {
+                            matchedIndices.Add(rowRange[i]);
+                        }
+                    }
+                }
+                else
+                {
+                    if (Operation.Operation.IsOperatorOneToMany(operation))
+                    {
+                        for (int i = 0; i != count; ++i)
+                        {
+                            var leftValue = m_Cache[rowRange[i]];
+                            if (Operation.Operation.Match(operation, leftValue, typedExpression, expressionRowFirst))
+                            {
+                                matchedIndices.Add(rowRange[i]);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var valueRight = typedExpression.GetValue(expressionRowFirst);
+                        //Optimization for equal operation when querying on all data
+                        if (rowRange.IsSequence && operation == Operation.Operator.Equal)
+                        {
+                            //use the sorted index to trim down invalid values
+                            long[] sortedIndex = GetSortIndexAsc();
+                            int lowerIndexIndex = LowerBoundIndex(sortedIndex, (int)rowRange.Sequence.First, (int)rowRange.Count, valueRight);
+                            int upperIndexIndex = (int)rowRange.Sequence.Last;
+                            for (int i = lowerIndexIndex; i < upperIndexIndex; ++i)
+                            {
+                                if (m_Cache[sortedIndex[i]] == valueRight)
+                                {
+                                    matchedIndices.Add(sortedIndex[i]);
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i != count; ++i)
+                            {
+                                var leftValue = m_Cache[rowRange[i]];
+                                if (Operation.Operation.Match(operation, leftValue, valueRight))
+                                {
+                                    matchedIndices.Add(rowRange[i]);
+                                }
+                            }
+                        }
+                    }
+                }
+                var matchedIndicesArray = matchedIndices.ToArray();
+                return matchedIndicesArray;
+            }
+        }
+
+
+        /// <summary>
+        /// `Struct-of-Array` column for `long` value type. duplicated from column<DataT> to improve performances
+        /// </summary>
+        public class ColumnLong : SimpleColumn<long>
+        {
+            public ColumnLong(Cache<long> cache, SimpleColumnDisplay display)
+                : base(cache, display)
             {
             }
 
@@ -507,10 +654,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
         /// <summary>
         /// `Struct-of-Array` column for `int` value type. duplicated from column<int> to improve performances
         /// </summary>
-        public class ColumnInt : Column<int>
+        public class ColumnInt : SimpleColumn<int>
         {
-            public ColumnInt(Cache<int> cache)
-                : base(cache)
+            public ColumnInt(Cache<int> cache, SimpleColumnDisplay display)
+                : base(cache, display)
             {
             }
 

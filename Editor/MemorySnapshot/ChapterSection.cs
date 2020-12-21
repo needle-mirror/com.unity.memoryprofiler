@@ -29,7 +29,7 @@ namespace Unity.MemoryProfiler.Editor.Format
                     throw new IOException("Invalid chapter format");
             }
         }
-    
+
         internal uint GetBlockIndex()
         {
             return m_BlockIndex;

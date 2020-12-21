@@ -132,7 +132,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             Checks.CheckEntryTypeValueIsValidAndThrow(entry);
             var entryData = m_Entries[(int)entry];
             Checks.CheckIndexOutOfBoundsAndThrow(offset + count, entryData.Count);
-            
+
             return entryData.ComputeByteSizeForEntryRange(offset, count, true);
         }
 
@@ -275,7 +275,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             if (*sig != FormatSignature.HeaderSignature)
                 return ReadError.InvalidHeaderSignature;
 
-            if (*(sig+1) != FormatSignature.FooterSignature)
+            if (*(sig + 1) != FormatSignature.FooterSignature)
                 return ReadError.InvalidFooterSignature;
 
             if (!(_8ByteBuffer < file.FileLength && _8ByteBuffer > 0))
@@ -284,7 +284,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             //read directory signature
             readCommands[0] = ReadCommandBufferUtils.GetCommand(sig, sizeof(uint), _8ByteBuffer);
             //read chapter version
-            readCommands[1] = ReadCommandBufferUtils.GetCommand(sig+1, sizeof(uint), _8ByteBuffer +sizeof(uint));
+            readCommands[1] = ReadCommandBufferUtils.GetCommand(sig + 1, sizeof(uint), _8ByteBuffer + sizeof(uint));
             //read blocks offset
             readCommands[2] = ReadCommandBufferUtils.GetCommand(&_8ByteBuffer, sizeof(ulong), readCommands[1].Offset + sizeof(uint));
 
@@ -294,7 +294,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             if (*sig != FormatSignature.DirectorySignature)
                 return ReadError.InvalidDirectorySignature;
 
-            if (*(sig+1) != FormatSignature.ChapterSectionVersion)
+            if (*(sig + 1) != FormatSignature.ChapterSectionVersion)
                 return ReadError.InvalidChapterSectionVersion;
 
             //computed offset in file for entries
@@ -314,7 +314,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
             return ReadError.Success;
         }
- 
+
         unsafe static ReadError BuildDataEntries(LowLevelFileReader file, NativeArray<long> entryTypeOffsets, out NativeArray<Entry> entryStorage)
         {
             entryStorage = new NativeArray<Entry>(entryTypeOffsets.Length, Allocator.Persistent);
@@ -325,14 +325,12 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 EntryHeader* headersPtr = (EntryHeader*)headers.GetUnsafePtr();
                 using (var readCommands = new NativeArray<ReadCommand>(entryTypeOffsets.Length, Allocator.TempJob))
                 {
-
                     ReadCommand* readCommandsPtr = (ReadCommand*)readCommands.GetUnsafePtr();
                     for (int i = 0; i < entryTypeOffsets.Length; ++i)
                     {
                         var offset = entryTypeOffsets[i];
-                        if(offset != 0)
+                        if (offset != 0)
                         {
-                            var typeSize = sizeof(EntryHeader);
                             readCommandsPtr[writtenCommands++] = ReadCommandBufferUtils.GetCommand((headersPtr + i), sizeof(EntryHeader), offset);
                         }
                     }
@@ -364,9 +362,9 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             var entriesEnd = entriesBegin + entryStorage.Length;
 
             int counter = 0;
-            while(entriesBegin != entriesEnd)
+            while (entriesBegin != entriesEnd)
             {
-                if(entriesBegin->Header.Format == EntryFormat.DynamicSizeElementArray)
+                if (entriesBegin->Header.Format == EntryFormat.DynamicSizeElementArray)
                 {
                     //swap back the first entry we read during the header read with the total size at the end of the entries array
                     //also memmove the array by one to the right to make space for the first entry
@@ -397,7 +395,6 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
                     for (int i = 0; i < blockStorage.Length; ++i)
                     {
-
                         var blockOffset = blockOffsets[i];
                         *commandPtr++ = ReadCommandBufferUtils.GetCommand(headerPtr++, sizeof(BlockHeader), blockOffset);
                     }
@@ -457,8 +454,8 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                     long dynamicEntryLengthsArray = (count + 1) * sizeof(long);
 
                     //dynamic entries require x bytes in front of the data to store lengths
-                    UnsafeUtility.MemCpy(bufferPtr, entryData.GetAdditionalStoragePtr() + offset, dynamicEntryLengthsArray - (readHeaderMeta? sizeof(long) : 0));
-                    
+                    UnsafeUtility.MemCpy(bufferPtr, entryData.GetAdditionalStoragePtr() + offset, dynamicEntryLengthsArray - (readHeaderMeta ? sizeof(long) : 0));
+
                     if (readHeaderMeta)
                     {
                         var lastOffset = ((long*)bufferPtr) + count;
@@ -466,11 +463,11 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                     }
 
                     //shift the offsets, so that we remove the lengths of the skipped elements
-                    if(offset > 0)
+                    if (offset > 0)
                     {
                         var offsetDiff = entryData.GetAdditionalStoragePtr()[offset];
                         long* offsetsPtr = (long*)bufferPtr;
-                        for(int i = 0; i < count + 1; ++i)
+                        for (int i = 0; i < count + 1; ++i)
                         {
                             var offsetVal = *offsetsPtr;
                             *offsetsPtr++ = offsetVal - offsetDiff;
@@ -521,7 +518,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 dstPtr += (long)(chunkSize - (blockOffset % chunkSize));
                 readSize -= (long)(chunkSize - (blockOffset % chunkSize));
 
-                while(readSize > 0)
+                while (readSize > 0)
                 {
                     ++chunkIndex;
                     var chunkReadSize = Math.Min(readSize, (long)chunkSize);
@@ -530,22 +527,20 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                     readCmd = ReadCommandBufferUtils.GetCommand(dstPtr, chunkReadSize, *chunk);
                     dstPtr += chunkReadSize;
                     readSize -= chunkReadSize;
-                    chunkReads.Push(readCmd); 
+                    chunkReads.Push(readCmd);
                 }
 
                 //TODO: find a way to use the block array chunks directly for scheduling, probably add readcommandbuffer
                 using (var tempCmds = new NativeArray<ReadCommand>((int)chunkReads.Count, Allocator.TempJob))
                 {
                     ReadCommand* cmdPtr = (ReadCommand*)tempCmds.GetUnsafePtr();
-                    for(int i = 0; i < tempCmds.Length; ++i)
+                    for (int i = 0; i < tempCmds.Length; ++i)
                         *(cmdPtr + i) = chunkReads[i];
 
                     return m_FileReader.Read(cmdPtr, (uint)tempCmds.Length, ReadMode.Async);
                 }
             }
         }
-
-
 
         unsafe struct ElementRead
         {
@@ -556,11 +551,10 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
         //Returns ammount of written bytes
         unsafe static long ProcessDynamicSizeElement(ref NativeBlockList<ReadCommand> chunkReads, ref Block block, ElementRead elementRead)
-        { 
+        {
             long written = 0;
             var chunkSize = (long)block.Header.ChunkSize;
             var elementSize = elementRead.end - elementRead.start;
-            var dst = elementRead.readDst;
             var chunkIndex = elementRead.start / chunkSize;
             var chunkOffset = block.GetOffsetsPtr()[chunkIndex];
             var elementOffsetInChunk = elementRead.start % chunkSize;
@@ -578,9 +572,9 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             elementRead.readDst += rSize;
             elementSize -= rSize;
             written += rSize;
-        
+
             //if the element spans multiple chunks
-            while(elementSize > 0)
+            while (elementSize > 0)
             {
                 chunkIndex++;
                 chunkOffset = block.GetOffsetsPtr()[chunkIndex];
@@ -626,7 +620,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 return m_FileReader.Read(cmdsPtr, (uint)readCommands.Length, ReadMode.Async);
             }
         }
-        
+
         public void Dispose()
         {
             if (!m_FileReader.IsCreated)

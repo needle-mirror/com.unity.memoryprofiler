@@ -293,7 +293,6 @@ namespace Unity.MemoryProfiler.Editor
                 iType_ValueType = typeDescriptionName.FindIndex(x => x == k_SystemValueTypeName);
                 iType_Object = typeDescriptionName.FindIndex(x => x == k_SystemObjectTypeName);
                 iType_Enum = typeDescriptionName.FindIndex(x => x == k_SystemEnumTypeName);
-
             }
         }
 
@@ -359,7 +358,7 @@ namespace Unity.MemoryProfiler.Editor
                 nativeObjectAddress = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.nativeObjectAddress));
                 rootReferenceId = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.rootReferenceId));
                 nativeObjectAddressToInstanceId = new Dictionary<ulong, int>((int)nativeObjectAddress.Length);
-                for(int i = 0; i < nativeObjectAddress.Length; ++i)
+                for (int i = 0; i < nativeObjectAddress.Length; ++i)
                 {
                     nativeObjectAddressToInstanceId.Add(nativeObjectAddress[i], instanceId[i]);
                 }
@@ -513,7 +512,7 @@ namespace Unity.MemoryProfiler.Editor
                 var newSortedAddresses = new ulong[startAddresses.Length];
                 var newSortedByteArrays = new byte[startAddresses.Length][];
 
-                for(int i = 0; i < startAddresses.Length; ++i)
+                for (int i = 0; i < startAddresses.Length; ++i)
                 {
                     long idx = sortMapping[i];
                     newSortedAddresses[i] = startAddresses[idx];
@@ -591,8 +590,9 @@ namespace Unity.MemoryProfiler.Editor
                 var ss = snap.connections;
                 Count = ss.GetNumEntries();
                 dataSet = new SoaDataSet(Count, kCacheEntrySize);
+
 #if UNITY_2019_3_OR_NEWER
-                if (connectionsNeedRemaping)
+                if (connectionsNeedRemaping && Count != 0)
                 {
                     var fromAPIArr = new int[Count];
                     ss.from.GetEntries(0, (uint)Count, ref fromAPIArr);
@@ -608,7 +608,7 @@ namespace Unity.MemoryProfiler.Editor
 
                     for (int i = 0; i < instanceIDArr.Length; ++i)
                     {
-                        if(gchandlesIndexArr[i] != -1)
+                        if (gchandlesIndexArr[i] != -1)
                         {
                             instanceIDToGcHandleIndex.Add(instanceIDArr[i], gchandlesIndexArr[i]);
                         }
@@ -625,14 +625,13 @@ namespace Unity.MemoryProfiler.Editor
 
                         //some native objects might have references to other native objects that are currently getting deleted or have been deleted
                         int instanceIDIDX = -1;
-                        if(!instanceIDToIndex.TryGetValue(toAPIArr[i], out instanceIDIDX))
+                        if (!instanceIDToIndex.TryGetValue(toAPIArr[i], out instanceIDIDX))
                         {
                             toIndices[i] = instanceIDIDX;
                         }
                         else
                             toIndices[i] = (int)(gcHandlesCount + instanceIDIDX);
                     }
-
 
                     var enumerator = instanceIDToGcHandleIndex.GetEnumerator();
                     for (long i = Count; i < fromIndices.Length; ++i)
@@ -651,7 +650,6 @@ namespace Unity.MemoryProfiler.Editor
                     from = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.from));
                     to = DataArray.MakeCache(dataSet, DataSourceFromAPI.ApiToDatabase(ss.to));
                 }
-
             }
         }
 
@@ -680,9 +678,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public CachedSnapshot(IQueriedMemorySnapshot s)
         {
-
             var vmInfo = s.virtualMachineInformation;
-            if(!VMTools.ValidateVirtualMachineInfo(vmInfo))
+            if (!VMTools.ValidateVirtualMachineInfo(vmInfo))
             {
                 throw new UnityException("Invalid VM info. Snapshot file is corrupted.");
             }

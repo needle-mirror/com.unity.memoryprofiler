@@ -135,7 +135,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             RawSchema m_RawSchema;
 
 
-
             public Database.View.ViewSchema ViewSchema;
             public Database.Schema SchemaToDisplay;
             public CachedSnapshot snapshot
@@ -238,14 +237,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             public override ViewPane GetDefaultView(UIState uiState, IViewPaneEventListener viewPaneEventListener)
             {
                 if (uiState.snapshotMode != null && uiState.snapshotMode.snapshot != null)
-                    return new UI.TreeMapPane(uiState, viewPaneEventListener);
-                else
-                    return null;
+                {
+                    return new TreeMapPane(uiState, viewPaneEventListener);
+                }
+
+                return null;
             }
 
             public override void Clear()
             {
-                CurrentViewPane.OnClose();
+                if(CurrentViewPane != null)
+                    CurrentViewPane.OnClose();
+
                 SchemaToDisplay = null;
                 m_RawSchema.Clear();
                 m_RawSchema = null;

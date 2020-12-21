@@ -14,6 +14,14 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal static class UIElementsHelper
     {
+        public static void SetScrollViewVerticalScrollerVisibility(ScrollView view, bool alwaysOn)
+        {
+#if UNITY_2021_1_OR_NEWER
+            view.verticalScrollerVisibility = alwaysOn ? ScrollerVisibility.AlwaysVisible : ScrollerVisibility.Auto;
+#else
+            view.showVertical = alwaysOn;
+#endif
+        }
         public static void SwitchVisibility(VisualElement first, VisualElement second, bool showFirst = true)
         {
             SetVisibility(first, showFirst);

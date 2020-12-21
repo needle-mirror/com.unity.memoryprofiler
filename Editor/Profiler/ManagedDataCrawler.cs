@@ -325,13 +325,13 @@ namespace Unity.MemoryProfiler.Editor
         public string ReadString()
         {
             int strLength = ReadInt32();
-            if(offset + sizeof(int) + (strLength * 2) > bytes.Length)
+            if (offset + sizeof(int) + (strLength * 2) > bytes.Length)
             {
                 throw new ArgumentOutOfRangeException("Attempted to read outside of binary buffer.");
             }
             unsafe
             {
-                fixed (byte* ptr = bytes)
+                fixed(byte* ptr = bytes)
                 {
                     string str = null;
                     char* begin = (char*)(ptr + (offset + sizeof(int)));
@@ -492,7 +492,7 @@ namespace Unity.MemoryProfiler.Editor
                 var ptr = snapshot.CrawledData.ManagedObjects[i].PtrObject;
                 snapshot.CrawledData.ManagedObjects[i] = snapshot.CrawledData.ManagedObjects[snapshot.CrawledData.MangedObjectIndexByAddress[ptr]];
             }
-            
+
             //crawl connection data
             status.IncrementStep();
             status.StepStatus = "Crawling connection data";
@@ -536,7 +536,7 @@ namespace Unity.MemoryProfiler.Editor
 #if DEBUG_VALIDATION //This shouldn't really happen
             if (iTypeDescription_UnityEngineObject < 0)
             {
-               throw new Exception("Unable to find UnityEngine.Object");
+                throw new Exception("Unable to find UnityEngine.Object");
             }
 #endif
             int cachedPtrOffset = -1;
@@ -587,7 +587,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
                 objectInfos[i] = objectInfo;
-                
+
                 if (snapshot.HasConnectionOverhaul && instanceID != CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone)
                 {
                     snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
@@ -630,7 +630,7 @@ namespace Unity.MemoryProfiler.Editor
 
 
                 ulong fieldAddr;
-                if(fieldLocation.TryReadPointer(out fieldAddr) == BytesAndOffset.PtrReadError.Success)
+                if (fieldLocation.TryReadPointer(out fieldAddr) == BytesAndOffset.PtrReadError.Success)
                 {
                     crawlData.CrawlDataStack.Push(new StackCrawlData() { ptr = fieldAddr, ptrFrom = ptrFrom, typeFrom = iTypeDescription, indexOfFrom = indexOfFrom, fieldFrom = iField, fromArrayIndex = -1 });
                 }
@@ -666,7 +666,7 @@ namespace Unity.MemoryProfiler.Editor
             snapshot.CrawledData.MangedObjectIndexByAddress[obj.PtrObject] = obj.ManagedObjectIndex;
 
             dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.indexOfFrom, data.ptrFrom, obj.ManagedObjectIndex, data.ptr, data.typeFrom, data.fieldFrom, data.fromArrayIndex));
-            
+
             if (wasAlreadyCrawled)
                 return true;
 
@@ -698,7 +698,6 @@ namespace Unity.MemoryProfiler.Editor
 
                     dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayDataPtr, ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
                     arrayData = arrayData.NextPointer();
-
                 }
             }
             return true;
@@ -742,7 +741,7 @@ namespace Unity.MemoryProfiler.Editor
             int idx = 0;
             if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(ptrObjectHeader, out idx))
             {
-                if(TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
+                if (TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
                 {
                     objectInfo.ManagedObjectIndex = (int)objectList.Count;
                     objectList.Add(objectInfo);
@@ -757,7 +756,7 @@ namespace Unity.MemoryProfiler.Editor
             if (objectInfo.PtrObject == 0)
             {
                 idx = objectInfo.ManagedObjectIndex;
-                if(TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
+                if (TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
                 {
                     objectInfo.ManagedObjectIndex = idx;
                     objectList[idx] = objectInfo;
@@ -771,7 +770,7 @@ namespace Unity.MemoryProfiler.Editor
             wasAlreadyCrawled = true;
             return objectInfo;
         }
-        
+
         public static bool TryParseObjectHeader(CachedSnapshot snapshot, ulong ptrObjectHeader, out ManagedObjectInfo info)
         {
             bool resolveFailed = false;
@@ -781,7 +780,7 @@ namespace Unity.MemoryProfiler.Editor
 
             ulong ptrIdentity = 0;
             var boHeader = heap.Find(ptrObjectHeader, snapshot.virtualMachineInformation);
-            if(!boHeader.IsValid)
+            if (!boHeader.IsValid)
                 resolveFailed = true;
             else
             {
@@ -807,11 +806,11 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
-            
+
             if (resolveFailed)
             {
 #if DEBUG_VALIDATION
-                    UnityEngine.Debug.LogError("Bad object header at address: "+ ptrIdentity);
+                UnityEngine.Debug.LogError("Bad object header at address: " + ptrIdentity);
 #endif
 
                 info.PtrTypeInfo = 0;

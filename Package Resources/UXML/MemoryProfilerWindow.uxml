@@ -16,8 +16,8 @@ xsi:schemaLocation="
       <editor:Toolbar name="sidebarToolbar">
         <editor:ToolbarSpacer class="toolbarSideBumper"/>
         <engine:VisualElement name="attachToPlayerMenuPlaceholder"/>
-        <editor:ToolbarSpacer class="toolbarFlexSpacer"/>
-        <editor:ToolbarButton name="captureButton" text="Capture Player" tooltip="Captures a memory snapshot. Warning, this can take a moment."/>
+		<editor:ToolbarSpacer class="toolbarFlexSpacer"/>
+		<engine:VisualElement name="captureAndFlagsDropdownMenuPlaceholder"/>
         <editor:ToolbarButton name="importButton" text="Import..." tooltip="Import capture information from a file."/>
         <editor:ToolbarSpacer class="toolbarSideBumper"/>
       </editor:Toolbar>

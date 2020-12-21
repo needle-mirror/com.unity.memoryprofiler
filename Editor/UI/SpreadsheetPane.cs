@@ -68,6 +68,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 return s;
             }
+
+            protected override bool IsEqual(HistoryEvent evt)
+            {
+                var hEvt = evt as History;
+                if (hEvt == null)
+                    return false;
+
+                return m_Table == hEvt.m_Table
+                    && m_SpreadsheetState.Filter == hEvt.m_SpreadsheetState.Filter
+                    && m_SpreadsheetState.FirstVisibleRow == hEvt.m_SpreadsheetState.FirstVisibleRow
+                    && m_SpreadsheetState.FirstVisibleRowIndex == hEvt.m_SpreadsheetState.FirstVisibleRowIndex
+                    && m_SpreadsheetState.SelectedCell == hEvt.m_SpreadsheetState.SelectedCell
+                    && m_SpreadsheetState.SelectedRow == hEvt.m_SpreadsheetState.SelectedRow;
+            }
         }
 
         public SpreadsheetPane(UIState s, IViewPaneEventListener l)

@@ -11,13 +11,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public static void Initialize()
         {
-            if(General == null)
+            if (General == null)
             {
                 General = new GeneralStyles();
                 General.Init();
             }
 
-            if(MemoryMap == null)
+            if (MemoryMap == null)
             {
                 MemoryMap = new MemoryMapStyles();
                 MemoryMap.Init();
@@ -61,6 +61,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public GUIStyle Foldout { get; private set; }
         public GUIStyle ProfilerGraphBackground { get; private set; }
         public GUIStyle ToolbarPopup { get; private set; }
+        public GUIStyle ToolbarDropDownToggle { get; private set; }
 
         public override void Init()
         {
@@ -82,7 +83,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Foldout = "ProfilerTimelineFoldout";
             ProfilerGraphBackground = new GUIStyle("ProfilerScrollviewBackground");
             ToolbarPopup = new GUIStyle(EditorStyles.toolbarPopup);
-
+            ToolbarDropDownToggle = new GUIStyle("ToolbarDropDownToggle");
             Bar.normal.background = Bar.hover.background = Bar.active.background = EditorGUIUtility.whiteTexture;
             Bar.normal.textColor = Bar.hover.textColor = Bar.active.textColor = Color.black;
             LeftPane.padding.left = 15;
@@ -93,10 +94,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ClickableLabel.normal.textColor = new Color(0, 0, 1, 1);
         }
     }
-    
+
     public class MemoryMapStyles : StyleSet
     {
-
         public GUIStyle TimelineBar { get; private set; }
         public GUIStyle AddressSub { get; private set; }
         public GUIStyle SeriesLabel { get; private set; }

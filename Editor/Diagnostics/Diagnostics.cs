@@ -51,7 +51,7 @@ namespace Unity.MemoryProfiler.Editor.Diagnostics
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
-        public static void ThrowExceptionGeneric<T>(string message)where T : Exception, new()
+        public static void ThrowExceptionGeneric<T>(string message) where T : Exception, new()
         {
             var except = (T)Activator.CreateInstance(typeof(T), message);
             throw except;

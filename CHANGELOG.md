@@ -4,6 +4,26 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.7-preview.1] - 2020-12-21
+### Added
+ - Added a capture flags selection dropdown onto the Capture button.
+ - Added tooltips to display the complete value of table entries such as multiline strings, which are being turncated.
+### Changed
+  - Fixed an issue with the reference table, where value type fields would be skipped when displaying the reference target.
+  - Fixed an issue where multiple match filters could be added to one column.
+  - Fixed an issue where the Native Instance ID column in the All Objects Table would not be display some entries. ([case 1278247](https://issuetracker.unity3d.com/product/unity/issues/guid/1278247/)).
+  - Fixed an issue with the Tree Map where history events would not be applied to the view, after clicking the previous view button ([case 1299864](https://issuetracker.unity3d.com/product/unity/issues/guid/1299864/)).
+  - Fixed an issue where the table pane would attempt to change GUI state in between layout and repaint events.
+  - Fixed an issue with multiline strings being displayed incorrectly inside their row ([case 1275855](https://issuetracker.unity3d.com/product/unity/issues/guid/1275855/)).
+  - Changed the Address column formatting to show pointer values in hex rather than decimal, for raw data tables.
+  - Renamed the Owned Size column into Managed Size for the All Objects table and Size for Managed andNative Objects tables.
+  - Renamed the Target Size column into Field Target Size for All Objects and Managed Objects tables.
+  - Fixed an issue with filters UI not being displayed for the Memory Map.
+  - Fixed an issue with Memory Map selection being incorrect after loading a snapshot ([case 1276377](https://issuetracker.unity3d.com/product/unity/issues/guid/1276377/)).
+### Removed
+  - Removed the profile target concatenation from the capture button, as the currently selected target is already visible on the target dropdown.
+
+
 ## [0.2.6-preview.1] - 2020-10-01
 ### Added
   - Added search field delay when filtering table entries via the match filter.
@@ -23,7 +43,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - Changed the snapshot crawler to discard unknown type data as some types are VM internal.
     Note: The following versions are able to capture all type data: 2020.2b2, 2020.1.5f1, 2019.4.10f1.
   - Changed table diffing to be multi-key, thus making the diffing operation accurate with regards to matching object as "Same".
-  - Changed the Address column formatting to show pointer values in hex rather than decimal.
+  - Changed the Address column formatting to show pointer values in hex rather than decimal, for object tables.
   - Changed the Name column so that it only shows object or field name depending on the expanded item.
   - Fixed some static fields not showing up in the Reference table.
   - Fixed a leak where the snapshot collection would never clean up it's Texture2D.
