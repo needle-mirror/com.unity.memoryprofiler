@@ -4,6 +4,11 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.8-preview.1] - 2021-01-14
+### Changed
+  - Fixed an issue with heap section sorting and remapping which would cause managed objects to sometimes fail to be crawled.
+
+
 ## [0.2.7-preview.1] - 2020-12-21
 ### Added
  - Added a capture flags selection dropdown onto the Capture button.
@@ -16,7 +21,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - Fixed an issue where the table pane would attempt to change GUI state in between layout and repaint events.
   - Fixed an issue with multiline strings being displayed incorrectly inside their row ([case 1275855](https://issuetracker.unity3d.com/product/unity/issues/guid/1275855/)).
   - Changed the Address column formatting to show pointer values in hex rather than decimal, for raw data tables.
-  - Renamed the Owned Size column into Managed Size for the All Objects table and Size for Managed andNative Objects tables.
+  - Renamed the Owned Size column into Managed Size for the All Objects table and Size for Managed and Native Objects tables.
   - Renamed the Target Size column into Field Target Size for All Objects and Managed Objects tables.
   - Fixed an issue with filters UI not being displayed for the Memory Map.
   - Fixed an issue with Memory Map selection being incorrect after loading a snapshot ([case 1276377](https://issuetracker.unity3d.com/product/unity/issues/guid/1276377/)).

@@ -901,17 +901,31 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                var cursor = data.managedHeapSections.Find(bounds, virtualMachineInformation);
                 int rank = data.typeDescriptions.GetRank(iTypeDescriptionArrayType);
                 arrayInfo.rank = new int[rank];
-                arrayInfo.length = 1;
-                for (int i = 0; i != rank; i++)
+
+                var cursor = data.managedHeapSections.Find(bounds, virtualMachineInformation);
+                if (cursor.IsValid)
                 {
-                    var l = cursor.ReadInt32();
-                    arrayInfo.length *= l;
-                    arrayInfo.rank[i] = l;
-                    cursor = cursor.Add(8);
+                    arrayInfo.length = 1;
+                    for (int i = 0; i != rank; i++)
+                    {
+                        var l = cursor.ReadInt32();
+                        arrayInfo.length *= l;
+                        arrayInfo.rank[i] = l;
+                        cursor = cursor.Add(8);
+                    }
                 }
+                else
+                {
+                    //object has corrupted data
+                    arrayInfo.length = 0;
+                    for (int i = 0; i != rank; i++)
+                    {
+                        arrayInfo.rank[i] = -1;
+                    }
+                }
+
             }
 
             arrayInfo.elementTypeDescription = data.typeDescriptions.baseOrElementTypeIndex[iTypeDescriptionArrayType];
@@ -1028,13 +1042,19 @@ namespace Unity.MemoryProfiler.Editor
                 return bo.Add(virtualMachineInformation.arraySizeOffsetInHeader).ReadInt32();
 
             var cursor = heap.Find(bounds, virtualMachineInformation);
-            int length = 1;
-            int rank = data.typeDescriptions.GetRank(iTypeDescriptionArrayType);
-            for (int i = 0; i != rank; i++)
+            int length = 0;
+
+            if (cursor.IsValid)
             {
-                length *= cursor.ReadInt32();
-                cursor = cursor.Add(8);
+                length = 1;
+                int rank = data.typeDescriptions.GetRank(iTypeDescriptionArrayType);
+                for (int i = 0; i != rank; i++)
+                {
+                    length *= cursor.ReadInt32();
+                    cursor = cursor.Add(8);
+                }
             }
+
             return length;
         }
 
