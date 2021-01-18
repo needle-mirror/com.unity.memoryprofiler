@@ -4,6 +4,11 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.8-preview.2] - 2021-01-18
+### Changed
+  - Fixed an issue with the capture button style not appearing on 2018.4 Editors.
+
+
 ## [0.2.8-preview.1] - 2021-01-14
 ### Changed
   - Fixed an issue with heap section sorting and remapping which would cause managed objects to sometimes fail to be crawled.

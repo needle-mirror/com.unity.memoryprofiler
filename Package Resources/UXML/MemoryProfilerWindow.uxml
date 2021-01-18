@@ -18,6 +18,7 @@ xsi:schemaLocation="
         <engine:VisualElement name="attachToPlayerMenuPlaceholder"/>
 		<editor:ToolbarSpacer class="toolbarFlexSpacer"/>
 		<engine:VisualElement name="captureAndFlagsDropdownMenuPlaceholder"/>
+		<editor:ToolbarSpacer class="toolbarFlexSpacer0Px"/>
         <editor:ToolbarButton name="importButton" text="Import..." tooltip="Import capture information from a file."/>
         <editor:ToolbarSpacer class="toolbarSideBumper"/>
       </editor:Toolbar>

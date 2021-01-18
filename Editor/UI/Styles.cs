@@ -83,7 +83,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             Foldout = "ProfilerTimelineFoldout";
             ProfilerGraphBackground = new GUIStyle("ProfilerScrollviewBackground");
             ToolbarPopup = new GUIStyle(EditorStyles.toolbarPopup);
+#if UNITY_2018_4
+            ToolbarDropDownToggle = new GUIStyle("GV Gizmo DropDown");
+#else
             ToolbarDropDownToggle = new GUIStyle("ToolbarDropDownToggle");
+#endif
             Bar.normal.background = Bar.hover.background = Bar.active.background = EditorGUIUtility.whiteTexture;
             Bar.normal.textColor = Bar.hover.textColor = Bar.active.textColor = Color.black;
             LeftPane.padding.left = 15;
