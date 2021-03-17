@@ -50,17 +50,23 @@ namespace Unity.MemoryProfiler.Editor.Format
 
     public class QueriedMemorySnapshot : IDisposable, IQueriedMemorySnapshot
     {
-        const uint kMinSupportedVersion = 8;
-        const uint kConectionRemapStartVersion = 10;
-        const uint kCurrentVersion = 10;
+        // !!!!! NOTE: Keep in sync with Runtime/Profiler/MemorySnapshots.h/.cpp
+        internal enum FormatHistory : uint
+        {
+            SnapshotMinSupportedFormatVersion = 8, //Added metadata to file, min supported version for capture
+            NativeConnectionsAsInstanceIdsVersion = 10, //native object collection reworked, added new gchandleIndex array to native objects for fast managed object access
+            ProfileTargetInfoAndMemStatsVersion = 11, //added profile target info and memory summary struct  
+            MemLabelSizeAndHeapIdVersion = 12 //added gc heap / vm heap identification encoded within each heap address and memory label size reporting
+        };
 
+        static readonly uint kCurrentVersion = (uint)FormatHistory.MemLabelSizeAndHeapIdVersion;
         public static QueriedMemorySnapshot Load(string path)
         {
             MemorySnapshotFileReader reader = new MemorySnapshotFileReader(path);
 
             uint ver = reader.GetDataSingle(EntryType.Metadata_Version, ConversionFunctions.ToUInt32);
 
-            if (ver < kMinSupportedVersion)
+            if (ver < (uint)FormatHistory.SnapshotMinSupportedFormatVersion)
             {
                 throw new Exception(string.Format("Memory snapshot at {0}, is using an older format version: {1}", new object[] { path, ver.ToString() }));
             }
@@ -108,14 +114,14 @@ namespace Unity.MemoryProfiler.Editor.Format
             connections = new ConnectionEntries(m_Reader);
             fieldDescriptions = new FieldDescriptionEntries(m_Reader);
             gcHandles = new GCHandleEntries(m_Reader);
-            managedHeapSections = new ManagedMemorySectionEntries(m_Reader, EntryType.ManagedHeapSections_StartAddress);
-            managedStacks = new ManagedMemorySectionEntries(m_Reader, EntryType.ManagedStacks_StartAddress);
+            managedHeapSections = new ManagedMemorySectionEntries(m_Reader, EntryType.ManagedHeapSections_StartAddress, version >= (uint)FormatHistory.MemLabelSizeAndHeapIdVersion);
+            managedStacks = new ManagedMemorySectionEntries(m_Reader, EntryType.ManagedStacks_StartAddress, false);
             nativeAllocations = new NativeAllocationEntries(m_Reader);
             nativeAllocationSites = new NativeAllocationSiteEntries(m_Reader);
             nativeCallstackSymbols = new NativeCallstackSymbolEntries(m_Reader);
             nativeMemoryLabels = new NativeMemoryLabelEntries(m_Reader);
             nativeMemoryRegions = new NativeMemoryRegionEntries(m_Reader);
-            nativeObjects = new NativeObjectEntries(m_Reader, version >= kConectionRemapStartVersion);
+            nativeObjects = new NativeObjectEntries(m_Reader, version >= (uint)FormatHistory.NativeConnectionsAsInstanceIdsVersion);
             nativeRootReferences = new NativeRootReferenceEntries(m_Reader);
             nativeTypes = new NativeTypeEntries(m_Reader);
             typeDescriptions = new TypeDescriptionEntries(m_Reader);

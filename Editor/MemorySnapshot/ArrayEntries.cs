@@ -127,6 +127,22 @@ namespace Unity.MemoryProfiler.Editor.Format
             bytes = new ByteArrayEntries(reader, (EntryType)(entryTypeBase + 1));
         }
 
+
+
+        internal ManagedMemorySectionEntries(MemorySnapshotFileReader reader, EntryType entryTypeBase, bool hasHeapTypeEncodedInAddr)
+        {
+            //all addresses are shifted 1 bit to the left in the case of encoding the type inside the chunk (ver 12+)
+            //only the new reader inside com.unity.memoryprofiler will read the encodings
+            GetItem<ulong> func;
+            if (hasHeapTypeEncodedInAddr)
+                func = ConversionFunctions.ToUInt64WithMask;
+            else
+                func = ConversionFunctions.ToUInt64;
+
+            startAddress = new ArrayEntries<ulong>(reader, (EntryType)(entryTypeBase + 0), func);
+            bytes = new ByteArrayEntries(reader, (EntryType)(entryTypeBase + 1));
+        }
+
         public uint GetNumEntries()
         {
             return bytes.GetNumEntries();
@@ -545,6 +561,20 @@ namespace Unity.MemoryProfiler.Editor.Format
                 throw new IOException("Invalid data entry");
             }
             return BitConverter.ToUInt32(data, (int)startIndex);
+        }
+        
+        public static ulong ToUInt64WithMask(byte[] data, uint startIndex, uint numBytes)
+        {
+
+            const ulong bitMask = ulong.MaxValue >> 1;
+            if (numBytes != sizeof(ulong))
+            {
+                throw new IOException("Invalid data entry");
+            }
+
+            ulong res = BitConverter.ToUInt64(data, (int)startIndex);
+            res = res & bitMask; //use bitmask to get real addr out
+            return res;
         }
 
         public static ulong ToUInt64(byte[] data, uint startIndex, uint numBytes)

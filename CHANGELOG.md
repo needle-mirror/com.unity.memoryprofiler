@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.9-preview.1] - 2021-03-17
+### Changed
+  - Updated from Unity Distribution License to Unity Companion License
+  - Fixed an issue with setting capture folder path, failing to correctly parse the provided path
+
+
 ## [0.2.8-preview.2] - 2021-01-18
 ### Changed
   - Fixed an issue with the capture button style not appearing on 2018.4 Editors.

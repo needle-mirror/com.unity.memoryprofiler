@@ -8,7 +8,6 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
 {
     internal static class LegacyPackedMemorySnapshotConverter
     {
-        const uint kCurrentVersion = 8;
         const int kCurrentConversionStepCount = 8;
 
         public static IEnumerator Convert(LegacyPackedMemorySnapshot snapshot, string writePath)
@@ -37,7 +36,7 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
             yield return status;
 
             //snapshot version will always be the current one for conversion operations
-            writer.WriteEntry(EntryType.Metadata_Version, kCurrentVersion);
+            writer.WriteEntry(EntryType.Metadata_Version, (uint)Format.QueriedMemorySnapshot.FormatHistory.SnapshotMinSupportedFormatVersion);
 
             //timestamp with conversion date
             writer.WriteEntry(EntryType.Metadata_RecordDate, (ulong)DateTime.Now.Ticks);
