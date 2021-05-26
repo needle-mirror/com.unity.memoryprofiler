@@ -120,6 +120,8 @@ namespace Unity.MemoryProfiler.Editor
         const string k_WindowCommonStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style.uss";
         const string k_WindowLightStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_light.uss";
         const string k_WindowDarkStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_dark.uss";
+        const string k_Window2018DarkStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_2018_dark.uss";
+        const string k_Window2018LightStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_2018_light.uss";
         const string k_WindowNewThemingStyleSheetPath = k_StyleSheetsPath + "MemoryProfilerWindow_style_newTheming.uss";
 
         const string k_SnapshotButtonClassName = "snapshotButton";
@@ -157,15 +159,10 @@ namespace Unity.MemoryProfiler.Editor
 
         Button m_BackwardsInHistoryButton;
         Button m_ForwardsInHistoryButton;
-        ToolbarButton m_InportButton;
+        ToolbarButton m_ImportButton;
         VisualElement m_ViewSelectorMenu;
 
-        VisualElement m_AttachToPlayerDropdownHolder;
         VisualElement m_CaptureButtonWithDropdown;
-
-        //storing the fixed width of the VisualElements of the left part of the toolbar (i.e. excluding the AttachToPlayerDropdown)
-        float m_LeftPaneToolbarWidthTakenByUIElements;
-        float m_LeftPaneToolbarHeight;
 
         VisualElement m_LeftPane;
         VisualElement m_MainViewPanel;
@@ -235,10 +232,12 @@ namespace Unity.MemoryProfiler.Editor
             if (EditorGUIUtility.isProSkin)
             {
                 root.AddStyleSheetPath(k_WindowDarkStyleSheetPath);
+                root.AddStyleSheetPath(k_Window2018DarkStyleSheetPath);
             }
             else
             {
                 root.AddStyleSheetPath(k_WindowLightStyleSheetPath);
+                root.AddStyleSheetPath(k_Window2018LightStyleSheetPath);
             }
             // Import UXML
             var windowTree = AssetDatabase.LoadAssetAtPath(k_WindowUxmlPath, typeof(VisualTreeAsset)) as VisualTreeAsset;
@@ -252,17 +251,21 @@ namespace Unity.MemoryProfiler.Editor
 #else
             m_PlayerConnectionState = ConnectionUtility.GetAttachToPlayerState(this);
 #endif
-
-            m_AttachToPlayerDropdownHolder = root.Q("attachToPlayerMenuPlaceholder");
-            m_AttachToPlayerDropdownHolder.Add(new IMGUIContainer(DrawAttachToPlayerDropdown) { name = "attachToPlayerMenu" });
-            m_CaptureButtonWithDropdown = root.Q("captureAndFlagsDropdownMenuPlaceholder");
+            var captureButton = root.Q<Button>("snapshot-control-area__capture-button");
+            m_CaptureButtonWithDropdown = captureButton;
             if (m_CaptureButtonWithDropdown == null)
                 return; // in case the construction of the Window went wrong, exit here
 
-            m_CaptureButtonWithDropdown.Add(new IMGUIContainer(DrawCaptureButtonDropdown) { name = "captureAndFlagsDropdownMenu" });
+            captureButton.clickable.clicked += TakeCapture;
+            var captureButtonDropdown = m_CaptureButtonWithDropdown.Q<Button>("snapshot-control-area__capture-dropdown");
+            captureButtonDropdown.clickable.clicked += () => OpenCaptureFlagsMenu(captureButton.GetRect());
 
-            m_InportButton = root.Q<ToolbarButton>("importButton");
-            m_InportButton.clickable.clicked += ImportCapture;
+            var targetSelectionDropdown = root.Q<Button>("snapshot-control-area__target-selection-drop-down-button");
+            targetSelectionDropdown.clickable.clicked += () => PlayerConnectionCompatibilityHelper.ShowTargetSelectionDropdownMenu(m_PlayerConnectionState, targetSelectionDropdown.GetRect());
+            EditorCoroutineUtility.StartCoroutine(UpdateTargetSelectionDropdown(targetSelectionDropdown), this);
+
+            m_ImportButton = root.Q<ToolbarButton>("importButton");
+            m_ImportButton.clickable.clicked += ImportCapture;
             m_ViewSelectorMenu = new IMGUIContainer(DrawTableSelection);
             root.Q("viewSelectorMenuPlaceholder").Add(m_ViewSelectorMenu);
 
@@ -349,6 +352,22 @@ namespace Unity.MemoryProfiler.Editor
             titleContent = Content.Title;
         }
 
+        IEnumerator UpdateTargetSelectionDropdown(Button targetSelectionDropdown)
+        {
+            var label = targetSelectionDropdown.Q<Label>();
+            var lastConnectionName = "";
+            // only run as long as the window still exists
+            while (this)
+            {
+                if (lastConnectionName != m_PlayerConnectionState.connectionName)
+                {
+                    label.text = PlayerConnectionCompatibilityHelper.GetPlayerDisplayName(m_PlayerConnectionState.connectionName);
+                    lastConnectionName = m_PlayerConnectionState.connectionName;
+                }
+                yield return null;
+            }
+        }
+
         IEnumerator UpdateOpenSnapshotsPaneAfterLayout()
         {
             if (m_LeftPane == null)
@@ -356,19 +375,6 @@ namespace Unity.MemoryProfiler.Editor
             while (float.IsNaN(m_LeftPane.layout.width))
             {
                 yield return null;
-            }
-            if (float.IsNaN(m_LeftPaneToolbarWidthTakenByUIElements) || m_LeftPaneToolbarWidthTakenByUIElements <= 0)
-            {
-#if UNITY_2019_1_OR_NEWER
-                var root = this.rootVisualElement;
-#else
-                var root = this.GetRootVisualContainer();
-#endif
-                var captureButton = root.Q("captureAndFlagsDropdownMenuPlaceholder");
-                var importButton = root.Q<ToolbarButton>("importButton");
-                var toolbarSpacer = root.Q<ToolbarSpacer>();
-                m_LeftPaneToolbarHeight = toolbarSpacer.layout.height;
-                m_LeftPaneToolbarWidthTakenByUIElements = captureButton.layout.width + importButton.layout.width + toolbarSpacer.layout.width * 3;
             }
             SidebarWidthChanged(m_LeftPane.layout.width);
         }
@@ -1061,7 +1067,7 @@ namespace Unity.MemoryProfiler.Editor
 
         IEnumerator ImportCaptureRoutine(string path)
         {
-            m_InportButton.SetEnabled(false);
+            m_ImportButton.SetEnabled(false);
 
             MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.ImportedSnapshotEvent>();
             string targetPath = null;
@@ -1084,7 +1090,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     ProgressBarDisplay.ClearBar();
                     MemoryProfilerAnalytics.CancelEvent<MemoryProfilerAnalytics.ImportedSnapshotEvent>();
-                    m_InportButton.SetEnabled(true);
+                    m_ImportButton.SetEnabled(true);
                     yield break;
                 }
 
@@ -1105,8 +1111,8 @@ namespace Unity.MemoryProfiler.Editor
             ProgressBarDisplay.ClearBar();
             MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ImportedSnapshotEvent());
 
-            m_InportButton.SetEnabled(true);
-            m_InportButton.MarkDirtyRepaint();
+            m_ImportButton.SetEnabled(true);
+            m_ImportButton.MarkDirtyRepaint();
         }
 
         void ImportCapture()
@@ -1205,27 +1211,6 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        void DrawAttachToPlayerDropdown()
-        {
-            if (float.IsNaN(m_LeftPane.layout.width) || m_LeftPaneToolbarWidthTakenByUIElements <= 0)
-                return;
-            float width = m_LeftPane.layout.width - m_LeftPaneToolbarWidthTakenByUIElements;
-            if (Content.AttachToPlayerCachedTargetName.text != m_PlayerConnectionState.connectionName)
-            {
-                Content.AttachToPlayerCachedTargetName.text = m_PlayerConnectionState.connectionName;
-            }
-            width = Mathf.Min(width, EditorStyles.toolbarDropDown.CalcSize(Content.AttachToPlayerCachedTargetName).x);
-            m_AttachToPlayerDropdownHolder.style.minWidth = width;
-            m_AttachToPlayerDropdownHolder.style.maxWidth = width;
-            var rect = GUILayoutUtility.GetRect(width, m_LeftPaneToolbarHeight);
-            rect.x--;
-#if UNITY_2020_1_OR_NEWER
-            PlayerConnectionGUI.ConnectionTargetSelectionDropdown(rect, m_PlayerConnectionState, EditorStyles.toolbarDropDown);
-#else
-            ConnectionGUI.AttachToPlayerDropdown(rect, m_PlayerConnectionState, EditorStyles.toolbarDropDown);
-#endif
-        }
-
         void SetFlag(ref CaptureFlags target, CaptureFlags bit, bool on)
         {
             if (on)
@@ -1234,54 +1219,23 @@ namespace Unity.MemoryProfiler.Editor
                 target &= ~bit;
         }
 
-        void DrawCaptureButtonDropdown()
+        void OpenCaptureFlagsMenu(Rect position)
         {
-            if (float.IsNaN(m_LeftPane.layout.width) || m_LeftPaneToolbarWidthTakenByUIElements <= 0)
-                return;
+            GenerateCaptureFlagsMenu().DropDown(position);
+        }
 
-            //compute content size
-            float width = EditorStyles.toolbarDropDown.CalcSize(Content.SnapshotCaptureFlagsDropDown).x + 10;
-            m_CaptureButtonWithDropdown.style.minWidth = width;
-            m_CaptureButtonWithDropdown.style.maxWidth = width;
+        GenericMenu GenerateCaptureFlagsMenu()
+        {
+            bool mo = (uint)(m_CaptureFlags & CaptureFlags.ManagedObjects) != 0;
+            bool no = (uint)(m_CaptureFlags & CaptureFlags.NativeObjects) != 0;
+            bool na = (uint)(m_CaptureFlags & CaptureFlags.NativeAllocations) != 0;
 
-            //compute rect sizes for dropdown and arrow control
-            Rect toggleRect = GUILayoutUtility.GetRect(Content.SnapshotCaptureFlagsDropDown, Styles.General.ToolbarDropDownToggle);
-            Rect arrowRightRect = new Rect(toggleRect.xMax - Styles.General.ToolbarDropDownToggle.padding.right, toggleRect.y,
-                Styles.General.ToolbarDropDownToggle.padding.right, toggleRect.height);
-
-            //pool the dropdown control
-            bool clicked = EditorGUI.DropdownButton(arrowRightRect, GUIContent.none, FocusType.Passive, GUIStyle.none);
-            bool captureClicked = false;
-
-            if (!clicked) //verify that we are clicking the button and not the toggle
-            {
-                captureClicked = GUI.Toggle(toggleRect, captureClicked, Content.SnapshotCaptureFlagsDropDown, Styles.General.ToolbarDropDownToggle);
-            }
-
-            //draw dropdown if we clicked the arrow toggle
-            if (clicked)
-            {
-                bool mo = (uint)(m_CaptureFlags & CaptureFlags.ManagedObjects) != 0;
-                bool no = (uint)(m_CaptureFlags & CaptureFlags.NativeObjects) != 0;
-                bool na = (uint)(m_CaptureFlags & CaptureFlags.NativeAllocations) != 0;
-
-                var r = EditorGUILayout.GetControlRect();
-                r.y += EditorStyles.toolbar.fixedHeight;
-
-                var menu = new GenericMenu();
-                menu.AddItem(Content.CaptureManagedObjectsItem, mo, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.ManagedObjects, !mo); });
-                menu.AddItem(Content.CaptureNativeObjectsItem, no, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeObjects, !no); });
-                //For now disable all the native allocation flags in one go, the callstack flags will have an effect only when the player has call-stacks support
-                menu.AddItem(Content.CaptureNativeAllocationsItem, na, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeAllocations | CaptureFlags.NativeAllocations | CaptureFlags.NativeStackTraces, !na); });
-
-                menu.DropDown(r);
-            }
-
-            //if we clicked the capture button initiate a capture
-            if (captureClicked)
-            {
-                TakeCapture();
-            }
+            var menu = new GenericMenu();
+            menu.AddItem(Content.CaptureManagedObjectsItem, mo, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.ManagedObjects, !mo); });
+            menu.AddItem(Content.CaptureNativeObjectsItem, no, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeObjects, !no); });
+            //For now disable all the native allocation flags in one go, the callstack flags will have an effect only when the player has call-stacks support
+            menu.AddItem(Content.CaptureNativeAllocationsItem, na, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeAllocations | CaptureFlags.NativeAllocations | CaptureFlags.NativeStackTraces, !na); });
+            return menu;
         }
 
         void DrawTableSelection()

@@ -4,6 +4,18 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.9-preview.3] - 2021-05-26
+### Changed
+  - Fixed an issue with the creation of several string buffers inside the snapshot file reader, where buffer memory would not be zero initialized.
+  - Fixed an issue where compilation against Unity Editor 2021.2 was broken.
+  - Fixed target connection dropdown being broken on 2021.2.
+
+
+## [0.2.9-preview.2] - 2021-04-19
+### Changed
+  - Fixed an unused variable warning for kCurrentVersion ([case 1329193](https://fogbugz.unity3d.com/f/cases/1329193/))
+
+
 ## [0.2.9-preview.1] - 2021-03-17
 ### Changed
   - Updated from Unity Distribution License to Unity Companion License

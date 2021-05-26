@@ -45,5 +45,9 @@ namespace Unity.MemoryProfiler.Editor
         }
 
 #endif
+        public static Rect GetRect(this VisualElement element)
+        {
+            return new Rect(element.LocalToWorld(element.contentRect.position), element.contentRect.size);
+        }
     }
 }

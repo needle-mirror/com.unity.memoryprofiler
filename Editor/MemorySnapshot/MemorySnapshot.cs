@@ -59,7 +59,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             MemLabelSizeAndHeapIdVersion = 12 //added gc heap / vm heap identification encoded within each heap address and memory label size reporting
         };
 
-        static readonly uint kCurrentVersion = (uint)FormatHistory.MemLabelSizeAndHeapIdVersion;
+
         public static QueriedMemorySnapshot Load(string path)
         {
             MemorySnapshotFileReader reader = new MemorySnapshotFileReader(path);
@@ -219,7 +219,7 @@ namespace Unity.MemoryProfiler.Editor.Format
 
             unsafe
             {
-                value = new string('\0', stringLength);
+                value = new string('A', stringLength);
                 fixed(char* p = value)
                 {
                     char* begin = p;

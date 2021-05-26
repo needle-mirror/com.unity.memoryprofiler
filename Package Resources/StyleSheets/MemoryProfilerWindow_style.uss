@@ -291,3 +291,77 @@ Image.optionButtonIcon
 #TreeMapSpreadsheet{
     padding-top: 2px;
 }
+
+.unity-toolbar-menu {
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.unity-toolbar-menu > Label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#snapshot-control-area__target-selection-drop-down-button {
+    flex-shrink: 1;
+}
+
+#snapshot-control-area__target-selection-drop-down-button__label {
+    flex-shrink: 1;
+}
+
+#snapshot-control-area__target-selection-drop-down-button__arrow {
+    flex-shrink: 0;
+}
+.drop-down-toggle {
+    flex-direction: row;
+    margin-right: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-left: 2px;
+    flex-shrink: 0;
+}
+
+.drop-down-toggle__drop-down-part {
+    background-color: rgba(0, 0, 0, 0);
+    margin-left: 3px;
+    margin-right: -1px;
+    width: 18px;
+    font-size: 12px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-right: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 0;
+    flex-shrink: 0;
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon {
+    margin-left: 3px;
+    margin-right: 5px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+    padding-left: 3px;
+    border-left-width: 1px;
+}
+
+.drop-down-toggle > Label {
+    margin-top: 1px;
+    padding-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.toolbar__drop-down__arrow {
+    margin-top: -1px;
+}

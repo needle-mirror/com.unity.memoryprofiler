@@ -15,9 +15,20 @@ xsi:schemaLocation="
     <engine:VisualElement name="sidebar">
       <editor:Toolbar name="sidebarToolbar">
         <editor:ToolbarSpacer class="toolbarSideBumper"/>
-        <engine:VisualElement name="attachToPlayerMenuPlaceholder"/>
+        <editor:ToolbarButton tooltip="Target Selection drop-down. Choose which target to connect to. " name="snapshot-control-area__target-selection-drop-down-button" class="unity-toolbar-menu">
+			<engine:Label name="snapshot-control-area__target-selection-drop-down-button__label" text="Editor"  />
+			<engine:VisualElement name="snapshot-control-area__target-selection-drop-down-button__arrow" class="unity-base-popup-field__arrow toolbar__drop-down__arrow" />
+		</editor:ToolbarButton>
 		<editor:ToolbarSpacer class="toolbarFlexSpacer"/>
-		<engine:VisualElement name="captureAndFlagsDropdownMenuPlaceholder"/>
+		<editor:ToolbarButton name="snapshot-control-area__capture-button" class="drop-down-toggle">
+			<engine:Label text="Capture"  tooltip="Take a new snapshot from the target specified in the drop-down to the left of this button." />
+			<editor:ToolbarButton  name="snapshot-control-area__capture-dropdown" tooltip="Choose Capture Flags" class="drop-down-toggle__drop-down-part">
+				<engine:VisualElement class="drop-down-toggle__drop-down-part__arrow-icon">
+					<engine:VisualElement class="unity-base-popup-field__arrow" />
+				</engine:VisualElement>
+			</editor:ToolbarButton>
+		</editor:ToolbarButton>
+		<editor:ToolbarSpacer class="toolbarFlexSpacer"/>
 		<editor:ToolbarSpacer class="toolbarFlexSpacer0Px"/>
         <editor:ToolbarButton name="importButton" text="Import..." tooltip="Import capture information from a file."/>
         <editor:ToolbarSpacer class="toolbarSideBumper"/>

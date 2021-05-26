@@ -43,7 +43,9 @@ namespace Unity.MemoryProfiler.Editor.Format.ModularMemorySnapshot
         {
             unsafe
             {
-                Screenshot = null;
+                m_Texture = GCHandle.Alloc(null);
+                m_Content = GCHandle.Alloc(null);
+                m_Platform = GCHandle.Alloc(null);
 
                 if (binaryData.Length == 0)
                     return;

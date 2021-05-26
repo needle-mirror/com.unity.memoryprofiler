@@ -82,3 +82,28 @@ Label.snapshotIsInView{
 #splitterDraglineAnchor {
     background-color: #999999;
 }
+
+
+.drop-down-toggle__drop-down-part:hover {
+    background-color: rgb(177, 177, 177);
+}
+
+.drop-down-toggle__drop-down-part:checked:hover {
+    background-color: rgb(219, 219, 219);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon {
+    border-left-color: rgb(144, 144, 141);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon:hover {
+    border-left-color: rgb(131, 131, 128);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon:checked {
+    border-left-color: rgb(162, 162, 159);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon:checked:hover {
+    border-left-color: rgb(152, 152, 149);
+}

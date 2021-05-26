@@ -113,6 +113,8 @@ namespace Unity.MemoryProfiler.Editor.Format
     {
         ArrayEntries<byte[]> bytes { get; }
         ArrayEntries<ulong> startAddress { get; }
+        //raw data getter for testing compatibility of the old format vs the new one
+        ArrayEntries<ulong> rawStartAddress { get; }
         uint GetNumEntries();
     }
 
@@ -120,14 +122,7 @@ namespace Unity.MemoryProfiler.Editor.Format
     {
         public ArrayEntries<byte[]> bytes { get; }
         public ArrayEntries<ulong> startAddress { get; }
-
-        internal ManagedMemorySectionEntries(MemorySnapshotFileReader reader, EntryType entryTypeBase)
-        {
-            startAddress = new ArrayEntries<ulong>(reader, (EntryType)(entryTypeBase + 0), ConversionFunctions.ToUInt64);
-            bytes = new ByteArrayEntries(reader, (EntryType)(entryTypeBase + 1));
-        }
-
-
+        public ArrayEntries<ulong> rawStartAddress { get; }
 
         internal ManagedMemorySectionEntries(MemorySnapshotFileReader reader, EntryType entryTypeBase, bool hasHeapTypeEncodedInAddr)
         {
@@ -140,6 +135,8 @@ namespace Unity.MemoryProfiler.Editor.Format
                 func = ConversionFunctions.ToUInt64;
 
             startAddress = new ArrayEntries<ulong>(reader, (EntryType)(entryTypeBase + 0), func);
+            rawStartAddress = new ArrayEntries<ulong>(reader, (EntryType)(entryTypeBase + 0), ConversionFunctions.ToUInt64);
+
             bytes = new ByteArrayEntries(reader, (EntryType)(entryTypeBase + 1));
         }
 
@@ -649,7 +646,7 @@ namespace Unity.MemoryProfiler.Editor.Format
 
         public static string ToString(byte[] data, uint startIndex, uint numBytes)
         {
-            var result = new string('\0', (int)numBytes);
+            var result = new string('A', (int)numBytes);
             unsafe
             {
                 fixed(char* resultPtr = result)
