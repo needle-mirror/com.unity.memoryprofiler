@@ -4,6 +4,14 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.10-preview.1] - 2021-07-30
+### Changed
+  - Fixed an issue where snapshots taken on UWP using the .NET scripting backend, could not be loaded by the package.
+
+### Removed
+ - removed ReflectionUtility as it was no longer used by the package.
+
+
 ## [0.2.9-preview.3] - 2021-05-26
 ### Changed
   - Fixed an issue with the creation of several string buffers inside the snapshot file reader, where buffer memory would not be zero initialized.

@@ -13,9 +13,13 @@ namespace Unity.MemoryProfiler.Editor
         //supported archs
         public const int x64ArchPtrSize = 8;
         public const int x86ArchPtrSize = 4;
+        public const int NoArchPtrSize = 0;
 
         public static bool ValidateVirtualMachineInfo(VirtualMachineInformation vmInfo)
         {
+            if (vmInfo.pointerSize == NoArchPtrSize)
+                return true; //this case can only happen on legacy UWP .NET snapshots
+
             if (!(vmInfo.pointerSize == x64ArchPtrSize || vmInfo.pointerSize == x86ArchPtrSize))
                 return false;
 
