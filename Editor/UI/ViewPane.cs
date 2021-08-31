@@ -19,11 +19,14 @@ namespace Unity.MemoryProfiler.Editor.UI
     }
     internal abstract class ViewPane : UI.IViewEventListener
     {
-        public UIState m_UIState;
+        public abstract string ViewName { get; }
+
+        public IUIStateHolder m_UIStateHolder;
+        public UIState m_UIState => m_UIStateHolder.UIState;
         public IViewPaneEventListener m_EventListener;
-        public ViewPane(UIState s, IViewPaneEventListener l)
+        public ViewPane(IUIStateHolder s, IViewPaneEventListener l)
         {
-            m_UIState = s;
+            m_UIStateHolder = s;
             m_EventListener = l;
         }
 
@@ -79,7 +82,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public abstract void OnGUI(Rect r);
+        public virtual void OnGUI(Rect r) { }
         void UI.IViewEventListener.OnRepaint()
         {
             m_EventListener.OnRepaint();

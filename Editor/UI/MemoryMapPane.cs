@@ -10,11 +10,15 @@ using Unity.MemoryProfiler.Editor.Database.Operation;
 using System;
 using Unity.MemoryProfiler.Editor.UI.MemoryMap;
 using Unity.MemoryProfiler.Editor.Database.Operation.Filter;
+using Unity.MemoryProfiler.Editor.UIContentData;
+using System.Collections;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class MemoryMapPane : ViewPane
     {
+        public override string ViewName { get { return TextContent.MemoryMapView.text; } }
+
         static class Content
         {
             public static readonly  GUIContent[] TableModesList = new GUIContent[3]
@@ -193,7 +197,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public MemoryMapPane(UIState s, IViewPaneEventListener l, VisualElement toolbarExtension)
+        public MemoryMapPane(IUIStateHolder s, IViewPaneEventListener l, VisualElement toolbarExtension)
             : base(s, l)
         {
             CurrentTableView = (TableDisplayMode)UnityEditor.EditorPrefs.GetInt("Unity.MemoryProfiler.Editor.UI.MemoryMapPane.TableDisplayMode", (int)TableDisplayMode.Regions);
@@ -201,8 +205,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ToolbarExtension = toolbarExtension;
             m_ToolbarExtensionPane = new IMGUIContainer(new Action(OnGUIToolbarExtension));
 
-            s.CurrentMode.ViewPaneChanged += OnViewPaneChanged;
-            s.ModeChanged += OnModeChanged;
+            s.UIState.CurrentMode.ViewPaneChanged += OnViewPaneChanged;
+            s.UIState.ModeChanged += OnModeChanged;
 
             string[] displayElements = Enum.GetNames(typeof(MemoryMap.MemoryMap.DisplayElements));
             m_DisplayElementsList = new GUIContent[displayElements.Length];
@@ -217,6 +221,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_MemoryMap = new MemoryMap.MemoryMap();
             m_MemoryMap.Setup(m_UIState.snapshotMode.snapshot);
             m_MemoryMap.RegionSelected += OnSelectRegions;
+            m_MemoryMap.RegionSelected += (a, b) => EditorCoroutines.Editor.EditorCoroutineUtility.StartCoroutine(RepaintDelayed(s), this);
+        }
+
+        IEnumerator RepaintDelayed(IUIStateHolder s)
+        {
+            yield return null;
+            s.Repaint();
         }
 
         public override void OnClose()
@@ -246,7 +257,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (CurrentTableView == TableDisplayMode.Allocations)
             {
-                lr.LinkToOpen.TableName = "RawNativeAllocation";
+                lr.LinkToOpen.TableName = "AllNativeAllocations";
                 lr.LinkToOpen.RowWhere = new List<Database.View.Where.Builder>();
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("address", Database.Operation.Operator.GreaterEqual, new Expression.MetaExpression(minAddr.ToString(), false)));
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("address", Database.Operation.Operator.Less, new Expression.MetaExpression(maxAddr.ToString(), false)));
@@ -254,7 +265,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (CurrentTableView == TableDisplayMode.Regions)
             {
-                lr.LinkToOpen.TableName = "RawNativeMemoryRegion";
+                lr.LinkToOpen.TableName = "RawAllMemoryRegions";// "RawNativeMemoryRegions";
                 lr.LinkToOpen.RowWhere = new List<Database.View.Where.Builder>();
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("addressBase", Database.Operation.Operator.GreaterEqual, new Expression.MetaExpression(minAddr.ToString(), false)));
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("addressBase", Database.Operation.Operator.Less, new Expression.MetaExpression(maxAddr.ToString(), false)));
@@ -284,7 +295,15 @@ namespace Unity.MemoryProfiler.Editor.UI
         void OpenLinkRequest(Database.LinkRequestTable link, bool focus)
         {
             //TODO this code is the same as the one inSpreadsheetPane, should be put together
-            UIElementsHelper.SetVisibility(VisualElements[2], m_UIState.snapshotMode.snapshot.nativeAllocationSites.Count > 0 && m_CurrentTableView == TableDisplayMode.Allocations);
+            //UIElementsHelper.SetVisibility(VisualElements[2], m_ActiveMode.snapshot.NativeAllocationSites.Count > 0 && m_CurrentTableView == TableDisplayMode.Allocations);
+            var splitView = VisualElements[2].parent as TwoPaneSplitView;
+            if (splitView != null)
+            {
+                if (m_UIState.snapshotMode.snapshot.NativeCallstackSymbols.Count > 0 && m_CurrentTableView == TableDisplayMode.Allocations)
+                    splitView.UnCollapse();
+                else
+                    splitView.CollapseChild(1);
+            }
 
             var tableRef = new Database.TableReference(link.LinkToOpen.TableName, link.Parameters);
             var table = m_UIState.snapshotMode.SchemaToDisplay.GetTableByReference(tableRef);
@@ -318,6 +337,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OnSpreadsheetClick(UI.DatabaseSpreadsheet sheet, Database.LinkRequest link, Database.CellPosition pos)
         {
+            if (link.IsPingLink)
+            {
+                (link as Database.LinkRequestSceneHierarchy).Ping();
+                return;
+            }
+
             //add current event in history
             m_UIState.AddHistoryEvent(GetCurrentHistoryEvent());
             var tableLinkRequest = link as Database.LinkRequestTable;
@@ -340,13 +365,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos, bool focus)
         {
             Filter existingFilters = null;
-            if(m_Spreadsheet != null)
+            if (m_Spreadsheet != null)
             {
-               existingFilters = m_Spreadsheet.GetCurrentFilterCopy();
+                existingFilters = m_Spreadsheet.GetCurrentFilterCopy();
             }
 
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
-            m_Spreadsheet.onClickLink += OnSpreadsheetClick;
+            m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
             m_Spreadsheet.Goto(pos);
             if (existingFilters != null)
             {
@@ -397,7 +422,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            if (m_Spreadsheet != null)
+
+            var viewState = m_MemoryMap.CurrentViewState;
+            if (viewState.HighlightedAddrMax == 0 && viewState.HighlightedAddrMin == 0 || viewState.HighlightedAddrMax == viewState.HighlightedAddrMin)
+            {
+                GUILayout.Label("Make a selection in the view above within the virtual address space to inspect memory usage in that range.");
+            }
+            else if (m_Spreadsheet != null)
             {
                 EditorGUILayout.BeginVertical();
 
@@ -425,6 +456,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         Vector2 scrool = Vector2.zero;
         void OnGUICallstack(Rect r)
         {
+            if (m_Spreadsheet == null)
+                return;
             GUILayout.BeginArea(r);
             if (m_CurrentTableView == TableDisplayMode.Allocations)
             {
@@ -443,7 +476,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         string rowValue = col.GetRowValueString(row, Database.DefaultDataFormatter.Instance);
                         if (long.TryParse(rowValue, out id))
                         {
-                            readableCallstack = m_UIState.snapshotMode.snapshot.nativeAllocationSites.GetReadableCallstackForId(m_UIState.snapshotMode.snapshot.nativeCallstackSymbols, id);
+                            readableCallstack = m_UIState.snapshotMode.snapshot.NativeAllocationSites.GetReadableCallstackForId(m_UIState.snapshotMode.snapshot.NativeCallstackSymbols, id);
                         }
 
                         GUILayout.Label(readableCallstack);
@@ -482,7 +515,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 for (int i = 0; i < m_DisplayElementsList.Length; i++)
                 {
                     MemoryMap.MemoryMap.DisplayElements element = (MemoryMap.MemoryMap.DisplayElements)(1 << i);
-                    menu.AddItem(m_DisplayElementsList[i], m_MemoryMap.GetDisplayElement(element), (object data) => m_MemoryMap.ToggleDisplayElement((MemoryMap.MemoryMap.DisplayElements)data), element);
+                    menu.AddItem(m_DisplayElementsList[i], m_MemoryMap.ShowDisplayElement(element), (object data) => m_MemoryMap.ToggleDisplayElement((MemoryMap.MemoryMap.DisplayElements)data), element);
                 }
                 menu.DropDown(popupRect);
             }

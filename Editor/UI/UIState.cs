@@ -1,7 +1,9 @@
 using System;
 using Unity.MemoryProfiler.Editor.Database;
+using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.Profiling;
 using UnityEditor.Profiling.Memory.Experimental;
 using UnityEngine;
@@ -72,7 +74,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_Tables = copy.m_Tables;
             }
 
-            public abstract ViewPane GetDefaultView(UIState uiState, IViewPaneEventListener viewPaneEventListener);
+            public abstract ViewPane GetDefaultView(IUIStateHolder uiStateHolder, IViewPaneEventListener viewPaneEventListener);
 
             public int GetTableIndex(Database.Table tab)
             {
@@ -118,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     var tab = schema.GetTableByIndex(i);
                     long rowCount = tab.GetRowCount();
-                    m_TableNames[i + 1] = (objectDataFormatter.ShowPrettyNames ? tab.GetDisplayName() : tab.GetName()) + " (" + (rowCount >= 0 ? rowCount.ToString() : "?") + ")";
+                    m_TableNames[i + 1] = (objectDataFormatter.ShowPrettyNames ? tab.GetDisplayName() : tab.GetName()) + " (" + (rowCount >= 0 ? rowCount.ToString("#,###,###,###,###") : "?") + ")";
                     m_Tables[i + 1] = tab;
                 }
             }
@@ -131,7 +133,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         internal class SnapshotMode : BaseMode
         {
-            QueriedMemorySnapshot m_RawSnapshot;
+            FileReader m_RawSnapshotReader;
             RawSchema m_RawSchema;
 
 
@@ -149,16 +151,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             protected SnapshotMode(SnapshotMode copy)
                 : base(copy)
             {
-                m_RawSnapshot = copy.m_RawSnapshot;
+                m_RawSnapshotReader = copy.m_RawSnapshotReader;
                 m_RawSchema = copy.m_RawSchema;
                 ViewSchema = copy.ViewSchema;
                 SchemaToDisplay = copy.SchemaToDisplay;
-                m_RawSchema.formatter.BaseFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
             }
 
-            public SnapshotMode(ObjectDataFormatter objectDataFormatter, QueriedMemorySnapshot snapshot)
+            public SnapshotMode(ObjectDataFormatter objectDataFormatter, FileReader snapshot)
             {
-                objectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
                 SetSnapshot(objectDataFormatter, snapshot);
             }
 
@@ -169,20 +169,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             static ProfilerMarker s_CrawlManagedData = new ProfilerMarker("CrawlManagedData");
 
-            void SetSnapshot(ObjectDataFormatter objectDataFormatter, QueriedMemorySnapshot snapshot)
+            void SetSnapshot(ObjectDataFormatter objectDataFormatter, FileReader snapshot)
             {
-                if (snapshot == null)
+                //dispose previous snapshot reader
+                m_RawSnapshotReader.Dispose();
+
+                if (!snapshot.HasOpenFile)
                 {
-                    m_RawSnapshot = null;
                     m_RawSchema = null;
                     SchemaToDisplay = null;
                     UpdateTableSelectionNames();
                     return;
                 }
 
-                m_RawSnapshot = snapshot;
+                m_RawSnapshotReader = snapshot;
 
-                ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(snapshot.GetReader().FilePath)));
+                ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(snapshot.FullPath)));
 
                 var cachedSnapshot = new CachedSnapshot(snapshot);
                 using (s_CrawlManagedData.Auto())
@@ -203,21 +205,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_RawSchema.SetupSchema(cachedSnapshot, objectDataFormatter);
 
                 SchemaToDisplay = m_RawSchema;
-                if (k_DefaultViewFilePath.Length > 0)
-                {
-                    Database.View.ViewSchema.Builder builder = null;
-                    builder = Database.View.ViewSchema.Builder.LoadFromXMLFile(k_DefaultViewFilePath);
-
-                    if (builder != null)
-                    {
-                        ViewSchema = builder.Build(m_RawSchema);
-                        if (ViewSchema != null)
-                        {
-                            SchemaToDisplay = ViewSchema;
-                        }
-                    }
-                }
-
                 UpdateTableSelectionNames();
             }
 
@@ -234,11 +221,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            public override ViewPane GetDefaultView(UIState uiState, IViewPaneEventListener viewPaneEventListener)
+            public override ViewPane GetDefaultView(IUIStateHolder uiStateHolder, IViewPaneEventListener viewPaneEventListener)
             {
-                if (uiState.snapshotMode != null && uiState.snapshotMode.snapshot != null)
+                //if (uiState.snapshotMode != null && uiState.snapshotMode.snapshot != null)
+                //{
+                //    return new SummaryPane(uiState, viewPaneEventListener);
+                //}
+                if (uiStateHolder.UIState.snapshotMode != null && uiStateHolder.UIState.snapshotMode.snapshot != null)
                 {
-                    return new TreeMapPane(uiState, viewPaneEventListener);
+                    return new TreeMapPane(uiStateHolder, viewPaneEventListener);
                 }
 
                 return null;
@@ -246,14 +237,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public override void Clear()
             {
-                if(CurrentViewPane != null)
+                if (CurrentViewPane != null)
                     CurrentViewPane.OnClose();
 
                 SchemaToDisplay = null;
                 m_RawSchema.Clear();
                 m_RawSchema = null;
-                if (m_RawSnapshot != null)
-                    m_RawSnapshot.Dispose();
+                m_RawSnapshotReader.Dispose();
             }
 
             public override BaseMode BuildViewSchemaClone(Database.View.ViewSchema.Builder builder)
@@ -273,6 +263,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
         internal class DiffMode : BaseMode
         {
+            public BaseMode modeA { get { return snapshotAIsOlder ? modeFirst : modeSecond; } }
+            public BaseMode modeB { get { return snapshotAIsOlder ? modeSecond : modeFirst; } }
             public BaseMode modeFirst;
             public BaseMode modeSecond;
             Database.Schema m_SchemaFirst;
@@ -282,17 +274,20 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             private const string k_DefaultDiffViewTable = "All Object";
 
-            public DiffMode(ObjectDataFormatter objectDataFormatter, BaseMode snapshotFirst, BaseMode snapshotSecond)
+            public bool snapshotAIsOlder { get; private set; }
+            public bool sameSessionDiff { get; private set; }
+
+            public DiffMode(ObjectDataFormatter objectDataFormatter, BaseMode snapshotFirst, BaseMode snapshotSecond, bool snapshotAIsOlder, bool sameSessionDiff)
             {
+                this.snapshotAIsOlder = snapshotAIsOlder;
                 ProgressBarDisplay.ShowBar("Snapshot diff in progress");
                 m_ObjectDataFormatter = objectDataFormatter;
-                m_ObjectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
                 modeFirst = snapshotFirst;
                 modeSecond = snapshotSecond;
                 m_SchemaFirst = modeFirst.GetSchema();
                 m_SchemaSecond = modeSecond.GetSchema();
                 ProgressBarDisplay.UpdateProgress(0.1f, "Building diff schema.");
-                m_SchemaDiff = new Database.Operation.DiffSchema(m_SchemaFirst, m_SchemaSecond, () => { ProgressBarDisplay.UpdateProgress(0.3f, "Computing table data"); });
+                m_SchemaDiff = new Database.Operation.DiffSchema(m_SchemaFirst, m_SchemaSecond, snapshotAIsOlder, sameSessionDiff, () => { ProgressBarDisplay.UpdateProgress(0.3f, "Computing table data"); });
                 ProgressBarDisplay.UpdateProgress(0.85f, "Updating table selection.");
                 UpdateTableSelectionNames();
                 ProgressBarDisplay.ClearBar();
@@ -301,7 +296,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             protected DiffMode(DiffMode copy)
             {
                 m_ObjectDataFormatter = copy.m_ObjectDataFormatter;
-                m_ObjectDataFormatter.PrettyNamesOptionChanged += UpdateTableSelectionNames;
                 modeFirst = copy.modeFirst;
                 modeSecond = copy.modeSecond;
                 m_SchemaFirst = copy.m_SchemaFirst;
@@ -324,28 +318,40 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UpdateTableSelectionNamesFromSchema(m_ObjectDataFormatter, m_SchemaDiff);
             }
 
-            public override ViewPane GetDefaultView(UIState uiState, IViewPaneEventListener viewPaneEventListener)
+            public override ViewPane GetDefaultView(IUIStateHolder uiStateHolder, IViewPaneEventListener viewPaneEventListener)
             {
+                //if (uiState.diffMode != null)
+                //{
+                //    return new SummaryPane(uiState, viewPaneEventListener);
+                //}
+                //return null;
+
                 //TODO: delete this method once the default for diff is treemap
                 Database.Table table = null;
-                for (int i = 1; i < uiState.CurrentMode.TableNames.Length; i++)
+                for (int i = 1; i < uiStateHolder.UIState.CurrentMode.TableNames.Length; i++)
                 {
-                    if (uiState.CurrentMode.TableNames[i].Contains(k_DefaultDiffViewTable))
+                    if (uiStateHolder.UIState.CurrentMode.TableNames[i].Contains(k_DefaultDiffViewTable))
                     {
-                        table = uiState.CurrentMode.GetTableByIndex(i - 1);
+                        table = uiStateHolder.UIState.CurrentMode.GetTableByIndex(i - 1);
                     }
                 }
                 if (table == null)
-                    table = uiState.CurrentMode.GetTableByIndex(Mathf.Min(0, m_TableNames.Length - 1));
+                    table = uiStateHolder.UIState.CurrentMode.GetTableByIndex(Mathf.Min(0, m_TableNames.Length - 1));
 
                 if (table.Update())
                 {
                     UpdateTableSelectionNames();
                 }
 
-                var pane = new UI.SpreadsheetPane(uiState, viewPaneEventListener);
+                var pane = new UI.SpreadsheetPane(uiStateHolder, viewPaneEventListener);
                 pane.OpenTable(new Database.TableReference(table.GetName()), table);
                 return pane;
+            }
+
+            public void OnSnapshotsSwapped()
+            {
+                snapshotAIsOlder = !snapshotAIsOlder;
+                m_SchemaDiff.OnSnapshotsSwapped();
             }
 
             public override void Clear()
@@ -366,14 +372,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 copy.modeSecond = newModeSecond;
                 copy.m_SchemaFirst = copy.modeFirst.GetSchema();
                 copy.m_SchemaSecond = copy.modeSecond.GetSchema();
-                copy.m_SchemaDiff = new Database.Operation.DiffSchema(copy.m_SchemaFirst, copy.m_SchemaSecond);
+                copy.m_SchemaDiff = new Database.Operation.DiffSchema(copy.m_SchemaFirst, copy.m_SchemaSecond, copy.snapshotAIsOlder, copy.sameSessionDiff);
                 copy.UpdateTableSelectionNames();
 
                 return copy;
             }
         }
-
-        const string k_DefaultViewFilePath = "Packages/com.unity.memoryprofiler/Package Resources/MemView.xml";
 
         public History history = new History();
 
@@ -447,7 +451,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // TODO add a format named "pointer" that output in hex
             //FormattingOptions.AddFormatter("pointer", PointerFormatter);
 
-            noMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, null);
+            noMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, default(FileReader));
         }
 
         public void AddHistoryEvent(HistoryEvent he)
@@ -530,31 +534,34 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public void SetFirstSnapshot(QueriedMemorySnapshot snapshot)
+        public void SetSnapshot(FileReader snapshot, bool first)
         {
-            if (snapshot == null)
-            {
-                Debug.LogError("UIState.SetFirstSnapshot can't be called with null, if you meant to clear the open snapshots, call ClearAllOpenSnapshots");
-                return;
-            }
+            Checks.CheckEquals(true, snapshot.HasOpenFile);
             history.Clear();
-            if (FirstMode != null)
+            var targetedMode = ViewMode.ShowFirst;
+            if (first)
+            {
+                if (FirstMode != null)
+                    FirstMode.Clear();
+                FirstMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, snapshot);
+            }
+            else
             {
                 if (SecondMode != null)
                     SecondMode.Clear();
-                SecondMode = FirstMode;
+                SecondMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, snapshot);
+                targetedMode = ViewMode.ShowSecond;
             }
-            FirstMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, snapshot);
 
-            // Make sure that the first mode is shown and that ModeChanged (fired by ShownMode if set to something different) is fired.
-            if (CurrentViewMode != ViewMode.ShowFirst)
-                CurrentViewMode = ViewMode.ShowFirst;
+            // Make sure that the mode is shown and that ModeChanged (fired by ShownMode if set to something different) is fired.
+            if (CurrentViewMode != targetedMode)
+                CurrentViewMode = targetedMode;
             else
                 ModeChanged(CurrentMode, CurrentViewMode);
             ClearDiffMode();
         }
 
-        public void SwapLastAndCurrentSnapshot()
+        public void SwapLastAndCurrentSnapshot(bool keepCurrentSnapshotOpen = true)
         {
             // TODO: find out if we actually need to clear this or if it can be saved with the mode
             history.Clear();
@@ -569,17 +576,20 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (CurrentViewMode != ViewMode.ShowDiff)
             {
-                CurrentViewMode = CurrentViewMode == ViewMode.ShowFirst ? ViewMode.ShowSecond : ViewMode.ShowFirst;
-                ModeChanged(CurrentMode, CurrentViewMode);
+                if (keepCurrentSnapshotOpen)
+                    CurrentViewMode = CurrentViewMode == ViewMode.ShowFirst ? ViewMode.ShowSecond : ViewMode.ShowFirst;
+                else
+                    // CurrentViewMode already triggers this event but if the snapshots where swapped without changing view mode, we need to trigger the event here
+                    ModeChanged(CurrentMode, CurrentViewMode);
             }
         }
 
-        public void DiffLastAndCurrentSnapshot(bool firstIsOlder)
+        public void DiffLastAndCurrentSnapshot(bool snapshotAIsOlder, bool sameSessionDiff)
         {
             history.Clear();
-            diffMode = new DiffMode(FormattingOptions.ObjectDataFormatter, firstIsOlder ? FirstMode : SecondMode , firstIsOlder ? SecondMode : FirstMode);
+            diffMode = new DiffMode(FormattingOptions.ObjectDataFormatter, snapshotAIsOlder ? FirstMode : SecondMode , snapshotAIsOlder ? SecondMode : FirstMode, snapshotAIsOlder, sameSessionDiff);
             CurrentViewMode = ViewMode.ShowDiff;
-            if (firstIsOlder)
+            if (snapshotAIsOlder)
                 SnapshotAge = FirstSnapshotAge.Older;
         }
 

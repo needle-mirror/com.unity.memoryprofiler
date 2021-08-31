@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEngine;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -53,7 +54,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             get
             {
-                return CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone;
+                return CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
             }
         }
         private ObjectDataType m_dataType;
@@ -243,32 +244,32 @@ namespace Unity.MemoryProfiler.Editor
                     if (IsField())
                     {
                         int fieldIdx = fieldIndex;
-                        offset = (ulong)snapshot.fieldDescriptions.offset[fieldIdx];
-                        isStatic = snapshot.fieldDescriptions.isStatic[fieldIdx];
+                        offset = (ulong)snapshot.FieldDescriptions.Offset[fieldIdx];
+                        isStatic = snapshot.FieldDescriptions.IsStatic[fieldIdx] == 1;
                         if (isStatic)
                         {
-                            offset = snapshot.typeDescriptions.typeInfoAddress[m_Parent.obj.managedTypeIndex];
-                            offset += (ulong)snapshot.typeDescriptions.size[m_Parent.obj.managedTypeIndex];
+                            offset = snapshot.TypeDescriptions.TypeInfoAddress[m_Parent.obj.managedTypeIndex];
+                            offset += (ulong)snapshot.TypeDescriptions.Size[m_Parent.obj.managedTypeIndex];
 
-                            var staticFieldIndices = snapshot.typeDescriptions.fieldIndices_static[m_Parent.obj.managedTypeIndex];
+                            var staticFieldIndices = snapshot.TypeDescriptions.fieldIndicesStatic[m_Parent.obj.managedTypeIndex];
 
                             for (int i = 0; i < staticFieldIndices.Length; ++i)
                             {
                                 var cFieldIdx = staticFieldIndices[i];
                                 if (cFieldIdx == fieldIdx)
                                     break;
-                                offset += (ulong)snapshot.fieldDescriptions.offset[cFieldIdx];
+                                offset += (ulong)snapshot.FieldDescriptions.Offset[cFieldIdx];
                             }
                         }
                     }
                     else if (arrayIndex >= 0) //compute our offset within the array
                     {
-                        offset += (ulong)(snapshot.virtualMachineInformation.arrayHeaderSize + arrayIndex * snapshot.typeDescriptions.size[managedTypeIndex]);
+                        offset += (ulong)(snapshot.VirtualMachineInformation.ArrayHeaderSize + arrayIndex * snapshot.TypeDescriptions.Size[managedTypeIndex]);
                     }
 
                     return isStatic ? offset : hostManagedObjectPtr + offset;
                 case ObjectDataType.NativeObject:
-                    return snapshot.nativeObjects.nativeObjectAddress[nativeObjectIndex];
+                    return snapshot.NativeObjects.NativeObjectAddress[nativeObjectIndex];
                 default:
                     if (logError) UnityEngine.Debug.LogError("Requesting an object pointer on an invalid data type");
                     return 0;
@@ -304,7 +305,7 @@ namespace Unity.MemoryProfiler.Editor
             ObjectData od = this;
             od.m_Parent = new ObjectDataParent(this, -1, -1, expandToTarget);
             od.m_dataType = ObjectDataType.Value;
-            od.managedObjectData = od.managedObjectData.Add(snapshot.virtualMachineInformation.objectHeaderSize);
+            od.managedObjectData = od.managedObjectData.Add(snapshot.VirtualMachineInformation.ObjectHeaderSize);
             return od;
         }
 
@@ -346,16 +347,16 @@ namespace Unity.MemoryProfiler.Editor
         public static ObjectDataType TypeToSubDataType(CachedSnapshot snapshot, int iType)
         {
             if (iType < 0) return ObjectDataType.Unknown;
-            if (snapshot.typeDescriptions.HasFlag(iType, TypeFlags.kArray)) return ObjectDataType.ReferenceArray;
-            else if (snapshot.typeDescriptions.HasFlag(iType, TypeFlags.kValueType)) return ObjectDataType.Value;
+            if (snapshot.TypeDescriptions.HasFlag(iType, TypeFlags.kArray)) return ObjectDataType.ReferenceArray;
+            else if (snapshot.TypeDescriptions.HasFlag(iType, TypeFlags.kValueType)) return ObjectDataType.Value;
             else return ObjectDataType.ReferenceObject;
         }
 
         public static ObjectDataType TypeToDataType(CachedSnapshot snapshot, int iType)
         {
             if (iType < 0) return ObjectDataType.Unknown;
-            if (snapshot.typeDescriptions.HasFlag(iType, TypeFlags.kArray)) return ObjectDataType.Array;
-            else if (snapshot.typeDescriptions.HasFlag(iType, TypeFlags.kValueType)) return ObjectDataType.BoxedValue;
+            if (snapshot.TypeDescriptions.HasFlag(iType, TypeFlags.kArray)) return ObjectDataType.Array;
+            else if (snapshot.TypeDescriptions.HasFlag(iType, TypeFlags.kValueType)) return ObjectDataType.BoxedValue;
             else return ObjectDataType.Object;
         }
 
@@ -375,7 +376,7 @@ namespace Unity.MemoryProfiler.Editor
         // should be called only when IsField() return true
         public string GetFieldName(CachedSnapshot snapshot)
         {
-            return snapshot.fieldDescriptions.fieldDescriptionName[m_Parent.iField];
+            return snapshot.FieldDescriptions.FieldDescriptionName[m_Parent.iField];
         }
 
         // Returns the number of fields the object (that this ObjectData is currently pointing at) has
@@ -387,8 +388,8 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.Value:
-                    if (managedTypeIndex < 0 || managedTypeIndex >= snapshot.typeDescriptions.fieldIndices_instance.Length) return 0;
-                    return snapshot.typeDescriptions.fieldIndices_instance[managedTypeIndex].Length;
+                    if (managedTypeIndex < 0 || managedTypeIndex >= snapshot.TypeDescriptions.FieldIndicesInstance.Length) return 0;
+                    return snapshot.TypeDescriptions.FieldIndicesInstance[managedTypeIndex].Length;
                 default:
                     return 0;
             }
@@ -398,7 +399,7 @@ namespace Unity.MemoryProfiler.Editor
         // using the field index from [0, GetInstanceFieldCount()[
         public ObjectData GetInstanceFieldByIndex(CachedSnapshot snapshot, int i)
         {
-            int iField = snapshot.typeDescriptions.fieldIndices_instance[managedTypeIndex][i];
+            int iField = snapshot.TypeDescriptions.FieldIndicesInstance[managedTypeIndex][i];
             return GetInstanceFieldBySnapshotFieldIndex(snapshot, iField, true);
         }
 
@@ -424,13 +425,13 @@ namespace Unity.MemoryProfiler.Editor
                     break;
             }
 
-            var fieldOffset = snapshot.fieldDescriptions.offset[iField];
-            var fieldType = snapshot.fieldDescriptions.typeIndex[iField];
-            bool isStatic = snapshot.fieldDescriptions.isStatic[iField];
+            var fieldOffset = snapshot.FieldDescriptions.Offset[iField];
+            var fieldType = snapshot.FieldDescriptions.TypeIndex[iField];
+            bool isStatic = snapshot.FieldDescriptions.IsStatic[iField] == 1;
             switch (m_dataType)
             {
                 case ObjectDataType.Value:
-                    if (!isStatic) fieldOffset -= snapshot.virtualMachineInformation.objectHeaderSize;
+                    if (!isStatic) fieldOffset -= snapshot.VirtualMachineInformation.ObjectHeaderSize;
                     break;
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
@@ -457,13 +458,13 @@ namespace Unity.MemoryProfiler.Editor
                 var iOwningType = obj.m_data.managed.iType;
                 while (iOwningType >= 0)
                 {
-                    var fieldIndex = Array.FindIndex(snapshot.typeDescriptions.fieldIndicesOwned_static[iOwningType], x => x == iField);
+                    var fieldIndex = Array.FindIndex(snapshot.TypeDescriptions.fieldIndicesOwnedStatic[iOwningType], x => x == iField);
                     if (fieldIndex >= 0)
                     {
                         //field iField is owned by type iCurrentBase
                         break;
                     }
-                    iOwningType = snapshot.typeDescriptions.baseOrElementTypeIndex[iOwningType];
+                    iOwningType = snapshot.TypeDescriptions.BaseOrElementTypeIndex[iOwningType];
                 }
                 if (iOwningType < 0)
                 {
@@ -472,7 +473,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
                 o.m_data.managed.objectPtr = 0;
-                var typeStaticData = new BytesAndOffset(snapshot.typeDescriptions.staticFieldBytes[iOwningType], snapshot.virtualMachineInformation.pointerSize);
+                var typeStaticData = new BytesAndOffset(snapshot.TypeDescriptions.StaticFieldBytes[iOwningType], snapshot.VirtualMachineInformation.PointerSize);
                 o.managedObjectData = typeStaticData.Add(fieldOffset);
             }
             else
@@ -497,9 +498,9 @@ namespace Unity.MemoryProfiler.Editor
 
             if (nativeIndex >= 0)
             {
-                return snapshot.nativeObjects.instanceId[nativeIndex];
+                return snapshot.NativeObjects.InstanceId[nativeIndex];
             }
-            return CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone;
+            return CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
         }
 
         public ObjectData GetBase(CachedSnapshot snapshot)
@@ -517,11 +518,11 @@ namespace Unity.MemoryProfiler.Editor
                     return Invalid;
             }
 
-            var b = snapshot.typeDescriptions.baseOrElementTypeIndex[m_data.managed.iType];
-            if (b == snapshot.typeDescriptions.iType_ValueType
-                || b == snapshot.typeDescriptions.iType_Object
-                || b == snapshot.typeDescriptions.iType_Enum
-                || b == snapshot.typeDescriptions.iType_Invalid)
+            var b = snapshot.TypeDescriptions.BaseOrElementTypeIndex[m_data.managed.iType];
+            if (b == snapshot.TypeDescriptions.ITypeValueType
+                || b == snapshot.TypeDescriptions.ITypeObject
+                || b == snapshot.TypeDescriptions.ITypeEnum
+                || b == TypeDescriptionEntriesCache.ITypeInvalid)
                 return Invalid;
 
             ObjectData o = this;
@@ -635,19 +636,13 @@ namespace Unity.MemoryProfiler.Editor
                 return new ObjectData();
             }
         }
-        public static ObjectData global
-        {
-            get
-            {
-                return new ObjectData(ObjectDataType.Global);
-            }
-        }
+
         public static ObjectData FromManagedType(CachedSnapshot snapshot, int iType)
         {
             ObjectData o = new ObjectData();
             o.SetManagedType(snapshot, iType);
             o.m_dataType = ObjectDataType.Type;
-            o.managedObjectData = new BytesAndOffset { bytes = snapshot.typeDescriptions.staticFieldBytes[iType], offset = 0, pointerSize = snapshot.virtualMachineInformation.pointerSize };
+            o.managedObjectData = new BytesAndOffset { bytes = snapshot.TypeDescriptions.StaticFieldBytes[iType], offset = 0, pointerSize = snapshot.VirtualMachineInformation.PointerSize };
             return o;
         }
 
@@ -671,7 +666,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static ObjectData FromNativeObjectIndex(CachedSnapshot snapshot, int index)
         {
-            if (index < 0 || index >= snapshot.nativeObjects.Count) return ObjectData.Invalid;
+            if (index < 0 || index >= snapshot.NativeObjects.Count) return ObjectData.Invalid;
             ObjectData o = new ObjectData();
             o.m_dataType = ObjectDataType.NativeObject;
             o.m_data.native.index = index;
@@ -694,14 +689,14 @@ namespace Unity.MemoryProfiler.Editor
             if (index < 0 || index >= snapshot.CrawledData.ManagedObjects.Count) return ObjectData.Invalid;
             var moi = snapshot.CrawledData.ManagedObjects[index];
 
-            if (index < snapshot.gcHandles.Count)
+            if (index < snapshot.GcHandles.Count)
             {
                 //When snapshotting we might end up getting some handle targets as they are about to be collected
                 //we do restart the world temporarily this can cause us to end up with targets that are not present in the dumped heaps
                 if (moi.PtrObject == 0)
                     return ObjectData.Invalid;
 
-                if (moi.PtrObject != snapshot.gcHandles.target[index])
+                if (moi.PtrObject != snapshot.GcHandles.Target[index])
                 {
                     throw new Exception("bad object");
                 }
@@ -722,9 +717,9 @@ namespace Unity.MemoryProfiler.Editor
             {
                 ObjectData o = new ObjectData();
                 o.m_data.managed.objectPtr = ptr;
-                o.managedObjectData = snapshot.managedHeapSections.Find(ptr, snapshot.virtualMachineInformation);
+                o.managedObjectData = snapshot.ManagedHeapSections.Find(ptr, snapshot.VirtualMachineInformation);
                 ManagedObjectInfo info = default(ManagedObjectInfo);
-                if (Crawler.TryParseObjectHeader(snapshot, ptr, out info))
+                if (Crawler.TryParseObjectHeader(snapshot, new Crawler.StackCrawlData() { ptr = ptr }, out info))
                 {
                     if (asTypeIndex >= 0)
                     {
@@ -815,12 +810,6 @@ namespace Unity.MemoryProfiler.Editor
                             var c = snapshot.CrawledData.Connections[i];
                             switch (c.connectionType)
                             {
-                                case ManagedConnection.ConnectionType.Global_To_ManagedObject:
-                                    if (c.toManagedObjectIndex == idx)
-                                    {
-                                        o.Add(ObjectData.global);
-                                    }
-                                    break;
                                 case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
                                     if (c.toManagedObjectIndex == idx)
                                     {
@@ -876,7 +865,6 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         switch (snapshot.CrawledData.Connections[i].connectionType)
                         {
-                            case ManagedConnection.ConnectionType.Global_To_ManagedObject:
                             case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
                             case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
                                 break;
@@ -895,11 +883,11 @@ namespace Unity.MemoryProfiler.Editor
             //add connections from the raw snapshot
             if (objIndex >= 0)
             {
-                for (int i = 0; i != snapshot.connections.Count; ++i)
+                for (int i = 0; i != snapshot.Connections.Count; ++i)
                 {
-                    if (snapshot.connections.to[i] == objIndex)
+                    if (snapshot.Connections.To[i] == objIndex)
                     {
-                        o.Add(ObjectData.FromUnifiedObjectIndex(snapshot, snapshot.connections.from[i]));
+                        o.Add(ObjectData.FromUnifiedObjectIndex(snapshot, snapshot.Connections.From[i]));
                     }
                 }
             }

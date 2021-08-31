@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
+using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEngine;
 
@@ -12,7 +13,6 @@ namespace Unity.MemoryProfiler.Editor
     {
         public enum ConnectionType
         {
-            Global_To_ManagedObject,
             ManagedObject_To_ManagedObject,
             ManagedType_To_ManagedObject,
             UnityEngineObject,
@@ -52,7 +52,6 @@ namespace Unity.MemoryProfiler.Editor
         {
             switch (connectionType)
             {
-                case ConnectionType.Global_To_ManagedObject:
                 case ConnectionType.ManagedObject_To_ManagedObject:
                 case ConnectionType.ManagedType_To_ManagedObject:
                 case ConnectionType.UnityEngineObject:
@@ -68,7 +67,6 @@ namespace Unity.MemoryProfiler.Editor
             {
                 switch (connectionType)
                 {
-                    case ConnectionType.Global_To_ManagedObject:
                     case ConnectionType.ManagedObject_To_ManagedObject:
                     case ConnectionType.ManagedType_To_ManagedObject:
                         return index0;
@@ -82,7 +80,6 @@ namespace Unity.MemoryProfiler.Editor
             {
                 switch (connectionType)
                 {
-                    case ConnectionType.Global_To_ManagedObject:
                     case ConnectionType.ManagedObject_To_ManagedObject:
                     case ConnectionType.ManagedType_To_ManagedObject:
                         return index1;
@@ -137,7 +134,7 @@ namespace Unity.MemoryProfiler.Editor
 #if DEBUG_VALIDATION
                 if (fromField >= 0)
                 {
-                    if (snapshot.fieldDescriptions.isStatic[fromField])
+                    if (snapshot.FieldDescriptions.IsStatic[fromField] == 1)
                     {
                         Debug.LogError("Cannot make a connection from an object using a static field.");
                     }
@@ -151,7 +148,7 @@ namespace Unity.MemoryProfiler.Editor
 #if DEBUG_VALIDATION
                 if (fromField >= 0)
                 {
-                    if (!snapshot.fieldDescriptions.isStatic[fromField])
+                    if (snapshot.FieldDescriptions.IsStatic[fromField] == 0)
                     {
                         Debug.LogError("Cannot make a connection from a type using a non-static field.");
                     }
@@ -161,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                return new ManagedConnection(ConnectionType.Global_To_ManagedObject, fromIndex, toIndex, fromField, fieldArrayIndexFrom);
+                throw new InvalidOperationException("Tried to add a Managed Connection without a valid source.");
             }
         }
     }
@@ -216,6 +213,11 @@ namespace Unity.MemoryProfiler.Editor
         public BlockList<ManagedObjectInfo> ManagedObjects { private set; get; }
         public Dictionary<ulong, int> MangedObjectIndexByAddress { private set; get; }
         public BlockList<ManagedConnection> Connections { private set; get; }
+        public ulong ManagedObjectMemoryUsage { private set; get; }
+        public ulong AbandonedManagedObjectMemoryUsage { private set; get; }
+        public ulong ActiveHeapMemoryUsage { private set; get; }
+        public ulong ActiveHeapMemoryEmptySpace { private set; get; }
+        public ulong AbandonedManagedObjectActiveHeapMemoryUsage { private set; get; }
 
         public ManagedData(long rawGcHandleCount, long rawConnectionsCount)
         {
@@ -224,6 +226,39 @@ namespace Unity.MemoryProfiler.Editor
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsBlockSize, rawConnectionsCount);
 
             MangedObjectIndexByAddress = new Dictionary<ulong, int>();
+        }
+
+        internal void AddUpTotalMemoryUsage(CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)
+        {
+            var totalManagedObjectsCount = ManagedObjects.Count;
+            ManagedObjectMemoryUsage = 0;
+            if (managedMemorySections.Count <= 0)
+            {
+                ActiveHeapMemoryUsage = AbandonedManagedObjectMemoryUsage = 0;
+
+                return;
+            }
+
+            var activeHeapSectionStartAddress = managedMemorySections.StartAddress[managedMemorySections.FirstAssumedActiveHeapSectionIndex];
+            var activeHeapSectionEndAddress = managedMemorySections.StartAddress[managedMemorySections.LastAssumedActiveHeapSectionIndex] + managedMemorySections.SectionSize[managedMemorySections.LastAssumedActiveHeapSectionIndex];
+            for (int i = 0; i < totalManagedObjectsCount; i++)
+            {
+                var size = (ulong)ManagedObjects[i].Size;
+                ManagedObjectMemoryUsage += size;
+                if (ManagedObjects[i].RefCount == 0)
+                    AbandonedManagedObjectMemoryUsage += size;
+
+                if (ManagedObjects[i].PtrObject > activeHeapSectionStartAddress && ManagedObjects[i].PtrObject < activeHeapSectionEndAddress)
+                {
+                    ActiveHeapMemoryUsage += size;
+                    if (ManagedObjects[i].RefCount == 0)
+                        AbandonedManagedObjectActiveHeapMemoryUsage += size;
+                }
+            }
+            ActiveHeapMemoryEmptySpace = managedMemorySections.StartAddress[managedMemorySections.LastAssumedActiveHeapSectionIndex]
+                + managedMemorySections.SectionSize[managedMemorySections.LastAssumedActiveHeapSectionIndex]
+                - managedMemorySections.StartAddress[managedMemorySections.FirstAssumedActiveHeapSectionIndex]
+                - ActiveHeapMemoryUsage;
         }
     }
 
@@ -364,7 +399,7 @@ namespace Unity.MemoryProfiler.Editor
 
     internal static class Crawler
     {
-        struct StackCrawlData
+        internal struct StackCrawlData
         {
             public ulong ptr;
             public ulong ptrFrom;
@@ -382,6 +417,7 @@ namespace Unity.MemoryProfiler.Editor
             public BlockList<ManagedConnection> ManagedConnections { get { return CachedMemorySnapshot.CrawledData.Connections; } }
             public CachedSnapshot CachedMemorySnapshot { private set; get; }
             public Stack<int> DuplicatedGCHandleTargetsStack { private set; get; }
+            public ulong TotalManagedObjectMemoryUsage { set; get; }
             const int kInitialStackSize = 256;
             public IntermediateCrawlData(CachedSnapshot snapshot)
             {
@@ -390,12 +426,12 @@ namespace Unity.MemoryProfiler.Editor
                 CrawlDataStack = new Stack<StackCrawlData>();
 
                 TypesWithStaticFields = new List<int>();
-                for (long i = 0; i != snapshot.typeDescriptions.Count; ++i)
+                for (long i = 0; i != snapshot.TypeDescriptions.Count; ++i)
                 {
-                    if (snapshot.typeDescriptions.staticFieldBytes[i] != null
-                        && snapshot.typeDescriptions.staticFieldBytes[i].Length > 0)
+                    if (snapshot.TypeDescriptions.StaticFieldBytes[i] != null
+                        && snapshot.TypeDescriptions.StaticFieldBytes[i].Length > 0)
                     {
-                        TypesWithStaticFields.Add(snapshot.typeDescriptions.typeIndex[i]);
+                        TypesWithStaticFields.Add(snapshot.TypeDescriptions.TypeIndex[i]);
                     }
                 }
             }
@@ -405,16 +441,16 @@ namespace Unity.MemoryProfiler.Editor
         {
             unsafe
             {
-                var uniqueHandlesPtr = (ulong*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<ulong>() * snapshot.gcHandles.Count, UnsafeUtility.AlignOf<ulong>(), Collections.Allocator.Temp);
+                var uniqueHandlesPtr = (ulong*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<ulong>() * snapshot.GcHandles.Count, UnsafeUtility.AlignOf<ulong>(), Collections.Allocator.Temp);
 
                 ulong* uniqueHandlesBegin = uniqueHandlesPtr;
                 int writtenRange = 0;
 
                 // Parse all handles
-                for (int i = 0; i != snapshot.gcHandles.Count; i++)
+                for (int i = 0; i != snapshot.GcHandles.Count; i++)
                 {
                     var moi = new ManagedObjectInfo();
-                    var target = snapshot.gcHandles.target[i];
+                    var target = snapshot.GcHandles.Target[i];
 
                     moi.ManagedObjectIndex = i;
 
@@ -473,7 +509,7 @@ namespace Unity.MemoryProfiler.Editor
             for (int i = 0; i < crawlData.TypesWithStaticFields.Count; i++)
             {
                 var iTypeDescription = crawlData.TypesWithStaticFields[i];
-                var bytesOffset = new BytesAndOffset { bytes = snapshot.typeDescriptions.staticFieldBytes[iTypeDescription], offset = 0, pointerSize = snapshot.virtualMachineInformation.pointerSize };
+                var bytesOffset = new BytesAndOffset { bytes = snapshot.TypeDescriptions.StaticFieldBytes[iTypeDescription], offset = 0, pointerSize = snapshot.VirtualMachineInformation.PointerSize };
                 CrawlRawObjectData(crawlData, bytesOffset, iTypeDescription, true, 0, -1);
             }
 
@@ -499,13 +535,15 @@ namespace Unity.MemoryProfiler.Editor
             yield return status;
             ConnectNativeToManageObject(crawlData);
             AddupRawRefCount(crawlData.CachedMemorySnapshot);
+
+            crawlData.CachedMemorySnapshot.CrawledData.AddUpTotalMemoryUsage(crawlData.CachedMemorySnapshot.ManagedHeapSections);
         }
 
         static void AddupRawRefCount(CachedSnapshot snapshot)
         {
-            for (long i = 0; i != snapshot.connections.Count; ++i)
+            for (long i = 0; i != snapshot.Connections.Count; ++i)
             {
-                int iManagedTo = snapshot.UnifiedObjectIndexToManagedObjectIndex(snapshot.connections.to[i]);
+                int iManagedTo = snapshot.UnifiedObjectIndexToManagedObjectIndex(snapshot.Connections.To[i]);
                 if (iManagedTo >= 0)
                 {
                     var obj = snapshot.CrawledData.ManagedObjects[iManagedTo];
@@ -514,10 +552,11 @@ namespace Unity.MemoryProfiler.Editor
                     continue;
                 }
 
-                int iNativeTo = snapshot.UnifiedObjectIndexToNativeObjectIndex(snapshot.connections.to[i]);
+                int iNativeTo = snapshot.UnifiedObjectIndexToNativeObjectIndex(snapshot.Connections.To[i]);
                 if (iNativeTo >= 0)
                 {
-                    ++snapshot.nativeObjects.refcount[iNativeTo];
+                    var rc = ++snapshot.NativeObjects.refcount[iNativeTo];
+                    snapshot.NativeObjects.refcount[iNativeTo] = rc;
                     continue;
                 }
             }
@@ -528,11 +567,11 @@ namespace Unity.MemoryProfiler.Editor
             var snapshot = crawlData.CachedMemorySnapshot;
             var objectInfos = crawlData.ManagedObjectInfos;
 
-            if (snapshot.typeDescriptions.Count == 0)
+            if (snapshot.TypeDescriptions.Count == 0)
                 return;
 
             // Get UnityEngine.Object
-            int iTypeDescription_UnityEngineObject = snapshot.typeDescriptions.typeDescriptionName.FindIndex(x => x == "UnityEngine.Object");
+            int iTypeDescription_UnityEngineObject = Array.FindIndex(snapshot.TypeDescriptions.TypeDescriptionName, x => x == "UnityEngine.Object");
 #if DEBUG_VALIDATION //This shouldn't really happen
             if (iTypeDescription_UnityEngineObject < 0)
             {
@@ -541,12 +580,12 @@ namespace Unity.MemoryProfiler.Editor
 #endif
             int cachedPtrOffset = -1;
             int iField_UnityEngineObject_m_CachedPtr = Array.FindIndex(
-                snapshot.typeDescriptions.fieldIndices[iTypeDescription_UnityEngineObject]
-                , iField => snapshot.fieldDescriptions.fieldDescriptionName[iField] == "m_CachedPtr");
+                snapshot.TypeDescriptions.FieldIndices[iTypeDescription_UnityEngineObject]
+                , iField => snapshot.FieldDescriptions.FieldDescriptionName[iField] == "m_CachedPtr");
 
             if (iField_UnityEngineObject_m_CachedPtr >= 0)
             {
-                cachedPtrOffset = snapshot.fieldDescriptions.offset[iField_UnityEngineObject_m_CachedPtr];
+                cachedPtrOffset = snapshot.FieldDescriptions.Offset[iField_UnityEngineObject_m_CachedPtr];
             }
 
 #if DEBUG_VALIDATION
@@ -562,11 +601,11 @@ namespace Unity.MemoryProfiler.Editor
                 //Must derive of unity Object
                 var objectInfo = objectInfos[i];
                 objectInfo.NativeObjectIndex = -1;
-                int instanceID = CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone;
+                int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
 
-                if (DerivesFrom(snapshot.typeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
+                if (DerivesFrom(snapshot.TypeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
                 {
-                    var heapSection = snapshot.managedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.virtualMachineInformation);
+                    var heapSection = snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
                     if (!heapSection.IsValid)
                     {
                         Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
@@ -576,22 +615,23 @@ namespace Unity.MemoryProfiler.Editor
                         ulong cachedPtr;
                         heapSection.TryReadPointer(out cachedPtr);
 
-                        if (!snapshot.nativeObjects.nativeObjectAddressToInstanceId.TryGetValue(cachedPtr, out instanceID))
-                            instanceID = CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone;
+                        if (!snapshot.NativeObjects.nativeObjectAddressToInstanceId.TryGetValue(cachedPtr, out instanceID))
+                            instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
                     }
 
-                    if (instanceID != CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone && snapshot.nativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
+                    if (instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone && snapshot.NativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
                     {
-                        snapshot.nativeObjects.managedObjectIndex[objectInfo.NativeObjectIndex] = i;
+                        snapshot.NativeObjects.ManagedObjectIndex[objectInfo.NativeObjectIndex] = i;
                     }
                 }
 
                 objectInfos[i] = objectInfo;
 
-                if (snapshot.HasConnectionOverhaul && instanceID != CachedSnapshot.NativeObjectEntriesCache.k_InstanceIDNone)
+                if (snapshot.HasConnectionOverhaul && instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone)
                 {
                     snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
-                    ++snapshot.nativeObjects.refcount[objectInfo.NativeObjectIndex];
+                    var rc = ++snapshot.NativeObjects.refcount[objectInfo.NativeObjectIndex];
+                    snapshot.NativeObjects.refcount[objectInfo.NativeObjectIndex] = rc;
                 }
             }
         }
@@ -602,7 +642,7 @@ namespace Unity.MemoryProfiler.Editor
             if (iTypeDescription == potentialBase)
                 return true;
 
-            var baseIndex = typeDescriptions.baseOrElementTypeIndex[iTypeDescription];
+            var baseIndex = typeDescriptions.BaseOrElementTypeIndex[iTypeDescription];
 
             if (baseIndex < 0)
                 return false;
@@ -614,15 +654,15 @@ namespace Unity.MemoryProfiler.Editor
         {
             var snapshot = crawlData.CachedMemorySnapshot;
 
-            var fields = useStaticFields ? snapshot.typeDescriptions.fieldIndicesOwned_static[iTypeDescription] : snapshot.typeDescriptions.fieldIndices_instance[iTypeDescription];
+            var fields = useStaticFields ? snapshot.TypeDescriptions.fieldIndicesOwnedStatic[iTypeDescription] : snapshot.TypeDescriptions.FieldIndicesInstance[iTypeDescription];
             foreach (var iField in fields)
             {
-                int iField_TypeDescription_TypeIndex = snapshot.fieldDescriptions.typeIndex[iField];
-                int iField_TypeDescription_ArrayIndex = snapshot.typeDescriptions.TypeIndex2ArrayIndex(iField_TypeDescription_TypeIndex);
+                int iField_TypeDescription_TypeIndex = snapshot.FieldDescriptions.TypeIndex[iField];
+                int iField_TypeDescription_ArrayIndex = snapshot.TypeDescriptions.TypeIndex2ArrayIndex(iField_TypeDescription_TypeIndex);
 
-                var fieldLocation = bytesAndOffset.Add(snapshot.fieldDescriptions.offset[iField] - (useStaticFields ? 0 : snapshot.virtualMachineInformation.objectHeaderSize));
+                var fieldLocation = bytesAndOffset.Add(snapshot.FieldDescriptions.Offset[iField] - (useStaticFields ? 0 : snapshot.VirtualMachineInformation.ObjectHeaderSize));
 
-                if (snapshot.typeDescriptions.HasFlag(iField_TypeDescription_ArrayIndex, TypeFlags.kValueType))
+                if (snapshot.TypeDescriptions.HasFlag(iField_TypeDescription_ArrayIndex, TypeFlags.kValueType))
                 {
                     CrawlRawObjectData(crawlData, fieldLocation, iField_TypeDescription_ArrayIndex, useStaticFields, ptrFrom, indexOfFrom);
                     continue;
@@ -642,10 +682,10 @@ namespace Unity.MemoryProfiler.Editor
             UnityEngine.Debug.Assert(dataStack.CrawlDataStack.Count > 0);
 
             var snapshot = dataStack.CachedMemorySnapshot;
-            var typeDescriptions = snapshot.typeDescriptions;
+            var typeDescriptions = snapshot.TypeDescriptions;
             var data = dataStack.CrawlDataStack.Pop();
-            var virtualMachineInformation = snapshot.virtualMachineInformation;
-            var managedHeapSections = snapshot.managedHeapSections;
+            var virtualMachineInformation = snapshot.VirtualMachineInformation;
+            var managedHeapSections = snapshot.ManagedHeapSections;
             var byteOffset = managedHeapSections.Find(data.ptr, virtualMachineInformation);
 
             if (!byteOffset.IsValid)
@@ -656,8 +696,10 @@ namespace Unity.MemoryProfiler.Editor
             ManagedObjectInfo obj;
             bool wasAlreadyCrawled;
 
-            obj = ParseObjectHeader(snapshot, data.ptr, out wasAlreadyCrawled, false);
-            ++obj.RefCount;
+            obj = ParseObjectHeader(snapshot, data, out wasAlreadyCrawled, false);
+            bool addConnection = (data.typeFrom >= 0 || data.fieldFrom >= 0);
+            if (addConnection)
+                ++obj.RefCount;
 
             if (!obj.IsValid())
                 return false;
@@ -665,30 +707,31 @@ namespace Unity.MemoryProfiler.Editor
             snapshot.CrawledData.ManagedObjects[obj.ManagedObjectIndex] = obj;
             snapshot.CrawledData.MangedObjectIndexByAddress[obj.PtrObject] = obj.ManagedObjectIndex;
 
-            dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.indexOfFrom, data.ptrFrom, obj.ManagedObjectIndex, data.ptr, data.typeFrom, data.fieldFrom, data.fromArrayIndex));
+            if (addConnection)
+                dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.indexOfFrom, data.ptrFrom, obj.ManagedObjectIndex, data.ptr, data.typeFrom, data.fieldFrom, data.fromArrayIndex));
 
             if (wasAlreadyCrawled)
                 return true;
 
             if (!typeDescriptions.HasFlag(obj.ITypeDescription, TypeFlags.kArray))
             {
-                CrawlRawObjectData(dataStack, byteOffset.Add(snapshot.virtualMachineInformation.objectHeaderSize), obj.ITypeDescription, false, data.ptr, obj.ManagedObjectIndex);
+                CrawlRawObjectData(dataStack, byteOffset.Add(snapshot.VirtualMachineInformation.ObjectHeaderSize), obj.ITypeDescription, false, data.ptr, obj.ManagedObjectIndex);
                 return true;
             }
 
             var arrayLength = ArrayTools.ReadArrayLength(snapshot, data.ptr, obj.ITypeDescription);
-            int iElementTypeDescription = typeDescriptions.baseOrElementTypeIndex[obj.ITypeDescription];
+            int iElementTypeDescription = typeDescriptions.BaseOrElementTypeIndex[obj.ITypeDescription];
             if (iElementTypeDescription == -1)
             {
                 return false; //do not crawl uninitialized object types, as we currently don't have proper handling for these
             }
-            var arrayData = byteOffset.Add(virtualMachineInformation.arrayHeaderSize);
+            var arrayData = byteOffset.Add(virtualMachineInformation.ArrayHeaderSize);
             for (int i = 0; i != arrayLength; i++)
             {
                 if (typeDescriptions.HasFlag(iElementTypeDescription, TypeFlags.kValueType))
                 {
                     CrawlRawObjectData(dataStack, arrayData, iElementTypeDescription, false, data.ptr, obj.ManagedObjectIndex);
-                    arrayData = arrayData.Add(typeDescriptions.size[iElementTypeDescription]);
+                    arrayData = arrayData.Add(typeDescriptions.Size[iElementTypeDescription]);
                 }
                 else
                 {
@@ -707,31 +750,31 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (iTypeDescription < 0) return 0;
 
-            if (snapshot.typeDescriptions.HasFlag(iTypeDescription, TypeFlags.kArray))
+            if (snapshot.TypeDescriptions.HasFlag(iTypeDescription, TypeFlags.kArray))
                 return ArrayTools.ReadArrayObjectSizeInBytes(snapshot, address, iTypeDescription);
 
-            if (snapshot.typeDescriptions.typeDescriptionName[iTypeDescription] == "System.String")
-                return StringTools.ReadStringObjectSizeInBytes(bo, snapshot.virtualMachineInformation);
+            if (snapshot.TypeDescriptions.TypeDescriptionName[iTypeDescription] == "System.String")
+                return StringTools.ReadStringObjectSizeInBytes(bo, snapshot.VirtualMachineInformation);
 
             //array and string are the only types that are special, all other types just have one size, which is stored in the type description
-            return snapshot.typeDescriptions.size[iTypeDescription];
+            return snapshot.TypeDescriptions.Size[iTypeDescription];
         }
 
         static int SizeOfObjectInBytes(CachedSnapshot snapshot, int iTypeDescription, BytesAndOffset byteOffset, CachedSnapshot.ManagedMemorySectionEntriesCache heap)
         {
             if (iTypeDescription < 0) return 0;
 
-            if (snapshot.typeDescriptions.HasFlag(iTypeDescription, TypeFlags.kArray))
+            if (snapshot.TypeDescriptions.HasFlag(iTypeDescription, TypeFlags.kArray))
                 return ArrayTools.ReadArrayObjectSizeInBytes(snapshot, byteOffset, iTypeDescription);
 
-            if (snapshot.typeDescriptions.typeDescriptionName[iTypeDescription] == "System.String")
-                return StringTools.ReadStringObjectSizeInBytes(byteOffset, snapshot.virtualMachineInformation);
+            if (snapshot.TypeDescriptions.TypeDescriptionName[iTypeDescription] == "System.String")
+                return StringTools.ReadStringObjectSizeInBytes(byteOffset, snapshot.VirtualMachineInformation);
 
             //array and string are the only types that are special, all other types just have one size, which is stored in the type description
-            return snapshot.typeDescriptions.size[iTypeDescription];
+            return snapshot.TypeDescriptions.Size[iTypeDescription];
         }
 
-        static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, ulong ptrObjectHeader, out bool wasAlreadyCrawled, bool ignoreBadHeaderError)
+        static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, StackCrawlData crawlData, out bool wasAlreadyCrawled, bool ignoreBadHeaderError)
         {
             var objectList = snapshot.CrawledData.ManagedObjects;
             var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
@@ -739,13 +782,13 @@ namespace Unity.MemoryProfiler.Editor
             ManagedObjectInfo objectInfo = default(ManagedObjectInfo);
 
             int idx = 0;
-            if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(ptrObjectHeader, out idx))
+            if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(crawlData.ptr, out idx))
             {
-                if (TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
+                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo))
                 {
                     objectInfo.ManagedObjectIndex = (int)objectList.Count;
                     objectList.Add(objectInfo);
-                    objectsByAddress.Add(ptrObjectHeader, objectInfo.ManagedObjectIndex);
+                    objectsByAddress.Add(crawlData.ptr, objectInfo.ManagedObjectIndex);
                 }
                 wasAlreadyCrawled = false;
                 return objectInfo;
@@ -756,11 +799,11 @@ namespace Unity.MemoryProfiler.Editor
             if (objectInfo.PtrObject == 0)
             {
                 idx = objectInfo.ManagedObjectIndex;
-                if (TryParseObjectHeader(snapshot, ptrObjectHeader, out objectInfo))
+                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo))
                 {
                     objectInfo.ManagedObjectIndex = idx;
                     objectList[idx] = objectInfo;
-                    objectsByAddress[ptrObjectHeader] = idx;
+                    objectsByAddress[crawlData.ptr] = idx;
                 }
 
                 wasAlreadyCrawled = false;
@@ -771,15 +814,15 @@ namespace Unity.MemoryProfiler.Editor
             return objectInfo;
         }
 
-        public static bool TryParseObjectHeader(CachedSnapshot snapshot, ulong ptrObjectHeader, out ManagedObjectInfo info)
+        public static bool TryParseObjectHeader(CachedSnapshot snapshot, StackCrawlData data, out ManagedObjectInfo info)
         {
             bool resolveFailed = false;
-            var heap = snapshot.managedHeapSections;
+            var heap = snapshot.ManagedHeapSections;
             info = new ManagedObjectInfo();
             info.ManagedObjectIndex = -1;
 
             ulong ptrIdentity = 0;
-            var boHeader = heap.Find(ptrObjectHeader, snapshot.virtualMachineInformation);
+            var boHeader = heap.Find(data.ptr, snapshot.VirtualMachineInformation);
             if (!boHeader.IsValid)
                 resolveFailed = true;
             else
@@ -787,17 +830,17 @@ namespace Unity.MemoryProfiler.Editor
                 boHeader.TryReadPointer(out ptrIdentity);
 
                 info.PtrTypeInfo = ptrIdentity;
-                info.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
+                info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
 
                 if (info.ITypeDescription < 0)
                 {
-                    var boIdentity = heap.Find(ptrIdentity, snapshot.virtualMachineInformation);
+                    var boIdentity = heap.Find(ptrIdentity, snapshot.VirtualMachineInformation);
                     if (boIdentity.IsValid)
                     {
                         ulong ptrTypeInfo;
                         boIdentity.TryReadPointer(out ptrTypeInfo);
                         info.PtrTypeInfo = ptrTypeInfo;
-                        info.ITypeDescription = snapshot.typeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
+                        info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
                         resolveFailed = info.ITypeDescription < 0;
                     }
                     else
@@ -809,10 +852,16 @@ namespace Unity.MemoryProfiler.Editor
 
             if (resolveFailed)
             {
+                //enable this define in order to track objects that are missing type data, this can happen if for whatever reason mono got changed and there are types / heap chunks that we do not report
+                //addresses here can be used to identify the objects within the Unity process by using a debug version of the mono libs in order to add to the capture where this data resides.
 #if DEBUG_VALIDATION
-                UnityEngine.Debug.LogError("Bad object header at address: " + ptrIdentity);
+                Debug.LogError($"Bad object detected:\nheader at address: { DefaultDataFormatter.Instance.FormatPointer(data.ptr)} \nvtable at address {DefaultDataFormatter.Instance.FormatPointer(ptrIdentity)}" +
+                    $"\nDetails:\n From object: {DefaultDataFormatter.Instance.FormatPointer(data.ptrFrom)}\n " +
+                    $"From type: {(data.typeFrom != -1 ? snapshot.TypeDescriptions.TypeDescriptionName[data.typeFrom] : data.typeFrom.ToString())}\n" +
+                    $"From field: {(data.fieldFrom != -1 ? snapshot.FieldDescriptions.FieldDescriptionName[data.fieldFrom] : data.fieldFrom.ToString())}\n" +
+                    $"From array data: arrayIndex - {(data.fromArrayIndex)}, indexOf - {(data.indexOfFrom)}");
+                //can add from array index too above if needed
 #endif
-
                 info.PtrTypeInfo = 0;
                 info.ITypeDescription = -1;
                 info.Size = 0;
@@ -825,7 +874,7 @@ namespace Unity.MemoryProfiler.Editor
 
             info.Size = SizeOfObjectInBytes(snapshot, info.ITypeDescription, boHeader, heap);
             info.data = boHeader;
-            info.PtrObject = ptrObjectHeader;
+            info.PtrObject = data.ptr;
             return true;
         }
     }
@@ -834,7 +883,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         public static string ReadString(BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
         {
-            var lengthPointer = bo.Add(virtualMachineInformation.objectHeaderSize);
+            var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
             var firstChar = lengthPointer.Add(4);
 
@@ -843,10 +892,10 @@ namespace Unity.MemoryProfiler.Editor
 
         public static int ReadStringObjectSizeInBytes(BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
         {
-            var lengthPointer = bo.Add(virtualMachineInformation.objectHeaderSize);
+            var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
 
-            return virtualMachineInformation.objectHeaderSize + /*lengthfield*/ 1 + (length * /*utf16=2bytes per char*/ 2) + /*2 zero terminators*/ 2;
+            return virtualMachineInformation.ObjectHeaderSize + /*lengthfield*/ 1 + (length * /*utf16=2bytes per char*/ 2) + /*2 zero terminators*/ 2;
         }
     }
     internal class ArrayInfo
@@ -883,28 +932,28 @@ namespace Unity.MemoryProfiler.Editor
     {
         public static ArrayInfo GetArrayInfo(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
-            var virtualMachineInformation = data.virtualMachineInformation;
+            var virtualMachineInformation = data.VirtualMachineInformation;
             var arrayInfo = new ArrayInfo();
             arrayInfo.baseAddress = 0;
             arrayInfo.arrayTypeDescription = iTypeDescriptionArrayType;
 
 
             arrayInfo.header = arrayData;
-            arrayInfo.data = arrayInfo.header.Add(virtualMachineInformation.arrayHeaderSize);
+            arrayInfo.data = arrayInfo.header.Add(virtualMachineInformation.ArrayHeaderSize);
             ulong bounds;
-            arrayInfo.header.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).TryReadPointer(out bounds);
+            arrayInfo.header.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
             if (bounds == 0)
             {
-                arrayInfo.length = arrayInfo.header.Add(virtualMachineInformation.arraySizeOffsetInHeader).ReadInt32();
+                arrayInfo.length = arrayInfo.header.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
                 arrayInfo.rank = new int[1] { arrayInfo.length };
             }
             else
             {
-                int rank = data.typeDescriptions.GetRank(iTypeDescriptionArrayType);
+                int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
                 arrayInfo.rank = new int[rank];
 
-                var cursor = data.managedHeapSections.Find(bounds, virtualMachineInformation);
+                var cursor = data.ManagedHeapSections.Find(bounds, virtualMachineInformation);
                 if (cursor.IsValid)
                 {
                     arrayInfo.length = 1;
@@ -925,33 +974,32 @@ namespace Unity.MemoryProfiler.Editor
                         arrayInfo.rank[i] = -1;
                     }
                 }
-
             }
 
-            arrayInfo.elementTypeDescription = data.typeDescriptions.baseOrElementTypeIndex[iTypeDescriptionArrayType];
+            arrayInfo.elementTypeDescription = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
             if (arrayInfo.elementTypeDescription == -1) //We currently do not handle uninitialized types as such override the type, making it return pointer size
             {
                 arrayInfo.elementTypeDescription = iTypeDescriptionArrayType;
             }
-            if (data.typeDescriptions.HasFlag(arrayInfo.elementTypeDescription, TypeFlags.kValueType))
+            if (data.TypeDescriptions.HasFlag(arrayInfo.elementTypeDescription, TypeFlags.kValueType))
             {
-                arrayInfo.elementSize = data.typeDescriptions.size[arrayInfo.elementTypeDescription];
+                arrayInfo.elementSize = data.TypeDescriptions.Size[arrayInfo.elementTypeDescription];
             }
             else
             {
-                arrayInfo.elementSize = virtualMachineInformation.pointerSize;
+                arrayInfo.elementSize = virtualMachineInformation.PointerSize;
             }
             return arrayInfo;
         }
 
         public static int GetArrayElementSize(CachedSnapshot data, int iTypeDescriptionArrayType)
         {
-            int iElementTypeDescription = data.typeDescriptions.baseOrElementTypeIndex[iTypeDescriptionArrayType];
-            if (data.typeDescriptions.HasFlag(iElementTypeDescription, TypeFlags.kValueType))
+            int iElementTypeDescription = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
+            if (data.TypeDescriptions.HasFlag(iElementTypeDescription, TypeFlags.kValueType))
             {
-                return data.typeDescriptions.size[iElementTypeDescription];
+                return data.TypeDescriptions.Size[iElementTypeDescription];
             }
-            return data.virtualMachineInformation.pointerSize;
+            return data.VirtualMachineInformation.PointerSize;
         }
 
         public static string ArrayRankToString(int[] rankLength)
@@ -997,15 +1045,15 @@ namespace Unity.MemoryProfiler.Editor
 
             var bo = heap.Find(address, virtualMachineInformation);
             ulong bounds;
-            bo.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).TryReadPointer(out bounds);
+            bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
             if (bounds == 0)
             {
-                return new int[1] { bo.Add(virtualMachineInformation.arraySizeOffsetInHeader).ReadInt32() };
+                return new int[1] { bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32() };
             }
 
             var cursor = heap.Find(bounds, virtualMachineInformation);
-            int rank = data.typeDescriptions.GetRank(iTypeDescriptionArrayType);
+            int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
             int[] l = new int[rank];
             for (int i = 0; i != rank; i++)
             {
@@ -1022,8 +1070,8 @@ namespace Unity.MemoryProfiler.Editor
                 return 0;
             }
 
-            var heap = data.managedHeapSections;
-            var bo = heap.Find(address, data.virtualMachineInformation);
+            var heap = data.ManagedHeapSections;
+            var bo = heap.Find(address, data.VirtualMachineInformation);
             return ReadArrayLength(data, bo, iTypeDescriptionArrayType);
         }
 
@@ -1031,15 +1079,15 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (iTypeDescriptionArrayType < 0) return 0;
 
-            var virtualMachineInformation = data.virtualMachineInformation;
-            var heap = data.managedHeapSections;
+            var virtualMachineInformation = data.VirtualMachineInformation;
+            var heap = data.ManagedHeapSections;
             var bo = arrayData;
 
             ulong bounds;
-            bo.Add(virtualMachineInformation.arrayBoundsOffsetInHeader).TryReadPointer(out bounds);
+            bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
             if (bounds == 0)
-                return bo.Add(virtualMachineInformation.arraySizeOffsetInHeader).ReadInt32();
+                return bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
 
             var cursor = heap.Find(bounds, virtualMachineInformation);
             int length = 0;
@@ -1047,7 +1095,7 @@ namespace Unity.MemoryProfiler.Editor
             if (cursor.IsValid)
             {
                 length = 1;
-                int rank = data.typeDescriptions.GetRank(iTypeDescriptionArrayType);
+                int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
                 for (int i = 0; i != rank; i++)
                 {
                     length *= cursor.ReadInt32();
@@ -1062,31 +1110,31 @@ namespace Unity.MemoryProfiler.Editor
         {
             var arrayLength = ReadArrayLength(data, address, iTypeDescriptionArrayType);
 
-            var virtualMachineInformation = data.virtualMachineInformation;
-            var ti = data.typeDescriptions.baseOrElementTypeIndex[iTypeDescriptionArrayType];
-            var ai = data.typeDescriptions.TypeIndex2ArrayIndex(ti);
-            var isValueType = data.typeDescriptions.HasFlag(ai, TypeFlags.kValueType);
+            var virtualMachineInformation = data.VirtualMachineInformation;
+            var ti = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
+            var ai = data.TypeDescriptions.TypeIndex2ArrayIndex(ti);
+            var isValueType = data.TypeDescriptions.HasFlag(ai, TypeFlags.kValueType);
 
-            var elementSize = isValueType ? data.typeDescriptions.size[ai] : virtualMachineInformation.pointerSize;
-            return virtualMachineInformation.arrayHeaderSize + elementSize * arrayLength;
+            var elementSize = isValueType ? data.TypeDescriptions.Size[ai] : virtualMachineInformation.PointerSize;
+            return virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength;
         }
 
         public static int ReadArrayObjectSizeInBytes(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
             var arrayLength = ReadArrayLength(data, arrayData, iTypeDescriptionArrayType);
-            var virtualMachineInformation = data.virtualMachineInformation;
+            var virtualMachineInformation = data.VirtualMachineInformation;
 
-            var ti = data.typeDescriptions.baseOrElementTypeIndex[iTypeDescriptionArrayType];
+            var ti = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
             if (ti == -1) // check added as element type index can be -1 if we are dealing with a class member (eg: Dictionary.Entry) whose type is uninitialized due to their generic data not getting inflated a.k.a unused types
             {
                 ti = iTypeDescriptionArrayType;
             }
 
-            var ai = data.typeDescriptions.TypeIndex2ArrayIndex(ti);
-            var isValueType = data.typeDescriptions.HasFlag(ai, TypeFlags.kValueType);
-            var elementSize = isValueType ? data.typeDescriptions.size[ai] : virtualMachineInformation.pointerSize;
+            var ai = data.TypeDescriptions.TypeIndex2ArrayIndex(ti);
+            var isValueType = data.TypeDescriptions.HasFlag(ai, TypeFlags.kValueType);
+            var elementSize = isValueType ? data.TypeDescriptions.Size[ai] : virtualMachineInformation.PointerSize;
 
-            return virtualMachineInformation.arrayHeaderSize + elementSize * arrayLength;
+            return virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength;
         }
     }
 }

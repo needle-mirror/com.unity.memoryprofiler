@@ -8,11 +8,14 @@ using UnityEditor;
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Database.View;
+using Unity.MemoryProfiler.Editor.UIContentData;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class TreeMapPane : ViewPane
     {
+        public override string ViewName { get { return TextContent.TreeMapView.text; } }
+
         UI.Treemap.TreeMapView m_TreeMap;
 
         UI.DatabaseSpreadsheet m_Spreadsheet;
@@ -25,10 +28,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             string m_GroupName;
             Treemap.ObjectMetric m_SelectedItem;
+            DatabaseSpreadsheet.State m_TableState;
 
             public History(TreeMapPane pane)
             {
                 Mode = pane.m_UIState.CurrentMode;
+                m_TableState = pane.m_Spreadsheet.CurrentState;
 
                 if (pane.m_TreeMap.SelectedItem != null)
                 {
@@ -74,6 +79,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 pane.m_EventListener.OnRepaint();
+                pane.m_Spreadsheet.CurrentState = m_TableState;
             }
 
             public override string ToString()
@@ -148,7 +154,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     {
                         new IMGUIContainer(() => OnGUI(0))
                         {
-                            name = "TreeMap",
+                            name = "tree-map",
                             style =
                             {
                                 flexGrow = 3,
@@ -156,7 +162,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         },
                         new IMGUIContainer(() => OnGUI(1))
                         {
-                            name = "TreeMapSpreadsheet",
+                            name = "tree-map__spreadsheet",
                             style =
                             {
                                 flexGrow = 1,
@@ -173,10 +179,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public TreeMapPane(UIState s, IViewPaneEventListener l)
+        public TreeMapPane(IUIStateHolder s, IViewPaneEventListener l)
             : base(s, l)
         {
-            m_TreeMap = new UI.Treemap.TreeMapView(s.snapshotMode.snapshot);
+            m_TreeMap = new UI.Treemap.TreeMapView(s.UIState.snapshotMode.snapshot);
             m_TreeMap.Setup();
             m_TreeMap.OnClickItem = OnClickItem;
             m_TreeMap.OnClickGroup = OnClickGroup;
@@ -187,7 +193,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void ShowAllObjects(Treemap.ObjectMetric itemCopyToSelect, bool focus)
         {
-            // TODO: Fix history zooming UX
+            // TODO: Fix history zooming UX. Or not. it's always been a bit of a mess.
             focus = false;
 
             Treemap.ObjectMetric itemToSelect = default(Treemap.ObjectMetric);
@@ -211,9 +217,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             if (m_CurrentCodeType == CodeType.Unknown || m_CurrentCodeType == CodeType.Native)
             {
-                for (int i = 0; i != m_UIState.snapshotMode.snapshot.nativeObjects.Count; ++i)
+                for (int i = 0; i != m_UIState.snapshotMode.snapshot.NativeObjects.Count; ++i)
                 {
-                    if (m_UIState.snapshotMode.snapshot.nativeObjects.size[i] > 0)
+                    if (m_UIState.snapshotMode.snapshot.NativeObjects.Size[i] > 0)
                     {
                         var o = new Treemap.ObjectMetric(i, m_UIState.snapshotMode.snapshot, Treemap.ObjectMetricType.Native);
                         if (o.Equals(itemCopyToSelect))
@@ -221,6 +227,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                             itemToSelect = o;
                         }
                         m_TreeMap.AddMetric(o);
+                    }
+                    else
+                    {
+                        // Some Native Objects may have no size associated with them and will show up in the table so, report them in the TreeMap too.
+                        var INatTypeDesc = m_UIState.snapshotMode.snapshot.NativeObjects.NativeTypeArrayIndex[i];
+                        if (INatTypeDesc > 0)
+                        {
+                            m_TreeMap.AddEmptyObjectCount(m_UIState.snapshotMode.snapshot.NativeTypes.TypeName[INatTypeDesc]);
+                        }
                     }
                 }
             }
@@ -275,13 +290,29 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OpenGroupData(Treemap.Group group)
         {
-            var lr = new Database.LinkRequestTable();
-            lr.LinkToOpen = new Database.TableLink();
-            lr.LinkToOpen.TableName = ObjectAllTable.TableName;
-            lr.SourceTable = null;
-            lr.SourceColumn = null;
-            lr.SourceRow = -1;
-            OpenLinkRequest(lr, false, group.Name, false);
+            // TODO: Clean up fall back if the SetTypeFilter and GoTo solution suffices / offers the better workflow
+            //var lr = new Database.LinkRequestTable();
+            //lr.LinkToOpen = new Database.TableLink();
+            //lr.LinkToOpen.TableName = ObjectAllTable.TableName;
+            //lr.SourceTable = null;
+            //lr.SourceColumn = null;
+            //lr.SourceRow = -1;
+            //OpenLinkRequest(lr, false, group.Name, false);
+
+            if (group.Items[0].Metric.MetricType == Treemap.ObjectMetricType.Native)
+                SetTypeFilter(group.Name, ObjectDataType.NativeObject);
+            else
+            {
+                var managedObj = m_UIState.snapshotMode.snapshot.CrawledData.ManagedObjects[group.Items[0].Metric.ObjectIndex];
+                ObjectDataType dataType = ObjectDataType.ReferenceObject;
+
+
+                if (m_UIState.snapshotMode.snapshot.TypeDescriptions.HasFlag(managedObj.ITypeDescription, Format.TypeFlags.kArray))
+                    dataType = ObjectDataType.Array;
+                else if (m_UIState.snapshotMode.snapshot.TypeDescriptions.HasFlag(managedObj.ITypeDescription, Format.TypeFlags.kValueType))
+                    dataType = ObjectDataType.BoxedValue;
+                SetTypeFilter(group.Name, dataType);
+            }
         }
 
         void OpenMetricData(Treemap.ObjectMetric metric, bool focus)
@@ -289,8 +320,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             switch (metric.MetricType)
             {
                 case Treemap.ObjectMetricType.Managed:
-
                     var metricTypeName = metric.GetTypeName();
+                    var managedObj = m_UIState.snapshotMode.snapshot.CrawledData.ManagedObjects[metric.ObjectIndex];
+
+                    ObjectDataType dataType = ObjectDataType.ReferenceObject;
+
+                    if (m_UIState.snapshotMode.snapshot.TypeDescriptions.HasFlag(managedObj.ITypeDescription, Format.TypeFlags.kArray))
+                        dataType = ObjectDataType.Array;
+                    else if (m_UIState.snapshotMode.snapshot.TypeDescriptions.HasFlag(managedObj.ITypeDescription, Format.TypeFlags.kValueType))
+                        dataType = ObjectDataType.BoxedValue;
+
+                    var filtersChanged = SetTypeFilter(metricTypeName, dataType);
+
                     if (m_CurrentTableTypeFilter == metricTypeName)
                     {
                         var builder = new Database.View.Where.Builder("Index", Database.Operation.Operator.Equal, new Database.Operation.Expression.MetaExpression(metric.GetObjectUID().ToString(), true));
@@ -298,28 +339,30 @@ namespace Unity.MemoryProfiler.Editor.UI
                         var whereStatement = builder.Build(null, null, null, null, null, m_Spreadsheet.DisplayTable, null); //yeah we could add a no param Build() too..
                         var row = whereStatement.GetFirstMatchIndex(-1);
 
-                        if (row > 0)
+                        if (row >= 0)
                         {
                             m_Spreadsheet.Goto(new Database.CellPosition(row, 0));
                             return;
                         }
                     }
-
-                    var lr = new Database.LinkRequestTable();
-                    lr.LinkToOpen = new Database.TableLink();
-                    lr.LinkToOpen.TableName = TableName;
-                    lr.SourceTable = null;
-                    lr.SourceColumn = null;
-                    lr.SourceRow = -1;
-                    var managedObj = m_UIState.snapshotMode.snapshot.CrawledData.ManagedObjects[metric.ObjectIndex];
-                    lr.Parameters.AddValue(ObjectTable.ObjParamName, managedObj.PtrObject);
-                    lr.Parameters.AddValue(ObjectTable.TypeParamName, managedObj.ITypeDescription);
-                    OpenLinkRequest(lr, focus, metricTypeName);
+                    // TODO: Clean up fall back if the SetTypeFilter and GoTo solution suffices / offers the better workflow
+                    //Debug.LogWarning("This could shouldn't execute");
+                    //var lr = new Database.LinkRequestTable();
+                    //lr.LinkToOpen = new Database.TableLink();
+                    //lr.LinkToOpen.TableName = TableName;
+                    //lr.SourceTable = null;
+                    //lr.SourceColumn = null;
+                    //lr.SourceRow = -1;
+                    //lr.Parameters.AddValue(ObjectTable.ObjParamName, managedObj.PtrObject);
+                    //lr.Parameters.AddValue(ObjectTable.TypeParamName, managedObj.ITypeDescription);
+                    //OpenLinkRequest(lr, focus, metricTypeName);
                     break;
                 case Treemap.ObjectMetricType.Native:
 
                     metricTypeName = metric.GetTypeName();
-                    var instanceId = m_UIState.snapshotMode.snapshot.nativeObjects.instanceId[metric.ObjectIndex];
+                    var instanceId = m_UIState.snapshotMode.snapshot.NativeObjects.InstanceId[metric.ObjectIndex];
+
+                    filtersChanged = SetTypeFilter(metricTypeName, ObjectDataType.NativeObject);
 
                     if (m_CurrentTableTypeFilter == metricTypeName)
                     {
@@ -327,24 +370,84 @@ namespace Unity.MemoryProfiler.Editor.UI
                         var whereStatement = builder.Build(null, null, null, null, null, m_Spreadsheet.DisplayTable, null); //yeah we could add a no param Build() too..
                         var row = whereStatement.GetFirstMatchIndex(-1);
 
-                        if (row > 0)
+                        if (row >= 0)
                         {
                             m_Spreadsheet.Goto(new Database.CellPosition(row, 0));
                             return;
                         }
                     }
-                    lr = new Database.LinkRequestTable();
+                    // TODO: Clean up fall back if the SetTypeFilter and GoTo solution suffices / offers the better workflow
+                    //Debug.LogWarning("This could shouldn't execute");
+                    //lr = new Database.LinkRequestTable();
+                    //lr.LinkToOpen = new Database.TableLink();
+                    //lr.LinkToOpen.TableName = TableName;
+                    //var b = new Database.View.Where.Builder("NativeInstanceId", Database.Operation.Operator.Equal, new Database.Operation.Expression.MetaExpression(instanceId.ToString(), true));
+                    //lr.LinkToOpen.RowWhere = new System.Collections.Generic.List<Database.View.Where.Builder>();
+                    //lr.LinkToOpen.RowWhere.Add(b);
+                    //lr.SourceTable = null;
+                    //lr.SourceColumn = null;
+                    //lr.SourceRow = -1;
+                    //OpenLinkRequest(lr, focus, metricTypeName);
+                    break;
+            }
+        }
+
+        bool SetTypeFilter(string typeName, ObjectDataType dataType)
+        {
+            // verifiy and ensure that the right Objects table is shown
+            if (m_Spreadsheet.SourceTable.GetName() != TableName)
+            {
+                try
+                {
+                    var lr = new Database.LinkRequestTable();
                     lr.LinkToOpen = new Database.TableLink();
                     lr.LinkToOpen.TableName = TableName;
-                    var b = new Database.View.Where.Builder("NativeInstanceId", Database.Operation.Operator.Equal, new Database.Operation.Expression.MetaExpression(instanceId.ToString(), true));
-                    lr.LinkToOpen.RowWhere = new System.Collections.Generic.List<Database.View.Where.Builder>();
-                    lr.LinkToOpen.RowWhere.Add(b);
                     lr.SourceTable = null;
                     lr.SourceColumn = null;
                     lr.SourceRow = -1;
-                    OpenLinkRequest(lr, focus, metricTypeName);
+                    OpenLinkRequest(lr, false, null, false);
+                }
+                catch (Exception)
+                {
+                    throw;
+                }
+            }
+            m_CurrentTableTypeFilter = typeName;
+            string typeNameColumnValue = null;
+            switch (dataType)
+            {
+                case ObjectDataType.Array:
+                    typeNameColumnValue = "Managed Array";
+                    break;
+                case ObjectDataType.BoxedValue:
+                    typeNameColumnValue = "Managed Boxed Value";
+                    break;
+                case ObjectDataType.NativeObject:
+                    typeNameColumnValue = "Native Object";
+                    break;
+                case ObjectDataType.ReferenceObject:
+                    typeNameColumnValue = "Managed Object";
+                    break;
+                case ObjectDataType.Unknown:
+                case ObjectDataType.Global:
+                case ObjectDataType.Value:
+                case ObjectDataType.Object:
+                case ObjectDataType.ReferenceArray:
+                case ObjectDataType.Type:
+                default:
                     break;
             }
+            bool changed = false;
+            if (typeNameColumnValue != null)
+            {
+                var dataTypeColumnIndex = m_Spreadsheet.DisplayTable.GetColumnIndexByName("DataType");
+                changed = m_Spreadsheet.SetMatchFilter(dataTypeColumnIndex, typeNameColumnValue, false);
+            }
+
+            var typeColumnIndex = m_Spreadsheet.DisplayTable.GetColumnIndexByName("Type");
+            if (m_Spreadsheet.SetMatchFilter(typeColumnIndex, typeName, true))
+                changed = true;
+            return changed;
         }
 
         void OpenLinkRequest(Database.LinkRequestTable link, bool focus, string tableTypeFilter = null, bool select = true)
@@ -409,6 +512,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OnSpreadsheetClick(DatabaseSpreadsheet sheet, Database.LinkRequest link, Database.CellPosition pos)
         {
+            //used to ping objects in the hierarchy
+            if (link.IsPingLink)
+            {
+                (link as Database.LinkRequestSceneHierarchy).Ping();
+                return;
+            }
+
             //add current event in history
 
             m_UIState.AddHistoryEvent(GetCurrentHistoryEvent());
@@ -427,6 +537,16 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             //open the link in the spreadsheet pane
             m_EventListener.OnOpenLink(link);
+        }
+
+        void OnRowSelectionChanged(long row)
+        {
+            var objectUID = GetTableObjectUID(m_Spreadsheet.DisplayTable, row);
+            if (objectUID >= 0)
+            {
+                // TODO: Fix history zooming UX. Or not. it's always been a bit of a mess.
+                SelectObjectByUID(objectUID, false /*focus*/);
+            }
         }
 
         private void SelectObjectByUID(int objectUID, bool focus)
@@ -469,13 +589,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var objectUID = GetTableObjectUID(table, pos.row);
                 if (objectUID >= 0)
                 {
-                    SelectObjectByUID(objectUID, focus);
+                    // TODO: Fix history zooming UX. Or not. it's always been a bit of a mess.
+                    SelectObjectByUID(objectUID, false /*focus*/);
                 }
             }
 
             //m_CurrentTableIndex = m_UIState.GetTableIndex(table);
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
-            m_Spreadsheet.onClickLink += OnSpreadsheetClick;
+            m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
+            m_Spreadsheet.RowSelectionChanged += OnRowSelectionChanged;
             m_Spreadsheet.Goto(pos);
             m_EventListener.OnRepaint();
         }

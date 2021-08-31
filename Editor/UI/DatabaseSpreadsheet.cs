@@ -68,9 +68,16 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             set
             {
-                m_GUIState.SelectedRow = value;
+                if (m_GUIState.SelectedRow != value)
+                {
+                    m_GUIState.SelectedRow = value;
+                    OnRowSelectionChanged(value);
+                }
             }
         }
+
+        // having no listeners signifies that links don't work and don't get a link cursor change, so, no  "= delegate { };" here
+        public event Action<DatabaseSpreadsheet, Database.LinkRequest, Database.CellPosition> LinkClicked = null;
 
         //keep the state of each column's desired filters
         //does not contain order in which the filters should be applied
@@ -204,7 +211,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Filters.filters.Add(ds);
             UpdateDisplayTable(expandedCells);
         }
-        
+
         protected void InitFilter(Database.Operation.Filter.Filter filter, List<Database.CellPosition> expandedCells = null)
         {
             Database.Operation.Filter.FilterCloning fc = new Database.Operation.Filter.FilterCloning();
@@ -368,16 +375,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                     SetDefaultSortFilter((int)col, SortOrder.Descending);
             });
 
-            if(m_ColumnsWithMatchFilters.Contains(col))
+            if (m_ColumnsWithMatchFilters.Contains(col))
             {
                 menu.AddDisabledItem(new GUIContent(strMatch));
             }
             else
             {
-                m_ColumnsWithMatchFilters.Add(col);
                 menu.AddItem(new GUIContent(strMatch), false, () =>
                 {
                     AddMatchFilter((int)col);
+                    m_ColumnsWithMatchFilters.Add(col);
                 });
             }
 
@@ -431,10 +438,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (sortLevel is Filter.Sort.LevelByIndex)
             {
                 return m_TableDisplay.GetMetaData().GetColumnByIndex((sortLevel as Filter.Sort.LevelByIndex).ColumnIndex).Name;
-            }
-            else if (sortLevel is Filter.Sort.LevelByName)
-            {
-                return (sortLevel as Filter.Sort.LevelByName).ColumnName;
             }
             return "";
         }
@@ -492,7 +495,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_TotalDataHeight = GetCumulativeHeight(GetFirstRow(), long.MaxValue, out nextRow, ref lastIndex);
                 }
 
-                m_GUIState.SelectedRow = sel;
+                SelectedRow = sel;
                 //m_Listener.OnRepaint();
             }
             else
@@ -547,26 +550,32 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             Database.LinkRequest link = null;
-            if (onClickLink != null)
+            if (LinkClicked != null)
             {
                 link = m_TableDisplay.GetCellLink(new Database.CellPosition(row, (int)col));
             }
             if (Event.current.type == EventType.Repaint)
             {
+                var tablerows = m_TableDisplay.GetRowCount();
                 var column = m_TableDisplay.GetColumnByIndex((int)col);
                 var metaColumn = m_TableDisplay.GetMetaData().GetColumnByIndex((int)col);
                 if (column != null)
                 {
-                    var str = column.GetRowValueString(row, m_FormattingOptions.GetFormatter(metaColumn.FormatName));
-                    var idx = str.IndexOf(k_NewLineSeparator, StringComparison.InvariantCultureIgnoreCase);
+                    var rowStrVal = String.Empty;
+                    var formatter = m_FormattingOptions.GetFormatter(metaColumn.FormatName);
+
+                    if (tablerows == column.GetRowCount())
+                        rowStrVal = column.GetRowValueString(row, m_FormattingOptions.GetFormatter(metaColumn.FormatName));
+
+                    var idx = rowStrVal.IndexOf(k_NewLineSeparator, StringComparison.InvariantCultureIgnoreCase);
                     string tooltip = null;
                     if (idx != -1)
                     {
-                        tooltip = str;
-                        str = str.Substring(0, idx);
+                        tooltip = rowStrVal;
+                        rowStrVal = rowStrVal.Substring(0, idx);
                     }
 
-                    DrawTextEllipsis(str, tooltip, r,
+                    DrawTextEllipsis(rowStrVal, tooltip, r,
                         link == null ? Styles.General.NumberLabel : Styles.General.ClickableLabel
                         , EllipsisStyleMetricData, selected);
                 }
@@ -591,19 +600,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void OnGUI_CellMouseUp(Database.CellPosition pos)
         {
-            if (onClickLink != null)
+            if (LinkClicked != null)
             {
                 var link = m_TableDisplay.GetCellLink(pos);
                 if (link != null)
                 {
-                    onClickLink(this, link, pos);
+                    LinkClicked(this, link, pos);
                 }
             }
         }
-
-        public delegate void OnClickLink(DatabaseSpreadsheet sheet, Database.LinkRequest link, Database.CellPosition pos);
-        public OnClickLink onClickLink;
-
 
         // update m_ColumnState from filters
         protected void UpdateColumnState()
@@ -766,6 +771,50 @@ namespace Unity.MemoryProfiler.Editor.UI
             return true;
         }
 
+        public bool SetMatchFilter(int colIndex, string matchString = "", bool update = true, bool forceFocus = false)
+        {
+            var filtersGotRemoved = false;
+            for (int i = m_Filters.filters.Count - 1; i >= 0; i--)
+            {
+                if (m_Filters.filters[i] is Filter.Match && (m_Filters.filters[i] as Filter.Match).ColumnIndex == colIndex)
+                {
+                    var matchFilter = (m_Filters.filters[i] as Filter.Match);
+                    if (matchFilter.MatchString == matchString && matchFilter.MatchExactly)
+                        // nothing to do here
+                        return filtersGotRemoved;
+                    m_Filters.filters.RemoveAt(i);
+                    filtersGotRemoved = true;
+                }
+            }
+            var filter = new Filter.Match(colIndex, matchString, forceFocus, matchExactly: true);
+            m_Filters.filters.Insert(0, filter);
+
+            if (update)
+            {
+                UpdateDisplayTable();
+            }
+            ReportFilterChanges();
+            return true;
+        }
+
+        public bool RemoveMatchFilter(int colIndex, bool update = true)
+        {
+            for (int i = m_Filters.filters.Count - 1; i >= 0; i--)
+            {
+                if (m_Filters.filters[i] is Filter.Match && (m_Filters.filters[i] as Filter.Match).ColumnIndex == colIndex)
+                {
+                    m_Filters.filters.RemoveAt(i);
+                }
+            }
+
+            if (update)
+            {
+                UpdateDisplayTable();
+            }
+            ReportFilterChanges();
+            return true;
+        }
+
         protected struct FilterParenthood<PFilter, CFilter> where PFilter : Filter.Filter where CFilter : Filter.Filter
         {
             public FilterParenthood(PFilter parent, CFilter child)
@@ -846,6 +895,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (dirty)
             {
                 m_WasDirty = true;
+                if (m_DelayCall.HasTriggered)
+                    DelayedOnGUICall(); 
             }
             UpdateMatchFilterState();
         }

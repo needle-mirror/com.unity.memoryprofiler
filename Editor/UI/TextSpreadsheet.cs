@@ -78,7 +78,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TextElipsisSwapContent.text = text;
             m_TextElipsisSwapContent.tooltip = tooltip;
 
-            if(tSize.x > r.width || tooltip != null)
+            if (tSize.x > r.width || tooltip != null)
             {
                 //if we have resized our column to be smaller than the text, provide a tooltip
                 if (tooltip == null)

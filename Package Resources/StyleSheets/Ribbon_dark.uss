@@ -1,0 +1,19 @@
+.ribbon__button {
+    padding-bottom: 4px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(40, 40, 40);
+}
+
+.ribbon__button:hover {
+    padding-bottom: 3px;
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(204, 204, 204);
+}
+
+.icon-button__help-icon {
+    background-image: resource('d__Help.png');
+}
+
+.icon-button__menu-icon {
+    background-image: resource('d__Menu.png');
+}

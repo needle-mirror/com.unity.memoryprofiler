@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.Profiling.Memory.Experimental;
+using UnityEngine.Scripting;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -8,6 +9,7 @@ using UnityEditor;
 
 using UnityMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
 
+[assembly: Preserve]
 namespace Unity.MemoryProfiler
 {
 #if !MEMPROFILER_DISABLE_METADATA_INJECTOR
@@ -22,13 +24,9 @@ namespace Unity.MemoryProfiler
         {
             InitializeMetadataCollection();
         }
+#endif
 
-#endif
-#if UNITY_2019_1_OR_NEWER
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSplashScreen)]
-#else
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-#endif
         static void PlayerInitMetadata()
         {
 #if !UNITY_EDITOR
@@ -100,11 +98,8 @@ namespace Unity.MemoryProfiler
 
         public override void CollectMetadata(MetaData data)
         {
-            data.content = "Project name: " + Application.productName;
-#if UNITY_EDITOR && !UNITY_2019_3_OR_NEWER
-            data.content += "\nScripting Version: " + EditorApplication.scriptingRuntimeVersion.ToString();
-#endif
-            data.platform = Application.platform.ToString();
+            data.content = $"Project name: { Application.productName }";
+            data.platform = string.Empty;
         }
     }
 }

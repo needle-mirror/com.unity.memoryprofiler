@@ -102,30 +102,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 }
                 return vs;
             }
-
-            public static Builder LoadFromXMLFile(string filename)
-            {
-                XmlDocument doc = new XmlDocument();
-                doc.Load(filename);
-                Builder b = new Builder();
-                b.name = doc.DocumentElement.GetAttribute("name");
-                foreach (XmlNode node in doc.DocumentElement.ChildNodes)
-                {
-                    if (node.NodeType == XmlNodeType.Element)
-                    {
-                        XmlElement e = (XmlElement)node;
-                        if (e.Name == "View")
-                        {
-                            var v = ViewTable.Builder.LoadFromXML(e);
-                            if (v != null)
-                            {
-                                b.viewTable.Add(v);
-                            }
-                        }
-                    }
-                }
-                return b;
-            }
         }
     }
 }

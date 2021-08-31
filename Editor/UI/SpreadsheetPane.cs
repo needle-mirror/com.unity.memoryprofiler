@@ -5,6 +5,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class SpreadsheetPane : ViewPane
     {
+        public override string ViewName { get { return TableDisplayName; } }
+
         public string TableDisplayName
         {
             get
@@ -43,7 +45,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 pane.m_CurrentTableLink = m_Table;
                 pane.CurrentTableIndex = pane.m_UIState.CurrentMode.GetTableIndex(table);
                 pane.m_Spreadsheet = new UI.DatabaseSpreadsheet(pane.m_UIState.FormattingOptions, table, pane, m_SpreadsheetState);
-                pane.m_Spreadsheet.onClickLink += pane.OnSpreadsheetClick;
+                pane.m_Spreadsheet.LinkClicked += pane.OnSpreadsheetClick;
                 pane.m_EventListener.OnRepaint();
             }
 
@@ -84,7 +86,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public SpreadsheetPane(UIState s, IViewPaneEventListener l)
+        public SpreadsheetPane(IUIStateHolder s, IViewPaneEventListener l)
             : base(s, l)
         {
         }
@@ -140,6 +142,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OnSpreadsheetClick(UI.DatabaseSpreadsheet sheet, Database.LinkRequest link, Database.CellPosition pos)
         {
+            if (link.IsPingLink)
+            {
+                (link as Database.LinkRequestSceneHierarchy).Ping();
+                return;
+            }
+
             var hEvent = new History(this, m_UIState.CurrentMode, sheet.DisplayTable.GetLinkTo(pos));
             m_UIState.history.AddEvent(hEvent);
             m_EventListener.OnOpenLink(link);
@@ -151,7 +159,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_CurrentTableLink = tableRef;
             CurrentTableIndex = m_UIState.CurrentMode.GetTableIndex(table);
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
-            m_Spreadsheet.onClickLink += OnSpreadsheetClick;
+            m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
             m_EventListener.OnRepaint();
         }
 
@@ -161,7 +169,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_CurrentTableLink = tableRef;
             CurrentTableIndex = m_UIState.CurrentMode.GetTableIndex(table);
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
-            m_Spreadsheet.onClickLink += OnSpreadsheetClick;
+            m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
             m_Spreadsheet.Goto(pos);
             m_EventListener.OnRepaint();
         }
@@ -211,12 +219,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     m_NeedRefresh = true;
                 }
-            }
-            var spn = GUILayout.Toggle(m_UIState.FormattingOptions.ObjectDataFormatter.ShowPrettyNames, "Pretty Name");
-            if (m_UIState.FormattingOptions.ObjectDataFormatter.ShowPrettyNames != spn)
-            {
-                m_UIState.FormattingOptions.ObjectDataFormatter.ShowPrettyNames = spn;
-                m_EventListener.OnRepaint();
             }
             EditorGUILayout.EndHorizontal();
         }

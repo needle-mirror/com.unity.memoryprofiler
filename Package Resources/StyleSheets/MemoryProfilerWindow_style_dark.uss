@@ -1,88 +1,58 @@
-/**********************************************************************************************************************/
-/* Top-level UI                                                                                                       */
-/**********************************************************************************************************************/
-
-#backwardsInHistoryButton.historyButtonIcon{
-    background-image: resource("Icons/d_Profiler.PrevFrame.png");
+.analysis-window__background {
+    background-color: rgb(49, 49, 49);
 }
 
-#forwardsInHistoryButton.historyButtonIcon{
-    background-image: resource("Icons/d_Profiler.NextFrame.png");
+.foldout-box__background {
+    background-color: rgb(42, 42, 42);
 }
 
-/**********************************************************************************************************************/
-/* Toggle                                                                                                             */
-/**********************************************************************************************************************/
+Image#history-button__back.history-button__icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_History.Back.png');
+}
+
+Image#history-button__forwards.history-button__icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_History.Forward.png');
+}
 
 Toggle.radioButton > #Checkmark {
-    background-image: resource("Builtin Skins/DarkSkin/Images/radio.png");
+    background-image: resource('Builtin Skins/DarkSkin/Images/radio.png');
 }
 
 Toggle.radioButton:hover:active > #Checkmark {
-    background-image: resource("Builtin Skins/DarkSkin/Images/radio act.png");
+    background-image: resource('Builtin Skins/DarkSkin/Images/radio act.png');
 }
 
 Toggle.radioButton:focus > #Checkmark {
-    background-image: resource("Builtin Skins/DarkSkin/Images/radio.png"); /* would ideally be "radio focus.png" but that does not exist*/
+    background-image: resource('Builtin Skins/DarkSkin/Images/radio.png');
 }
 
 Toggle.radioButton:checked > #Checkmark {
-    background-image: resource("Builtin Skins/DarkSkin/Images/radio on.png");
+    background-image: resource('Builtin Skins/DarkSkin/Images/radio on.png');
 }
 
 Toggle.radioButton:hover:active:checked > #Checkmark {
-    background-image: resource("Builtin Skins/DarkSkin/Images/radio on act.png");
+    background-image: resource('Builtin Skins/DarkSkin/Images/radio on act.png');
 }
 
 Toggle.radioButton:focus:checked > #Checkmark {
-    background-image: resource("Builtin Skins/DarkSkin/Images/radio on.png"); /* would ideally be "radio on focus.png" but that does not exist*/
+    background-image: resource('Builtin Skins/DarkSkin/Images/radio on.png');
 }
 
-/**********************************************************************************************************************/
-/* Snapshot Items                                                                                                   */
-/**********************************************************************************************************************/
-
-#snapshotListItem.evenRow{
-    background-color: #313131;
+#optionButton {
+    background-image: resource('Icons/d__Popup.png');
 }
 
-#snapshotButtons.oddRow{
-    background-color: #383838;
+.preview-image {
+    background-color: rgb(36, 36, 36);
 }
 
-#snapshotButtons.evenRow{
-    background-color: #313131;
+Label.snapshot--open {
+    color: rgba(255, 255, 255, 0.4);
 }
 
-#optionButton{
-    background-image: resource("Icons/d__Popup.png");
+Label.snapshot--in-view {
+    color: rgba(255, 255, 255, 0.4);
 }
-
-.previewImage{
-    background-color: #242424;
-}
-
-Button#diffOpenSnapshots.selectedSnapshot{
-    color: #F0F0F0;
-    background-image: resource("Builtin Skins/DarkSkin/Images/btn on.png");
-}
-
-Label.snapshotIsOpen{
-    color: rgba(255, 255, 255, 0.4)
-}
-
-Label.snapshotIsInView{
-    color: rgba(255, 255, 255, 0.4)
-}
-
-/**********************************************************************************************************************/
-/* Splitter                                                                                                           */
-/**********************************************************************************************************************/
-
-#splitterDraglineAnchor {
-    background-color: #212121;
-}
-
 
 .drop-down-toggle__drop-down-part:hover {
     background-color: rgb(85, 85, 85);
@@ -106,4 +76,52 @@ Label.snapshotIsInView{
 
 .drop-down-toggle__drop-down-part__arrow-icon:checked:hover {
     border-left-color: rgb(57, 57, 57);
+}
+
+.icon-button__import-icon {
+    background-image: resource('d_Import.png');
+}
+
+.icon-button__help-icon {
+    background-image: resource('d__Help.png');
+}
+
+.icon-button__menu-icon {
+    background-image: resource('d__Menu.png');
+}
+
+.icon-button__export-icon {
+    background-image: resource('d_SaveAs.png');
+}
+
+.icon-button__swap-icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_SwapVertical.png');
+}
+
+.icon-button__camera-icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_CameraIcon.png');
+}
+
+.issue-icon__info-icon {
+    background-image: resource('d_console.infoicon.sml.png');
+}
+
+.issue-icon__warning-icon {
+    background-image: resource('d_console.warnicon.sml.png');
+}
+
+.issue-icon__error-icon {
+    background-image: resource('d_console.erroricon.sml.png');
+}
+
+.info-box__info-icon {
+    background-image: resource('d_console.infoicon.png');
+}
+
+.info-box__warning-icon {
+    background-image: resource('d_console.warnicon.png');
+}
+
+.info-box__error-icon {
+    background-image: resource('d_console.erroricon.png');
 }

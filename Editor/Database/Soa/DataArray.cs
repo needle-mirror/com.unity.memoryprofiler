@@ -1,6 +1,7 @@
-//#define PROFILER_DEBUG_TEST TODO: MOVE TESTS OUT TO THE TESING ASSEMBLY
 using System;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.Containers;
+using Unity.MemoryProfiler.Editor.DataAdapters;
 
 namespace Unity.MemoryProfiler.Editor.Database.Soa
 {
@@ -9,35 +10,51 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
     /// </summary>
     internal class DataArray
     {
-        public static Cache<DataT[]> MakeCache<DataT>(SoaDataSet dataSet, DataSource<DataT[]> source) where DataT : IComparable
+        public static SimpleColumn<DataT> MakeColumnUnmanaged<DataT>(DynamicArray<DataT> source, bool hexdisplay) where DataT : unmanaged, IComparable
         {
-            return new Cache<DataT[]>(dataSet, source);
-        }
-
-        public static Cache<DataT> MakeCache<DataT>(SoaDataSet dataSet, DataSource<DataT> source) where DataT : IComparable
-        {
-            return new Cache<DataT>(dataSet, source);
-        }
-
-        public static SimpleColumn<DataT> MakeColumn<DataT>(SoaDataSet dataSet, DataSource<DataT> source, bool hexDisplay) where DataT : System.IComparable
-        {
-            return MakeColumn(MakeCache(dataSet, source), hexDisplay);
-        }
-
-        public static SimpleColumn<DataT> MakeColumn<DataT>(Cache<DataT> source, bool hexdisplay) where DataT : System.IComparable
-        {
+            var cache = new Cache<DataT>(new AdaptorDynamicArray<DataT>(source));
             switch (Type.GetTypeCode(typeof(DataT)))
             {
                 case TypeCode.Int64:
-                    return new ColumnLong(source as Cache<long>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+                    return new ColumnLong(cache as Cache<long>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
                 case TypeCode.Int32:
-                    return new ColumnInt(source as Cache<int>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+                    return new ColumnInt(cache as Cache<int>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
                 case TypeCode.UInt64:
-                    return new ColumnULong(source as Cache<ulong>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+                    return new ColumnULong(cache as Cache<ulong>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
 
                 default:
-                    return new SimpleColumn<DataT>(source, SimpleColumnDisplay.Default);
+                    return new SimpleColumn<DataT>(cache, SimpleColumnDisplay.Default);
             }
+        }
+        public static SimpleColumn<DataT> MakeColumnUnmanaged<DataT>(DynamicArray<DataT> source1, long source1Count, DynamicArray<DataT> source2, long source2Count, bool hexdisplay) where DataT : unmanaged, IComparable
+        {
+            var cache = new Cache<DataT>(new AdaptorCombinedDynamicArray<DataT>(source1, source1Count, source2, source2Count));
+            switch (Type.GetTypeCode(typeof(DataT)))
+            {
+                case TypeCode.Int64:
+                    return new ColumnLong(cache as Cache<long>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+                case TypeCode.Int32:
+                    return new ColumnInt(cache as Cache<int>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+                case TypeCode.UInt64:
+                    return new ColumnULong(cache as Cache<ulong>, hexdisplay ? SimpleColumnDisplay.Hex : SimpleColumnDisplay.Default) as SimpleColumn<DataT>;
+
+                default:
+                    return new SimpleColumn<DataT>(cache, SimpleColumnDisplay.Default);
+            }
+        }
+
+        public static SimpleColumn<DataT> MakeColumnManaged<DataT>(DataT[] source, bool hexdisplay)
+            where DataT : IComparable
+        {
+            var cache = new Cache<DataT>(new AdaptorManagedArray<DataT>(source));
+            return new SimpleColumn<DataT>(cache, SimpleColumnDisplay.Default);
+        }
+
+        public static SimpleColumn<DataT> MakeColumnManaged<DataT>(DataT[] source1, long source1Count, DataT[] source2, long source2Count, bool hexdisplay)
+            where DataT : IComparable
+        {
+            var cache = new Cache<DataT>(new AdaptorCombinedManagedArray<DataT>(source1, source1Count, source2, source2Count));
+            return new SimpleColumn<DataT>(cache, SimpleColumnDisplay.Default);
         }
 
         public static ColumnArray<DataT> MakeColumn<DataT>(DataT[] source) where DataT : System.IComparable
@@ -45,12 +62,15 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             return new ColumnArray<DataT>(source);
         }
 
-        public static Column_Transform<DataOutT, DataInT> MakeColumn_Transform<DataOutT, DataInT>(Cache<DataInT> cache, Column_Transform<DataOutT, DataInT>.Transformer transform, Column_Transform<DataOutT, DataInT>.Untransformer untransform)
-            where DataInT : System.IComparable
-            where DataOutT : System.IComparable
+        public static Column_Transform<DataOutT, DataInT> MakeColumn_Transform<DataOutT, DataInT>(DynamicArray<DataInT> source, Column_Transform<DataOutT, DataInT>.Transformer transform, Column_Transform<DataOutT, DataInT>.Untransformer untransform) where DataInT : unmanaged, IComparable
+
+            where DataOutT : IComparable
         {
+            var cache = new Cache<DataInT>(new AdaptorDynamicArray<DataInT>(source));
             return new Column_Transform<DataOutT, DataInT>(cache, transform, untransform);
         }
+
+
 
         /// <summary>
         /// Upon request of a data value, it will request data from a DataSource in chunks and store it for later requests.
@@ -58,104 +78,30 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
         /// <typeparam name="DataT"></typeparam>
         public class Cache<DataT>
         {
-            public Cache(SoaDataSet dataSet, DataSource<DataT> source)
+            public Cache(DataSource<DataT> source)
             {
-                m_DataSet = dataSet;
                 m_DataSource = source;
-                chunkCount = (m_DataSet.DataCount + dataSet.ChunkSize - 1) / m_DataSet.ChunkSize;
-                m_DataChunk = new DataChunk<DataT>[chunkCount];
             }
 
-            public SoaDataSet m_DataSet;
-            public DataSource<DataT> m_DataSource;
-            public void IndexToChunckIndex(long index, out long chunkIndex, out long chunkSubIndex)
-            {
-                chunkIndex = index / m_DataSet.ChunkSize;
-                chunkSubIndex = index % m_DataSet.ChunkSize;
-            }
-
-            public DataChunk<DataT> IndexToChunck(long index, out long chunkSubIndex)
-            {
-                long chunkIndex = index / m_DataSet.ChunkSize;
-                chunkSubIndex = index % m_DataSet.ChunkSize;
-                var chunk = GetChunk(chunkIndex);
-                return chunk;
-            }
+            DataSource<DataT> m_DataSource;
 
             public DataT this[long i]
             {
                 get
                 {
-                    long dataIndex;
-                    var chunk = IndexToChunck(i, out dataIndex);
-                    if (dataIndex < 0 || dataIndex >= chunk.m_Data.Length)
-                    {
-                        throw new Exception("out of bound");
-                    }
-                    return chunk.m_Data[dataIndex];
+                    return m_DataSource[i];
                 }
                 set
                 {
-                    long dataIndex;
-                    var chunk = IndexToChunck(i, out dataIndex);
-                    chunk.m_Data[dataIndex] = value;
+                    m_DataSource[i] = value;
                 }
             }
             public long Length
             {
                 get
                 {
-                    return m_DataSet.DataCount;
+                    return m_DataSource.Length;
                 }
-            }
-            public DataChunk<DataT> GetChunk(long chunkIndex)
-            {
-                if (m_DataChunk[chunkIndex] == null)
-                {
-                    long indexFirst = chunkIndex * m_DataSet.ChunkSize;
-                    long indexLast = indexFirst + m_DataSet.ChunkSize;
-                    if (indexLast > m_DataSet.DataCount)
-                    {
-                        indexLast = m_DataSet.DataCount;
-                    }
-                    m_DataChunk[chunkIndex] = new DataChunk<DataT>(indexLast - indexFirst);
-                    m_DataSource.Get(Range.FirstToLast(indexFirst, indexLast), ref m_DataChunk[chunkIndex].m_Data);
-                }
-                return m_DataChunk[chunkIndex];
-            }
-
-            long chunkCount;
-            DataChunk<DataT>[] m_DataChunk;
-
-
-            public int FindIndex(Predicate<DataT> match)
-            {
-                for (int i = 0; i != chunkCount; ++i)
-                {
-                    int r = Array.FindIndex(GetChunk(i).m_Data, match);
-                    if (r >= 0)
-                    {
-                        return (int)(i * m_DataSet.ChunkSize + r);
-                    }
-                }
-                return -1;
-            }
-
-            public int[] FindAllIndex(Predicate<DataT> match)
-            {
-                var result = new List<int>();
-                for (int i = 0; i != chunkCount; ++i)
-                {
-                    var c = GetChunk(i).m_Data;
-                    for (int j = 0; j != c.Length; ++j)
-                    {
-                        if (match(c[j]))
-                        {
-                            result.Add((int)(i * m_DataSet.ChunkSize + j));
-                        }
-                    }
-                }
-                return result.ToArray();
             }
         }
 
@@ -301,48 +247,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 long count = indices.Count;
                 DataT[] k = new DataT[count];
 
-                long firstChunkSubIndex = indices.Sequence.First % m_Cache.m_DataSet.ChunkSize;
-                long lastChunkSubIndex = indices.Sequence.Last % m_Cache.m_DataSet.ChunkSize;
-
-                long firstChunkIndex = indices.Sequence.First / m_Cache.m_DataSet.ChunkSize;
-                long lastChunkIndex = indices.Sequence.Last / m_Cache.m_DataSet.ChunkSize;
-
-                long firstChunkLength = m_Cache.m_DataSet.ChunkSize - firstChunkSubIndex;
-                long lastChunkLength = lastChunkSubIndex;
-
-                long firstFullChunk = firstChunkIndex + 1;
-                long lastFullChunk = lastChunkIndex;
-                long fullChunkCount = lastFullChunk - firstFullChunk;
-
-                if (firstChunkLength > m_Cache.m_DataSet.DataCount)
-                {
-                    firstChunkLength = m_Cache.m_DataSet.DataCount;
-                    lastChunkLength = 0;
-                }
-                //copy first chunk
-                if (firstChunkLength > 0)
-                {
-                    var c = m_Cache.GetChunk(firstChunkIndex);
-                    System.Array.Copy(c.m_Data, 0, k, 0, firstChunkLength);
-                }
-
-                //copy full chunks
-                for (long i = 0; i < fullChunkCount; ++i)
-                {
-                    long chunkIndex = i + firstFullChunk;
-                    long chunkRowFirst = chunkIndex * m_Cache.m_DataSet.ChunkSize;
-                    var c = m_Cache.GetChunk(chunkIndex);
-                    System.Array.Copy(c.m_Data, 0, k, chunkRowFirst - indices.Sequence.First, m_Cache.m_DataSet.ChunkSize);
-                }
-
-                //copy last chunk
-                if (lastChunkLength > 0)
-                {
-                    long chunkRowFirst = lastChunkIndex * m_Cache.m_DataSet.ChunkSize;
-                    var c = m_Cache.GetChunk(lastChunkIndex);
-                    System.Array.Copy(c.m_Data, 0, k, chunkRowFirst - indices.Sequence.First, lastChunkLength);
-                }
-
                 //create index array
                 long[] index = new long[count];
                 if (relativeIndex)
@@ -367,7 +271,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
 
             public override string GetRowValueString(long row, IDataFormatter formatter)
             {
-                switch(m_Display)
+                switch (m_Display)
                 {
                     case SimpleColumnDisplay.Hex:
                         return DefaultDataFormatter.Instance.FormatPointer(Convert.ToUInt64(m_Cache[row]));
@@ -812,9 +716,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             {
                 if (m_Untransformer != null)
                 {
-                    long subIndex;
-                    var c = m_Cache.IndexToChunck(row, out subIndex);
-                    m_Untransformer(ref c.m_Data[subIndex], value);
+                    var rVal = m_Cache[row];
+                    m_Untransformer(ref rVal, value);
+                    m_Cache[row] = rVal;
                 }
             }
 
@@ -888,7 +792,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                 m_Data[row] = value;
             }
 
-            public override System.Collections.Generic.IEnumerable<DataT> VisitRows(ArrayRange indices)
+            public override IEnumerable<DataT> VisitRows(ArrayRange indices)
             {
                 for (long i = 0; i != indices.Count; ++i)
                 {

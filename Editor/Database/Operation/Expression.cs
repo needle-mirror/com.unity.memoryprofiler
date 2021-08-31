@@ -1,6 +1,4 @@
 using System;
-using System.Globalization;
-using System.Xml;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 using UnityEngine;
@@ -84,65 +82,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             public bool hasDataBreakpointValue;
             public bool dataBreakpointValueIsLiteral;
             public string valueDataBreakpoint;
-
-            public static MetaExpression LoadFromXML(XmlElement root)
-            {
-                MetaExpression metaExpression = new MetaExpression();
-                metaExpression.value = root.GetAttribute("value");
-                var literal = root.GetAttribute("literal");
-                if (!String.IsNullOrEmpty(literal))
-                {
-                    metaExpression.valueIsLiteral = bool.Parse(literal);
-                }
-                var defaultValue = root.GetAttribute("default");
-                if (!String.IsNullOrEmpty(defaultValue))
-                {
-                    metaExpression.valueDefault = defaultValue;
-                    metaExpression.hasDefaultValue = true;
-                }
-                var breakOn = root.GetAttribute("breakOn");
-                if (!String.IsNullOrEmpty(breakOn))
-                {
-                    metaExpression.valueDataBreakpoint = breakOn;
-                    metaExpression.hasDataBreakpointValue = true;
-                    var breakOnLiteral = root.GetAttribute("breakOnLiteral");
-                    if (!String.IsNullOrEmpty(literal))
-                    {
-                        metaExpression.dataBreakpointValueIsLiteral = bool.Parse(breakOnLiteral);
-                    }
-                }
-                string strRow = root.GetAttribute("row");
-                if (!long.TryParse(strRow, out metaExpression.row))
-                {
-                    metaExpression.row = -1;
-                }
-                string strType = root.GetAttribute("type");
-                if (!string.IsNullOrEmpty(strType))
-                {
-                    switch (strType)
-                    {
-                        case "bool": metaExpression.type = typeof(bool); break;
-                        case "double": metaExpression.type = typeof(double); break;
-                        case "float": metaExpression.type = typeof(float); break;
-                        case "int": metaExpression.type = typeof(int); break;
-                        case "long": metaExpression.type = typeof(long); break;
-                        case "short": metaExpression.type = typeof(short); break;
-                        case "uint": metaExpression.type = typeof(uint); break;
-                        case "ulong": metaExpression.type = typeof(ulong); break;
-                        case "ushort": metaExpression.type = typeof(ushort); break;
-                        case "string": metaExpression.type = typeof(string); break;
-                        case "DiffResult": metaExpression.type = typeof(DiffTable.DiffResult); break;
-                        default:
-                            metaExpression.type = null;
-                            break;
-                    }
-                }
-                else
-                {
-                    metaExpression.type = null;
-                }
-                return metaExpression;
-            }
         }
 
         /// <summary>
@@ -1200,6 +1139,89 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
     }
 
+
+    /// <summary>
+    /// Matcher that test the input expression of value type `string` by searching for a constant sub-string value.
+    /// </summary>
+    internal class ExactStringMatcher : Matcher
+    {
+        string m_Value;
+        //Assumes both implementations are to lower
+        unsafe static bool IsSameString(char* strBegin, int strLength, char* subStrBegin, int subStrLength)
+        {
+            if (strLength != subStrLength)
+                return false;
+            if (strLength == 0 && subStrLength == 0)
+                return true;
+            ushort* begin = (ushort*)strBegin;
+            ushort* vBegin = (ushort*)subStrBegin;
+            if (*begin == *vBegin)
+            {
+                if (strLength == subStrLength)
+                {
+                    if (UnsafeUtility.MemCmp(begin, vBegin, subStrLength * UnsafeUtility.SizeOf<ushort>()) == 0)
+                        return true;
+                }
+                else
+                    return false;
+            }
+            return false;
+        }
+
+        public override long[] GetMatchIndex(Expression exp, ArrayRange indices)
+        {
+            var val = m_Value.ToLower();
+            long count = indices.Count;
+            long[] o = new long[count];
+            long lastO = 0;
+
+            var expectedLength = val.Length;
+
+            unsafe
+            {
+                fixed (char* valPtr = val)
+                {
+                    var format = DefaultDataFormatter.Instance;
+                    for (int i = 0; i != count; ++i)
+                    {
+                        long ii = indices[i];
+                        var rowVal = exp.GetValueString(ii, format);
+                        if(rowVal.Length == expectedLength)
+                        {
+                            var rowValue = rowVal.ToLower();
+                            fixed (char* rowValuePtr = rowValue)
+                            {
+                                if (IsSameString(rowValuePtr, rowValue.Length, valPtr, expectedLength))
+                                {
+                                    o[lastO] = ii;
+                                    ++lastO;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (lastO != count)
+            {
+                long[] trimmed = new long[lastO];
+                Array.Copy(o, trimmed, lastO);
+                return trimmed;
+            }
+            return o;
+        }
+
+        public override long[] GetMatchIndex(Expression exp, ArrayRange indices, Operator operation)
+        {
+            throw new InvalidOperationException("Do not use operators with string matcher");
+        }
+
+        public override void SetMatchPredicate(string match)
+        {
+            m_Value = match;
+        }
+    }
+
     /// <summary>
     /// Matcher that test the input expression of value type `long` by searching for the same value.
     /// </summary>
@@ -1424,21 +1446,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
             return comparison;
         }
-
-        public static MetaColumnComparison LoadFromXML(System.Xml.XmlElement root)
-        {
-            MetaColumnComparison comparison = new MetaColumnComparison();
-            comparison.columnName = root.GetAttribute("column");
-
-            comparison.value = Expression.MetaExpression.LoadFromXML(root);
-            string strOp = root.GetAttribute("op");
-            if (!m_StringToOp.TryGetValue(strOp, out comparison.operation))
-            {
-                Debug.LogError("Unknown operator '" + strOp + "'.");
-            }
-            //Debug.LogAnyXmlChildAsInvalid(root);
-            return comparison;
-        }
     }
 
     /// <summary>
@@ -1457,38 +1464,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             comparison.valueRight = Expression.ParseIdentifier(valueRight, option);
             comparison.comparator = Operation.GetComparator(comparison.valueLeft.type, comparison.valueRight.type);
             return comparison;
-        }
-
-        public static MetaExpComparison LoadFromXML(System.Xml.XmlElement root)
-        {
-            MetaExpComparison exp = new MetaExpComparison();
-
-            string strOp = root.GetAttribute("op");
-            if (!m_StringToOp.TryGetValue(strOp, out exp.operation))
-            {
-                Debug.LogError("Unknown operator '" + strOp + "'.");
-            }
-
-            foreach (XmlNode xNode in root.ChildNodes)
-            {
-                if (xNode.NodeType == XmlNodeType.Element)
-                {
-                    XmlElement e = (XmlElement)xNode;
-                    switch (e.Name)
-                    {
-                        case "Left":
-                            exp.valueLeft = Expression.MetaExpression.LoadFromXML(e);
-                            break;
-                        case "Right":
-                            exp.valueRight = Expression.MetaExpression.LoadFromXML(e);
-                            break;
-                        default:
-                            //DebugUtility.LogInvalidXmlChild(root, e);
-                            break;
-                    }
-                }
-            }
-            return exp;
         }
     }
 }

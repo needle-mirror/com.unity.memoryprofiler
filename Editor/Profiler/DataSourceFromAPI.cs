@@ -1,94 +1,176 @@
 using System;
+using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Format;
 
-namespace Unity.MemoryProfiler.Editor
+namespace Unity.MemoryProfiler.Editor.DataAdapters
 {
-    internal class DataSourceFromAPI
+
+    /// <summary>
+    /// Represent a source of data that can be requested in chunks
+    /// </summary>
+    /// <typeparam name="DataT"></typeparam>
+    internal abstract class DataSource<DataT>
     {
-        public abstract class Adaptor<DataT> : Database.Soa.DataSource<DataT>
+        public abstract DataT this[long idx] { get; set; }
+        public abstract long Length { get; }
+    }
+
+    internal class AdaptorManagedArray<DataT> : DataSource<DataT>
+    {
+        private DataT[] m_Array;
+        public AdaptorManagedArray(DataT[] array)
         {
-            //crappy hack
+            m_Array = array;
         }
 
-        public class AdaptorArray<DataT> : Adaptor<DataT>
+        public override DataT this[long idx]
         {
-            private DataT[] m_Array;
-            public AdaptorArray(DataT[] array)
-            {
-                m_Array = array;
-            }
+            get { return m_Array[idx]; }
+            set { m_Array[idx] = value; }
+        }
 
-            public override void Get(Range range, ref DataT[] dataOut)
+        public override long Length { get { return m_Array.LongLength; } }
+    }
+
+    internal class AdaptorCombinedManagedArray<DataT> : DataSource<DataT>
+    {
+        private DataT[] m_Array1;
+        private DataT[] m_Array2;
+        long firstIndexInSource2;
+        long totalCount;
+        public AdaptorCombinedManagedArray(DataT[] array1, long array1Count, DataT[] array2, long array2Count)
+        {
+            if (array1 != null && array1.Length == array1Count)
+                m_Array1 = array1;
+            firstIndexInSource2 = array1Count;
+
+            if (array2 != null && array2.Length == array2Count)
+                m_Array2 = array2;
+            totalCount = array1Count + array2Count;
+        }
+
+        public override DataT this[long idx]
+        {
+            get
             {
-                for (long i = range.First; i < range.Length; ++i)
+                if (idx < firstIndexInSource2)
                 {
-                    dataOut[i] = m_Array[i];
+                    if (m_Array1 != null)
+                        return m_Array1[idx];
+                    else
+                        return default(DataT);
                 }
+                else if (idx < totalCount)
+                {
+                    if (m_Array2 != null)
+                        return m_Array2[idx - firstIndexInSource2];
+                    else
+                        return default(DataT);
+                }
+                else
+                    throw new IndexOutOfRangeException();
             }
-        }
-
-        public class AdaptorAPIArray<DataT> : Adaptor<DataT>
-        {
-            private IArrayEntries<DataT> m_Array;
-            public AdaptorAPIArray(IArrayEntries<DataT> array)
+            set
             {
-                m_Array = array;
+                if (idx < firstIndexInSource2)
+                {
+                    if (m_Array1 != null)
+                        m_Array1[idx] = value;
+                    else
+                        throw new IndexOutOfRangeException();
+                }
+                else if (idx < totalCount)
+                {
+                    if (m_Array2 != null)
+                        m_Array2[idx - firstIndexInSource2] = value;
+                    else
+                        throw new IndexOutOfRangeException();
+                }
+                else
+                    throw new IndexOutOfRangeException();
             }
+        }
 
-            public override void Get(Range range, ref DataT[] dataOut)
+        public override long Length { get { return totalCount; } }
+    }
+
+    internal class AdaptorDynamicArray<DataT> : DataSource<DataT> where DataT : unmanaged
+
+    {
+        private DynamicArray<DataT> m_Array;
+        public AdaptorDynamicArray(DynamicArray<DataT> array)
+        {
+            m_Array = array;
+        }
+
+        public override DataT this[long idx]
+        {
+            get { return m_Array[idx]; }
+            set { m_Array[idx] = value; }
+        }
+
+        public override long Length { get { return m_Array.Count; } }
+    }
+
+    internal class AdaptorCombinedDynamicArray<DataT> : DataSource<DataT> where DataT : unmanaged
+    {
+        private DynamicArray<DataT> m_Array1;
+        private DynamicArray<DataT> m_Array2;
+        long firstIndexInSource2;
+        long totalCount;
+        public AdaptorCombinedDynamicArray(DynamicArray<DataT> array1, long array1Count, DynamicArray<DataT> array2, long array2Count)
+        {
+            if (array1.IsCreated && array1.Count == array1Count)
+                m_Array1 = array1;
+            firstIndexInSource2 = array1Count;
+
+            if (array2.IsCreated && array2.Count == array2Count)
+                m_Array2 = array2;
+            totalCount = array1Count + array2Count;
+        }
+
+        public override DataT this[long idx]
+        {
+            get
             {
-                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
+                if (idx < firstIndexInSource2)
+                {
+                    if (m_Array1.IsCreated)
+                        return m_Array1[idx];
+                    else
+                        return default(DataT);
+                }
+                else if (idx < totalCount)
+                {
+                    if (m_Array2.IsCreated)
+                        return m_Array2[idx - firstIndexInSource2];
+                    else
+                        return default(DataT);
+                }
+                else
+                    throw new IndexOutOfRangeException();
             }
-        }
-
-        public class Adaptor_String : Database.Soa.DataSource<string>
-        {
-            private IArrayEntries<string> m_Array;
-            public Adaptor_String(IArrayEntries<string> array)
+            set
             {
-                m_Array = array;
-            }
-
-            public override void Get(Range range, ref string[] dataOut)
-            {
-                if (dataOut.Length != range.Length)
-                    throw new ArgumentException("DataOut should have the same amount of elements are the range requires");
-                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
-            }
-        }
-
-        public class Adaptor_Array<DataT> : Database.Soa.DataSource<DataT[]> where DataT : IComparable
-        {
-            private IArrayEntries<DataT[]> m_Array;
-            public Adaptor_Array(IArrayEntries<DataT[]> array)
-            {
-                m_Array = array;
-            }
-
-            public override void Get(Range range, ref DataT[][] dataOut)
-            {
-                dataOut = new DataT[range.Length][];
-                m_Array.GetEntries((uint)range.First, (uint)range.Length, ref dataOut);
+                if (idx < firstIndexInSource2)
+                {
+                    if (m_Array1.IsCreated)
+                        m_Array1[idx] = value;
+                    else
+                        throw new IndexOutOfRangeException();
+                }
+                else if (idx < totalCount)
+                {
+                    if (m_Array2.IsCreated)
+                        m_Array2[idx - firstIndexInSource2] = value;
+                    else
+                        throw new IndexOutOfRangeException();
+                }
+                else
+                    throw new IndexOutOfRangeException();
             }
         }
-        public static Adaptor<DataT> ApiToDatabase<DataT>(IArrayEntries<DataT> array)
-        {
-            return new AdaptorAPIArray<DataT>(array);
-        }
 
-        public static Adaptor<DataT> ApiToDatabase<DataT>(DataT[] array)
-        {
-            return new AdaptorArray<DataT>(array);
-        }
-
-        public static Adaptor_String ApiToDatabase(IArrayEntries<string> array)
-        {
-            return new Adaptor_String(array);
-        }
-
-        public static Adaptor_Array<DataT> ApiToDatabase<DataT>(IArrayEntries<DataT[]> array) where DataT : IComparable
-        {
-            return new Adaptor_Array<DataT>(array);
-        }
+        public override long Length { get { return totalCount; } }
     }
 }

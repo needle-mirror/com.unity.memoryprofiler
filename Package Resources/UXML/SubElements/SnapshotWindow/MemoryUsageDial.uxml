@@ -1,0 +1,13 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" mui="Unity.MemoryProfiler.Editor.UI" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" memory="Unity.MemoryProfiler.Editor" memoryUI="Unity.MemoryProfiler.Editor.UI" noNamespaceSchemaLocation="../../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+    <ui:VisualElement name="proxy-root">
+        <Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
+        <ui:VisualElement class="memory-usage-dial__container">
+            <Unity.MemoryProfiler.Editor.UI.MemoryUsageDial class="memory-usage-dial__background-image">
+                <ui:VisualElement name="memory-usage-dial__root" class="memory-usage-dial__root">
+                    <ui:VisualElement name="memory-usage-dial__indicator" class="memory-usage-dial__indicator" />
+                </ui:VisualElement>
+                <ui:Label text="50%" display-tooltip-when-elided="true" name="memory-usage-dial__label" style="-unity-text-align: upper-center;" />
+            </Unity.MemoryProfiler.Editor.UI.MemoryUsageDial>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

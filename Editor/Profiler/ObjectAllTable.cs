@@ -79,14 +79,14 @@ namespace Unity.MemoryProfiler.Editor
 
         public override long GetObjectCount()
         {
-            return Snapshot.nativeObjects.Count;
+            return Snapshot.NativeObjects.Count;
         }
 
         public override ObjectData GetObjectData(long row)
         {
             if (m_cache == null)
             {
-                m_cache = new ObjectData[Snapshot.nativeObjects.Count];
+                m_cache = new ObjectData[Snapshot.NativeObjects.Count];
             }
             if (!m_cache[row].IsValid)
             {
@@ -129,14 +129,14 @@ namespace Unity.MemoryProfiler.Editor
 
         public override long GetObjectCount()
         {
-            return Snapshot.nativeObjects.Count + CrawledData.ManagedObjects.Count;
+            return Snapshot.NativeObjects.Count + CrawledData.ManagedObjects.Count;
         }
 
         public override ObjectData GetObjectData(long row)
         {
             if (m_cache == null)
             {
-                m_cache = new ObjectData[Snapshot.nativeObjects.Count + CrawledData.ManagedObjects.Count];
+                m_cache = new ObjectData[Snapshot.NativeObjects.Count + CrawledData.ManagedObjects.Count];
             }
             if (!m_cache[row].IsValid)
             {

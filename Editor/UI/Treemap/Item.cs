@@ -35,14 +35,14 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                     var ITypeDesc = m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex].ITypeDescription;
                     if (ITypeDesc >= 0)
                     {
-                        return m_CachedSnapshot.typeDescriptions.typeDescriptionName[ITypeDesc];
+                        return m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[ITypeDesc];
                     }
                     return k_UnknownManagedType;
                 case ObjectMetricType.Native:
-                    var INatTypeDesc = m_CachedSnapshot.nativeObjects.nativeTypeArrayIndex[ObjectIndex];
+                    var INatTypeDesc = m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[ObjectIndex];
                     if (INatTypeDesc > 0)
                     {
-                        return m_CachedSnapshot.nativeTypes.typeName[INatTypeDesc];
+                        return m_CachedSnapshot.NativeTypes.TypeName[INatTypeDesc];
                     }
                     return k_UnknownNativeType;
                 default:
@@ -58,7 +58,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                     var managedObj = m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex];
                     if (managedObj.NativeObjectIndex >= 0)
                     {
-                        string objName = m_CachedSnapshot.nativeObjects.objectName[managedObj.NativeObjectIndex];
+                        string objName = m_CachedSnapshot.NativeObjects.ObjectName[managedObj.NativeObjectIndex];
                         if (objName.Length > 0)
                         {
                             return " \"" + objName + "\" <" + GetTypeName() + ">";
@@ -66,7 +66,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                     }
                     return string.Format("[0x{0:x16}]", managedObj.PtrObject) + " < " + GetTypeName() + " > ";
                 case ObjectMetricType.Native:
-                    string objectName = m_CachedSnapshot.nativeObjects.objectName[ObjectIndex];
+                    string objectName = m_CachedSnapshot.NativeObjects.ObjectName[ObjectIndex];
                     if (objectName.Length > 0)
                     {
                         return " \"" + objectName + "\" <" + GetTypeName() + ">";
@@ -97,7 +97,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                 case ObjectMetricType.Managed:
                     return m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex].Size;
                 case ObjectMetricType.Native:
-                    return (long)m_CachedSnapshot.nativeObjects.size[ObjectIndex];
+                    return (long)m_CachedSnapshot.NativeObjects.Size[ObjectIndex];
                 default:
                     return -1;
             }

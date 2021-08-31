@@ -47,7 +47,7 @@ To filter the data in the columns, select the header of the column you want to s
 * __Group:__ Groups all objects together that have a matching value. You can apply this filter to multiple columns. When you filter this way, each group contains the count of the number of objects in brackets. Select the group to expand it.
 * __Sort Ascending:__ Sort the values from lowest to highest.
 * __Sort Descending:__ Sort the values from highest to lowest.
-* __Match__: Adds a text field that you can use to enter a value to search for a match or a string contained in the column. 
+* __Match__: Adds a text field that you can use to enter a value to search for a match or a string contained in the column.
 
 When you add a filter to the table, it appears above the table. To remove a filter, select the __X__ button next to it. The filters apply in order from left to right (oldest to newest). Click on groups that have a group filter applied to expand the group.
 

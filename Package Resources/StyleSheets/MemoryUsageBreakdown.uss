@@ -1,0 +1,326 @@
+.proxy-root {
+    flex-grow: 1;
+}
+
+.memory-usage-breakdown__header {
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.memory-usage-breakdown__header__title {
+    -unity-font-style: bold;
+}
+
+.memory-usage-breakdown__content-holder {
+    -unity-font-style: normal;
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.memory-usage-bar__element {
+    width: 20%;
+    flex-direction: row;
+    margin-left: 1.5px;
+    margin-right: 1.5px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.memory-usage-breakdown__memory-usage-bar__background {
+    flex-grow: 1;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.memory-usage-breakdown__memory-usage-bar__reserved {
+    flex-grow: 1;
+    background-color: rgb(0, 0, 0);
+    padding-top: 3px;
+    padding-bottom: 3px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.memory-usage-breakdown__memory-usage-bar__used-portion {
+    flex-grow: 1;
+    width: 80%;
+}
+
+.memory-usage-breakdown__memory-usage-bar__known-parts {
+    flex-direction: row;
+    flex-grow: 0;
+}
+
+.memory-usage-bar__element__unknown {
+    width: 20%;
+    height: 100%;
+}
+
+.memory-usage-breakdown__memory-usage-bar__remainder {
+    flex-grow: 1;
+}
+
+.memory-usage-bar {
+    flex-direction: row;
+    height: 22px;
+}
+
+.legend__color-box {
+    flex-shrink: 0;
+    height: 10px;
+    width: 12px;
+    background-color: rgb(30, 30, 30);
+    margin-left: 4px;
+    margin-right: 4px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+}
+
+.legend__color-box__unused {
+    margin-left: 5px;
+    width: 5px;
+    height: 8px;
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.legend__name-and-color {
+    overflow: hidden;
+    flex-direction: row;
+    align-items: center;
+}
+
+.legend__row {
+    overflow: hidden;
+    height: 16px;
+    border-left-color: rgb(64, 64, 64);
+    border-right-color: rgb(64, 64, 64);
+    border-top-color: rgb(64, 64, 64);
+    border-bottom-color: rgb(64, 64, 64);
+    border-bottom-width: 1px;
+    -unity-text-align: middle-right;
+}
+
+.legend__used-reserved-label {
+    -unity-font-style: italic;
+    color: rgb(134, 134, 134);
+}
+
+.legend__last-row {
+    border-bottom-width: 0;
+}
+
+.legend__list {
+    border-left-color: rgb(98, 98, 98);
+    border-right-color: rgb(98, 98, 98);
+    border-top-color: rgb(98, 98, 98);
+    border-bottom-color: rgb(98, 98, 98);
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    margin-top: 4px;
+    max-width: 350px;
+}
+
+.legend__name {
+    -unity-font-style: italic;
+}
+
+.legend__row-item {
+    border-bottom-width: 1px;
+    border-left-color: rgb(64, 64, 64);
+    border-right-color: rgb(64, 64, 64);
+    border-top-color: rgb(64, 64, 64);
+    border-bottom-color: rgb(64, 64, 64);
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+.legend__percentage-bar {
+    background-color: rgb(140, 130, 130);
+    width: 25%;
+    height: 15px;
+}
+
+.legend__percentage-column__entry {
+    overflow: hidden;
+    -unity-text-align: upper-right;
+}
+
+.legend__size-column__entry {
+    overflow: hidden;
+    -unity-text-align: upper-right;
+}
+
+.legend__header {
+    flex: initial;
+    height: 20px;
+    justify-content: space-between;
+}
+
+.legend__header-row {
+    flex-grow: 1;
+    flex-direction: row;
+}
+
+.legend__header__sort {
+}
+
+.legend__header__sort:hover {
+    background-color: rgb(55, 55, 55);
+}
+
+.legend__header__sort-ascending--enabled {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/SortArrow.Ascending.Enabled.png');
+}
+
+.legend__header__sort-ascending--disabled {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/SortArrow.Ascending.Disabled.png');
+}
+
+.legend__header__sort-descending--enabled {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/SortArrow.Descending.Enabled.png');
+}
+
+.legend__header__sort-descending--disabled {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/SortArrow.Descending.Disabled.png');
+}
+
+.legend__header__sort-ascending {
+    width: 10px;
+    height: 10px;
+    position: absolute;
+    right: 0;
+}
+
+.legend__header__sort-descending {
+    width: 10px;
+    height: 10px;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+}
+
+.legend__header__diff {
+    width: 16px;
+    height: 16px;
+    position: absolute;
+    right: 12px;
+    top: 2px;
+}
+
+.legend__header__diff-a-icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Circle.png');
+}
+
+.background-color__memory-usage-bar__background {
+    background-color: rgb(30, 30, 30);
+}
+
+.background-color__memory-summary-category__unity-other {
+    background-color: rgb(54, 160, 199);
+}
+
+.background-color__memory-summary-category__gfx {
+    background-color: rgb(99, 220, 195);
+}
+
+.background-color__memory-summary-category__managed {
+    background-color: rgb(123, 158, 5);
+}
+
+.background-color__memory-summary-category__audio {
+    background-color: rgb(202, 98, 98);
+}
+
+.background-color__memory-summary-category__video {
+    background-color: rgb(240, 208, 68);
+}
+
+.background-color__memory-summary-category__profiler {
+    background-color: rgb(47, 113, 101);
+}
+
+.background-color__memory-summary-category__tracked {
+    background-color: rgb(243, 157, 26);
+}
+
+.background-color__memory-summary-category__unknown {
+    background-color: rgb(30, 30, 30);
+    border-left-color: rgb(123, 123, 123);
+    border-right-color: rgb(123, 123, 123);
+    border-top-color: rgb(123, 123, 123);
+    border-bottom-color: rgb(123, 123, 123);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Profiler.UnknownMemoryBackground.png');
+}
+
+.background-color__memory-summary-category__unknown__pattern {
+    flex-grow: 1;
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Profiler.UnknownMemoryBackground.png');
+}
+
+.background-color__memory-summary-category__managed__virtual-machine {
+    background-color: rgb(72, 105, 105);
+}
+
+.background-color__memory-summary-category__managed__objects {
+    background-color: rgb(100, 144, 134);
+}
+
+.background-color__memory-summary-category__managed__free-in-active-heap-section {
+    background-color: rgb(176, 176, 176);
+}
+
+.background-color__memory-summary-category__managed__lost-to-fragmentation {
+    background-color: rgb(240, 208, 68);
+}
+
+.background-color__memory-summary-category__allocations__object-allocations {
+    background-color: rgb(238, 238, 238);
+}
+
+.background-color__memory-summary-category__allocations__non-object-allocations {
+    background-color: rgb(176, 176, 176);
+}
+
+.memory-usage-breakdown__memory-usage-bar__selected-portion {
+    position: absolute;
+    height: 26px;
+    width: 20%;
+    border-left-color: rgb(225, 186, 84);
+    border-right-color: rgb(225, 186, 84);
+    border-top-color: rgb(225, 186, 84);
+    border-bottom-color: rgb(225, 186, 84);
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+    top: -3px;
+    left: -2px;
+    display: none;
+    visibility: visible;
+}

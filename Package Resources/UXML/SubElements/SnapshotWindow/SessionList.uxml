@@ -1,0 +1,11 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
+    <ui:Template name="SessionListItem" src="SessionListItem.uxml" />
+	<ui:VisualElement name="proxy-root" class="proxy-root">
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
+		<ui:Label text="To start analyzing memory, import or capture a snapshot." display-tooltip-when-elided="true" name="session-list__empty-text" class="session-list__empty-text guidance-text" />
+		<ui:ScrollView horizontal-scroller-visibility="Hidden" name="session-list__scroll-view" style="flex-grow: 1;">
+			<ui:Instance template="SessionListItem" name="SessionListItem" />
+            <ui:Instance template="SessionListItem" name="SessionListItem" />
+        </ui:ScrollView>
+    </ui:VisualElement>
+</ui:UXML>

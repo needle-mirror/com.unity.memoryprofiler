@@ -1,12 +1,23 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
-using Unity.MemoryProfiler.Editor.NativeArrayExtensions;
 using UnityEngine;
-using UnityEditor;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 {
+    internal static class MathExt
+    {
+        public static ulong Clamp(this ulong value, ulong min, ulong max)
+        {
+            if (value < min)
+                return min;
+            if (value > max)
+                return max;
+            return value;
+        }
+    }
+
     //selection begin, selection end, selection data is valid, unused
     internal struct MemoryMapSelectionData
     {
@@ -69,10 +80,9 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             VirtualMemory = 3
         }
 
-
-        protected Color[] m_ColorNative;
-        protected Color[] m_ColorManaged;
-        protected Color[] m_ColorManagedStack;
+        protected Color32[] m_ColorNative;
+        protected Color32[] m_ColorManaged;
+        protected Color32[] m_ColorManagedStack;
 
         public struct MemoryGroup
         {
@@ -88,6 +98,41 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             public long RowsEnd { get { return (long)(RowsOffset + RowsCount); } }
         }
 
+        protected class CappedNativeObjectsColection : CachedSnapshot.ISortedEntriesCache
+        {
+            public CappedNativeObjectsColection(CachedSnapshot.SortedNativeObjectsCache nativeObjects)
+            {
+                m_Count = nativeObjects.Count;
+                m_Addresses = new ulong[m_Count];
+                m_Sizes = new ulong[m_Count];
+                for (int i = 0; i < m_Count; i++)
+                {
+                    m_Addresses[i] = nativeObjects.Address(i);
+                    m_Sizes[i] = nativeObjects.Size(i);
+                    if (i > 0 && m_Addresses[i - 1] + m_Sizes[i - 1] > m_Addresses[i])
+                    {
+                        // Native Object Memory can be reported as one lump sum but might be allocated in non-contiguous chunks
+                        // Until we have more precise reporting in the backend, clamp sizes down wherever their memory is clearly exceeding logical amounts,
+                        // i.e. clamp the last address of assumed-to-be-contiguous memory of the previous object to where this object starts
+                        m_Sizes[i - 1] = m_Addresses[i] - m_Addresses[i - 1];
+
+                        // TODO: Once we have better reporting, uncomment this and make sure all NativeObject types are reporting reasonable base sizes
+                        // Debug.LogError("Object with impossible contiguous base size detected");
+                    }
+                }
+            }
+            int m_Count;
+            public int Count => m_Count;
+            ulong[] m_Addresses;
+            public ulong Address(int index) => m_Addresses[index];
+
+            public void Preload() { }
+
+            ulong[] m_Sizes;
+            public ulong Size(int index) => m_Sizes[index];
+            public void SetSize(int index, ulong value) => m_Sizes[index] = value;
+        }
+
         string m_MaterialName;
         const string k_MemoryMapTextureSlot = "MemoryMapBackingTextureSlot";
         Texture2D[] m_TextureSlots;
@@ -100,23 +145,25 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             m_TextureSlots = new Texture2D[textureSlots];
 
-            m_ColorNative = new Color[Enum.GetNames(typeof(EntryColors)).Length];
+            m_ColorNative = new Color32[Enum.GetNames(typeof(EntryColors)).Length];
             m_ColorNative[(int)EntryColors.Allocation] = ProfilerColors.currentColors[(int)RegionType.Native];
-            m_ColorNative[(int)EntryColors.Region] = new Color(m_ColorNative[(int)EntryColors.Allocation].r * 0.6f, m_ColorNative[(int)EntryColors.Allocation].g * 0.6f, m_ColorNative[(int)EntryColors.Allocation].b * 0.6f, 1.0f);
+            m_ColorNative[(int)EntryColors.Region] = new Color32((byte)(m_ColorNative[(int)EntryColors.Allocation].r * 0.6f), (byte)(m_ColorNative[(int)EntryColors.Allocation].g * 0.6f), (byte)(m_ColorNative[(int)EntryColors.Allocation].b * 0.6f), byte.MaxValue);
             m_ColorNative[(int)EntryColors.Object] = new Color(1, 1, 0, 1.0f);
-            m_ColorNative[(int)EntryColors.VirtualMemory] = new Color(m_ColorNative[(int)EntryColors.Allocation].r * 0.3f, m_ColorNative[(int)EntryColors.Allocation].g * 0.3f, m_ColorNative[(int)EntryColors.Allocation].b * 0.3f, 1.0f);
+            m_ColorNative[(int)EntryColors.VirtualMemory] = new Color32((byte)(m_ColorNative[(int)EntryColors.Allocation].r * 0.3f), (byte)(m_ColorNative[(int)EntryColors.Allocation].g * 0.3f), (byte)(m_ColorNative[(int)EntryColors.Allocation].b * 0.3f), byte.MaxValue);
 
-            m_ColorManaged = new Color[Enum.GetNames(typeof(EntryColors)).Length];
-            m_ColorManaged[(int)EntryColors.Allocation] = new Color(0.05f, 0.40f, 0.55f, 1.0f);
+            m_ColorManaged = new Color32[Enum.GetNames(typeof(EntryColors)).Length];
+            // The managed "Allocation" category is used for Managed Virtual Machine Regions
+            m_ColorManaged[(int)EntryColors.Allocation] = new Color(0.05f, 0.20f, 0.35f, 1.0f);
             m_ColorManaged[(int)EntryColors.Region] = new Color(0.05f, 0.40f, 0.55f, 1.0f);
             m_ColorManaged[(int)EntryColors.Object] = new Color(0.45f, 0.80f, 0.95f, 1.0f);//ProfilerColors.currentColors[(int)RegionType.Managed];
-            m_ColorManaged[(int)EntryColors.VirtualMemory] = new Color(m_ColorManaged[(int)EntryColors.Allocation].r * 0.3f, m_ColorManaged[(int)EntryColors.Allocation].g * 0.3f, m_ColorManaged[(int)EntryColors.Allocation].b * 0.3f, 1.0f);
+            m_ColorManaged[(int)EntryColors.VirtualMemory] = new Color32((byte)(m_ColorManaged[(int)EntryColors.Allocation].r * 0.3f), (byte)(m_ColorManaged[(int)EntryColors.Allocation].g * 0.3f), (byte)(m_ColorManaged[(int)EntryColors.Allocation].b * 0.3f), byte.MaxValue);
 
-            m_ColorManagedStack = new Color[Enum.GetNames(typeof(EntryColors)).Length];
-            m_ColorManagedStack[(int)EntryColors.Allocation] = ProfilerColors.currentColors[(int)RegionType.ManagedStack];
-            m_ColorManagedStack[(int)EntryColors.Region] = ProfilerColors.currentColors[(int)RegionType.ManagedStack];
-            m_ColorManagedStack[(int)EntryColors.Object] = new Color(0.87f, 0.29f, 0.68f, 1.0f);
-            m_ColorManagedStack[(int)EntryColors.VirtualMemory] = new Color(m_ColorManagedStack[(int)EntryColors.Allocation].r * 0.3f, m_ColorManagedStack[(int)EntryColors.Allocation].g * 0.3f, m_ColorManagedStack[(int)EntryColors.Allocation].b * 0.3f, 1.0f);
+            // Not actually supported yet so, color these red to raise, well, red flags...
+            m_ColorManagedStack = new Color32[Enum.GetNames(typeof(EntryColors)).Length];
+            m_ColorManagedStack[(int)EntryColors.Allocation] = Color.red;// ProfilerColors.currentColors[(int)RegionType.ManagedStack];
+            m_ColorManagedStack[(int)EntryColors.Region] = Color.red;// ProfilerColors.currentColors[(int)RegionType.ManagedStack];
+            m_ColorManagedStack[(int)EntryColors.Object] = Color.red;//new Color(0.87f, 0.29f, 0.68f, 1.0f);
+            m_ColorManagedStack[(int)EntryColors.VirtualMemory] = Color.red;//new Color32((byte)(m_ColorManagedStack[(int)EntryColors.Allocation].r * 0.3f), (byte)(m_ColorManagedStack[(int)EntryColors.Allocation].g * 0.3f), (byte)(m_ColorManagedStack[(int)EntryColors.Allocation].b * 0.3f), byte.MaxValue);
         }
 
         protected void PrepareSortedData(CachedSnapshot.ISortedEntriesCache[] caches)
@@ -131,7 +178,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 entriesCount += caches[i].Count;
             }
 
-            if(entriesCount > 0)
+            if (entriesCount > 0)
             {
                 for (int i = 0; i < caches.Length; ++i)
                 {
@@ -294,7 +341,12 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 m_RawTexture = m_Texture.GetRawTextureData<Color32>();
 
-                m_RawTexture.MemClear();
+                unsafe
+                {
+                    var ptr = m_RawTexture.GetUnsafePtr();
+                    var alpha = new Color32(0, 0, 0, 0);
+                    UnsafeUtility.MemCpyReplicate(ptr, &alpha, UnsafeUtility.SizeOf<Color32>(), m_RawTexture.Length);
+                }
 
                 OnRenderMap(addressMin, addressMax, slot);
 
@@ -321,21 +373,28 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             ForceRepaint = false;
         }
 
+        const int k_PixelToCheck = 10;
+
         public void RenderStrip(MemoryGroup group, ulong addrBegin, ulong addrEnd, Color32 color)
         {
-            ulong diffBegin = (addrBegin - group.AddressBegin);
+            ulong diffToBeginOfGroup = (addrBegin - group.AddressBegin);
 
-            ulong rowBegin = diffBegin / m_BytesInRow;
+            ulong rowInGroupMin = diffToBeginOfGroup / m_BytesInRow;
 
-            int   rowDelta = (int)((MemoryMapRect.width * (addrEnd - addrBegin)) / m_BytesInRow);
-            float  x0 = MemoryMapRect.width * (((float)(diffBegin % m_BytesInRow)) / ((float)m_BytesInRow));
+            ulong diffToBeginOfRow = (diffToBeginOfGroup % m_BytesInRow);
 
+            float  x0 = diffToBeginOfRow / (float)m_BytesInRow * MemoryMapRect.width;
+
+            int xDelta = (int)(((long)(addrEnd % m_BytesInRow) - (long)(addrBegin % m_BytesInRow)) / (float)m_BytesInRow * MemoryMapRect.width);
+            ulong rowDelta = (ulong)((addrEnd - addrBegin + diffToBeginOfRow) / m_BytesInRow);
             int texelX0 = (int)x0;
-            int texelX1 = texelX0 + Math.Max(1, rowDelta);
-            int texelRow = (int)MemoryMapRect.width;
+            int texelX1 = texelX0 + xDelta;
 
-            int texelBegin = (int)(group.RowsOffset + rowBegin) * m_Texture.width + texelX0;
-            int texelEnd = (int)(group.RowsOffset + rowBegin) * m_Texture.width + texelX1;
+            var firstRow = (long)(group.RowsOffset + rowInGroupMin);
+            var lastRow = (long)(group.RowsOffset + rowInGroupMin + rowDelta);
+
+            int texelBegin = (int)firstRow * m_Texture.width + texelX0;
+            int texelEnd = Math.Max( (int)lastRow * m_Texture.width + texelX1, texelBegin + 1); // min size of 1 pixel
 
             for (int x = texelBegin; x < texelEnd; x++)
             {
@@ -345,19 +404,24 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public void RenderStrip(MemoryGroup group, ulong addrBegin, ulong addrEnd, Func<Color32, Color32> func)
         {
-            ulong diffBegin = (addrBegin - group.AddressBegin);
+            ulong diffToBeginOfGroup = (addrBegin - group.AddressBegin);
 
-            ulong rowBegin = diffBegin / m_BytesInRow;
+            ulong rowInGroupMin = diffToBeginOfGroup / m_BytesInRow;
 
-            int rowDelta = (int)((MemoryMapRect.width * (addrEnd - addrBegin)) / m_BytesInRow);
-            float  x0 = MemoryMapRect.width * (((float)(diffBegin % m_BytesInRow)) / ((float)m_BytesInRow));
+            ulong diffToBeginOfRow = (diffToBeginOfGroup % m_BytesInRow);
 
+            float  x0 = diffToBeginOfRow / (float)m_BytesInRow * MemoryMapRect.width;
+
+            int xDelta = (int)(((long)(addrEnd % m_BytesInRow) - (long)(addrBegin % m_BytesInRow)) / (float)m_BytesInRow * MemoryMapRect.width);
+            ulong rowDelta = (ulong)((addrEnd - addrBegin + diffToBeginOfRow) / m_BytesInRow);
             int texelX0 = (int)x0;
-            int texelX1 = texelX0 + Math.Max(1, rowDelta);
-            int texelRow = (int)MemoryMapRect.width;
+            int texelX1 = texelX0 + xDelta;
 
-            int texelBegin = (int)(group.RowsOffset + rowBegin) * m_Texture.width + texelX0;
-            int texelEnd = (int)(group.RowsOffset + rowBegin) * m_Texture.width + texelX1;
+            var firstRow = (long)(group.RowsOffset + rowInGroupMin);
+            var lastRow = (long)(group.RowsOffset + rowInGroupMin + rowDelta);
+
+            int texelBegin = (int)firstRow * m_Texture.width + texelX0;
+            int texelEnd = Math.Max( (int)lastRow * m_Texture.width + texelX1, texelBegin + 1); // min size of 1 pixel
 
             for (int x = texelBegin; x < texelEnd; x++)
             {

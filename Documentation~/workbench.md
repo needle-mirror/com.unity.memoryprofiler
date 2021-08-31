@@ -1,14 +1,14 @@
 # Workbench
 
-The Workbench is the panel on the left side of the Memory Profiler window. It contains all the memory snapshots that are part of your Project. 
+The Workbench is the panel on the left side of the Memory Profiler window. It contains all the memory snapshots that are part of your Project.
 
 ![Memory Profiler Workbench](images/workbench-memory-profiler.png)<br/>*The Memory Profiler Workbench*
 
 The Workbench displays a screenshot of each snapshot from the moment of capture, its name, plus the date and time of the capture. **Note:** Snapshots of the Editor-only do not have a screenshot.
 
-Unity stores the date on each snapshot in UTC format but converts it to your computer's local time. If you hover over the date, Unity displays the Project the snapshot is from. If you hover over the file name, Unity displays the location of the snapshot file on your computer. 
+Unity stores the date on each snapshot in UTC format but converts it to your computer's local time. If you hover over the date, Unity displays the Project the snapshot is from. If you hover over the file name, Unity displays the location of the snapshot file on your computer.
 
-In addition to this information, the Memory Profiler also overlays the logo of the platform you took the snapshot on, for quick reference. 
+In addition to this information, the Memory Profiler also overlays the logo of the platform you took the snapshot on, for quick reference.
 
 Select the cog icon in the top right of each snapshot entry to delete or rename the snapshot file, or open the containing folder for the snapshot file. **Note:** To rename or delete a snapshot, you must close it first.
 
@@ -16,7 +16,7 @@ Select the cog icon in the top right of each snapshot entry to delete or rename 
 
 To open a snapshot and view its data, select the __Open__ button to the right of the snapshot. This operation might take a moment, depending on the size of the snapshot, because Unity needs to process it for display. [The Main view](main-view) then displays different visualizations of the snapshot data.
 
-When you open a snapshot, the Memory Profiler grays out its name and date, and the __Open__ button changes to a __Close__ button, which you can then use to close the snapshot when you finish using it. 
+When you open a snapshot, the Memory Profiler grays out its name and date, and the __Open__ button changes to a __Close__ button, which you can then use to close the snapshot when you finish using it.
 
 ## Open Snapshots pane
 

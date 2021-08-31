@@ -12,12 +12,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
     {
         public int m_columnIndex;
         public string m_matchString;
+        bool m_MatchExactly;
         public ArrayRange m_Range;
-        public MatchTable(Database.Table sourceTable, int columnIndex, string matchString, ArrayRange range)
+        public MatchTable(Database.Table sourceTable, int columnIndex, string matchString, bool matchExactly, ArrayRange range)
             : base(sourceTable)
         {
             m_columnIndex = columnIndex;
             m_matchString = matchString;
+            m_MatchExactly = matchExactly;
             m_Range = range;
             UpdateIndices();
         }
@@ -39,7 +41,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             switch (metaCol.Type.comparisonMethod)
             {
                 case DataMatchMethod.AsString:
-                    m = new SubStringMatcher();
+                    if(m_MatchExactly)
+                        m = new ExactStringMatcher();
+                    else
+                        m = new SubStringMatcher();
                     break;
                 case DataMatchMethod.AsEnum:
                     m = new NumericMatcher();
@@ -166,25 +171,37 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
         }
 
         public int ColumnIndex { get; private set; }
+        public bool MatchExactly { get; private set; }
+
+        enum StringMatchingLogic
+        {
+            Is,
+            Contains,
+        }
 
         string m_MatchString;
         readonly string k_MatchStringField;
         int m_SelectedPopup;
         bool m_ForceFocus;
-        public Match(int col, string matchString = "")
+        //just for good measure
+        bool m_ForceFocusAgainOneFrameLater;
+        public Match(int col, string matchString = "", bool forceFocus = true, bool matchExactly = false)
         {
             ColumnIndex = col;
             m_MatchString = matchString;
             k_MatchStringField = "MatchInputFieldColumn" + col;
-            m_ForceFocus = true;
+            m_ForceFocus = forceFocus;
+            MatchExactly = matchExactly;
         }
 
         public override Filter Clone(FilterCloning fc)
         {
             Match o = new Match(ColumnIndex);
             m_ForceFocus = false;
+            m_ForceFocusAgainOneFrameLater = false;
             o.m_MatchString = m_MatchString;
             o.m_SelectedPopup = m_SelectedPopup;
+            o.MatchExactly = MatchExactly;
             return o;
         }
 
@@ -195,11 +212,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
         public override Database.Table CreateFilter(Database.Table tableIn, ArrayRange range)
         {
-            if (String.IsNullOrEmpty(m_MatchString))
+            if (String.IsNullOrEmpty(m_MatchString) && !MatchExactly)
             {
                 return tableIn;
             }
-            var tableOut = new MatchTable(tableIn, ColumnIndex, m_MatchString, range);
+            var tableOut = new MatchTable(tableIn, ColumnIndex, m_MatchString, MatchExactly, range);
             return tableOut;
         }
 
@@ -221,8 +238,22 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             bool bRemove = OnGui_RemoveButton();
             var metaCol = sourceTable.GetMetaData().GetColumnByIndex(ColumnIndex);
             var t = metaCol.Type;
+            const string k_MissdirectionControlLabel = "k_MissdirectionControlLabel";
+            GUI.SetNextControlName(k_MissdirectionControlLabel);
 
-            GUILayout.Label(string.Format(t.comparisonMethod == DataMatchMethod.AsString ? "'{0}' contains:" : "'{0}' is:", metaCol.DisplayName));
+            if (t.comparisonMethod == DataMatchMethod.AsString)
+            {
+                GUILayout.Label(string.Format("'{0}'", metaCol.DisplayName));
+                var matchingLogic = MatchExactly ? StringMatchingLogic.Is : StringMatchingLogic.Contains;
+                var newMatchingLogic = (StringMatchingLogic)EditorGUILayout.EnumPopup(matchingLogic, GUILayout.MaxWidth(75));
+                if(matchingLogic != newMatchingLogic)
+                {
+                    MatchExactly = newMatchingLogic == StringMatchingLogic.Is;
+                    dirty = true;
+                }
+            }
+            else
+                GUILayout.Label(string.Format("'{0}' is:", metaCol.DisplayName));
             if (t.scriptingType.IsEnum)
             {
                 string[] popupSelection;
@@ -246,9 +277,23 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
                 GUI.SetNextControlName(k_MatchStringField);
                 int newSelectedPopup = EditorGUILayout.Popup(m_SelectedPopup, popupSelection, GUILayout.Width(75));
+                var currentlyFocused = GUI.GetNameOfFocusedControl();
                 if (m_ForceFocus)
                 {
+                    if(currentlyFocused != k_MatchStringField)
+                    {
+                        // Not a clue why this misdirection was necessary but in 2021.2.0a18, Summary view tables where setting the focus directly and correctly
+                        // while Objects and Allocations tables would only do so the second time a match filter was added and when currentlyFocused == k_MatchStringField
+                        GUI.FocusControl(k_MissdirectionControlLabel);
+                        m_ForceFocusAgainOneFrameLater = true;
+                    }
+                    else
+                        GUI.FocusControl(k_MatchStringField);
                     m_ForceFocus = false;
+                }
+                else if(m_ForceFocusAgainOneFrameLater && Event.current.type == EventType.Layout)
+                {
+                    m_ForceFocusAgainOneFrameLater = false;
                     GUI.FocusControl(k_MatchStringField);
                 }
 
@@ -270,9 +315,23 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             {
                 GUI.SetNextControlName(k_MatchStringField);
                 var newMatchString = GUILayout.TextField(m_MatchString, GUILayout.MinWidth(250));
-                if (m_ForceFocus)
+                var currentlyFocused = GUI.GetNameOfFocusedControl();
+                if (m_ForceFocus && Event.current.type == EventType.Layout)
                 {
+                    if (currentlyFocused != k_MatchStringField)
+                    {
+                        // Not a clue why this misdirection was necessary but in 2021.2.0a18, Summary view tables where setting the focus directly and correctly
+                        // while Objects and Allocations tables would only do so the second time a match filter was added and when currentlyFocused == k_MatchStringField
+                        GUI.FocusControl(k_MissdirectionControlLabel);
+                        m_ForceFocusAgainOneFrameLater = true;
+                    }
+                    else
+                        GUI.FocusControl(k_MatchStringField);
                     m_ForceFocus = false;
+                }
+                else if (m_ForceFocusAgainOneFrameLater && Event.current.type == EventType.Layout)
+                {
+                    m_ForceFocusAgainOneFrameLater = false;
                     GUI.FocusControl(k_MatchStringField);
                 }
                 if (m_MatchString != newMatchString)

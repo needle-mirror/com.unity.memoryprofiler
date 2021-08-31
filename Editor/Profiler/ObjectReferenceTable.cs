@@ -46,7 +46,7 @@ namespace Unity.MemoryProfiler.Editor
 
         bool RecurseBuildMemberPath(int typeIndex, int fieldIndexToMatch, List<int> typeList, HashSet<int> visited)
         {
-            var fields = Snapshot.typeDescriptions.fieldIndices[typeIndex];
+            var fields = Snapshot.TypeDescriptions.FieldIndices[typeIndex];
             for (int i = 0; i < fields.Length; ++i)
             {
                 if (fieldIndexToMatch == fields[i])
@@ -64,7 +64,7 @@ namespace Unity.MemoryProfiler.Editor
                     visited.Add(field);
 
 
-                var fieldTypeIndex = Snapshot.fieldDescriptions.typeIndex[field];
+                var fieldTypeIndex = Snapshot.FieldDescriptions.TypeIndex[field];
                 typeList.Add(field);
                 if (!RecurseBuildMemberPath(fieldTypeIndex, fieldIndexToMatch, typeList, visited))
                     typeList.RemoveAt(typeList.Count - 1);
@@ -82,12 +82,12 @@ namespace Unity.MemoryProfiler.Editor
                 if (m_References[row].m_Parent != null)
                 {
                     var typeIndex = m_References[row].m_Parent.obj.managedTypeIndex;
-                    var typeName = Snapshot.typeDescriptions.typeDescriptionName[typeIndex];
+                    var typeName = Snapshot.TypeDescriptions.TypeDescriptionName[typeIndex];
                     var iField = m_References[row].m_Parent.iField;
                     var arrayIndex = m_References[row].m_Parent.arrayIndex;
                     if (iField >= 0)
                     {
-                        var fieldName = Snapshot.fieldDescriptions.fieldDescriptionName[iField];
+                        var fieldName = Snapshot.FieldDescriptions.FieldDescriptionName[iField];
 
                         m_FieldIndicesPath.Clear();
                         m_NamePathBuiler.Clear();
@@ -97,7 +97,7 @@ namespace Unity.MemoryProfiler.Editor
                         m_NamePathBuiler.Append('.');
                         for (int i = 0; i < m_FieldIndicesPath.Count; ++i)
                         {
-                            m_NamePathBuiler.Append(Snapshot.fieldDescriptions.fieldDescriptionName[m_FieldIndicesPath[i]]);
+                            m_NamePathBuiler.Append(Snapshot.FieldDescriptions.FieldDescriptionName[m_FieldIndicesPath[i]]);
                             m_NamePathBuiler.Append('.');
                         }
                         m_NamePathBuiler.Append(fieldName);

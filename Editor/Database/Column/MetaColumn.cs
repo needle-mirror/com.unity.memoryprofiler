@@ -35,8 +35,6 @@ namespace Unity.MemoryProfiler.Editor.Database
         public readonly int DefaultDisplayWidth;
 
         public readonly bool IsPrimaryKey;
-        public readonly bool IsReference;
-        public readonly ColumnRef Reference;
         public string FormatName { get; set; }
 
         public readonly Operation.Grouping.IGroupAlgorithm DefaultGroupAlgorithm;
@@ -55,15 +53,13 @@ namespace Unity.MemoryProfiler.Editor.Database
             DefaultDisplayWidth = displayDefaultWidth;
         }
 
-        public MetaColumn(string name, string displayName, MetaType type, ColumnRef reference, Operation.Grouping.IGroupAlgorithm groupAlgo, Operation.Grouping.IMergeAlgorithm mergeAlgo, string formatName = "", int displayDefaultWidth = k_DefaultDisplayWidth)
+        public MetaColumn(string name, string displayName, MetaType type, Operation.Grouping.IGroupAlgorithm groupAlgo, Operation.Grouping.IMergeAlgorithm mergeAlgo, string formatName = "", int displayDefaultWidth = k_DefaultDisplayWidth)
         {
             Index = 0;
             Name = name;
             DisplayName = displayName;
             Type = type;
             FormatName = formatName;
-            IsReference = true;
-            Reference = reference;
             DefaultMergeAlgorithm = mergeAlgo;
             DefaultGroupAlgorithm = groupAlgo;
             DefaultDisplayWidth = displayDefaultWidth;
@@ -77,8 +73,6 @@ namespace Unity.MemoryProfiler.Editor.Database
             DisplayName = mc.DisplayName;
             Type = mc.Type;
             FormatName = mc.FormatName;
-            IsReference = mc.IsReference;
-            Reference = mc.Reference;
             DefaultMergeAlgorithm = mc.DefaultMergeAlgorithm;
             DefaultGroupAlgorithm = mc.DefaultGroupAlgorithm;
             DefaultDisplayWidth = mc.DefaultDisplayWidth;

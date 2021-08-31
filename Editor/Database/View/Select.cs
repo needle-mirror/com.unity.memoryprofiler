@@ -197,41 +197,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     }
                 }
             }
-
-            public static Builder LoadFromXML(XmlElement root)
-            {
-                Builder b = new Builder();
-                b.name = root.GetAttribute("name");
-                b.sourceTableName = root.GetAttribute("table");
-                string strMaxRow = root.GetAttribute("maxRow");
-                if (string.IsNullOrEmpty(strMaxRow) || !int.TryParse(strMaxRow, out b.MaxRow))
-                {
-                    b.MaxRow = -1;
-                }
-                foreach (XmlNode node in root.ChildNodes)
-                {
-                    if (node.NodeType == XmlNodeType.Element)
-                    {
-                        XmlElement e = (XmlElement)node;
-                        switch (e.Name)
-                        {
-                            case "Where":
-                            {
-                                var w = Where.Builder.LoadFromXML(e);
-                                if (w != null)
-                                {
-                                    b.where.Add(w);
-                                }
-                                break;
-                            }
-                            default:
-                                //DebugUtility.LogInvalidXmlChild(root, e);
-                                break;
-                        }
-                    }
-                }
-                return b;
-            }
         }
     }
 
@@ -429,39 +394,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 }
 
                 return selectSet;
-            }
-
-            public static Builder LoadFromXML(XmlElement root)
-            {
-                Builder b = new Builder();
-                foreach (XmlNode xNode in root.ChildNodes)
-                {
-                    if (xNode.NodeType == XmlNodeType.Element)
-                    {
-                        XmlElement e = (XmlElement)xNode;
-                        switch (e.Name)
-                        {
-                            case "Select":
-                            {
-                                var s = Select.Builder.LoadFromXML(e);
-                                if (s != null)
-                                {
-                                    b.select.Add(s);
-                                }
-                                break;
-                            }
-                            case "Condition":
-                            {
-                                b.Condition = Operation.MetaExpComparison.LoadFromXML(e);
-                                break;
-                            }
-                            default:
-                                //DebugUtility.LogInvalidXmlChild(root, e);
-                                break;
-                        }
-                    }
-                }
-                return b;
             }
         }
     }

@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Unity.Collections;
-using Unity.MemoryProfiler.Editor.NativeArrayExtensions;
 using UnityEngine;
-using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 {
@@ -83,12 +80,12 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             }
         }
 
-        public bool GetDisplayElement(DisplayElements element)
+        public bool ShowDisplayElement(DisplayElements element)
         {
             return (m_DisplayElements & (int)element) != 0;
         }
 
-        public void SetDisplayElement(DisplayElements element, bool state)
+        public void SetDisplayElementVisibility(DisplayElements element, bool state)
         {
             if (state)
                 DisplayElement = DisplayElement | (int)element;
@@ -98,7 +95,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public void ToggleDisplayElement(DisplayElements element)
         {
-            SetDisplayElement(element, !GetDisplayElement(element));
+            SetDisplayElementVisibility(element, !ShowDisplayElement(element));
         }
 
         public enum ColorScheme
@@ -128,10 +125,10 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             }
         }
 
-        Color[] m_colorNotModified = new Color[3] { new Color(0.30f , 0.30f , 0.40f), new Color(0.28f , 0.28f , 0.28f), new Color(0.28f , 0.28f , 0.28f) };
-        Color[] m_colorDeallocated = new Color[3] { new Color(0.60f , 0.00f , 0.00f), new Color(0.34f , 0.28f , 0.28f), new Color(0.60f , 0.00f , 0.00f) };
-        Color[] m_colorModified = new Color[3] { new Color(0.60f , 0.60f , 0.00f), new Color(0.60f , 0.60f , 0.00f), new Color(0.60f , 0.60f , 0.00f) };
-        Color[] m_colorAllocated = new Color[3] { new Color(0.00f , 0.60f , 0.00f), new Color(0.00f , 0.60f , 0.00f), new Color(0.28f , 0.34f , 0.28f) };
+        Color32[] m_colorNotModified = new Color32[3] { new Color(0.30f , 0.30f , 0.40f), new Color(0.28f , 0.28f , 0.28f), new Color(0.28f , 0.28f , 0.28f) };
+        Color32[] m_colorDeallocated = new Color32[3] { new Color(0.60f , 0.00f , 0.00f), new Color(0.34f , 0.28f , 0.28f), new Color(0.60f , 0.00f , 0.00f) };
+        Color32[] m_colorModified = new Color32[3] { new Color(0.60f , 0.60f , 0.00f), new Color(0.60f , 0.60f , 0.00f), new Color(0.60f , 0.60f , 0.00f) };
+        Color32[] m_colorAllocated = new Color32[3] { new Color(0.00f , 0.60f , 0.00f), new Color(0.00f , 0.60f , 0.00f), new Color(0.28f , 0.34f , 0.28f) };
 
         bool m_ForceReselect = false;
 
@@ -168,6 +165,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         CachedSnapshot[]    m_Snapshots = new CachedSnapshot[2];
         DiffMemoryRegion[]  m_SnapshotMemoryRegion;
+        CappedNativeObjectsColection[] m_SortedAndCappedNativeObjects = new CappedNativeObjectsColection[2];
         List<EntryRange>[]  m_GroupsMangedObj = new List<EntryRange>[2] { new List<EntryRange>(), new List<EntryRange>() };
         List<EntryRange>[]  m_GroupsNativeAlloc = new List<EntryRange>[2] { new List<EntryRange>(), new List<EntryRange>() };
         List<EntryRange>[]  m_GroupsNativeObj = new List<EntryRange>[2] { new List<EntryRange>(), new List<EntryRange>() };
@@ -229,9 +227,9 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             ulong start = snapshot.SortedManagedHeapEntries.Address(i);
             ulong size = (ulong)snapshot.SortedManagedHeapEntries.Bytes(i).Length;
-            string name = string.Format("Heap Sections {0}", i);
 
-            DiffMemoryRegion region = new DiffMemoryRegion(RegionType.Managed, start, size, name);
+            var isGCHeap = snapshot.ManagedHeapSections.SectionType[i] == CachedSnapshot.MemorySectionType.GarbageCollector;
+            DiffMemoryRegion region = new DiffMemoryRegion(isGCHeap ? RegionType.Managed : RegionType.ManagedDomain, start, size, snapshot.ManagedHeapSections.SectionName[i]);
             region.ColorRegion = new Color32(0, 0, 0, (byte)(1 + regionIndex % 254));
             return region;
         }
@@ -240,9 +238,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             ulong start = snapshot.SortedManagedStacksEntries.Address(i);
             ulong size = (ulong)snapshot.SortedManagedStacksEntries.Bytes(i).Length;
-            string name = string.Format("Stack Sections {0}", i);
 
-            DiffMemoryRegion region = new DiffMemoryRegion(RegionType.ManagedStack, start, size, name);
+            DiffMemoryRegion region = new DiffMemoryRegion(RegionType.ManagedStack, start, size, snapshot.ManagedStacks.SectionName[i]);
             region.ColorRegion = new Color32(0, 0, 0, (byte)(1 + regionIndex % 254));
             return region;
         }
@@ -254,7 +251,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             long regionCount = 0;
 
             for (int snapshotIdx = 0; snapshotIdx < m_Snapshots.Length; ++snapshotIdx)
-                regionCount += m_Snapshots[snapshotIdx].nativeMemoryRegions.Count + m_Snapshots[snapshotIdx].managedHeapSections.Count + m_Snapshots[snapshotIdx].managedStacks.Count;
+                regionCount += m_Snapshots[snapshotIdx].NativeMemoryRegions.Count + m_Snapshots[snapshotIdx].ManagedHeapSections.Count + m_Snapshots[snapshotIdx].ManagedStacks.Count;
 
             m_SnapshotMemoryRegion = new DiffMemoryRegion[regionCount];
 
@@ -425,7 +422,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             {
                 if (i % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)i / (float)m_SnapshotMemoryRegion.Length);
 
-                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !GetDisplayElement(DisplayElements.VirtualMemory))
+                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !ShowDisplayElement(DisplayElements.VirtualMemory))
                     continue;
 
                 ulong addressBegin = m_SnapshotMemoryRegion[i].AddressBegin;
@@ -468,6 +465,23 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 int nativeObjectsOffset = 0;
                 int nativeObjectsCount = snapshot.SortedNativeObjects.Count;
+
+                m_SortedAndCappedNativeObjects[snapshotIdx] = new CappedNativeObjectsColection(snapshot.SortedNativeObjects);
+
+                int regionIndex = -1;
+                // only if Dynamic Heap Allocator was used instead of System Allocator, do Native Allocations, and with those, Native Objects, have to fall within a Native Region
+                if (snapshot.NativeMemoryRegions.UsesDynamicHeapAllocator && m_SnapshotMemoryRegion.Length > 0)
+                {
+                    for (regionIndex = 0; regionIndex < m_SnapshotMemoryRegion.Length; regionIndex++)
+                    {
+                        if (m_SnapshotMemoryRegion[regionIndex].Type == RegionType.Native)
+                            break;
+                    }
+                    if (regionIndex >= m_SnapshotMemoryRegion.Length)
+                        regionIndex = -1;
+                }
+                ulong minObjectAddressBasedOnRegion = regionIndex >= 0 ? m_SnapshotMemoryRegion[regionIndex].AddressBegin : 0;
+                ulong maxObjectAddressBasedOnRegion = regionIndex >= 0 ? m_SnapshotMemoryRegion[regionIndex].AddressEnd : ulong.MaxValue;
 
                 m_GroupsMangedObj[snapshotIdx].Clear();
                 m_GroupsNativeAlloc[snapshotIdx].Clear();
@@ -517,6 +531,66 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     range.End = nativeObjectsOffset;
 
                     m_GroupsNativeObj[snapshotIdx].Add(range);
+
+                    int firstNativeObjectInGroup = range.Begin;
+                    int lastNativeObjectInGroup = range.End;
+
+                    // only if native allocations have been recorded, will we limit the Object sizes to those
+                    int allocationIndex = nativeAllocationsCount > 0
+                        && m_GroupsNativeAlloc[snapshotIdx][m_GroupsNativeAlloc[snapshotIdx].Count - 1].Begin >= 0
+                        && m_GroupsNativeAlloc[snapshotIdx][m_GroupsNativeAlloc[snapshotIdx].Count - 1].Begin < snapshot.SortedNativeAllocations.Count
+                        ? m_GroupsNativeAlloc[snapshotIdx][m_GroupsNativeAlloc[snapshotIdx].Count - 1].Begin : -1;
+                    ulong minObjectAddressBasedOnAllocation = allocationIndex >= 0 ? snapshot.SortedNativeAllocations.Address(allocationIndex) : 0;
+                    ulong maxObjectAddressBasedOnAllocation = allocationIndex >= 0 ? minObjectAddressBasedOnAllocation + snapshot.SortedNativeAllocations.Size(allocationIndex) : ulong.MaxValue;
+                    if (allocationIndex > 0 || snapshot.NativeMemoryRegions.UsesDynamicHeapAllocator)
+                    {
+                        for (int nativeObjectIndex = firstNativeObjectInGroup; nativeObjectIndex < lastNativeObjectInGroup; nativeObjectIndex++)
+                        {
+                            var nativeObjectStartAddrress = snapshot.SortedNativeObjects.Address(nativeObjectIndex);
+                            // only if Dynamic Heap Allocator was used instead of System Allocator, do Native Allocations, and with those, Native Objects, have to fall within a Native Region
+                            while (snapshot.NativeMemoryRegions.UsesDynamicHeapAllocator &&
+                                maxObjectAddressBasedOnRegion < nativeObjectStartAddrress)
+                            {
+
+                                if (++regionIndex >= m_SnapshotMemoryRegion.Length)
+                                {
+                                    minObjectAddressBasedOnRegion = 0;
+                                    maxObjectAddressBasedOnRegion = 0;
+                                    break;
+                                }
+                                minObjectAddressBasedOnRegion = m_SnapshotMemoryRegion[regionIndex].AddressBegin;
+                                maxObjectAddressBasedOnRegion = m_SnapshotMemoryRegion[regionIndex].AddressEnd;
+                            }
+                            // only if native allocations have been recorded, will we limit the Object sizes to those
+                            while (allocationIndex >= 0 && (maxObjectAddressBasedOnAllocation < nativeObjectStartAddrress || minObjectAddressBasedOnAllocation < minObjectAddressBasedOnRegion))
+                            {
+                                if (++allocationIndex >= nativeAllocationsOffset)
+                                {
+                                    minObjectAddressBasedOnAllocation = 0;
+                                    maxObjectAddressBasedOnAllocation = 0;
+                                    if(snapshot.NativeMemoryRegions.UsesDynamicHeapAllocator)
+                                        Debug.LogError("A Native Allocation was recorded as being outside of a Native Region. This shouldn't happen when the Dynamic Heap Allocator (i.e not a System Allocator) is used. Please report this as a bug.");
+                                    break;
+                                }
+                                minObjectAddressBasedOnAllocation = snapshot.SortedNativeAllocations.Address(allocationIndex);
+                                maxObjectAddressBasedOnAllocation = minObjectAddressBasedOnAllocation + snapshot.SortedNativeAllocations.Size(allocationIndex);
+
+                                if (maxObjectAddressBasedOnAllocation > maxObjectAddressBasedOnRegion)
+                                    Debug.LogError("A Native Allocation was recorded as being outside of a Native Region. This shouldn't happen when the Dynamic Heap Allocator (i.e not a System Allocator) is used. Please report this as a bug.");
+                            }
+
+                            var minAddress = Math.Min(minObjectAddressBasedOnAllocation, minObjectAddressBasedOnRegion);
+                            if (minAddress > nativeObjectStartAddrress)
+                                Debug.LogError("A Native Object was recorded as being outside of a Native Region or Allocation. Please report this as a bug.");
+
+                            var maxAddress = Math.Min(maxObjectAddressBasedOnAllocation, maxObjectAddressBasedOnRegion);
+                            var nativeObjectLastByteAddrress = nativeObjectStartAddrress + m_SortedAndCappedNativeObjects[snapshotIdx].Size(nativeObjectIndex);
+                            if (nativeObjectLastByteAddrress > maxAddress)
+                            {
+                                m_SortedAndCappedNativeObjects[snapshotIdx].SetSize(nativeObjectIndex, maxAddress - nativeObjectStartAddrress);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -558,7 +632,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             for (int i = 0; i < m_SnapshotMemoryRegion.Length; ++i)
             {
-                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !GetDisplayElement(DisplayElements.VirtualMemory))
+                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !ShowDisplayElement(DisplayElements.VirtualMemory))
                     continue;
 
                 ulong stripGroupAddrBegin = m_SnapshotMemoryRegion[i].AddressBegin.Clamp(addressMin, addressMax);
@@ -581,7 +655,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         {
             for (int i = 0; i < m_SnapshotMemoryRegion.Length; ++i)
             {
-                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !GetDisplayElement(DisplayElements.VirtualMemory))
+                if (m_SnapshotMemoryRegion[i].Type == RegionType.VirtualMemory && !ShowDisplayElement(DisplayElements.VirtualMemory))
                     continue;
 
                 ulong stripGroupAddrBegin = m_SnapshotMemoryRegion[i].AddressBegin.Clamp(addressMin, addressMax);
@@ -602,7 +676,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public override void OnRenderMap(ulong addressMin, ulong addressMax, int slot)
         {
-            if (GetDisplayElement(DisplayElements.RegionDiff))
+            if (ShowDisplayElement(DisplayElements.RegionDiff))
             {
                 RenderRegionsDiff(addressMin, addressMax);
             }
@@ -629,17 +703,17 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             for (int i = groupsBegin; i < groupsEnd; ++i)
             {
-                if (GetDisplayElement(DisplayElements.AllocationsDiff))
+                if (ShowDisplayElement(DisplayElements.AllocationsDiff))
                 {
                     RenderDiff(m_Snapshots[0].SortedNativeAllocations, m_GroupsNativeAlloc[0], m_Snapshots[1].SortedNativeAllocations, m_GroupsNativeAlloc[1], i, addressMin, addressMax);
                 }
 
-                if (GetDisplayElement(DisplayElements.NativeObjectsDiff))
+                if (ShowDisplayElement(DisplayElements.NativeObjectsDiff))
                 {
-                    RenderDiff(m_Snapshots[0].SortedNativeObjects, m_GroupsNativeObj[0], m_Snapshots[1].SortedNativeObjects, m_GroupsNativeObj[1], i, addressMin, addressMax);
+                    RenderDiff(m_SortedAndCappedNativeObjects[0], m_GroupsNativeObj[0], m_SortedAndCappedNativeObjects[1], m_GroupsNativeObj[1], i, addressMin, addressMax);
                 }
 
-                if (GetDisplayElement(DisplayElements.ManagedObjectsDiff))
+                if (ShowDisplayElement(DisplayElements.ManagedObjectsDiff))
                 {
                     RenderDiff(m_Snapshots[0].SortedManagedObjects, m_GroupsMangedObj[0], m_Snapshots[1].SortedManagedObjects, m_GroupsMangedObj[1], i, addressMin, addressMax);
                 }

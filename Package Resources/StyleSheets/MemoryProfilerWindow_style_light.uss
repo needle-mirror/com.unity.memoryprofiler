@@ -1,13 +1,21 @@
+.analysis-window__background {
+    background-color: rgb(193, 193, 193)
+}
+
+.foldout-box__background {
+    background-color: rgb(167, 167, 167);
+}
+
 /**********************************************************************************************************************/
 /* Top-level UI                                                                                                       */
 /**********************************************************************************************************************/
 
-Image#backwardsInHistoryButton.historyButtonIcon{
-    background-image: resource("Icons/Profiler.PrevFrame.png");
+Image#history-button__back.history-button__icon{
+    background-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/History.Back.png");
 }
 
-Image#forwardsInHistoryButton.historyButtonIcon{
-    background-image: resource("Icons/Profiler.NextFrame.png");
+Image#history-button__forwards.history-button__icon{
+    background-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/History.Forward.png");
 }
 
 /**********************************************************************************************************************/
@@ -42,47 +50,21 @@ Toggle.radioButton:focus:checked > #Checkmark {
 /* Snapshot Items                                                                                                   */
 /**********************************************************************************************************************/
 
-#snapshotListItem.evenRow{
-    background-color: #CDCDCD;
-}
-
-#snapshotButtons.oddRow{
-    background-color: #C2C2C2;
-}
-
-#snapshotButtons.evenRow{
-    background-color: #CDCDCD;
-}
-
 #optionButton{
     background-image: resource("Icons/_Popup.png");
 }
 
-.previewImage{
+.preview-image{
     background-color: #A7A7A7;
 }
 
-Button#diffOpenSnapshots.selectedSnapshot{
-    color: #F0F0F0;
-    background-image: resource("Builtin Skins/LightSkin/Images/btn on.png");
-}
-
-Label.snapshotIsOpen{
+Label.snapshot--open{
     color: rgba(0, 0, 0, 0.4)
 }
 
-Label.snapshotIsInView{
+Label.snapshot--in-view{
     color: rgba(0, 0, 0, 0.4)
 }
-
-/**********************************************************************************************************************/
-/* Splitter                                                                                                           */
-/**********************************************************************************************************************/
-
-#splitterDraglineAnchor {
-    background-color: #999999;
-}
-
 
 .drop-down-toggle__drop-down-part:hover {
     background-color: rgb(177, 177, 177);
@@ -106,4 +88,53 @@ Label.snapshotIsInView{
 
 .drop-down-toggle__drop-down-part__arrow-icon:checked:hover {
     border-left-color: rgb(152, 152, 149);
+}
+
+.icon-button__import-icon {
+    background-image: resource('Import.png');
+}
+
+.icon-button__help-icon {
+    background-image: resource('_Help.png');
+}
+
+.icon-button__menu-icon {
+    background-image: resource('_Menu.png');
+}
+
+.icon-button__export-icon {
+    background-image: resource('SaveAs.png');
+}
+
+.icon-button__swap-icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/SwapVertical.png');
+}
+
+.icon-button__camera-icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/CameraIcon.png');
+}
+
+
+.issue-icon__info-icon {
+    background-image: resource('console.infoicon.sml.png');
+}
+
+.issue-icon__warning-icon {
+    background-image: resource('console.warnicon.sml.png');
+}
+
+.issue-icon__error-icon {
+    background-image: resource('console.erroricon.sml.png');
+}
+
+.info-box__info-icon {
+    background-image: resource('console.infoicon.png');
+}
+
+.info-box__warning-icon {
+    background-image: resource('console.warnicon.png');
+}
+
+.info-box__error-icon {
+    background-image: resource('console.erroricon.png');
 }

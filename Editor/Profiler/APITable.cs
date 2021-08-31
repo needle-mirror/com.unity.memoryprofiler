@@ -5,22 +5,15 @@ namespace Unity.MemoryProfiler.Editor.Database
     class APITable : Table
     {
         public CachedSnapshot m_Snapshot;
-        //public delegate int APIGetRowCount(UnityEditor.Profiling.PackedMemorySnapshot s);
-        public Soa.SoaDataSet m_DataSet;
+        readonly long m_RowCount;
         System.Collections.Generic.List<MetaColumn> m_ListMetaColumns = new System.Collections.Generic.List<MetaColumn>();
         System.Collections.Generic.List<Column> m_ListColumns = new System.Collections.Generic.List<Column>();
-        public APITable(Schema schema, CachedSnapshot s, Soa.SoaDataSet ds)
-            : base(schema)
-        {
-            m_Snapshot = s;
-            m_DataSet = ds;
-        }
 
-        public APITable(Schema schema, CachedSnapshot s, long dataCount)
+        public APITable(Schema schema, CachedSnapshot s, long rowCount)
             : base(schema)
         {
             m_Snapshot = s;
-            m_DataSet = new Soa.SoaDataSet(dataCount, 4 * 1024);
+            m_RowCount = rowCount;
         }
 
         public void AddColumn(MetaColumn mc, Column c)
@@ -50,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor.Database
 
         public override long GetRowCount()
         {
-            return m_DataSet.DataCount;
+            return m_RowCount;
         }
 
         public override CellLink GetLinkTo(CellPosition pos)

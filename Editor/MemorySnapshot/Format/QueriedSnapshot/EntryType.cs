@@ -61,6 +61,9 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         NativeCallstackSymbol_Symbol,
         NativeCallstackSymbol_ReadableStackTrace,
         NativeObjects_GCHandleIndex,
+        ProfileTarget_Info,
+        ProfileTarget_MemoryStats,
+        NativeMemoryLabels_Size,
         Count, //used to keep track of entry count, only add c++ matching entries above this one
     }
 }

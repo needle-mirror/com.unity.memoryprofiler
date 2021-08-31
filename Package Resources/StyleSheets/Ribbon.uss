@@ -1,0 +1,93 @@
+.ribbon__container {
+    flex-direction: row;
+}
+
+.ribbon__container--centered {
+    justify-content: center;
+}
+
+.ribbon--centered {
+    flex-direction: row;
+    justify-content: center;
+    flex-grow: 1;
+}
+
+.ribbon__container--left-aligned {
+    justify-content: flex-start;
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+.ribbon--left-aligned {
+    flex-direction: row;
+    justify-content: flex-start;
+    flex-grow: 1;
+}
+
+.ribbon__button {
+    background-color: rgba(0, 0, 0, 0);
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 8px;
+    padding-right: 9px;
+    margin-top: 10px;
+    border-top-color: rgba(0, 0, 0, 0);
+    border-right-color: rgba(0, 0, 0, 0);
+    border-left-color: rgba(0, 0, 0, 0);
+}
+
+.ribbon__button--toggled {
+    padding-bottom: 3px;
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(14, 129, 193);
+}
+
+.ribbon__button--toggled:hover {
+    padding-bottom: 3px;
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(14, 129, 193);
+}
+
+.ribbon__options-and-info {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    margin-right: 5px;
+}
+
+.icon-button {
+    width: 16px;
+    height: 16px;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.icon-button__help-icon {
+    flex-shrink: 0;
+}
+
+.icon-button__menu-icon {
+    flex-shrink: 0;
+}

@@ -40,6 +40,11 @@ namespace Unity.MemoryProfiler.Editor
             var internalInterface = assembly.GetType(k_InternalInterfaceName);
 #if UNITY_2021_2_OR_NEWER
             var connectionWindowType = assembly.GetType(k_ConnectionTreeWindowTypeName);
+            if(connectionWindowType == null)
+            {
+                Debug.LogWarning("In Unity Editor Versions from 2021.2.0a1 to 2021.2.0a19 the connection dropdown doesn't work. Please update Unity. If you are on a 2021.2.0a19 or newer and see this, please report a bug.");
+                return;
+            }
             s_ConstructConnectionWindow = connectionWindowType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[] { internalInterface.UnderlyingSystemType, typeof(Rect) }, null);
 
             var uiHelperInterface = assembly.GetType(k_ConnectionUIHelperTypeName);
@@ -54,6 +59,11 @@ namespace Unity.MemoryProfiler.Editor
 #if UNITY_2021_2_OR_NEWER
             s_2Params[0] = connectionState;
             s_2Params[1] = rect;
+            if (s_ConstructConnectionWindow == null)
+            {
+                Debug.LogWarning("In Unity Editor Versions from 2021.2.0a1 to 2021.2.0a19 the connection dropdown doesn't work. Please update Unity. If you are on a 2021.2.0a19 or newer and see this, please report a bug.");
+                return;
+            }
             var windowContent = s_ConstructConnectionWindow.Invoke(s_2Params) as PopupWindowContent;
             PopupWindow.Show(rect, windowContent);
 #else
@@ -80,6 +90,8 @@ namespace Unity.MemoryProfiler.Editor
         public static string GetPlayerDisplayName(string playerName)
         {
 #if UNITY_2021_2_OR_NEWER
+            if (s_GetToolbarContent == null)
+                return playerName;
             s_1Params[0] = playerName;
             return s_GetToolbarContent.Invoke(null, s_1Params) as string;
 #else

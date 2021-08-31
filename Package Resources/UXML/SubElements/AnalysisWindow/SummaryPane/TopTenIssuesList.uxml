@@ -1,0 +1,24 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
+	<ui:VisualElement name="proxy-root" class="proxy-root">
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
+		<ui:VisualElement name="top-ten-issues-section" class="top-ten-issues-section foldout-box__background">
+			<ui:VisualElement name="top-ten-issues-section__header" class="top-ten-issues-section__header">
+				<ui:Foldout name="top-ten-issues-section__header__foldout" text="Top Issues" class="top-ten-issues-section__header__foldout">
+					<ui:VisualElement name="top-ten-issues-section__content" class="top-ten-issues-section__content">
+						<ui:VisualElement name="issue-list" class="top-ten-issues-section__list">
+							<Unity.MemoryProfiler.Editor.UI.TopIssueItem focusable="true" message="Editor capture! Get better insights by building and profiling a development build, as memory behaves quite differently in the Editor." />
+						</ui:VisualElement>
+					</ui:VisualElement>
+				</ui:Foldout>
+				<ui:VisualElement class="top-ten-issues-section__header__message-bubbles">
+					<ui:Label name="top-ten-issues-section__header__message-bubbles__error-count" text="1" display-tooltip-when-elided="true" />
+					<ui:VisualElement name="top-ten-issues-section__header__message-bubbles__error-icon" class="issue-icon issue-icon__error-icon" />
+					<ui:Label name="top-ten-issues-section__header__message-bubbles__warning-count" text="1" display-tooltip-when-elided="true" />
+					<ui:VisualElement name="top-ten-issues-section__header__message-bubbles__warning-icon" class="issue-icon issue-icon__warning-icon" />
+					<ui:Label name="top-ten-issues-section__header__message-bubbles__info-count" text="2" display-tooltip-when-elided="true" />
+					<ui:VisualElement name="top-ten-issues-section__header__message-bubbles__info-icon" class="issue-icon issue-icon__info-icon" />
+				</ui:VisualElement>
+			</ui:VisualElement>
+		</ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

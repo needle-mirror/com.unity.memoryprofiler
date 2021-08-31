@@ -1,295 +1,587 @@
-/**********************************************************************************************************************/
-/* Visual Splitters                                                                                                   */
-/**********************************************************************************************************************/
-
-VisualSplitter.horizontalSplitter{
-    flex-direction: row;
-    flex-grow:1;
-}
-
-VisualSplitter.verticalSplitter{
-    flex-direction: column;
-    flex-grow:1;
-}
-
-#splitterLeftPane {
-    min-width: 252px;
-}
-
-#splitterDraglineAnchor {
-    width: 1px;
-}
-
-#splitterDragline {
-    width: 10px;
-    background-color: rgba(0, 0, 0, 0);
-    left: -5px;
-    top: 0;
-    bottom: 0;
-    position: absolute;
-    cursor: resize-horizontal;
-}
-
-/**********************************************************************************************************************/
-/* Top-level UI                                                                                                       */
-/**********************************************************************************************************************/
-
-#sidebar{
-    flex-direction: column;
+.proxy-root {
     flex-grow: 1;
 }
 
-#sidebarContent{
-    flex:1;
+.snapshot__meta-data__text {
+    overflow: hidden;
+    flex-shrink: 1;
+    text-overflow: ellipsis;
 }
 
-#mainWindow{
-    flex-direction: column;
-    flex-grow:1;
-}
-
-ToolbarButton.iconButton{
-    background-image: none;
-    width:28px;
-    height:18px;
-}
-
-Image.iconButton{
-    margin-top: 2px;
-    margin-bottom: 2px;
-    margin-left: 0;
-    margin-right: 0;
-}
-
-Image.historyButtonIcon{
-    width:16px;
-    height:14px;
-}
-
-ScrollView#snapshotListSidebar {
-    margin-left:1px;
-    margin-right:0;
-    margin-top:1px;
-    margin-bottom:1px;
-    flex:1;
-}
-
-.toolbarFlexSpacer
-{
-    flex:1;
-}
-
-.toolbarFlexSpacer0Px
-{
-    max-width:0px;
-}
-
-#captureAndFlagsDropdownMenuPlaceholder{
-    flex-shrink:1;
-    flex-grow:1;
-}
-
-#captureAndFlagsDropdownMenu
-{
-   min-height: 18px;
-}
-
-Label.guidanceText{
-    white-space: normal;
-    flex-grow: 1;
-    -unity-text-align: middle-center;
-}
-
-#attachToPlayerMenuPlaceholder{
-    flex-shrink:1;
-    flex-grow:1;
-}
-
-#attachToPlayerMenu{
-    min-height: 18px;
-}
-
-/**********************************************************************************************************************/
-/* Toggle                                                                                                             */
-/**********************************************************************************************************************/
-
-Toggle.radioButton {
-    margin-left:0;
-    margin-right:0;
-    margin-top:1px;
-    margin-bottom:1px;
-    padding-top:1px;
-    padding-bottom:0;
-}
-Toggle.radioButton > Label {
-    font-size:9px;
-    margin-top:1px;
-    margin-left:0;
-}
-
-/**********************************************************************************************************************/
-/* Snapshot Items                                                                                                   */
-/**********************************************************************************************************************/
-
-#snapshotListItem{
-    height:56px;
-    flex-direction:row;
-    padding-right:0;
-    padding-top:1px;
-    padding-bottom:1px;
-}
-
-.snapshotButton{
-    height:16px;
-    min-height:0;
-    margin-top:1px;
-    padding-top:2px;
-    padding-left:2px;
-    padding-right:2px;
-    margin-bottom:1px;
-    font-size:9px;
-}
-
-#snapshotButtons{
-    position: absolute;
-    right: 0;
-    justify-content:flex-end;
-    flex-direction: column;
-    min-width:50px;
-    max-width:50px;
-}
-
-#snapshotMetaData{
-    flex-direction: column;
-    position: absolute;
-    left: 1px;
-    flex:1 0 0;
-}
-
-.snapshotMetaDataText{
-    overflow: visible;
-}
-
-#previewImage{
+.preview-image__holder {
     flex-direction: row;
-    height:54px;
-    width:96px;
+    height: 54px;
+    width: 96px;
 }
 
-Image#previewImage.previewImage{
+Image.preview-image {
     justify-content: flex-end;
     align-items: flex-end;
+    height: 54px;
+    width: 96px;
 }
 
-#snapshotName.snapshotMetaDataText{
-    -unity-font-style:bold;
+#snapshot-name.snapshot__meta-data__text {
+    -unity-font-style: bold;
 }
 
-#snapshotName.snapshotMetaDataTextField{
-    flex:1;
+#snapshot-name.snapshot__meta-data__text-field {
+    flex: 1;
     visibility: hidden;
     max-height: 15px;
     margin-right: 50px;
     overflow: hidden;
 }
 
-.hiddenFromLayout{
+Image.optionButtonIcon {
+    height: 14px;
+    width: 15px;
+    align-self: flex-end;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+.platform-icon {
+    height: 16px;
+    width: 16px;
+    flex-shrink: 0;
+}
+
+.platform-icon.Editor {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Editor.png');
+}
+
+.platform-icon.Android {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Android.png');
+}
+
+.platform-icon.StandaloneOSX {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneOSX.png');
+}
+
+.platform-icon.StandaloneWindows {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneWindows.png');
+}
+
+.platform-icon.iOS {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/iOS.png');
+}
+
+.platform-icon.StandaloneLinux64 {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneLinux64.png');
+}
+
+.platform-icon.WebGL {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/WebGL.png');
+}
+
+.platform-icon.WSAPlayer {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/WSAPlayer.png');
+}
+
+.platform-icon.PS4 {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/PS4.png');
+}
+
+.platform-icon.XboxOne {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/XboxOne.png');
+}
+
+.platform-icon.tvOS {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/tvOS.png');
+}
+
+.platform-icon.Switch {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Switch.png');
+}
+
+.platform-icon.Lumin {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Lumin.png');
+}
+
+#tree-map {
+    margin-left: 2px;
+    padding-right: 2px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+#tree-map__spreadsheet {
+    padding-top: 2px;
+}
+
+.analysis-window__background {
+    flex-grow: 1;
+}
+
+.analysis-window__view-pane {
+    flex-grow: 1;
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+.analysis-window--no-data-loaded {
     display: none;
-    position: absolute;
+    white-space: normal;
+    align-items: center;
+    justify-content: center;
 }
 
-.notHiddenFromLayout{
-    display: flex;
-    position: relative;
-}
-
-#metaDataAndButtons{
-    flex:1;
+.analysis-window--no-data-loaded__capture-button {
     flex-direction: row;
 }
 
-Image.optionButtonIcon
-{
-    height:14px;
-    width:15px;
-    align-self: flex-end;
+.analysis-window--data-loaded {
+    display: flex;
+}
+
+.analysis-window--no-data-loaded__message {
+    align-items: center;
+    justify-content: center;
+    flex-grow: 0;
+    -unity-text-align: middle-center;
+}
+
+.analysis-window__view-selection-ui {
+    align-items: center;
+    flex-direction: row;
+    flex-grow: 0;
+}
+
+.project-or-session-name-text {
+    color: rgb(134, 134, 134);
+    -unity-font-style: italic;
+}
+
+.foldout-box__background {
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+.memory-usage-summary-section {
+    border-top-left-radius: 3px;
+    border-bottom-left-radius: 3px;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    padding-left: 2px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.memory-usage-summary-section__top-header__title {
+    -unity-font-style: bold;
+}
+
+.memory-usage-summary-section__content {
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    flex-direction: row;
+    justify-content: space-between;
+    overflow: hidden;
+}
+
+.memory-usage-summary-section__selection-label {
+    -unity-font-style: normal;
+    padding-bottom: 10px;
+}
+
+.memory-usage-summary-section__memory-usage-breakdown {
+    flex-grow: 1;
+    flex-shrink: 0;
+}
+
+.memory-usage-breakdown {
+    flex-grow: 1;
+}
+
+.issue-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.info-box {
+  flex: 1 1 0;
+  flex-direction: row;
+  color: rgb(189, 189, 189);
+  background-color: rgba(96, 96, 96, 0.2);
+  border-top-width: 1px;
+    border-left-width: 1px;
+    border-bottom-width: 1px;
+    border-right-width: 1px;
+
+    border-top-left-radius: 3;
+    border-bottom-left-radius: 3;
+    border-top-right-radius: 3;
+    border-bottom-right-radius: 3;
+    border-color: rgb(35, 35, 35);
+    margin: 4px;
+    padding: 4px;
+}
+
+.info-box__icon {
+  flex: auto 0 0;
+  width: 32px;
+  height: 32px;
+    margin: 4px;
+}
+
+.info-box__icon-space {
+    justify-content: center;
+}
+
+.info-box__message {
+    flex: 1 0 0;
+    flex-direction: row;
+}
+
+Label.info-box__message {
+    margin-left: 4px;
     margin-right: 4px;
+    margin-bottom: 0;
+    white-space: normal;
+    overflow: hidden;
+    -unity-font-style: normal;
+    -unity-text-align: middle-left;
 }
 
-.platformIcon{
-    height:16px;
-    width:16px;
+.info-box__message Button {
 }
 
-.platformIcon.Editor{
-    background-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Editor.png");
+ToolbarButton.icon-button {
+    background-image: none;
+    width: 28px;
 }
 
-.platformIcon.Android{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Android.png");
+Image.icon-button {
+    margin-top: 2px;
+    margin-bottom: 2px;
+    width: 16px;
+    height: 16px;
+    margin-left: 0;
+    margin-right: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
 }
 
-.platformIcon.StandaloneOSX{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneOSX.png");
+.icon-button {
+    width: 16px;
+    height: 16px;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
 }
 
-.platformIcon.StandaloneWindows{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneWindows.png");
+ToolbarButton.square-icon-button {
+    padding-top: 0;
 }
 
-.platformIcon.iOS{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/iOS.png");
-}
-.platformIcon.StandaloneLinux64{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneLinux64.png");
-}
-
-.platformIcon.WebGL{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/WebGL.png");
-}
-.platformIcon.WSAPlayer{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/WSAPlayer.png");
-}
-.platformIcon.PS4{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/PS4.png");
+Image.square-button-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
 }
 
-.platformIcon.XboxOne{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/XboxOne.png");
+ToolbarButton.history-button {
+    width: 26px;
+    flex-shrink: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
 }
-.platformIcon.tvOS{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/tvOS.png");
-}
-.platformIcon.Switch{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Switch.png");
-}
-.platformIcon.Lumin{
-    background-image:resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/Lumin.png");
-}
-/**********************************************************************************************************************/
-/* Main Window                                                                                                        */
-/**********************************************************************************************************************/
 
-#mainWindowContent{
-    margin-left: 2px;
-    padding-right: 2px;
+Image.history-button__Icon {
+    width: 16px;
+    height: 14px;
+    flex-shrink: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.icon-button__help-icon {
+    flex-shrink: 0;
+}
+
+.icon-button__import-icon {
+    flex-shrink: 0;
+}
+
+.icon-button__menu-icon {
+    flex-shrink: 0;
+}
+
+.icon-button__export-icon {
+    flex-shrink: 0;
+}
+
+.seession-list__item__foldout {
+    flex-grow: 1;
+}
+
+.seession-list__item__foldout .unity-toggle__text {
+    -unity-text-align: upper-center;
+    color: rgb(134, 134, 134);
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.open-snapshot__container {
+    margin-left: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 0;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(44, 44, 44);
+    padding-left: 20px;
+    padding-right: 17px;
+    padding-top: 17px;
+    padding-bottom: 17px;
+    border-left-color: rgb(44, 44, 44);
+    border-right-color: rgb(44, 44, 44);
+    border-top-color: rgb(44, 44, 44);
+    min-height: 180px;
+}
+
+.open-snapshot__compare-tag {
+    width: 20px;
+    height: 20px;
+    padding-left: 0;
+    padding-right: 0;
+    color: rgb(40, 40, 40);
+    -unity-text-align: middle-center;
+    -unity-font-style: bold;
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Circle.png');
+}
+
+.background-color__snapshot-a {
+    background-color: rgb(75, 135, 164);
+}
+
+.background-color__snapshot-b {
+    background-color: rgb(185, 201, 151);
+}
+
+.background-color__snapshot-diff {
+    background-color: rgb(143, 143, 143);
+}
+
+.image-tint-color__snapshot-a {
+    -unity-background-image-tint-color: rgb(75, 135, 164);
+}
+
+.image-tint-color__snapshot-b {
+    -unity-background-image-tint-color: rgb(185, 201, 151);
+}
+
+.image-tint-color__snapshot-diff {
+    -unity-background-image-tint-color: rgb(143, 143, 143);
+}
+
+.snapshot-list__item.snapshot--in-view {
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(75, 135, 164);
+    padding-left: 8px;
+    padding-right: 8px;
     padding-top: 2px;
     padding-bottom: 2px;
 }
 
-/**********************************************************************************************************************/
-/* Tree map                                                                                                           */
-/**********************************************************************************************************************/
-
-#TreeMap{
-    margin-left: 2px;
-    padding-right: 2px;
+.snapshot-list__item.snapshot--open-a {
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(75, 135, 164);
+    padding-left: 8px;
+    padding-right: 8px;
     padding-top: 2px;
     padding-bottom: 2px;
 }
 
-#TreeMapSpreadsheet{
+.snapshot-list__item.snapshot--open-b {
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(185, 201, 151);
+    padding-left: 8px;
+    padding-right: 8px;
     padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.snapshot-list__item.snapshot--open {
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(77, 77, 77);
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.top-ten-issues-section {
+    border-top-left-radius: 3px;
+    border-bottom-left-radius: 3px;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    padding-left: 2px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.top-ten-issues-section__template-container {
+    flex-shrink: 0;
+}
+
+.top-ten-issues-section__header {
+    flex-direction: row;
+}
+
+.top-ten-issues-section__header__foldout {
+    -unity-font-style: bold;
+    flex-grow: 1;
+}
+
+.top-ten-issues-section__content {
+    -unity-font-style: normal;
+    padding-left: 0;
+    padding-right: 20px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.top-ten-issues-section__header__message-bubbles {
+    flex-direction: row;
+    position: absolute;
+    right: 10px;
+    top: 2px;
+}
+
+.top-ten-issues-section__list__item {
+    overflow: hidden;
+    flex-shrink: 0;
+    flex-direction: row;
+}
+
+.top-ten-issues-section__list__item__foldout-content {
+    flex-direction: row;
+}
+
+.top-ten-issues-section__list__item__details {
+    overflow: visible;
+    flex-shrink: 1;
+    white-space: normal;
+}
+
+.top-ten-issues-section__list__item__foldout-toggle {
+    padding-left: 16px;
+}
+
+.shrinking-label {
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.open-snapshot-view__separator {
+    margin-left: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 0;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(44, 44, 44);
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 4px;
+    border-left-color: rgb(44, 44, 44);
+    border-right-color: rgb(44, 44, 44);
+    border-top-color: rgb(44, 44, 44);
+}
+
+.session-list__empty-text {
+    -unity-text-align: middle-center;
+    flex-grow: 1;
+    display: none;
+}
+
+.full-visual-element-button {
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    background-color: rgba(0, 0, 0, 0);
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-direction: row;
+    -unity-text-align: upper-left;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-left-color: rgba(0, 0, 0, 0);
+    border-right-color: rgba(0, 0, 0, 0);
+    border-top-color: rgba(0, 0, 0, 0);
+    border-bottom-color: rgba(0, 0, 0, 0);
+}
+
+.snapshot-list__item {
+    flex-direction: row;
+    padding-bottom: 4px;
+    padding-top: 4px;
+    padding-right: 10px;
+    padding-left: 10px;
+}
+
+ToolbarToggle {
+    -unity-text-align: middle-left;
 }
 
 .unity-toolbar-menu {
@@ -297,22 +589,6 @@ Image.optionButtonIcon
     flex-shrink: 0;
 }
 
-.unity-toolbar-menu > Label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#snapshot-control-area__target-selection-drop-down-button {
-    flex-shrink: 1;
-}
-
-#snapshot-control-area__target-selection-drop-down-button__label {
-    flex-shrink: 1;
-}
-
-#snapshot-control-area__target-selection-drop-down-button__arrow {
-    flex-shrink: 0;
-}
 .drop-down-toggle {
     flex-direction: row;
     margin-right: 0;
@@ -358,10 +634,281 @@ Image.optionButtonIcon
 .drop-down-toggle > Label {
     margin-top: 1px;
     padding-top: 2px;
+}
+
+.total-ram-usage-bar {
+    flex-direction: row;
+    background-color: rgb(35, 35, 35);
+    height: 20px;
+    flex-shrink: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.total-ram-usage-bar__used-bar {
+    flex-direction: row;
+    height: 20px;
+    width: 56%;
+    -unity-background-scale-mode: stretch-to-fill;
+    background-color: rgb(153, 153, 153);
+    max-width: 56%;
+}
+
+.total-ram-usage-bar__used-label {
+    color: rgb(40, 40, 40);
     overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.total-ram-usage-bar__used-label--light {
+    color: rgb(196, 196, 196);
+    position: absolute;
+}
+
+.total-ram-usage-bar__available-label {
+    color: rgb(196, 196, 196);
+    position: absolute;
+    right: 0;
+}
+
+.total-ram-usage-bar__available-label--dark {
+    color: rgb(40, 40, 40);
+}
+
+.snapshotMetaDataName {
+    flex-shrink: 1;
+}
+
+.memory-profiler__toolbar {
+    justify-content: space-between;
+}
+
+.memory-profiler__toolbar__left-side {
+    flex-direction: row;
+}
+
+.memory-profiler__toolbar__right-side {
+    flex-direction: row;
+    justify-content: flex-end;
 }
 
 .toolbar__drop-down__arrow {
     margin-top: -1px;
+}
+
+.drop-down-button {
+    flex-direction: row;
+}
+
+.memory-usage-dial__background-image {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/MemoryUsageDial_Ring.png');
+    flex-grow: 1;
+    width: 64px;
+    height: 32px;
+    flex-direction: column-reverse;
+    align-items: center;
+    -unity-background-image-tint-color: rgba(255, 255, 255, 0);
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+.memory-usage-dial__container {
+    border-left-color: rgb(151, 151, 151);
+    border-right-color: rgb(151, 151, 151);
+    border-top-color: rgb(151, 151, 151);
+    border-bottom-color: rgb(151, 151, 151);
+    border-bottom-width: 1px;
+    flex-grow: 1;
+    flex-shrink: 0;
+    width: 68px;
+    margin-left: 0;
+    padding-left: 2px;
+}
+
+.memory-usage-dial__root {
+    align-items: center;
+    width: 0;
+    height: 0;
+}
+
+.memory-usage-dial__indicator {
+    width: 12px;
+    position: absolute;
+    right: 22px;
+    border-left-color: rgb(255, 255, 255);
+    border-right-color: rgb(255, 255, 255);
+    border-top-color: rgb(255, 255, 255);
+    border-bottom-color: rgb(255, 255, 255);
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0.5px;
+    border-bottom-width: 0.5px;
+    border-top-left-radius: 1px;
+    border-bottom-left-radius: 1px;
+    border-top-right-radius: 1px;
+    border-bottom-right-radius: 1px;
+}
+
+.snapshot-list__item__open-snapshot__compare-tag__spacer {
+    width: 20px;
+}
+
+.snapshot-list__item__open-snapshot__compare-tag {
+    position: absolute;
+    right: 10px;
+    top: 2px;
+}
+
+.swap-snapshot-buttons-holder {
+    position: absolute;
+    left: 0;
+    right: 0;
+    flex-direction: row;
+    justify-content: center;
+    top: 200px;
+}
+
+.square-icon-button {
+    flex-shrink: 0;
+}
+
+.guidance-text {
+    white-space: normal;
+}
+
+#SessionList {
+    overflow: hidden;
+}
+
+.open-snapshot-item {
+    overflow: visible;
+    flex-shrink: 0;
+}
+
+.legend_table {
+    flex-direction: row;
+}
+
+.legend__table-empty-space-holder {
+    height: 20px;
+}
+
+.legend__table-top-border {
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 1px;
+    justify-content: flex-start;
+    flex-grow: 0;
+    flex-direction: row;
+    align-items: auto;
+    margin-bottom: 4px;
+}
+
+.legend_table-bottom-border {
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 1px;
+    justify-content: flex-start;
+    flex-grow: 0;
+    flex-direction: row;
+    align-items: auto;
+}
+
+.legend__table-a-column {
+    align-items: stretch;
+}
+
+.legend__table-column-controls {
+    height: auto;
+    position: relative;
+    right: auto;
+    width: auto;
+    flex-grow: 1;
+    align-items: flex-end;
+}
+
+.legend__header-controls {
+    position: relative;
+    right: auto;
+    top: auto;
+    left: auto;
+    bottom: auto;
+    width: 32px;
+    height: 20px;
+    align-items: auto;
+    justify-content: flex-end;
+    flex-direction: row;
+}
+
+.legend__header-icon {
+    top: auto;
+    right: auto;
+    width: auto;
+    height: auto;
+    min-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    flex-direction: row;
+    position: relative;
+}
+
+.legend__header-icon-text {
+    flex-grow: 1;
+    flex-direction: row-reverse;
+    background-image: none;
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    -unity-slice-left: 0;
+    -unity-slice-top: 0;
+    -unity-slice-right: 0;
+    -unity-slice-bottom: 0;
+}
+
+.legend__header-icon-text-a {
+    background-color: rgb(75, 135, 164);
+}
+
+.legend__header__sort-ascending {
+    -unity-slice-left: 0;
+    -unity-slice-top: 0;
+    -unity-slice-right: 0;
+    -unity-slice-bottom: 0;
+    position: relative;
+    right: auto;
+    max-width: 10px;
+    max-height: 10px;
+    min-width: 10px;
+    min-height: 10px;
+}
+
+.legend__header__sort-descending {
+    padding-left: -2px;
+    padding-right: -2px;
+    padding-top: -2px;
+    padding-bottom: -2px;
+    position: relative;
+    right: auto;
+    bottom: auto;
+    max-width: 10px;
+    max-height: 10px;
+    min-width: 10px;
+    min-height: 10px;
+    flex-direction: column;
+}
+
+.memory-usage-breakdown__legend__header-diff-icon {
+    border-left-width: 3px;
+    border-right-width: 3px;
+    left: -3px;
 }

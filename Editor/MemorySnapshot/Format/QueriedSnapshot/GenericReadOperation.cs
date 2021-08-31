@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.IO.LowLevel.Unsafe;
+using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using UnityEngine;
 
@@ -11,9 +12,9 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
     {
         ReadHandle m_Handle;
         ReadError m_Err;
-        NativeArray<byte> m_Buffer;
+        DynamicArray<byte> m_Buffer;
 
-        internal GenericReadOperation(ReadHandle handle, NativeArray<byte> buffer)
+        internal GenericReadOperation(ReadHandle handle, DynamicArray<byte> buffer)
         {
             m_Err = ReadError.InProgress;
             m_Handle = handle;
@@ -44,7 +45,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             internal set { m_Err = value; }
         }
 
-        public NativeArray<byte> Result
+        public DynamicArray<byte> Result
         {
             get
             {
@@ -54,12 +55,21 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public bool IsDone { get { return m_Handle.JobHandle.IsCompleted; } }
+        public void Complete()
+        {
+            if (!m_Handle.IsValid())
+                return;
+
+            m_Handle.JobHandle.Complete();
+        }
+
+        public bool IsDone { get { return m_Handle.IsValid() ? m_Handle.JobHandle.IsCompleted : true; } }
 
         public void Dispose()
         {
             if (!m_Handle.IsValid())
                 return;
+
             m_Handle.Dispose();
         }
     }

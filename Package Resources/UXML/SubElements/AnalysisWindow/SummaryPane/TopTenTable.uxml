@@ -1,0 +1,128 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
+    <ui:VisualElement name="proxy-root" class="proxy-root">
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryUsageBreakdown.uss" />
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/TopTenTable_style.uss" />
+		<ui:VisualElement name="top-ten-table-section" class="top-ten-table-section foldout-box__background">
+			<ui:VisualElement name="top-ten-table-section__header" class="top-ten-table-section__header">
+				<ui:Foldout text="Top 10 Unity Object Types" name="top-ten-table-section__header__foldout" class="top-ten-table-section__header__foldout">
+					<ui:VisualElement name="top-ten-table-section__content" class="top-ten-table-section__content">
+						<ui:VisualElement name="top-ten-table-section__memory-usage-bar" class="memory-usage-bar" style="background-color: rgb(30, 30, 30);">
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-1" class="memory-usage-bar__element background-color__top-ten-table__item-1" style="width: 15%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-2" class="memory-usage-bar__element background-color__top-ten-table__item-2" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-3" class="memory-usage-bar__element background-color__top-ten-table__item-3" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-4" class="memory-usage-bar__element background-color__top-ten-table__item-4" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-5" class="memory-usage-bar__element background-color__top-ten-table__item-5" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-6" class="memory-usage-bar__element background-color__top-ten-table__item-6" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-7" class="memory-usage-bar__element background-color__top-ten-table__item-7" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-8" class="memory-usage-bar__element background-color__top-ten-table__item-8" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-9" class="memory-usage-bar__element background-color__top-ten-table__item-9" style="width: 10%;" />
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__item-10" class="memory-usage-bar__element background-color__top-ten-table__item-10" style="width: 5%;" />
+						</ui:VisualElement>
+						<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__item-1" class="legend__list" style="flex-direction: row; justify-content: space-between;">
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__names-and-icons-columm__item-1" style="flex-grow: 1;">
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-1" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-1" class="legend__color-box background-color__top-ten-table__item-1" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-1" text="Object Type Name A" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-2" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-2" class="legend__color-box background-color__top-ten-table__item-2" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-2" text="Object Type Name B" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-3" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-3" class="legend__color-box background-color__top-ten-table__item-3" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-3" text="Object Type Name C" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-4" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-4" class="legend__color-box background-color__top-ten-table__item-4" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-4" text="Object Type Name D" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-5" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-5" class="legend__color-box background-color__top-ten-table__item-5" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-5" text="Object Type Name E" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-6" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-6" class="legend__color-box background-color__top-ten-table__item-6" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-6" text="Object Type Name F" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-7" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-7" class="legend__color-box background-color__top-ten-table__item-7" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-7__item-7" text="Object Type Name G" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-8" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-8" class="legend__color-box background-color__top-ten-table__item-8" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-8" text="Object Type Name H" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-9" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-9" class="legend__color-box background-color__top-ten-table__item-9" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-9" text="Object Type Name I" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__name-and-color__item-10" class="legend__name-and-color legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__color-box__item-10" class="legend__color-box background-color__top-ten-table__item-10" />
+									<ui:Label name="top-ten-table-section__memory-usage-bar__legend__name_entry__item-10" text="Object Type Name J" display-tooltip-when-elided="true" class="legend__name" />
+								</ui:VisualElement>
+							</ui:VisualElement>
+							<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-column" style="width: 50px; padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;">
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-1" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-1" class="legend__percentage-bar background-color__top-ten-table__item-1" style="width: 75%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-2" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-2" class="legend__percentage-bar background-color__top-ten-table__item-2" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-3" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-3" class="legend__percentage-bar background-color__top-ten-table__item-3" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-4" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-4" class="legend__percentage-bar background-color__top-ten-table__item-4" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-5" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-5" class="legend__percentage-bar background-color__top-ten-table__item-5" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-6" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-" class="legend__percentage-bar background-color__top-ten-table__item-6" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-7" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-7" class="legend__percentage-bar background-color__top-ten-table__item-7" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-8" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-8" class="legend__percentage-bar background-color__top-ten-table__item-8" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-9" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-9" class="legend__percentage-bar background-color__top-ten-table__item-9" style="width: 50%;" />
+								</ui:VisualElement>
+								<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__percentage-bar-holder__item-10" class="legend__row-item">
+									<ui:VisualElement name="top-ten-table-section__memory-usage-bar__legend__legend__color-box__item-10" class="legend__percentage-bar background-color__top-ten-table__item-10" />
+								</ui:VisualElement>
+							</ui:VisualElement>
+							<ui:VisualElement name="sizes-column">
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-1" text="3.2 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-2" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-3" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-4" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-5" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-6" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-7" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-8" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-9" text="2.8 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__size-column__entry__item-10" text="1.4 MB" display-tooltip-when-elided="true" class="legend__row-item legend__size-column__entry" />
+							</ui:VisualElement>
+							<ui:VisualElement name="percentage-column">
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-1" text="15%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-2" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-3" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-4" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-5" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-6" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-7" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-8" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-9" text="10%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+								<ui:Label name="top-ten-table-section__memory-usage-bar__legend__percentage-column__entry__item-10" text="5%" display-tooltip-when-elided="true" class="legend__row-item legend__percentage-column__entry" />
+							</ui:VisualElement>
+						</ui:VisualElement>
+					</ui:VisualElement>
+				</ui:Foldout>
+				<ui:Label name="top-ten-table-section__total-value" class="top-ten-table-section__total-value" text="Total: 33 MB, in View: 28 MB" display-tooltip-when-elided="true" />
+			</ui:VisualElement>
+		</ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

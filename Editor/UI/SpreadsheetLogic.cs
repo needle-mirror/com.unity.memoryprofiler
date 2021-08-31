@@ -16,6 +16,11 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// </summary>
     internal abstract class SpreadsheetLogic
     {
+        public event Action<long> RowSelectionChanged = delegate { };
+        protected void OnRowSelectionChanged(long row)
+        {
+            RowSelectionChanged(row);
+        }
         //used to catch infinite loop caused by implementation
         const long k_MaxRow = 100000000;
 
@@ -334,18 +339,24 @@ namespace Unity.MemoryProfiler.Editor.UI
                 guiState.HeightBeforeFirstVisibleRow -= offsetY;
             }
 
+            var heightBeforeFirstVisibleRowAdjustedForClip = m_GUIState.FirstVisibleRowY;
+            float yMax = m_GUIState.ScrollPosition.y + m_GUIState.RectData.height;
+            if (m_GUIState.FirstVisibleRow > 60000)
+            {
+                GUI.BeginClip(new Rect(m_GUIState.RectData.x, m_GUIState.ScrollPosition.y, m_GUIState.RectData.width, m_GUIState.RectData.height));
+                heightBeforeFirstVisibleRowAdjustedForClip -= m_GUIState.ScrollPosition.y;
+                yMax -= m_GUIState.ScrollPosition.y;
+            }
 
-            GUILayout.Space((float)m_GUIState.HeightBeforeFirstVisibleRow);
+            GUILayout.Space((float)heightBeforeFirstVisibleRowAdjustedForClip);
             double visibleRowTotalHeight = 0;
             Rect r = new Rect(0
-                , m_GUIState.FirstVisibleRowY
+                , heightBeforeFirstVisibleRowAdjustedForClip
                 , 0
                 , 0);
 
             if (RowCount > 0)
             {
-                float yMax = m_GUIState.ScrollPosition.y + m_GUIState.RectData.height;
-
                 long firstRow = GetFirstRow();
                 firstRow = m_GUIState.FirstVisibleRow;
                 for (long i = firstRow, j = 0; r.y < yMax && i < k_MaxRow && i >= 0; i = GetNextVisibleRow(i), ++j)
@@ -386,9 +397,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 GUI.Label(r, GetNoDataReason());
             }
 
-            double heightAfterVisibleRow = m_TotalDataHeight - (m_GUIState.HeightBeforeFirstVisibleRow + visibleRowTotalHeight);
+            double heightAfterVisibleRow = m_TotalDataHeight - (heightBeforeFirstVisibleRowAdjustedForClip + visibleRowTotalHeight);
 
             GUILayout.Space((float)heightAfterVisibleRow);
+
+            if (m_GUIState.FirstVisibleRow > 60000)
+            {
+                GUI.EndClip();
+            }
 
             GUILayout.EndScrollView();
 
@@ -421,6 +437,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         if (row >= 0 && RowCount > 0)
                         {
                             m_GUIState.SelectedRow = row;
+                            RowSelectionChanged(row);
                             if (m_Listener != null && m_Listener.IsAlive)
                             {
                                 ((IViewEventListener)m_Listener.Target).OnRepaint();

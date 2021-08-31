@@ -10,6 +10,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
     /// </summary>
     internal class Sort : Filter
     {
+        int m_SortLevelCountLastLayout = 0;
         public abstract class Level
         {
             public Level(SortOrder order)
@@ -37,30 +38,10 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
             public override string GetColumnName(Database.Table tableIn)
             {
-                return tableIn.GetMetaData().GetColumnByIndex(ColumnIndex).Name;
+                return tableIn.GetMetaData().GetColumnByIndex(ColumnIndex).DisplayName;
             }
 
             public int ColumnIndex;
-        }
-        internal class LevelByName : Level
-        {
-            public LevelByName(string columnName, SortOrder order)
-                : base(order)
-            {
-                this.ColumnName = columnName;
-            }
-
-            public override int GetColumnIndex(Database.Table tableIn)
-            {
-                return tableIn.GetMetaData().GetColumnByName(ColumnName).Index;
-            }
-
-            public override string GetColumnName(Database.Table tableIn)
-            {
-                return ColumnName;
-            }
-
-            public string ColumnName;
         }
         public List<Level> SortLevel = new List<Level>();
 
@@ -127,18 +108,21 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
             EditorGUILayout.BeginVertical();
             int iLevelToRemove = -1;
-            for (int i = 0; i != SortLevel.Count; ++i)
+            if(Event.current.type == EventType.Layout || m_SortLevelCountLastLayout == SortLevel.Count)
             {
-                string sortName = GetSortName(SortLevel[i].Order);
-                string colName = SortLevel[i].GetColumnName(sourceTable);
-
-                EditorGUILayout.BeginHorizontal();
-                if (OnGui_RemoveButton())
+                for (int i = 0; i != SortLevel.Count; ++i)
                 {
-                    iLevelToRemove = i;
+                    string sortName = GetSortName(SortLevel[i].Order);
+                    string colName = SortLevel[i].GetColumnName(sourceTable);
+
+                    EditorGUILayout.BeginHorizontal();
+                    if (OnGui_RemoveButton())
+                    {
+                        iLevelToRemove = i;
+                    }
+                    GUILayout.Label("Sort" + sortName + " '" + colName + "'");
+                    EditorGUILayout.EndHorizontal();
                 }
-                GUILayout.Label("Sort" + sortName + " '" + colName + "'");
-                EditorGUILayout.EndHorizontal();
             }
             if (iLevelToRemove >= 0)
             {
@@ -149,6 +133,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             EditorGUILayout.EndVertical();
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
+
+            if (Event.current.type == EventType.Layout)
+                m_SortLevelCountLastLayout = SortLevel.Count;
 
             //remove this filter if it's empty
             return SortLevel.Count == 0;

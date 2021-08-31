@@ -4,7 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Extensions.String
 {
-    public static class StringExtensions
+    internal static class StringExtensions
     {
 #if NET_LEGACY
         public static StringBuilder Clear(this StringBuilder sb)

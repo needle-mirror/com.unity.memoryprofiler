@@ -57,13 +57,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 w.m_Comparison = comparison.Build(option);
                 return w;
             }
-
-            public static Builder LoadFromXML(XmlElement root)
-            {
-                Builder b = new Builder();
-                b.comparison = Operation.MetaColumnComparison.LoadFromXML(root);
-                return b;
-            }
         }
     }
     internal class WhereUnion

@@ -1,0 +1,71 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
+    <ui:Template name="MemoryUsageBreakdownObjectTableRow" src="/Packages/com.unity.memoryprofiler/Package Resources/UXML/MemoryProfilerModule/MemoryUsageBreakdownObjectTableRow.uxml" />
+    <ui:VisualElement name="proxy-root" class="proxy-root">
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryUsageBreakdown.uss" />
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/UXML/MemoryProfilerModule/MemoryModule.uss" />
+		<uie:Toolbar name="memory-module__toolbar" class="memory-module__toolbar">
+			<uie:ToolbarButton name="memory-module__toolbar__detail-view-menu" class="memory-module__toolbar memory-module__toolbar__menu">
+				<ui:Label name="memory-module__toolbar__detail-view-menu__label" text="Simple" />
+                <ui:VisualElement class="unity-base-popup-field__arrow toolbar__drop-down__arrow" />
+            </uie:ToolbarButton>
+            <uie:ToolbarSpacer />
+            <ui:VisualElement name="memory-module__toolbar__detailed-controls" class="memory-module__toolbar__group">
+                <uie:ToolbarButton text="Take Sample" name="memory-module__toolbar__take-sample-button" class="memory-module__toolbar__button" />
+                <uie:ToolbarToggle focusable="false" text="Gather Object References" name="memory-module__toolbar__gather-references-toggle" />
+                <uie:ToolbarSpacer />
+            </ui:VisualElement>
+            <uie:ToolbarButton text="Install Memory Profiler Package" name="memory-module__toolbar__install-package-button" class="memory-module__toolbar__install-package-button" />
+            <ui:VisualElement name="memory-module__toolbar__editor-warning" class="memory-module__toolbar__group">
+                <ui:Image name="memory-module__toolbar__editor-warning__icon" class="memory-module__toolbar__editor-warning__icon" />
+                <ui:Label name="memory-module__toolbar__editor-warning__label" text="Memory usage in the Editor is not the same as it would be in a Player" class="memory-module__toolbar__label" />
+            </ui:VisualElement>
+        </uie:Toolbar>
+        <ui:VisualElement name="memory-module__view-area">
+            <ui:IMGUIContainer name="memory-module__detaile-snapshot-area" />
+            <ui:VisualElement name="memory-module__no-frame-data__area" class="memory-module__no-frame-data__area">
+                <ui:Label name="memory-module__no-frame-data__label" text="30 B" class="memory-module__no-frame-data__label" />
+            </ui:VisualElement>
+            <ui:ScrollView name="memory-module__simple-area">
+                <ui:VisualElement name="memory-module__simple-area__counter-based-ui">
+                    <ui:VisualElement name="memory-module__simple-area__breakdown__normalized-toggle-holder" class="memory-module__simple-area__breakdown__normalized-toggle-holder">
+                        <ui:Toggle text="Normalized" tooltip="Normalize bars to the selected frame&apos;s memory usage or scale it in relation to the maximal memory usage within the shown frames" name="memory-module__simple-area__breakdown__normalized-toggle" class="memory-module__simple-area__breakdown__normalized-toggle" />
+                    </ui:VisualElement>
+                    <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdown show-unknown="true" header-text="Total Committed Memory Tracking Status" unknown-name="Untracked Memory" name="memory-usage-breakdown__top-level" class="memory-usage-breakdown">
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Tracked Memory" name="memory-usage-breakdown__tracked" show-used="true" background-color-class="background-color__memory-summary-category__tracked" class="background-color__memory-summary-category__tracked" />
+                    </Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdown>
+                    <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdown show-unknown="true" header-text="Total Memory Breakdown" name="memory-usage-breakdown" class="memory-usage-breakdown">
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Managed Heap" background-color-class="background-color__memory-summary-category__managed" show-used="true" name="memory-usage-breakdown__managed-heap" class="background-color__memory-summary-category__managed" />
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Graphics &amp; Graphics Driver" background-color-class="background-color__memory-summary-category__gfx" name="memory-usage-breakdown__gfx" class="background-color__memory-summary-category__gfx" />
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Audio" background-color-class="background-color__memory-summary-category__audio" show-used="false" name="memory-usage-breakdown__audio" class="background-color__memory-summary-category__audio" />
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Video" background-color-class="background-color__memory-summary-category__video" show-used="false" name="memory-usage-breakdown__video" class="background-color__memory-summary-category__video" />
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement name="memory-usage-breakdown__other" show-used="true" background-color-class="background-color__memory-summary-category__unity-other" class="background-color__memory-summary-category__unity-other" />
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Profiler" background-color-class="background-color__memory-summary-category__profiler" show-used="true" name="memory-usage-breakdown__profiler" class="background-color__memory-summary-category__profiler" />
+                    </Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdown>
+                    <ui:VisualElement name="memory-usage-breakdown__object-stats" class="memory-usage-breakdown__object-stats">
+                        <ui:Label name="memory-usage-breakdown__object-stats__title" text="Objects stats" class="memory-usage-breakdown__object-stats__title" />
+                        <ui:VisualElement name="memory-usage-breakdown__object-stats__header" class="memory-usage-breakdown__object-stats__header legend_row">
+                            <ui:Label name="memory-usage-breakdown__object-table__name" class="memory-usage-breakdown__object-table__name-column" />
+                            <ui:Label name="memory-usage-breakdown__object-table__count-column" text="Count" class="memory-usage-breakdown__object-table__count-column memory-usage-breakdown__object-table__column-title" />
+                            <ui:Label name="memory-usage-breakdown__object-table__size-column" text="Size" class="memory-usage-breakdown__object-table__size-column memory-usage-breakdown__object-table__column-title" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="memory-usage-breakdown__object-stats_list" class="legend__list">
+                            <ui:Instance template="MemoryUsageBreakdownObjectTableRow" name="memory-usage-breakdown__object-stats__textures" class="memory-usage-breakdown__object-stats__row" />
+                            <ui:Instance template="MemoryUsageBreakdownObjectTableRow" name="memory-usage-breakdown__object-stats__meshes" class="memory-usage-breakdown__object-stats__row" />
+                            <ui:Instance template="MemoryUsageBreakdownObjectTableRow" name="memory-usage-breakdown__object-stats__materials" class="memory-usage-breakdown__object-stats__row" />
+                            <ui:Instance template="MemoryUsageBreakdownObjectTableRow" name="memory-usage-breakdown__object-stats__animation-clips" class="memory-usage-breakdown__object-stats__row" />
+                            <ui:Instance template="MemoryUsageBreakdownObjectTableRow" name="memory-usage-breakdown__object-stats__assets" class="memory-usage-breakdown__object-stats__row" />
+                            <ui:Instance template="MemoryUsageBreakdownObjectTableRow" name="memory-usage-breakdown__object-stats__game-objects" class="memory-usage-breakdown__object-stats__row" />
+                            <ui:Instance template="MemoryUsageBreakdownObjectTableRow" name="memory-usage-breakdown__object-stats__scene-objects" class="memory-usage-breakdown__object-stats__row legend__last-row" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="memory-usage-breakdown__object-stats__gc" class="memory-usage-breakdown__object-stats__separate-from-table legend_row">
+                            <ui:Label name="memory-usage-breakdown__object-table__name" text="GC Allocations in Frame" class="memory-usage-breakdown__object-table__name-column" />
+                            <ui:Label name="memory-usage-breakdown__object-table__count-column" text="10" class="memory-usage-breakdown__object-table__count-column" />
+                            <ui:Label name="memory-usage-breakdown__object-table__size-column" text="30 B" class="memory-usage-breakdown__object-table__size-column" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:TextField name="memory-module__simple-area__label" readonly="true" multiline="true" class="selectable-label" />
+            </ui:ScrollView>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

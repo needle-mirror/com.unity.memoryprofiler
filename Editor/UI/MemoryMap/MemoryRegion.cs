@@ -9,6 +9,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         VirtualMemory,
         Managed,
         ManagedStack,
+        ManagedDomain,
     };
 
     internal class MemoryRegion

@@ -23,6 +23,7 @@ Shader "Resources/MemoryMap"
             Offset [_ZBias], [_ZBias]
 
             CGPROGRAM
+            #pragma target 2.0
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"

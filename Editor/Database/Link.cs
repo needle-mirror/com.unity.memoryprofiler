@@ -1,7 +1,16 @@
+using UnityEditor;
+using UnityEditor.Networking.PlayerConnection;
+using UnityEditorInternal;
+using UnityEngine.Diagnostics;
+using System.Reflection;
+using System;
+using System.Linq;
+using Unity.MemoryProfiler.Editor.UIContentData;
+
 namespace Unity.MemoryProfiler.Editor.Database
 {
     // A request to open a link.
-    internal class LinkRequest
+    internal abstract class LinkRequest
     {
         ParameterSet m_Parameters;
         public ParameterSet Parameters
@@ -19,6 +28,8 @@ namespace Unity.MemoryProfiler.Editor.Database
                 return m_Parameters != null && m_Parameters.Count > 0;
             }
         }
+
+        public abstract bool IsPingLink { get; }
     }
 
     // Definition of a link to a table
@@ -45,7 +56,8 @@ namespace Unity.MemoryProfiler.Editor.Database
         public Table SourceTable;
         public Column SourceColumn;
         public long SourceRow;
-        public TableReference TableReference { get { return new TableReference(LinkToOpen.TableName, Parameters); } }
+
+        public override bool IsPingLink => false;
 
         public static LinkRequestTable MakeLinkRequest(TableLink metaLink, Table sourceTable, Column sourceColumn, long sourceRow, Database.Operation.ExpressionParsingContext expressionParsingContext)
         {
@@ -69,6 +81,51 @@ namespace Unity.MemoryProfiler.Editor.Database
                 }
             }
             return lr;
+        }
+    }
+
+    internal class LinkRequestSceneHierarchy : LinkRequest
+    {
+        static MethodInfo ReflectGetLocalGuidMethod()
+        {
+            return typeof(EditorGUIUtility).Assembly.GetType("UnityEditor.EditorConnectionInternal").GetMethod("GetLocalGuid");
+        }
+
+        static MethodInfo GetLocalGuid = null;
+        
+
+        public override bool IsPingLink => true;
+        int instanceId = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
+        uint sessionId = uint.MaxValue;
+        public static LinkRequestSceneHierarchy MakeLinkRequest(int instanceIdToPing, uint sessionId)
+        {
+            var lr = new LinkRequestSceneHierarchy();
+            lr.instanceId = instanceIdToPing;
+            lr.sessionId = sessionId;
+
+            return lr;
+        }
+
+        public void Ping()
+        {
+            if (GetLocalGuid == null)
+                GetLocalGuid = ReflectGetLocalGuidMethod();
+            if(GetLocalGuid == null)
+            {
+                UnityEngine.Debug.LogWarning("Pinging objects based on their Instance ID does not work in this Unity version. To enable that functionality, please update your Unity installation to 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer.");
+                return;
+            }
+
+            var currentGUID = (uint)GetLocalGuid.Invoke(null, null);
+
+            if (currentGUID == sessionId)
+            {
+                Selection.instanceIDs = new int[0];
+                Selection.activeInstanceID = instanceId;
+                EditorGUIUtility.PingObject(instanceId);
+            }
+            else
+                UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, sessionId, currentGUID);
         }
     }
 }

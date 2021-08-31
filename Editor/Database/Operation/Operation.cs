@@ -2,32 +2,6 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.Database.Operation
 {
-    internal class Comparer
-    {
-        public static System.Collections.Generic.IComparer<DataT> Ascending<DataT>() where DataT : System.IComparable
-        {
-            if (typeof(DataT).IsValueType)
-            {
-                return new AscendingComparerValueType<DataT>();
-            }
-            else
-            {
-                return new AscendingComparerReferenceType<DataT>();
-            }
-        }
-
-        public static System.Collections.Generic.IComparer<DataT> Descending<DataT>() where DataT : System.IComparable
-        {
-            if (typeof(DataT).IsValueType)
-            {
-                return new DescendingComparerValueType<DataT>();
-            }
-            else
-            {
-                return new DescendingComparerReferenceType<DataT>();
-            }
-        }
-    }
     internal enum Operator
     {
         Equal,
@@ -150,26 +124,25 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 case Operator.IsIn:
                 case Operator.NotIn:
+                {
+                    long rightRowCount = rightExpression.RowCount();
+                    for (long expRow = 0; expRow != rightRowCount; ++expRow)
                     {
-                        long rightRowCount = rightExpression.RowCount();
-                        for (long expRow = 0; expRow != rightRowCount; ++expRow)
+                        var rightValue = rightExpression.GetValue(expRow);
+                        if (leftValue == rightValue)
                         {
-                            var rightValue = rightExpression.GetValue(expRow);
-                            if (leftValue == rightValue)
-                            {
-                                return op == Operator.IsIn;
-                            }
+                            return op == Operator.IsIn;
                         }
-                        return op == Operator.NotIn;
                     }
+                    return op == Operator.NotIn;
+                }
                 default:
-                    {
-                        var rightValue = rightExpression.GetValue(rightExpressionRow);
-                        return Match(op, leftValue, rightValue);
-                    }
+                {
+                    var rightValue = rightExpression.GetValue(rightExpressionRow);
+                    return Match(op, leftValue, rightValue);
+                }
             }
         }
-
 
         public static bool Match(Operator op, int leftValue, TypedExpression<int> rightExpression, long rightExpressionRow)
         {
@@ -238,7 +211,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             }
             throw new System.Exception("bad operator");
         }
-
 
         public static bool Match(Operator op, int lhs, int rhs)
         {

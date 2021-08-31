@@ -168,6 +168,17 @@ namespace Unity.MemoryProfiler.Editor.Database
             return GetColumnByIndex(mc.Index);
         }
 
+        public int GetColumnIndexByName(string name)
+        {
+            if (name == MetaTable.kRowIndexColumnName)
+            {
+                return 0;
+            }
+            var mc = m_Meta.GetColumnByName(name);
+            if (mc == null) return -1;
+            return mc.Index;
+        }
+
         //will return -1 if the underlying data has not been computed yet.
         // ComputeRowCount or Update should be called at least once before getting accurate row count
         public abstract long GetRowCount();
@@ -287,39 +298,5 @@ namespace Unity.MemoryProfiler.Editor.Database
     internal interface IExpandColumn
     {
         void Initialize(ExpandTable table, Column column, int columnIndex);
-    }
-
-
-    public static class DebugUtility
-    {
-        public static bool TryGetMandatoryXmlAttribute(System.Xml.XmlElement element, string attributeName, out string value)
-        {
-            string valueGot = element.GetAttribute(attributeName);
-            if (String.IsNullOrEmpty(valueGot))
-            {
-                Debug.LogError("Element '" + element.Name + "' is missing the '" + attributeName + "' attribute.");
-                value = null;
-
-                byte errorID = 3;
-                switch (attributeName)
-                {
-                    case "column":
-                        errorID = 4;
-                        break;
-                    case "view":
-                        errorID = 5;
-                        break;
-                    case "order":
-                        errorID = 6;
-                        break;
-                    default:
-                        break;
-                }
-                MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(errorID);
-                return false;
-            }
-            value = valueGot;
-            return true;
-        }
     }
 }

@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
+	<ui:VisualElement name="proxy-root" class="proxy-root">
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
+		<ui:VisualElement name="session-list-item" style="flex-grow: 1;">
+			<ui:VisualElement name="session-header" style="padding-top: 17px;">
+				<ui:VisualElement style="flex-direction: row;">
+					<ui:Foldout name="seession-list__item__foldout" text="Project name - Session name 1" class="seession-list__item__foldout" style="color: rgb(134, 134, 134); -unity-text-align: upper-left;">
+						<Unity.MemoryProfiler.Editor.UI.SnapshotListItem name="SnapshotListItem" />
+						<Unity.MemoryProfiler.Editor.UI.SnapshotListItem name="SnapshotListItem" />
+					</ui:Foldout>
+				</ui:VisualElement>
+			</ui:VisualElement>
+		</ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -87,19 +87,29 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         static ProfilerMarker s_Read = new ProfilerMarker("QueriedSnapshot.Filereader.Read");
         static ProfilerMarker s_AsyncRead = new ProfilerMarker("QueriedSnapshot.Filereader.AsyncRead");
 
-        uint m_Version;
+        FormatVersion m_Version;
         LowLevelFileReader m_FileReader;
         NativeArray<Entry> m_Entries;
         NativeArray<Block> m_Blocks;
+
+        public bool HasOpenFile
+        {
+            get { return m_FileReader.IsCreated; }
+        }
 
         public string FullPath
         {
             get { return m_FileReader.FilePath; }
         }
 
-        public uint FormatVersion
+        public FormatVersion FormatVersion
         {
             get { return m_Version; }
+        }
+
+        public uint FormatVersionNumeric
+        {
+            get { return unchecked((uint)m_Version); }
         }
 
         public ReadError Open(string filePath)
@@ -115,7 +125,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                         uint vBuffer = 0;
                         byte* versionPtr = (byte*)&vBuffer;
                         ReadUnsafe(EntryType.Metadata_Version, versionPtr, sizeof(uint), 0, 1);
-                        m_Version = vBuffer;
+                        m_Version = (FormatVersion)vBuffer;
                     }
                 }
                 return error;
@@ -127,11 +137,11 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             return m_Entries[(int)type].Header.Format;
         }
 
-        public ulong GetSizeForEntryRange(EntryType entry, uint offset, uint count)
+        public long GetSizeForEntryRange(EntryType entry, long offset, long count)
         {
             Checks.CheckEntryTypeValueIsValidAndThrow(entry);
             var entryData = m_Entries[(int)entry];
-            Checks.CheckIndexOutOfBoundsAndThrow(offset + count, entryData.Count);
+            Checks.CheckIndexOutOfBoundsAndThrow(offset, entryData.Count);
 
             return entryData.ComputeByteSizeForEntryRange(offset, count, true);
         }
@@ -143,16 +153,28 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
             return entryData.Count;
         }
-
-        public ReadError Read(EntryType entry, NativeArray<byte> buffer, uint offset, uint count)
+        
+        public GenericReadOperation Read(EntryType entry, DynamicArray<byte> buffer, long offset, long count)
         {
             unsafe
             {
-                return ReadUnsafe(entry, buffer.GetUnsafePtr(), buffer.Length, offset, count);
+                var op =  AsyncRead(entry, buffer, offset, count);
+                op.Complete();
+                return op;
             }
         }
 
-        public unsafe ReadError ReadUnsafe(EntryType entry, void* buffer, int bufferLength, uint offset, uint count)
+        public GenericReadOperation Read(EntryType entry, long offset, long count, Allocator allocator)
+        {
+            unsafe
+            {
+                var op = AsyncRead(entry, offset, count, allocator);
+                op.Complete();
+                return op;
+            }
+        }
+
+        public unsafe ReadError ReadUnsafe(EntryType entry, void* buffer, long bufferLength, long offset, long count)
         {
             using (s_Read.Auto())
             {
@@ -167,28 +189,28 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public GenericReadOperation AsyncRead(EntryType entry, uint offset, uint count, Allocator allocator)
+        public GenericReadOperation AsyncRead(EntryType entry, long offset, long count, Allocator allocator)
         {
             var readSize = GetSizeForEntryRange(entry, offset, count);
-            return InternalAsyncRead(entry, new NativeArray<byte>((int)readSize, allocator), offset, count, true);
+            return InternalAsyncRead(entry, new DynamicArray<byte>(readSize, allocator), offset, count, true);
         }
 
-        public GenericReadOperation AsyncRead(EntryType entry, NativeArray<byte> buffer, uint offset, uint count)
+        public GenericReadOperation AsyncRead(EntryType entry, DynamicArray<byte> buffer, long offset, long count)
         {
             return InternalAsyncRead(entry, buffer, offset, count, false);
         }
 
-        GenericReadOperation InternalAsyncRead(EntryType entry, NativeArray<byte> buffer, uint offset, uint count, bool ownsBuffer)
+        GenericReadOperation InternalAsyncRead(EntryType entry, DynamicArray<byte> buffer, long offset, long count, bool ownsBuffer)
         {
             using (s_AsyncRead.Auto())
             {
                 unsafe
                 {
-                    var res = InternalRead(entry, offset, count, buffer.GetUnsafePtr(), buffer.Length);
+                    var res = InternalRead(entry, offset, count, buffer.GetUnsafePtr(), buffer.Count);
                     GenericReadOperation asyncOp = null;
                     if (res.error != ReadError.InProgress)
                     {
-                        asyncOp = new GenericReadOperation(default(ReadHandle), default(NativeArray<byte>));
+                        asyncOp = new GenericReadOperation(default(ReadHandle), default(DynamicArray<byte>));
                         asyncOp.Error = res.error;
                         return asyncOp;
                     }
@@ -317,7 +339,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
         unsafe static ReadError BuildDataEntries(LowLevelFileReader file, NativeArray<long> entryTypeOffsets, out NativeArray<Entry> entryStorage)
         {
-            entryStorage = new NativeArray<Entry>(entryTypeOffsets.Length, Allocator.Persistent);
+            entryStorage = new NativeArray<Entry>((int)EntryType.Count, Allocator.Persistent);
 
             using (var headers = new NativeArray<EntryHeader>(entryTypeOffsets.Length, Allocator.TempJob, NativeArrayOptions.ClearMemory))
             {
@@ -420,9 +442,10 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             return ReadError.Success;
         }
 
-        unsafe ScheduleResult InternalRead(EntryType entry, uint offset, uint count, void* buffer, int bufferLength)
+        unsafe ScheduleResult InternalRead(EntryType entry, long offset, long count, void* buffer, long bufferLength)
         {
             Checks.CheckEntryTypeValueIsValidAndThrow(entry);
+            Checks.CheckEquals(GetSizeForEntryRange(entry, 0, count), bufferLength);
             var result = new ScheduleResult();
 
             var entryData = m_Entries[(int)entry];
@@ -433,7 +456,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
 
             Checks.CheckIndexOutOfBoundsAndThrow(offset, count);
-            Checks.CheckIndexOutOfBoundsAndThrow((long)entryData.ComputeByteSizeForEntryRange(offset, count, true), bufferLength);
+            Checks.CheckIndexInRangeAndThrow((long)entryData.ComputeByteSizeForEntryRange(offset, count, true), bufferLength);
             long rangeByteSize = (long)entryData.ComputeByteSizeForEntryRange(offset, count, false);
 
             var bufferPtr = (byte*)buffer;
@@ -501,17 +524,17 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             return m_FileReader.Read(&readCmd, 1, ReadMode.Async);
         }
 
-        unsafe ReadHandle ScheduleConstSizeElementArrayRead(Entry entry, uint firstElement, long readSize, void* dst)
+        unsafe ReadHandle ScheduleConstSizeElementArrayRead(Entry entry, long firstElement, long readSize, void* dst)
         {
             var block = m_Blocks[(int)entry.Header.BlockIndex];
-            var blockOffset = entry.Header.EntriesMeta * firstElement;
+            var blockOffset = entry.Header.EntriesMeta * (ulong)firstElement;
             var chunkSize = block.Header.ChunkSize;
             var chunkIndex = (uint)(blockOffset / chunkSize);
             var chunk = block.GetOffsetsPtr() + chunkIndex;
             var chunkWithLocalOffset = *chunk + (uint)(blockOffset % chunkSize);
 
             byte* dstPtr = (byte*)dst;
-            using (NativeBlockList<ReadCommand> chunkReads = new NativeBlockList<ReadCommand>(64, 64))
+            using (DynamicBlockArray<ReadCommand> chunkReads = new DynamicBlockArray<ReadCommand>(64, 64))
             {
                 var readCmd = ReadCommandBufferUtils.GetCommand(dstPtr, readSize, chunkWithLocalOffset);
                 chunkReads.Push(readCmd);
@@ -550,7 +573,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         }
 
         //Returns ammount of written bytes
-        unsafe static long ProcessDynamicSizeElement(ref NativeBlockList<ReadCommand> chunkReads, ref Block block, ElementRead elementRead)
+        unsafe static long ProcessDynamicSizeElement(ref DynamicBlockArray<ReadCommand> chunkReads, ref Block block, ElementRead elementRead)
         {
             long written = 0;
             var chunkSize = (long)block.Header.ChunkSize;
@@ -590,12 +613,12 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         }
 
         //Dynamic size entries are split into chunks that are spread around the file. We need to read per chunk
-        unsafe ReadHandle ScheduleDynamicSizeElementArrayReads(Entry entry, uint elementOffset, uint elementCount, long readSize, void* buffer)
+        unsafe ReadHandle ScheduleDynamicSizeElementArrayReads(Entry entry, long elementOffset, long elementCount, long readSize, void* buffer)
         {
             var block = m_Blocks[(int)entry.Header.BlockIndex];
             byte* dst = (byte*)buffer;
 
-            var chunkReads = new NativeBlockList<ReadCommand>(64, 64);
+            var chunkReads = new DynamicBlockArray<ReadCommand>(64, 64);
             for (int i = 0; i < elementCount; ++i)
             {
                 var e = new ElementRead();
@@ -609,7 +632,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
             Checks.CheckEquals(0, readSize);
 
-            //TODO: find a way to use the block array chunks directly for scheduling, probably add readcommandbuffer
+            //TODO: find a way to use the block array chunks directly for scheduling, probably add read command buffer
             using (NativeArray<ReadCommand> readCommands = new NativeArray<ReadCommand>((int)chunkReads.Count, Allocator.Temp))
             {
                 var cmdsPtr = (ReadCommand*)readCommands.GetUnsafePtr();
@@ -619,6 +642,11 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 chunkReads.Dispose();
                 return m_FileReader.Read(cmdsPtr, (uint)readCommands.Length, ReadMode.Async);
             }
+        }
+
+        public void Close()
+        {
+            Dispose();
         }
 
         public void Dispose()

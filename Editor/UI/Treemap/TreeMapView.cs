@@ -220,13 +220,13 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                 _selectedGroup = null;
                 _selectedItem = null;
 
-                if(m_SelectionGroupMesh != null)
+                if (m_SelectionGroupMesh != null)
                     m_SelectionGroupMesh.CleanupMeshes();
 
-                if(m_SelectionMesh != null)
+                if (m_SelectionMesh != null)
                     m_SelectionMesh.CleanupMeshes();
             }
-            
+
             m_ZoomArea.FocusTo(1, Vector2.zero, null, true);
         }
 
@@ -273,6 +273,18 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             _groups[groupName].Items.Add(item);
         }
 
+        public void AddEmptyObjectCount(string groupName)
+        {
+            if (!_groups.ContainsKey(groupName))
+            {
+                Group newGroup = new Group();
+                newGroup.Name = groupName;
+                newGroup.Items = new List<Item>();
+                _groups.Add(groupName, newGroup);
+            }
+            ++_groups[groupName].EmptyObjectCount;
+        }
+
         public void UpdateMetric()
         {
             foreach (Group group in _groups.Values)
@@ -286,7 +298,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
         private void UpdateGroupRect()
         {
-            if(_groups.Count == 0)
+            if (_groups.Count == 0)
             {
                 RefreshMesh();
                 return;

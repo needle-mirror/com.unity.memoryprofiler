@@ -1,0 +1,42 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
+    <ui:Template name="MemoryUsageDial" src="MemoryUsageDial.uxml" />
+	<ui:VisualElement name="proxy-root" class="proxy-root">
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
+		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/OpenSnapshotsWindow_style.uss" />
+		<ui:VisualElement name="open-snapshot" class="open-snapshot__container">
+			<ui:VisualElement name="open-snapshot" class="open-snapshot__image-and-meta-data__container">
+				<ui:VisualElement name="preview-image-holder" class="preview-image-holder">
+                    <ui:Image name="preview-image-open-item" class="preview-image-open-item">
+                        <ui:Image name="preview-image__editor-icon" class="platform-icon Editor" />
+                        <ui:Image name="preview-image__platform-icon" class="platform-icon StandaloneWindows" />
+                    </ui:Image>
+                </ui:VisualElement>
+                <ui:VisualElement name="open-snapshot__meta-data__container" class="open-snapshot__meta-data__container">
+                    <ui:VisualElement name="open-snapshot__meta-data" class="open-snapshot__meta-data">
+                        <ui:Label text="No snapshot selected." display-tooltip-when-elided="true" name="noDataLoaded" class="snapshot__meta-data__text open-snapshot__meta-data__text snapshotMetaDataName" style="display: none;" />
+                        <ui:Label text="Snapshot Name" display-tooltip-when-elided="true" name="snapshot-name" class="snapshot__meta-data__text open-snapshot__meta-data__text snapshotMetaDataName" />
+                        <ui:Label text="2021-02-09 14:08" display-tooltip-when-elided="true" name="snapshot-date" class="snapshot__meta-data__text open-snapshot__meta-data__text snapshotMetaDataDate" />
+                        <ui:Label text="Session Name" display-tooltip-when-elided="true" name="open-snapshot__session-name" class="snapshot__meta-data__text open-snapshot__meta-data__text snapshotMetaDataSessionName project-or-session-name-text" />
+                        <ui:Label text="Project Name" display-tooltip-when-elided="true" name="open-snapshot__project-name" class="snapshot__meta-data__text open-snapshot__meta-data__text snapshotMetaDataProjectName project-or-session-name-text" />
+                        <ui:Label text="A" display-tooltip-when-elided="true" name="open-snapshot__compare-tag" class="open-snapshot__compare-tag image-tint-color__snapshot-a" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="total-ram-usage-bar__holder">
+                <ui:VisualElement name="total-ram-usage-bar" class="total-ram-usage-bar">
+                    <ui:VisualElement name="total-ram-usage-bar__used-bar" class="total-ram-usage-bar__used-bar" />
+                </ui:VisualElement>
+                <ui:VisualElement class="total-ram-usage-bar__subtext">
+                    <ui:VisualElement>
+                        <ui:Label name="open-snapshot__total-ram-used" text="Total Used: --GB" display-tooltip-when-elided="true" />
+                        <ui:Label name="open-snapshot__total-hardware-resources" text="Hardware Resources: --GB" display-tooltip-when-elided="true" />
+                    </ui:VisualElement>
+                    <ui:Instance template="MemoryUsageDial" name="MemoryUsageDial" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="no-snapshot-loaded" class="open-snapshot__container" style="display: none;">
+            <ui:Label text="No snapshot selected." name="no-snapshot-loaded-text" class="no-snapshot-loaded-text" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

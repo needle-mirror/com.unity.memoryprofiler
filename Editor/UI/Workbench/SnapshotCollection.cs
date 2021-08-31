@@ -8,6 +8,8 @@ using System.Linq;
 using Unity.MemoryProfiler.Editor;
 using System.Text;
 using Unity.MemoryProfiler.Editor.Extensions.String;
+using Unity.MemoryProfiler.Editor.UIContentData;
+using Unity.MemoryProfiler.Editor.Diagnostics;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 #else
@@ -17,16 +19,118 @@ using UnityEditorInternal;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    internal class SnapshotCollectionEnumerator : IEnumerator<SnapshotFileData>
+    [Serializable]
+    internal class SessionInfo : IComparable<SessionInfo>
     {
-        int m_Index;
-        List<SnapshotFileData> m_Files;
+        public readonly uint SessionId;
+        public readonly string ProductName;
+        public readonly List<SnapshotFileData> m_Snapshots;
+        public int Count => m_Snapshots.Count;
+        public SnapshotFileData this[int index] => m_Snapshots[index];
+        public IEnumerable<SnapshotFileData> Snapshots => m_Snapshots;
 
-        public SnapshotFileData Current { get { return m_Files[m_Index]; } }
+        public DynamicVisualElements DynamicUIElements;
+
+        DateTime m_DateTime;
+
+        public string SessionName {
+            get => m_SessionName;
+            set {
+                if(m_SessionName != value || value != DynamicUIElements.Foldout.text)
+                {
+                    m_SessionName = value;
+                    SessionNameChanged(value);
+                    DynamicUIElements.UpdateFoldoutUI(this);
+                }
+            }
+        }
+        private string m_SessionName;
+
+        public event Action<string> SessionNameChanged = delegate {};
+
+        internal struct DynamicVisualElements
+        {
+            public VisualElement Root;
+            public Foldout Foldout;
+            public void UpdateFoldoutUI(SessionInfo session)
+            {
+                if (Foldout == null)
+                    return;
+                Foldout.text = string.Format(TextContent.SessionFoldoutLabel.text, session.SessionName, session.ProductName);
+                Foldout.tooltip = string.Format(TextContent.SessionFoldoutLabel.tooltip, Foldout.text, session.SessionId);
+            }
+        }
+
+        public SessionInfo(SnapshotFileData firstSnapshot)
+        {
+            SessionId = firstSnapshot.GuiData.SessionId;
+            m_SessionName = firstSnapshot.GuiData.ProductName;
+            ProductName = firstSnapshot.GuiData.ProductName;
+            m_DateTime = firstSnapshot.GuiData.UtcDateTime;
+            m_Snapshots = new List<SnapshotFileData>
+            {
+                firstSnapshot
+            };
+        }
+
+        public void Add(SnapshotFileData snapshot)
+        {
+            // take the date from the earliest snapshot as date for the session
+            if (m_DateTime.CompareTo(snapshot.GuiData.UtcDateTime) > 0)
+                m_DateTime = snapshot.GuiData.UtcDateTime;
+
+            for (int i = 0; i < m_Snapshots.Count; i++)
+            {
+                if (m_Snapshots[i].CompareTo(snapshot) > 0)
+                {
+                    m_Snapshots.Insert(i, snapshot);
+                    return;
+                }
+            }
+            m_Snapshots.Add(snapshot);
+            // The list is always sorted 
+            //Sort();
+        }
+
+        public bool Remove(SnapshotFileData snapshot)
+        {
+            return m_Snapshots.Remove(snapshot);
+        }
+
+        public int CompareTo(SessionInfo other)
+        {
+            return m_DateTime.CompareTo(other.m_DateTime);
+        }
+
+        public void Sort()
+        {
+            // The list is always sorted 
+            //m_Snapshots.Sort();
+        }
+    }
+
+    [Serializable]
+    internal struct SessionListEnumerator
+    {
+        public SessionInfo SessionInfo;
+        public SnapshotFileData Snapshot;
+    }
+
+    internal class SnapshotCollectionEnumerator : IEnumerator<SessionListEnumerator>
+    {
+        int m_SessionIndex;
+        int m_SnapshotIndex;
+        List<SessionInfo> m_Files;
+
+        public SessionListEnumerator Current {
+            get {
+                return new SessionListEnumerator { SessionInfo = m_Files[m_SessionIndex], Snapshot = m_Files[m_SessionIndex][m_SnapshotIndex] };
+            }
+        }
         object IEnumerator.Current { get { return Current; } }
         public int Count { get { return m_Files.Count; } }
 
-        internal SnapshotCollectionEnumerator(List<SnapshotFileData> files)
+        internal SnapshotCollectionEnumerator(List<SessionInfo> files)
         {
             m_Files = files;
             Reset();
@@ -41,14 +145,22 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (m_Files == null)
                 return false;
-
-            ++m_Index;
-            return m_Index < m_Files.Count;
+            if(m_SessionIndex == -1 || (m_SessionIndex < m_Files.Count && m_Files[m_SessionIndex].Count <= m_SnapshotIndex + 1))
+            {
+                ++m_SessionIndex;
+                m_SnapshotIndex = 0;
+            }
+            else
+            {
+                ++m_SnapshotIndex;
+            }
+            return m_SessionIndex < m_Files.Count && m_Files[m_SessionIndex].Count > m_SnapshotIndex;
         }
 
         public void Reset()
         {
-            m_Index = -1;
+            m_SessionIndex = -1;
+            m_SnapshotIndex = 0;
         }
     }
 
@@ -61,15 +173,19 @@ namespace Unity.MemoryProfiler.Editor
     internal class SnapshotCollection : IDisposable
     {
         DirectoryInfo m_Info;
-        List<SnapshotFileData> m_Snapshots;
-        public Action<SnapshotCollectionEnumerator> collectionRefresh;
+        List<SessionInfo> m_Sessions = new List<SessionInfo>();
+        Dictionary<uint, SessionInfo> m_SessionsDictionary = new Dictionary<uint, SessionInfo>();
+        public event Action<SnapshotCollectionEnumerator> collectionRefresh = delegate { };
+        public event Action<SessionInfo> sessionDeleted = delegate { };
+        public event Action<uint, string> SessionNameChanged = delegate { };
 
         public string Name { get { return m_Info.Name; } }
 
         public SnapshotCollection(string collectionPath)
         {
             m_Info = new DirectoryInfo(collectionPath);
-            m_Snapshots = new List<SnapshotFileData>();
+            m_Sessions = new List<SessionInfo>();
+            m_SessionsDictionary = new Dictionary<uint, SessionInfo>();
 
             if (!m_Info.Exists)
                 m_Info.Create();
@@ -79,17 +195,21 @@ namespace Unity.MemoryProfiler.Editor
 
         internal void RefreshScreenshots()
         {
-            foreach (var snapshot in m_Snapshots)
+            foreach (var session in m_Sessions)
             {
-                snapshot.RefreshScreenshot();
+                foreach (var snapshot in session.Snapshots)
+                {
+                    snapshot.RefreshScreenshot();
+                }
             }
         }
 
         void RefreshFileListInternal(DirectoryInfo info)
         {
             Cleanup();
-            m_Snapshots = new List<SnapshotFileData>();
-            var fileEnumerator = info.GetFiles('*' + MemoryProfilerWindow.k_SnapshotFileExtension, SearchOption.AllDirectories);
+            m_Sessions.Clear();
+            m_SessionsDictionary.Clear();
+            var fileEnumerator = info.GetFiles('*' + FileExtensionContent.SnapshotFileExtension, SearchOption.AllDirectories);
             for (int i = 0; i < fileEnumerator.Length; ++i)
             {
                 FileInfo fInfo = fileEnumerator[i];
@@ -97,7 +217,8 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     try
                     {
-                        m_Snapshots.Add(new SnapshotFileData(fInfo));
+                        var fileData = new SnapshotFileData(fInfo);
+                        AddSnapshotToSessionsList(fileData);
                     }
                     catch (IOException e)
                     {
@@ -106,12 +227,46 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            m_Snapshots.Sort();
+            m_Sessions.Sort();
+
+            foreach (var session in m_SessionsDictionary)
+            {
+                session.Value.Sort();
+            }
 
             if (collectionRefresh != null)
             {
                 using (var it = GetEnumerator())
                     collectionRefresh(it);
+            }
+        }
+
+        void AddSnapshotToSessionsList(SnapshotFileData fileData)
+        {
+            if (!m_SessionsDictionary.ContainsKey(fileData.GuiData.SessionId))
+            {
+                var session = new SessionInfo(fileData);
+                m_Sessions.Add(session);
+                m_SessionsDictionary[fileData.GuiData.SessionId] = session;
+            }
+            else
+            {
+                m_SessionsDictionary[fileData.GuiData.SessionId].Add(fileData);
+            }
+            fileData.GuiData.SessionName = m_SessionsDictionary[fileData.GuiData.SessionId].SessionName;
+            var id = fileData.GuiData.SessionId;
+            m_SessionsDictionary[fileData.GuiData.SessionId].SessionNameChanged += (s) => SessionNameChanged(id, s);
+        }
+        
+        void RemoveSnapshotFromSessionsList(SnapshotFileData fileData)
+        {
+            var session = fileData.GuiData.SessionId;
+            m_SessionsDictionary[session].Remove(fileData);
+            if (m_SessionsDictionary[session].Count == 0)
+            {
+                // get rid of the session, if that was the last snapshot in it.
+                m_Sessions.Remove(m_SessionsDictionary[session]);
+                m_SessionsDictionary.Remove(session);
             }
         }
 
@@ -123,33 +278,33 @@ namespace Unity.MemoryProfiler.Editor
                 return false;
             }
             int nameStart = snapshot.FileInfo.FullName.LastIndexOf(snapshot.FileInfo.Name);
-            string targetPath = snapshot.FileInfo.FullName.Substring(0, nameStart) + name + MemoryProfilerWindow.k_SnapshotFileExtension;
+            string targetPath = snapshot.FileInfo.FullName.Substring(0, nameStart) + name + FileExtensionContent.SnapshotFileExtension;
 
             if (targetPath == snapshot.FileInfo.FullName)
             {
-                snapshot.GuiData.dynamicVisualElements.snapshotNameLabel.text = snapshot.GuiData.name.text;
-                snapshot.GuiData.RenamingFieldVisible = false;
+                snapshot.GuiData.VisualElement.SnapshotNameLabel.text = snapshot.GuiData.Name;
+                snapshot.GuiData.VisualElement.RenamingFieldVisible = false;
                 return false;
             }
 
             var dir = snapshot.FileInfo.FullName.Substring(0, nameStart);
-            if (Directory.GetFiles(dir).Contains(string.Format("{0}{1}{2}", dir, name, MemoryProfilerWindow.k_SnapshotFileExtension)))
+            if (Directory.GetFiles(dir).Contains(string.Format("{0}{1}{2}", dir, name, FileExtensionContent.SnapshotFileExtension)))
             {
                 EditorUtility.DisplayDialog("Error", string.Format("Filename '{0}' already exists", name), "OK");
                 return false;
             }
 
-            snapshot.GuiData.name = new GUIContent(name);
-            snapshot.GuiData.dynamicVisualElements.snapshotNameLabel.text = name;
-            snapshot.GuiData.RenamingFieldVisible = false;
+            snapshot.GuiData.Name = name;
+            snapshot.GuiData.VisualElement.SnapshotNameLabel.text = name;
+            snapshot.GuiData.VisualElement.RenamingFieldVisible = false;
 
 #if UNITY_2019_3_OR_NEWER
-            if (snapshot.GuiData.guiTexture != null)
+            if (snapshot.GuiData.GuiTexture != null)
             {
-                string possibleSSPath = Path.ChangeExtension(snapshot.FileInfo.FullName, ".png");
+                string possibleSSPath = Path.ChangeExtension(snapshot.FileInfo.FullName, FileExtensionContent.SnapshotScreenshotFileExtension);
                 if (File.Exists(possibleSSPath))
                 {
-                    File.Move(possibleSSPath, Path.ChangeExtension(targetPath, ".png"));
+                    File.Move(possibleSSPath, Path.ChangeExtension(targetPath, FileExtensionContent.SnapshotScreenshotFileExtension));
                 }
             }
 #endif
@@ -159,23 +314,55 @@ namespace Unity.MemoryProfiler.Editor
             return true;
         }
 
-        public void RemoveSnapshotFromCollection(SnapshotFileData snapshot)
+        public void RemoveSnapshotFromCollection(SnapshotFileData snapshot, bool removeEmptySessions = true)
         {
+            var sessionIsEmpty = false;
+            var sessionId = snapshot.GuiData.SessionId;
+            if (m_SessionsDictionary.ContainsKey(sessionId))
+            {
+                m_SessionsDictionary[sessionId].Remove(snapshot);
+                if (m_SessionsDictionary[sessionId].Count == 0)
+                    sessionIsEmpty = true;
+            }
             snapshot.FileInfo.Delete();
-            m_Snapshots.Remove(snapshot);
 #if UNITY_2019_3_OR_NEWER
-            string possibleSSPath = Path.ChangeExtension(snapshot.FileInfo.FullName, ".png");
+            string possibleSSPath = Path.ChangeExtension(snapshot.FileInfo.FullName, FileExtensionContent.SnapshotScreenshotFileExtension);
             if (File.Exists(possibleSSPath))
             {
                 File.Delete(possibleSSPath);
             }
 #endif
+            if (sessionIsEmpty && removeEmptySessions)
+                RemoveSessionFromCollection(m_SessionsDictionary[sessionId]);
+            m_Info.Refresh();
+        }
+
+        public void RemoveSessionFromCollection(SessionInfo sessionInfo)
+        {
+            foreach (var snapshot in sessionInfo.Snapshots)
+            {
+                RemoveSnapshotFromCollection(snapshot, removeEmptySessions: false);
+            }
+            if (m_SessionsDictionary.ContainsKey(sessionInfo.SessionId))
+            {
+                Checks.CheckEquals(sessionInfo.Snapshots == null || sessionInfo.Count == 0, true);
+                m_Sessions.Remove(sessionInfo);
+                m_SessionsDictionary.Remove(sessionInfo.SessionId);
+                sessionDeleted(sessionInfo);
+            }
             m_Info.Refresh();
         }
 
         public void RemoveSnapshotFromCollection(SnapshotCollectionEnumerator iter)
         {
-            RemoveSnapshotFromCollection(iter.Current);
+            if(iter.Current.Snapshot == null)
+            {
+                RemoveSessionFromCollection(iter.Current.SessionInfo);
+            }
+            else
+            {
+                RemoveSnapshotFromCollection(iter.Current.Snapshot);
+            }
         }
 
         public SnapshotFileData AddSnapshotToCollection(string path, ImportMode mode)
@@ -184,12 +371,12 @@ namespace Unity.MemoryProfiler.Editor
 
             StringBuilder newPath = new StringBuilder(256);
             newPath.Append(Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, Path.GetFileNameWithoutExtension(file.Name)));
-            string finalPath = string.Format("{0}{1}", newPath.ToString(), MemoryProfilerWindow.k_SnapshotFileExtension);
+            string finalPath = string.Format("{0}{1}", newPath.ToString(), FileExtensionContent.SnapshotFileExtension);
             bool samePath = finalPath.ToLowerInvariant() == path.ToLowerInvariant();
             if (File.Exists(finalPath) && !samePath)
             {
                 string searchStr = string.Format("{0}*{1}",
-                    Path.GetFileNameWithoutExtension(file.Name), MemoryProfilerWindow.k_SnapshotFileExtension);
+                    Path.GetFileNameWithoutExtension(file.Name), FileExtensionContent.SnapshotFileExtension);
 
                 var files = m_Info.GetFiles(searchStr);
 
@@ -209,32 +396,37 @@ namespace Unity.MemoryProfiler.Editor
 
                 newPath.Append(' ');
                 newPath.Append(postFixStr);
-                newPath.Append(MemoryProfilerWindow.k_SnapshotFileExtension);
+                newPath.Append(FileExtensionContent.SnapshotFileExtension);
                 finalPath = newPath.ToString();
             }
 
 
-            string originalSSPath = path.Replace(MemoryProfilerWindow.k_SnapshotFileExtension, ".png");
+            string originalSSPath = path.Replace(FileExtensionContent.SnapshotFileExtension, FileExtensionContent.SnapshotScreenshotFileExtension);
             bool ssExists = File.Exists(originalSSPath);
             switch (mode)
             {
                 case ImportMode.Copy:
                     file = file.CopyTo(finalPath, false);
                     if (ssExists)
-                        File.Copy(originalSSPath, finalPath.Replace(MemoryProfilerWindow.k_SnapshotFileExtension, ".png"));
+                        File.Copy(originalSSPath, finalPath.Replace(FileExtensionContent.SnapshotFileExtension, FileExtensionContent.SnapshotScreenshotFileExtension));
                     break;
                 case ImportMode.Move:
                     file.MoveTo(finalPath);
                     if (ssExists)
-                        File.Move(originalSSPath, finalPath.Replace(MemoryProfilerWindow.k_SnapshotFileExtension, ".png"));
+                        File.Move(originalSSPath, finalPath.Replace(FileExtensionContent.SnapshotFileExtension, FileExtensionContent.SnapshotScreenshotFileExtension));
                     break;
             }
 
+            ResetSnapshotRootDirectionInfo();
 
             var snapFileData = new SnapshotFileData(file);
-            m_Snapshots.Add(snapFileData);
+
+            AddSnapshotToSessionsList(snapFileData);
+            var sessionId = snapFileData.GuiData.SessionId;
+
             m_Info.Refresh();
-            m_Snapshots.Sort();
+            m_Sessions.Sort();
+            m_SessionsDictionary[sessionId].Sort();
 
             if (collectionRefresh != null)
             {
@@ -245,34 +437,78 @@ namespace Unity.MemoryProfiler.Editor
             return snapFileData;
         }
 
+        internal bool SnapshotExists(string path)
+        {
+            using (var snapshots = GetEnumerator())
+            {
+                while (snapshots.MoveNext())
+                {
+                    //get full path used to normalize seperators
+                    if (snapshots.Current.Snapshot != null && Path.GetFullPath(snapshots.Current.Snapshot.FileInfo.FullName) == Path.GetFullPath(path))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         public void RefreshCollection()
         {
-            DirectoryInfo rootDir = new DirectoryInfo(m_Info.FullName);
-            if (!rootDir.Exists)
-                rootDir.Create();
+            RefreshCollection(false);
+        }
 
-            if (rootDir.LastWriteTime != m_Info.LastWriteTime)
+        void RefreshCollection(bool forceRefresh)
+        {
+            if (CheckSnapshotRootDirectoryForChanges() || forceRefresh)
             {
-                m_Info = new DirectoryInfo(m_Info.FullName);
+                ResetSnapshotRootDirectionInfo();
                 RefreshFileListInternal(m_Info);
             }
         }
 
+        DirectoryInfo GetSnapshotRootDirectory()
+        {
+            var rootDir = new DirectoryInfo(m_Info.FullName);
+            if (!rootDir.Exists)
+                rootDir.Create();
+            return rootDir;
+        }
+
+        public bool CheckSnapshotRootDirectoryForChanges()
+        {
+            var rootDir = GetSnapshotRootDirectory();
+            return rootDir.LastWriteTime != m_Info.LastWriteTime;
+        }
+
+        void ResetSnapshotRootDirectionInfo()
+        {
+            m_Info = new DirectoryInfo(m_Info.FullName);
+        }
+
         public SnapshotCollectionEnumerator GetEnumerator()
         {
-            return new SnapshotCollectionEnumerator(m_Snapshots);
+            return new SnapshotCollectionEnumerator(m_Sessions);
         }
 
         void Cleanup()
         {
-            if (m_Snapshots != null && m_Snapshots.Count > 0)
+            m_SessionsDictionary.Clear();
+            if (m_Sessions.Count > 0)
             {
-                for (int i = 0; i < m_Snapshots.Count; ++i)
-                    m_Snapshots[i].Dispose();
+                for (int i = 0; i < m_Sessions.Count; ++i)
+                {
+                    if(m_Sessions[i].Snapshots != null && m_Sessions[i].Count > 0)
+                    {
+                        for (int j = 0; j < m_Sessions[i].Count; j++)
+                        {
+                            m_Sessions[i][j].Dispose();
+                        }
+                    }
+                }
 
-                m_Snapshots.Clear();
+                m_Sessions.Clear();
             }
-            m_Snapshots = null;
         }
 
         public void Dispose()

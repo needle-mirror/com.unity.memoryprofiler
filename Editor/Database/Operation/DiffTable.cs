@@ -78,6 +78,9 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     {
         protected DiffTable m_Table;
 
+        static readonly string k_None = UnityEditor.L10n.Tr("None");
+        static readonly string k_Same = UnityEditor.L10n.Tr("Same"); // in both
+
         public DiffColumnResult(DiffTable table)
         {
             m_Table = table;
@@ -90,7 +93,19 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
         public override string GetRowValueString(long row, IDataFormatter formatter)
         {
-            return formatter.Format(Enum.GetName(typeof(DiffTable.DiffResult), m_Table.m_Entries[row].diffResult));
+            switch (m_Table.m_Entries[row].diffResult)
+            {
+                case DiffTable.DiffResult.None:
+                    return k_None;
+                case DiffTable.DiffResult.Deleted:
+                    return m_Table.sameSessionDiff ? m_Table.snapshotAIsOlder ? "Deleted in B" : "Deleted in A" : m_Table.snapshotAIsOlder ? "Not in B ('Deleted')" : "Not in A ('Deleted')";
+                case DiffTable.DiffResult.New:
+                    return m_Table.sameSessionDiff ? m_Table.snapshotAIsOlder ? "New in B" : "New in A" : m_Table.snapshotAIsOlder ? "Not in A ('New')" : "Not in B ('New')";
+                case DiffTable.DiffResult.Same:
+                    return k_Same;
+                default:
+                    throw new NotImplementedException();
+            }
         }
 
         public override DiffTable.DiffResult GetRowValue(long row)
@@ -156,20 +171,25 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         }
         public Entry[] m_Entries;
 
-        public DiffTable(Schema schema, Table[] table, int[] columnKey)
+        public bool snapshotAIsOlder { get; private set; }
+        public bool sameSessionDiff { get; private set; }
+
+        public DiffTable(Schema schema, Table[] table, int[] columnKey, bool snapshotAIsOlder, bool sameSessionDiff)
             : base(schema)
         {
             this.sourceTables = table;
             this.columnKey = columnKey;
+            this.snapshotAIsOlder = snapshotAIsOlder;
+            this.sameSessionDiff = sameSessionDiff;
 
             bool hasNoData = true;
-            for(int i = 0; i < table.Length; ++i)
+            for (int i = 0; i < table.Length; ++i)
             {
                 if (table[i].GetRowCount() > 0)
                     hasNoData = false;
             }
 
-            if(hasNoData)
+            if (hasNoData)
             {
                 NoDataMessage = table[0].NoDataMessage;
             }
@@ -355,6 +375,11 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             return new LinkPosition(pos);
         }
+
+        public void OnSnapshotsSwapped()
+        {
+            snapshotAIsOlder = !snapshotAIsOlder;
+        }
     }
 
 
@@ -362,14 +387,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
     {
         public Schema m_SchemaBefore;
         public Schema m_SchemaAfter;
-        public DiffSchema(Schema schemaBefore, Schema schemaAfter, Action onTableCompute = null)
+        public DiffSchema(Schema schemaBefore, Schema schemaAfter, bool snapshotAIsOlder, bool sameSessionDiff, Action onTableCompute = null)
         {
             name = "Diff";
             m_SchemaBefore = schemaBefore;
             m_SchemaAfter = schemaAfter;
             if (onTableCompute != null)
                 onTableCompute.Invoke();
-            ComputeTables();
+            ComputeTables(snapshotAIsOlder, sameSessionDiff);
         }
 
         public override bool OwnsTable(Table table)
@@ -378,7 +403,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             return base.OwnsTable(table);
         }
 
-        protected void ComputeTables()
+        protected void ComputeTables(bool snapshotAIsOlder, bool sameSessionDiff)
         {
             for (int iTable = 0; iTable < m_SchemaBefore.GetTableCount(); ++iTable)
             {
@@ -394,7 +419,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                     Debug.LogWarning("Cannot diff tables without primary key. Table '" + tabA.GetName() + "'");
                     continue;
                 }
-                var tabOut = new Database.Operation.DiffTable(this, new Database.Table[] { tabA, tabB }, primKey);
+                var tabOut = new Database.Operation.DiffTable(this, new Database.Table[] { tabA, tabB }, primKey, snapshotAIsOlder, sameSessionDiff);
                 AddTable(tabOut);
             }
         }
@@ -425,6 +450,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public override Table GetTableByReference(TableReference tableRef)
         {
             return GetTableByName(tableRef.Name, tableRef.Param);
+        }
+
+        public void OnSnapshotsSwapped()
+        {
+            for (int i = 0; i < tables.Count; i++)
+            {
+                (tables[i] as DiffTable).OnSnapshotsSwapped();
+            }
         }
     }
 }

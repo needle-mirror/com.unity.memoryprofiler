@@ -7,7 +7,7 @@ The Memory Profiler window has three main areas:
 ![Memory Profiler window breakdown](images/memory-profiler-windoW.png)<br/>*The Memory Profiler window*
 
 **A** The [Workbench](workbench.md), which contains all the memory snapshots in your Project, and allows you to compare snapshots.<br/>
-**B** The [Main view](main-view.md), which displays the in-depth memory data of your snapshot. 
+**B** The [Main view](main-view.md), which displays the in-depth memory data of your snapshot.
 
 At the top of the window there are the following controls:
 
@@ -28,7 +28,7 @@ When you enter Play Mode, or have a Player running on your computer or connected
 
 Choose one of the options from the dropdown menu, and then select the __Capture__ button. This operation might take a few moments to capture. **Note:** The __Capture__ button is labelled __Capture Editor__ when the Memory Profiler targets the Unity Editor (not in Play Mode). When you select Play Mode, or a running player, the button is labelled __Capture Player__.
 
-Once you have captured a snapshot, it appears in the __Workbench__. 
+Once you have captured a snapshot, it appears in the __Workbench__.
 
 When you capture a snapshot of the Editor in Play Mode, it also includes any memory the Editor uses. The memory usage in Play Mode is not representative of the memory usage on a device. You should always capture snapshots from a built Player on the targeted platform for the most accurate memory profiling.
 
@@ -49,11 +49,11 @@ To import a snapshot, you can do this via the Project folder, or via Workbench.
 
 To import via the Project folder, perform the following steps:
 
-1. Inside your Project folder, find the folder named `MemoryCaptures`, or create it if it does not exist. 
+1. Inside your Project folder, find the folder named `MemoryCaptures`, or create it if it does not exist.
 1. Copy the snapshot files to this folder.
-1. Open the [Memory Profiler window](memory-profiler-window), and you can see the added snapshot in the [Workbench](workbench) panel. 
+1. Open the [Memory Profiler window](memory-profiler-window), and you can see the added snapshot in the [Workbench](workbench) panel.
 
 To import via Workbench:
 
 1. In the Memory Profiler, select the __Import__ button. This action opens a file dialog.
-1. Locate and open the memory snapshot you want to import. If you choose to import a .snap file, Unity copies the file to your `MemoryCaptures` folder. 
+1. Locate and open the memory snapshot you want to import. If you choose to import a .snap file, Unity copies the file to your `MemoryCaptures` folder.

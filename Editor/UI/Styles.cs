@@ -32,19 +32,33 @@ namespace Unity.MemoryProfiler.Editor.UI
     }
 
 
-    public abstract class StyleSet
+    internal abstract class StyleSet
     {
         protected bool m_Inited = false;
 
         public abstract void Init();
     }
 
-    public class GeneralStyles : StyleSet
+    internal class GeneralStyles : StyleSet
     {
         public readonly Color SelectedColor = new Color(62f / 255f, 95f / 255f, 150f / 255f);
         public readonly int FoldoutWidth = 16;
         public readonly int ViewPaneMargin = 2;
-        public readonly int InitialWorkbenchWidth = 200;
+        public static readonly int InitialWorkbenchWidth = 200;
+
+        public const string ToggledRibbonButtonClassName = "ribbon__button--toggled";
+        public static readonly string PlatformIconName = "preview-image__platform-icon";
+        public static readonly string EditorIconName = "preview-image__editor-icon";
+        public const string PlatformIconClassName = "platform-icon";
+        public const string PlatformIconEditorClassName = "Editor";
+        public const string BackgroundColorClassSnapshotA = "background-color__snapshot-a";
+        public const string BackgroundColorClassSnapshotB = "background-color__snapshot-b";
+        public const string ImageTintColorClassSnapshotA = "image-tint-color__snapshot-a";
+        public const string ImageTintColorClassSnapshotB = "image-tint-color__snapshot-b";
+
+        public const string IconButtonClass = "icon-button";
+        public const string HelpIconButtonClass = "icon-button__help-icon";
+        public const string MenuIconButtonClass = "icon-button__menu-icon";
 
         public GUIStyle Background { get; private set; }
         public GUIStyle Tooltip { get; private set; }
@@ -99,7 +113,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
-    public class MemoryMapStyles : StyleSet
+    internal class MemoryMapStyles : StyleSet
     {
         public GUIStyle TimelineBar { get; private set; }
         public GUIStyle AddressSub { get; private set; }

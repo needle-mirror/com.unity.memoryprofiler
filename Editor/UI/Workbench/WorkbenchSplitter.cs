@@ -3,13 +3,18 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
+using Unity.MemoryProfiler.Editor.UI;
 #if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
+using UnityEditor.UIElements;
 #else
 using UnityEngine.Experimental.UIElements;
 using UnityEngine.Experimental.UIElements.StyleEnums;
+using UnityEditor.Experimental.UIElements;
 #endif
-
+using System.Runtime.CompilerServices;
+//[assembly: InternalsVisibleTo("Unity.GarbageFree.EditorTests1")]
+[assembly: UxmlNamespacePrefix("Unity.MemoryProfiler.Editor", "MemoryProfiler")]
 namespace Unity.MemoryProfiler.Editor
 {
     internal class WorkbenchSplitter : VisualElement
@@ -17,20 +22,44 @@ namespace Unity.MemoryProfiler.Editor
         public VisualElement LeftPane { get; private set; }
         public VisualElement RightPane { get; private set; }
 
-        public event Action<float> LeftPaneWidthChanged = delegate {};
+        public event Action<float> LeftPaneWidthChanged = delegate { };
 
         VisualElement m_DragLine;
 
-        public WorkbenchSplitter(float initialWorkbenchWidth = 200)
+        public new class UxmlFactory : UxmlFactory<WorkbenchSplitter, UxmlTraits> { }
+
+        public float workbenchWidth { get { return LeftPane.style.width.value.value; } set { LeftPane.style.width = value; } }
+
+        public WorkbenchSplitter() : this(GeneralStyles.InitialWorkbenchWidth) {}
+
+        public WorkbenchSplitter(float initialWorkbenchWidth)
         {
             style.flexGrow = 1;
             style.flexDirection = FlexDirection.Row;
+
+            VisualElement leftChild = null;
+            VisualElement rightChild = null;
+            if (childCount > 0)
+            {
+                var children = Children().GetEnumerator();
+                children.MoveNext();
+                leftChild = children.Current;
+                if(children.MoveNext())
+                    rightChild = children.Current;
+                children.Dispose();
+            }
 
             LeftPane = new VisualElement();
             LeftPane.name = "splitterLeftPane";
 
             LeftPane.style.width = initialWorkbenchWidth;
             Add(LeftPane);
+
+            if (leftChild != null)
+            {
+                Remove(leftChild);
+                LeftPane.Add(leftChild);
+            }
 
             var dragLineAnchor = new VisualElement();
             dragLineAnchor.name = "splitterDraglineAnchor";
@@ -47,6 +76,35 @@ namespace Unity.MemoryProfiler.Editor
             RightPane = new VisualElement();
             RightPane.style.flexGrow = 1;
             Add(RightPane);
+
+
+            if (rightChild != null)
+            {
+                Remove(rightChild);
+                LeftPane.Add(rightChild);
+            }
+        }
+
+        public new class UxmlTraits : VisualElement.UxmlTraits
+        {
+            UxmlFloatAttributeDescription m_WorkbenchWidth =
+                new UxmlFloatAttributeDescription { name = "workbench-width", defaultValue = GeneralStyles.InitialWorkbenchWidth };
+
+            public override IEnumerable<UxmlChildElementDescription> uxmlChildElementsDescription
+            {
+                get
+                {
+                    yield return new UxmlChildElementDescription(typeof(VisualElement));
+                }
+            }
+
+            public override void Init(VisualElement ve, IUxmlAttributes bag, CreationContext cc)
+            {
+                base.Init(ve, bag, cc);
+                var ate = ve as WorkbenchSplitter;
+
+                ate.workbenchWidth = m_WorkbenchWidth.GetValueFromBag(bag, cc);
+            }
         }
 
         class SquareResizer : MouseManipulator

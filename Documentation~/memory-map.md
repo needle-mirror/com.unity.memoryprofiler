@@ -4,7 +4,7 @@ The Memory Map view helps you visualize how the virtual memory of your snapshot 
 
 ![Memory Map view of the Memory Profiler window](images/memory-map-memory-profiler.png)
 
-To adjust how Unity displays the information, use the toolbar at the top of the window. 
+To adjust how Unity displays the information, use the toolbar at the top of the window.
 
 |**Setting**|**Function**|
 |:---|:---|
@@ -39,7 +39,7 @@ Below the Memory Map, the [Table view](table-view.md) displays details about the
 
 ## Memory Map Diff view
 
-To see the Memory Map view for the diff of two snapshots, select the __Diff__ button to compare two snapshots, and then in the __View__ dropdown, select __Memory Map__. 
+To see the Memory Map view for the diff of two snapshots, select the __Diff__ button to compare two snapshots, and then in the __View__ dropdown, select __Memory Map__.
 
 ![Memory Map Diff view of Memory Profiler](images/memory-map-diff-memory-profiler.png)<br/>*Memory Map Diff view*
 

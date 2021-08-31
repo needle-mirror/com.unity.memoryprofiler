@@ -1,72 +1,49 @@
-/**********************************************************************************************************************/
-/* OpenSnapshotsWindow                                                                                                */
-/**********************************************************************************************************************/
-#openSnapshotsWindowToolbar{
-    justify-content: flex-end;
-}
-#openSnapshotsWindowContent{
+.open-snapshot__image-and-meta-data__container {
     flex-direction: row;
-    overflow: hidden;
 }
 
-.openSnapshotItemHolder{
-    flex-direction: row;
-    align-items: center;
-    min-width: 96px;
-    flex-grow: 1;
-    margin-top: 5px;
-}
-
-#openSnapshotsWindowDiffSnapshotSpace{
-    align-items: center;
-    justify-content: center;
-    min-width: 52px;
-}
-
-#openSnapshotItem{
-    align-items: center;
-    height: 114px;
-}
-
-Button#showSnapshotButton{
-    margin-left: 0;
-    margin-right: 0;
-    margin-top: 0;
-    margin-bottom: 0;
-    border-left-width: 0;
-    border-right-width: 0;
-    border-top-width: 0;
-    border-bottom-width: 0;
-    padding-left: 0;
-    padding-right: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-}
-
-#openSnapshotMetaDataContainer{
+.open-snapshot__meta-data__container {
     flex-direction: row;
     flex-grow: 1;
 }
 
-#openSnapshotMetaData{
+.open-snapshot__meta-data {
     position: relative;
     flex-grow: 1;
     left: 0;
     top: 0;
 }
 
-#openSnapshotMetaData Label{
+.no-snapshot-loaded-text {
+    white-space: normal;
+    -unity-text-align: middle-center;
     flex-grow: 1;
-    left: 0;
-    right: 0;
-    overflow: hidden;
-    -unity-text-align: upper-center;
 }
 
-Image#previewImage.selectedSnapshot{
-    border-left-width: 2px;
-    border-top-width: 2px;
-    border-right-width: 2px;
-    border-bottom-width: 2px;
-    border-color: #3E7DE7;
+.preview-image-open-item {
+    align-items: flex-end;
+    justify-content: flex-end;
+    flex-direction: row;
+    width: 153px;
+    height: 88px;
+    min-width: 153px;
+    background-color: rgb(2, 2, 2);
+}
+
+.preview-image-holder {
+    flex-direction: row;
+    width: 153px;
+    height: 88px;
+    min-width: 153px;
+}
+
+.open-snapshot__meta-data__container {
+    padding-left: 4px;
+    overflow: hidden;
+}
+
+
+.total-ram-usage-bar__subtext {
+    flex-direction: row;
+    justify-content: space-between;
 }

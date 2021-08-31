@@ -53,7 +53,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public ulong ComputeByteSizeForEntryRange(uint offset, uint count, bool includeOffsetsMemory)
+        public long ComputeByteSizeForEntryRange(long offset, long count, bool includeOffsetsMemory)
         {
             switch (Header.Format)
             {
@@ -62,16 +62,16 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 case EntryFormat.ConstantSizeElementArray:
                     return Header.EntriesMeta * (count - offset);
                 case EntryFormat.DynamicSizeElementArray:
-                    ulong size = 0;
+                    long size = 0;
                     if (count + offset == Count)
                     {
                         var entryOffset = m_AdditionalEntryStorage[offset];
-                        size = Header.HeaderMeta - (ulong)entryOffset; //adding the size of the last element
+                        size = (long)(Header.HeaderMeta - (ulong)entryOffset); //adding the size of the last element
                     }
                     else
-                        size = (ulong)(m_AdditionalEntryStorage[offset + count] - m_AdditionalEntryStorage[offset]);
+                        size =(m_AdditionalEntryStorage[offset + count] - m_AdditionalEntryStorage[offset]);
 
-                    return size + (includeOffsetsMemory ? (ulong)(UnsafeUtility.SizeOf<long>() * (count + 1)) : 0);
+                    return size + (includeOffsetsMemory ? (UnsafeUtility.SizeOf<long>() * (count + 1)) : 0);
                 default:
                     return 0;
             }

@@ -12,24 +12,8 @@ namespace Unity.MemoryProfiler.Editor
         public bool forceLinkAllObject = false;
         public bool flattenFields = true;
         public bool flattenStaticFields = true;
-        public bool ShowPrettyNames
-        {
-            get
-            {
-                return m_ShowPrettyNames;
-            }
-            set
-            {
-                if (value != m_ShowPrettyNames)
-                {
-                    m_ShowPrettyNames = value;
-                    PrettyNamesOptionChanged();
-                }
-            }
-        }
-        bool m_ShowPrettyNames = true;
-
-        public event Action PrettyNamesOptionChanged = delegate {};
+        // this shouldn't be an option
+        public readonly bool ShowPrettyNames = true;
 
         protected void AddTypeFormatter(IObjectDataTypeFormatter Formatter)
         {
@@ -56,7 +40,6 @@ namespace Unity.MemoryProfiler.Editor
 
         public void Clear()
         {
-            PrettyNamesOptionChanged = delegate {};
         }
     }
 
@@ -65,6 +48,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         const string k_NullPtrAddr = "0x0000000000000000";
         const string k_NullRef = "null";
+        const string k_FailedToReadObject = "Failed To read Object, please report a bug.";
         const string k_ArrayClosedSqBrackets = "[]";
 
         public ObjectDataFormatter BaseFormatter;
@@ -81,7 +65,7 @@ namespace Unity.MemoryProfiler.Editor
             m_Snapshot = d;
             foreach (var tr in baseFormatter.m_TypeFormatter)
             {
-                int i = m_Snapshot.typeDescriptions.typeDescriptionName.FindIndex(x => x == tr.Key);
+                int i = Array.FindIndex(m_Snapshot.TypeDescriptions.TypeDescriptionName, x => x == tr.Key);
                 if (i >= 0)
                 {
                     m_TypeFormatter[i] = tr.Value;
@@ -227,7 +211,7 @@ namespace Unity.MemoryProfiler.Editor
                 return td.Format(m_Snapshot, od, formatter);
             }
 
-            var originalTypeName = m_Snapshot.typeDescriptions.typeDescriptionName[od.managedTypeIndex];
+            var originalTypeName = m_Snapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
             var sb = new System.Text.StringBuilder(originalTypeName);
 
 
@@ -259,6 +243,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public string Format(ObjectData od, IDataFormatter formatter, bool objectBrief = true)
         {
+            if (!od.IsValid)
+                return k_FailedToReadObject;
             switch (od.dataType)
             {
                 case ObjectDataType.BoxedValue:
@@ -279,6 +265,8 @@ namespace Unity.MemoryProfiler.Editor
                     else
                     {
                         var o = ObjectData.FromManagedPointer(m_Snapshot, ptr);
+                        if (!o.IsValid)
+                            return k_FailedToReadObject;
                         return FormatObject(o, formatter, objectBrief);
                     }
                 }
@@ -290,14 +278,16 @@ namespace Unity.MemoryProfiler.Editor
                         return k_NullRef;
                     }
                     var arr = ObjectData.FromManagedPointer(m_Snapshot, ptr);
+                    if(!arr.IsValid)
+                        return k_FailedToReadObject;
                     return FormatArray(arr, formatter);
                 }
                 case ObjectDataType.Type:
-                    return m_Snapshot.typeDescriptions.typeDescriptionName[od.managedTypeIndex];
+                    return m_Snapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
                 case ObjectDataType.Global:
                     return "<global>";
                 case ObjectDataType.NativeObject:
-                    return FormatPointer(m_Snapshot.nativeObjects.nativeObjectAddress[od.nativeObjectIndex]);
+                    return FormatPointer(m_Snapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
                 default:
                     return "<uninitialized type>";
             }

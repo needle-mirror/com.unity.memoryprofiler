@@ -1,3 +1,4 @@
+#define ENABLE_MEMORY_PROFILER_DEBUG
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -19,6 +20,13 @@ namespace Unity.MemoryProfiler.Editor.Diagnostics
         public static void CheckIndexOutOfBoundsAndThrow(long index, long count)
         {
             if (index >= count)
+                throw new ArgumentOutOfRangeException("Index out of bounds.");
+        }
+
+        [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
+        public static void CheckIndexInRangeAndThrow(long index, long count)
+        {
+            if (index < 0 || index > count)
                 throw new ArgumentOutOfRangeException("Index out of bounds.");
         }
 
@@ -55,6 +63,13 @@ namespace Unity.MemoryProfiler.Editor.Diagnostics
         {
             var except = (T)Activator.CreateInstance(typeof(T), message);
             throw except;
+        }
+
+        [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
+        public static void IsTrue(bool condition)
+        {
+            if (!condition)
+                throw new Exception("Expected condition to be true, but was false.");
         }
     }
 }

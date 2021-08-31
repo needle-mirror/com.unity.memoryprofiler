@@ -3,6 +3,8 @@ using System;
 using Unity.MemoryProfiler.Editor.UI;
 using UnityEditor.Profiling.Memory.Experimental;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
+using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -23,6 +25,14 @@ namespace Unity.MemoryProfiler.Editor
 
         UIState m_UIState;
 
+        public bool SnapshotALoaded { get { return First != null; } }
+        public bool SnapshotBLoaded { get { return Second != null; } }
+        public bool SnapshotAOpen { get { return m_UIState.FirstMode == m_UIState.CurrentMode; } }
+        public bool SnapshotBOpen { get { return m_UIState.SecondMode == m_UIState.CurrentMode; } }
+        public bool DiffOpen { get { return m_UIState.diffMode == m_UIState.CurrentMode; } }
+
+        public event Action SwappedSnapshots = delegate {};
+
         private UI.ViewPane currentViewPane
         {
             get
@@ -39,42 +49,89 @@ namespace Unity.MemoryProfiler.Editor
             OnModeChanged(uiState.CurrentMode, uiState.CurrentViewMode);
         }
 
-        public OpenSnapshotsWindow InitializeOpenSnapshotsWindow(float initialWidth)
+        public OpenSnapshotsWindow InitializeOpenSnapshotsWindow(float initialWidth, VisualElement root)
         {
-            m_OpenSnapshotsPane = new OpenSnapshotsWindow(initialWidth);
+            m_OpenSnapshotsPane = new OpenSnapshotsWindow(initialWidth, root);
 
-            m_OpenSnapshotsPane.SwapOpenSnapshots += SwapOpenSnapshots;
+            m_OpenSnapshotsPane.SwapOpenSnapshots += () => SwapOpenSnapshots();
             m_OpenSnapshotsPane.ShowDiffOfOpenSnapshots += ShowDiffOfOpenSnapshots;
             m_OpenSnapshotsPane.ShowFirstOpenSnapshot += ShowFirstOpenSnapshot;
             m_OpenSnapshotsPane.ShowSecondOpenSnapshot += ShowSecondOpenSnapshot;
+            m_OpenSnapshotsPane.CompareModeChanged += OnCompareModeChanged;
             return m_OpenSnapshotsPane;
+        }
+
+        void SetSnapshotAsOpenInUI(bool first, SnapshotFileData snapshot)
+        {
+            if (first)
+                First = snapshot;
+            else
+                Second = snapshot;
+            m_OpenSnapshotsPane.SetSnapshotUIData(first, snapshot.GuiData, true);
         }
 
         public void OpenSnapshot(SnapshotFileData snapshot)
         {
+            if (snapshot == First)
+            {
+                // close First
+                CloseCapture(snapshot);
+                return;
+            }
+            if (snapshot == Second)
+            {
+                if (!m_OpenSnapshotsPane.CompareMode)
+                {
+                    SwapOpenSnapshots(false);
+                }
+                else
+                {
+                    // close Second
+                    CloseCapture(snapshot);
+                }
+                return;
+            }
             if (First != null)
             {
-                if (Second != null)
+                if (m_OpenSnapshotsPane.CompareMode)
                 {
-                    Second.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
-                    UIElementsHelper.SwitchVisibility(Second.GuiData.dynamicVisualElements.openButton, Second.GuiData.dynamicVisualElements.closeButton);
+                    if (Second != null)
+                    {
+                        // close Second
+                        CloseCapture(Second);
+                    }
+                    // open as Second
+                    SetSnapshotAsOpenInUI(false, snapshot);
                 }
-                Second = First;
-
-
-                m_OpenSnapshotsPane.SetSnapshotUIData(false, Second.GuiData, false);
-                Second.GuiData.CurrentState = SnapshotFileGUIData.State.Open;
+                else
+                {
+                    var secondWasOpen = Second != null;
+                    // close First
+                    CloseCapture(First);
+                    // open as second
+                    SetSnapshotAsOpenInUI(!secondWasOpen, snapshot);
+                    if (secondWasOpen)
+                        SwapOpenSnapshots();
+                }
+            }
+            else
+            {
+                // open as First
+                SetSnapshotAsOpenInUI(true, snapshot);
             }
 
-            First = snapshot;
-
-            m_OpenSnapshotsPane.SetSnapshotUIData(true, snapshot.GuiData, true);
-            First.GuiData.CurrentState = SnapshotFileGUIData.State.InView;
-
-            var loadedPackedSnapshot = snapshot.LoadSnapshot();
-            if (loadedPackedSnapshot != null)
+            var reader = snapshot.LoadSnapshot();
+            if (reader.HasOpenFile)
             {
-                m_UIState.SetFirstSnapshot(loadedPackedSnapshot);
+                m_UIState.SetSnapshot(reader, snapshot == First);
+
+                if (m_OpenSnapshotsPane.CompareMode && First != null && Second != null)
+                    ShowDiffOfOpenSnapshots();
+            }
+            else
+            {
+                Debug.LogError("Failed to Open Snapshot");
+                CloseCapture(snapshot);
             }
         }
 
@@ -94,13 +151,13 @@ namespace Unity.MemoryProfiler.Editor
                     if (snapshot == Second)
                     {
                         m_UIState.ClearSecondMode();
-                        Second.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                        snapshot.GuiData.SetCurrentState(false, false, m_OpenSnapshotsPane.CompareMode);
                     }
                     else if (snapshot == First)
                     {
                         m_UIState.ClearFirstMode();
                         if (First != null)
-                            First.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                            snapshot.GuiData.SetCurrentState(false, true, m_OpenSnapshotsPane.CompareMode);
                         First = Second;
                         m_UIState.SwapLastAndCurrentSnapshot();
                     }
@@ -109,7 +166,6 @@ namespace Unity.MemoryProfiler.Editor
                         // The snapshot wasn't open, there is nothing left todo here.
                         return;
                     }
-                    UIElementsHelper.SwitchVisibility(snapshot.GuiData.dynamicVisualElements.openButton, snapshot.GuiData.dynamicVisualElements.closeButton);
                     Second = null;
                     m_UIState.CurrentViewMode = UIState.ViewMode.ShowFirst;
 
@@ -125,13 +181,13 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     if (snapshot == First)
                     {
-                        First.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                        snapshot.GuiData.SetCurrentState(false, true, m_OpenSnapshotsPane.CompareMode);
                         First = null;
                         m_UIState.ClearAllOpenModes();
                     }
                     else if (snapshot == Second)
                     {
-                        Second.GuiData.CurrentState = SnapshotFileGUIData.State.Closed;
+                        snapshot.GuiData.SetCurrentState(false, false, m_OpenSnapshotsPane.CompareMode);
                         Second = null;
                         m_UIState.ClearAllOpenModes();
                     }
@@ -143,7 +199,6 @@ namespace Unity.MemoryProfiler.Editor
                     m_OpenSnapshotsPane.SetSnapshotUIData(true, null, false);
                     m_OpenSnapshotsPane.SetSnapshotUIData(false, null, false);
                 }
-                UIElementsHelper.SwitchVisibility(snapshot.GuiData.dynamicVisualElements.openButton, snapshot.GuiData.dynamicVisualElements.closeButton);
             }
             catch (Exception)
             {
@@ -170,44 +225,38 @@ namespace Unity.MemoryProfiler.Editor
             switch (newViewMode)
             {
                 case UIState.ViewMode.ShowDiff:
-                    if (m_OpenSnapshotsPane != null)
-                        m_OpenSnapshotsPane.FocusDiff();
-
                     if (First != null)
-                        First.GuiData.CurrentState = SnapshotFileGUIData.State.Open;
+                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, false);
                     if (Second != null)
-                        Second.GuiData.CurrentState = SnapshotFileGUIData.State.Open;
+                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, false);
                     break;
                 case UIState.ViewMode.ShowFirst:
-                    if (m_OpenSnapshotsPane != null)
-                        m_OpenSnapshotsPane.FocusFirst();
-
                     if (First != null)
-                        First.GuiData.CurrentState = SnapshotFileGUIData.State.InView;
+                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, true);
                     if (Second != null)
-                        Second.GuiData.CurrentState = SnapshotFileGUIData.State.Open;
+                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, false);
                     break;
                 case UIState.ViewMode.ShowSecond:
-                    if (m_OpenSnapshotsPane != null)
-                        m_OpenSnapshotsPane.FocusSecond();
-
                     if (First != null)
-                        First.GuiData.CurrentState = SnapshotFileGUIData.State.Open;
+                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, false);
                     if (Second != null)
-                        Second.GuiData.CurrentState = SnapshotFileGUIData.State.InView;
+                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, true);
                     break;
                 default:
                     break;
             }
         }
 
-        void SwapOpenSnapshots()
+        void SwapOpenSnapshots(bool keepCurrentSnapshotOpen = true)
         {
+            if (First == null && Second == null)
+                return; // nothing there to swap
+
             var temp = Second;
             Second = First;
             First = temp;
 
-            m_UIState.SwapLastAndCurrentSnapshot();
+            m_UIState.SwapLastAndCurrentSnapshot(keepCurrentSnapshotOpen);
 
             if (First != null)
                 m_OpenSnapshotsPane.SetSnapshotUIData(true, First.GuiData, m_UIState.CurrentViewMode == UIState.ViewMode.ShowFirst);
@@ -218,6 +267,10 @@ namespace Unity.MemoryProfiler.Editor
                 m_OpenSnapshotsPane.SetSnapshotUIData(false, Second.GuiData, m_UIState.CurrentViewMode == UIState.ViewMode.ShowSecond);
             else
                 m_OpenSnapshotsPane.SetSnapshotUIData(false, null, false);
+
+            if (m_UIState.diffMode != null)
+                m_UIState.diffMode.OnSnapshotsSwapped();
+            SwappedSnapshots();
         }
 
         void ShowDiffOfOpenSnapshots()
@@ -232,7 +285,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.DiffedSnapshotEvent>();
 
-                    m_UIState.DiffLastAndCurrentSnapshot(First.GuiData.UtcDateTime.CompareTo(Second.GuiData.UtcDateTime) < 0);
+                    m_UIState.DiffLastAndCurrentSnapshot(First.GuiData.UtcDateTime.CompareTo(Second.GuiData.UtcDateTime) < 0, First.GuiData.SessionName != UIContentData.TextContent.UnknownSession && First.GuiData.SessionId == Second.GuiData.SessionId);
 
                     MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.DiffedSnapshotEvent());
                 }
@@ -260,6 +313,18 @@ namespace Unity.MemoryProfiler.Editor
             if (Second != null)
             {
                 SwitchSnapshotMode(UIState.ViewMode.ShowSecond);
+            }
+        }
+
+        void OnCompareModeChanged(bool compare)
+        {
+            if (First != null)
+            {
+                First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, true);
+            }
+            if (Second != null)
+            {
+                Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, false);
             }
         }
 
@@ -320,22 +385,44 @@ namespace Unity.MemoryProfiler.Editor
             SnapshotFileGUIData firstGUIData = null, secondGUIData = null;
 
             snaps.Reset();
+            bool firstStillExists = false;
+            bool secondStillExists = false;
             while (snaps.MoveNext())
             {
-                if (First == snaps.Current)
+                if (First == snaps.Current.Snapshot)
                 {
-                    First = snaps.Current;
+                    First = snaps.Current.Snapshot;
                     firstGUIData = First.GuiData;
-                    firstGUIData.CurrentState = SnapshotFileGUIData.State.Open;
+                    firstGUIData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode);
+                    firstStillExists = false;
                 }
-                else if (Second == snaps.Current)
+                else if (Second == snaps.Current.Snapshot)
                 {
-                    Second = snaps.Current;
+                    Second = snaps.Current.Snapshot;
                     secondGUIData = Second.GuiData;
-                    secondGUIData.CurrentState = SnapshotFileGUIData.State.Open;
+                    secondGUIData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode);
+                    secondStillExists = false;
                 }
             }
+            // if it's gone, close the second first as it would otherwise switch into the position of the First
+            if (Second != null && !secondStillExists)
+            {
+                CloseCapture(Second);
+            }
+
+            if (First != null && !firstStillExists)
+            {
+                CloseCapture(First);
+            }
             m_OpenSnapshotsPane.RefreshScreenshots(firstGUIData, secondGUIData);
+        }
+
+        public void UpdateSessionName(uint sessionId, string name)
+        {
+            if (First != null && First.GuiData.SessionId == sessionId)
+                m_OpenSnapshotsPane.UpdateSessionName(true, name);
+            if (Second != null && Second.GuiData.SessionId == sessionId)
+                m_OpenSnapshotsPane.UpdateSessionName(false, name);
         }
     }
 }

@@ -118,39 +118,6 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
         }
     }
 
-    /// <summary>
-    /// Group a table using the name of a column
-    /// </summary>
-    internal class GroupByColumnName : Group
-    {
-        readonly string m_ColumnName;
-        public GroupByColumnName(string columnName, SortOrder order)
-            : base(order)
-        {
-            this.m_ColumnName = columnName;
-        }
-
-        public override Filter Clone(FilterCloning fc)
-        {
-            GroupByColumnName o = new GroupByColumnName(m_ColumnName, m_Order);
-            if (SubGroupFilter != null)
-            {
-                o.SubGroupFilter = SubGroupFilter.Clone(fc);
-            }
-            return o;
-        }
-
-        public override int GetColumnIndex(Database.Table tableIn)
-        {
-            return tableIn.GetMetaData().GetColumnByName(m_ColumnName).Index;
-        }
-
-        public override string GetColumnName(Table tableIn)
-        {
-            return m_ColumnName;
-        }
-    }
-    //sourceTable.GetMetaData().GetColumnByIndex(columnIndex).name;
     internal class GroupByColumnIndex : Group
     {
         readonly int m_ColumnIndex;
@@ -177,7 +144,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
         public override string GetColumnName(Database.Table tableIn)
         {
-            return tableIn.GetMetaData().GetColumnByIndex(m_ColumnIndex).Name;
+            return tableIn.GetMetaData().GetColumnByIndex(m_ColumnIndex).DisplayName;
         }
     }
 }

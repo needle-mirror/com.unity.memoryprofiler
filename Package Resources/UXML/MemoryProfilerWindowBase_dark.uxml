@@ -1,0 +1,8 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd " editor-extension-mode="False">
+    <ui:Template name="MemoryProfilerWindow" src="MemoryProfilerWindow.uxml" />
+    <ui:VisualElement class="root" style="flex-grow: 1;">
+		<Style src="../StyleSheets/MemoryProfilerWindow_style.uss" />
+		<Style src="../StyleSheets/MemoryProfilerWindow_style_dark.uss" />
+        <ui:Instance template="MemoryProfilerWindow" name="window" style="flex-grow: 1;" />
+    </ui:VisualElement>
+</ui:UXML>

@@ -10,6 +10,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
         public string Name;
         public Rect Position;
         public List<Item> Items;
+        public int EmptyObjectCount = 0;
         private long m_TotalValue = -1;
 
         string m_Label = null;
@@ -18,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             get
             {
                 if (m_Label == null)
-                    m_Label = string.Format("{0} ({1})", Name, Items != null ? Items.Count : 0) + "\n" + EditorUtility.FormatBytes((long)TotalValue);
+                    m_Label = string.Format("{0} ({1})", Name, Items != null ? Items.Count + EmptyObjectCount : 0) + "\n" + EditorUtility.FormatBytes((long)TotalValue);
 
                 return m_Label;
             }

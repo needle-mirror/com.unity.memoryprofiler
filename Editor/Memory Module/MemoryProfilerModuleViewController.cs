@@ -1,0 +1,402 @@
+#if UNITY_2021_2_OR_NEWER
+using System.Text;
+using Unity.MemoryProfiler.Editor.UI;
+using Unity.Profiling.Editor;
+using UnityEditor;
+using UnityEditor.Profiling;
+using UnityEditor.UIElements;
+using UnityEditorInternal;
+using UnityEngine.Networking.PlayerConnection;
+using UnityEditor.Networking.PlayerConnection;
+using UnityEngine.UIElements;
+using PackagedMemoryUsageBreakdown = Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdown;
+using Unity.Profiling;
+using UnityEngine;
+using System;
+using System.Collections.Generic;
+
+namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
+{
+    internal class MemoryProfilerModuleViewController : ProfilerModuleViewController
+    {
+        static class ResourcePath
+        {
+            public const string MemoryModuleUxmlPath = UIContentData.ResourcePaths.UxmlFilesPath + "MemoryProfilerModule/MemoryModule.uxml";
+        }
+        static class Content
+        {
+            public static readonly string NoFrameDataAvailable = L10n.Tr("No frame data available. Select a frame from the charts above to see its details here.");
+            public static readonly string Textures = L10n.Tr("Textures");
+            public static readonly string Meshes = L10n.Tr("Meshes");
+            public static readonly string Materials = L10n.Tr("Materials");
+            public static readonly string AnimationClips = L10n.Tr("Animation Clips");
+            public static readonly string Assets = L10n.Tr("Assets");
+            public static readonly string GameObjects = L10n.Tr("Game Objects");
+            public static readonly string SceneObjects = L10n.Tr("Scene Objects");
+            public static readonly string GCAlloc = L10n.Tr("GC allocated in frame");
+            public static readonly string OpenMemoryProfiler = L10n.Tr("Open Memory Profiler");
+        }
+
+        struct ObjectTableRow
+        {
+            public Label Count;
+            public Label Size;
+        }
+
+        MemoryProfilerModuleOverride m_OverrideMemoryProfilerModule;
+
+        /*MemoryProfilerModule*/
+        object m_MemoryModule;
+        // all UI Element and similar references should be grouped into this class.
+        // Since the things this reference get recreated every time the module is selected, these references shouldn't linger beyond the Dispose()
+        UIState m_UIState = null;
+        class UIState {
+            public VisualElement ViewArea;
+            public VisualElement NoDataView;
+            public VisualElement SimpleView;
+            public VisualElement DetailedView;
+            public UnityEngine.UIElements.Button DetailedMenu;
+            public Label DetailedMenuLabel;
+            public UnityEngine.UIElements.Button InstallPackageButton;
+            public VisualElement EditorWarningLabel;
+            public VisualElement DetailedToolbarSection;
+            public PackagedMemoryUsageBreakdown TopLevelBreakdown;
+            public PackagedMemoryUsageBreakdown Breakdown;
+            // if no memory counter data is available (i.e. the recording is from a pre 2020.2 Unity version) this whole section can't be populated with info
+            public VisualElement CounterBasedUI;
+            public TextField Text;
+
+            public ObjectTableRow TexturesRow;
+            public ObjectTableRow MeshesRow;
+            public ObjectTableRow MaterialsRow;
+            public ObjectTableRow AnimationClipsRow;
+            public ObjectTableRow AssetsRow;
+            public ObjectTableRow GameObjectsRow;
+            public ObjectTableRow SceneObjectsRow;
+            public ObjectTableRow GCAllocRow;
+        }
+
+        ulong[] m_Used = new ulong[6];
+        ulong[] m_Reserved = new ulong[6];
+
+        ulong[] m_TotalUsed = new ulong[1];
+        ulong[] m_TotalReserved = new ulong[1];
+        StringBuilder m_SimplePaneStringBuilder = new StringBuilder(1024);
+
+        bool m_AddedSimpleDataView = false;
+
+
+        ulong m_MaxSystemUsedMemory = 0;
+
+        IConnectionState m_ConnectionState;
+
+        public MemoryProfilerModuleViewController(ProfilerWindow profilerWindow, MemoryProfilerModuleOverride overrideModule, /*MemoryProfilerModule*/object memoryModule) : base(profilerWindow)
+        {
+            profilerWindow.SelectedFrameIndexChanged += UpdateContent;
+            m_MemoryModule = memoryModule;
+            m_OverrideMemoryProfilerModule = overrideModule;
+        }
+
+        int[] oneFrameAvailabilityBuffer = new int[1];
+
+        bool CheckMemoryStatsAvailablity(long frameIndex)
+        {
+            var dataNotAvailable = frameIndex < 0 || frameIndex < ProfilerWindow.firstAvailableFrameIndex || frameIndex > ProfilerWindow.lastAvailableFrameIndex;
+            if (!dataNotAvailable)
+            {
+                ProfilerDriver.GetStatisticsAvailable(UnityEngine.Profiling.ProfilerArea.Memory, (int)frameIndex, oneFrameAvailabilityBuffer);
+                if (oneFrameAvailabilityBuffer[0] == 0)
+                    dataNotAvailable = true;
+            }
+            return !dataNotAvailable;
+        }
+
+        void ViewChanged(ProfilerMemoryView view)
+        {
+            m_UIState.ViewArea.Clear();
+            m_OverrideMemoryProfilerModule.ShowDetailedMemoryPane = view;
+            if (view == ProfilerMemoryView.Simple)
+            {
+                var frameIndex = ProfilerWindow.selectedFrameIndex;
+                var dataAvailable = CheckMemoryStatsAvailablity(frameIndex);
+                m_UIState.DetailedMenuLabel.text = "Simple";
+
+                UIElementsHelper.SetVisibility(m_UIState.DetailedToolbarSection, false);
+                if (dataAvailable)
+                {
+                    m_UIState.ViewArea.Add(m_UIState.SimpleView);
+                    m_AddedSimpleDataView = true;
+                    UpdateContent(frameIndex);
+                }
+                else
+                {
+                    m_UIState.ViewArea.Add(m_UIState.NoDataView);
+                    m_AddedSimpleDataView = false;
+                }
+            }
+            else
+            {
+                m_UIState.DetailedMenuLabel.text = "Detailed";
+                UIElementsHelper.SetVisibility(m_UIState.DetailedToolbarSection, true);
+                // Detailed View doesn't differentiate between there being frame data or not because
+                // 1. Clear doesn't clear out old snapshots so there totally could be data here
+                // 2. Take Snapshot also doesn't require there to be any frame data
+                // this special case will disappear together with the detailed view eventually
+                m_UIState.ViewArea.Add(m_UIState.DetailedView);
+                m_AddedSimpleDataView = false;
+            }
+        }
+
+        static ProfilerMarker s_UpdateMaxSystemUsedMemoryProfilerMarker = new ProfilerMarker("MemoryProfilerModule.UpdateMaxSystemUsedMemory");
+        float[] m_CachedArray;
+        void UpdateMaxSystemUsedMemory(long firstFrameToCheck, long lastFrameToCheck)
+        {
+            s_UpdateMaxSystemUsedMemoryProfilerMarker.Begin();
+            var frameCountToCheck = lastFrameToCheck - firstFrameToCheck;
+            m_MaxSystemUsedMemory = 0;
+            var max = m_MaxSystemUsedMemory;
+            // try to reuse the array if possible
+            if (m_CachedArray == null || m_CachedArray.Length != frameCountToCheck)
+                m_CachedArray = new float[frameCountToCheck];
+            float maxValueInRange;
+            ProfilerDriver.GetCounterValuesBatch(UnityEngine.Profiling.ProfilerArea.Memory, "System Used Memory", (int)firstFrameToCheck, 1, m_CachedArray, out maxValueInRange);
+            if (maxValueInRange > max)
+                max = (ulong)maxValueInRange;
+            m_MaxSystemUsedMemory = max;
+            s_UpdateMaxSystemUsedMemoryProfilerMarker.End();
+        }
+
+        void UpdateContent(long frame)
+        {
+            if (m_OverrideMemoryProfilerModule.ShowDetailedMemoryPane != ProfilerMemoryView.Simple)
+                return;
+            var dataAvailable = CheckMemoryStatsAvailablity(frame);
+
+            if (m_AddedSimpleDataView != dataAvailable)
+            {
+                // refresh the view structure
+                ViewChanged(ProfilerMemoryView.Simple);
+                return;
+            }
+            if (!dataAvailable)
+                return;
+            if (m_UIState != null)
+            {
+                using (var data = ProfilerDriver.GetRawFrameDataView((int)frame, 0))
+                {
+                    m_SimplePaneStringBuilder.Clear();
+                    if (data.valid && data.GetMarkerId("Total Reserved Memory") != FrameDataView.invalidMarkerId)
+                    {
+                        var systemUsedMemoryId = data.GetMarkerId("System Used Memory");
+
+                        var systemUsedMemory = (ulong)data.GetCounterValueAsLong(systemUsedMemoryId);
+
+                        var totalIsKnown = (systemUsedMemoryId != FrameDataView.invalidMarkerId && systemUsedMemory > 0);
+
+                        var maxSystemUsedMemory = m_MaxSystemUsedMemory = systemUsedMemory;
+                        if (!m_OverrideMemoryProfilerModule.Normalized)
+                        {
+                            UpdateMaxSystemUsedMemory(ProfilerWindow.firstAvailableFrameIndex, ProfilerWindow.lastAvailableFrameIndex);
+                            maxSystemUsedMemory = m_MaxSystemUsedMemory;
+                        }
+
+                        var totalUsedId = data.GetMarkerId("Total Used Memory");
+                        var totalUsed = (ulong)data.GetCounterValueAsLong(totalUsedId);
+                        var totalReservedId = data.GetMarkerId("Total Reserved Memory");
+                        var totalReserved = (ulong)data.GetCounterValueAsLong(totalReservedId);
+
+                        m_TotalUsed[0] = totalUsed;
+                        m_TotalReserved[0] = totalReserved;
+
+                        if (!totalIsKnown)
+                            systemUsedMemory = totalReserved;
+
+                        m_UIState.TopLevelBreakdown.SetValues(new ulong[]{systemUsedMemory}, new List<ulong[]>{m_TotalReserved}, new List<ulong[]>{m_TotalUsed}, m_OverrideMemoryProfilerModule.Normalized, new ulong[]{maxSystemUsedMemory}, totalIsKnown);
+
+                        m_Used[4] = totalUsed;
+                        m_Reserved[4] = totalReserved;
+
+                        var gfxReservedId = data.GetMarkerId("Gfx Reserved Memory");
+                        m_Reserved[1] = m_Used[1] = (ulong)data.GetCounterValueAsLong(gfxReservedId);
+
+                        var managedUsedId = data.GetMarkerId("GC Used Memory");
+                        m_Used[0] = (ulong)data.GetCounterValueAsLong(managedUsedId);
+                        var managedReservedId = data.GetMarkerId("GC Reserved Memory");
+                        m_Reserved[0] = (ulong)data.GetCounterValueAsLong(managedReservedId);
+
+                        var audioReservedId = data.GetMarkerId("Audio Used Memory");
+                        m_Reserved[2] = m_Used[2] = (ulong)data.GetCounterValueAsLong(audioReservedId);
+
+                        var videoReservedId = data.GetMarkerId("Video Used Memory");
+                        m_Reserved[3] = m_Used[3] = (ulong)data.GetCounterValueAsLong(videoReservedId);
+
+
+                        var profilerUsedId = data.GetMarkerId("Profiler Used Memory");
+                        m_Used[5] = (ulong)data.GetCounterValueAsLong(profilerUsedId);
+                        var profilerReservedId = data.GetMarkerId("Profiler Reserved Memory");
+                        m_Reserved[5] = (ulong)data.GetCounterValueAsLong(profilerReservedId);
+
+                        m_Used[4] -= Math.Min(m_Used[0] + m_Used[1] + m_Used[2] + m_Used[3] + m_Used[5], m_Used[4]);
+                        m_Reserved[4] -= Math.Min(m_Reserved[0] + m_Reserved[1] + m_Reserved[2] + m_Reserved[3] + m_Reserved[5], m_Reserved[4]);
+                        m_UIState.Breakdown.SetValues(new ulong[]{systemUsedMemory},new List<ulong[]>{ m_Reserved}, new List<ulong[]>{m_Used}, m_OverrideMemoryProfilerModule.Normalized, new ulong[]{maxSystemUsedMemory}, totalIsKnown);
+
+                        UpdateObjectRow(data, ref m_UIState.TexturesRow, "Texture Count", "Texture Memory");
+                        UpdateObjectRow(data, ref m_UIState.MeshesRow, "Mesh Count", "Mesh Memory");
+                        UpdateObjectRow(data, ref m_UIState.MaterialsRow, "Material Count", "Material Memory");
+                        UpdateObjectRow(data, ref m_UIState.AnimationClipsRow, "AnimationClip Count", "AnimationClip Memory");
+                        UpdateObjectRow(data, ref m_UIState.AssetsRow, "Asset Count");
+                        UpdateObjectRow(data, ref m_UIState.GameObjectsRow, "Game Object Count");
+                        UpdateObjectRow(data, ref m_UIState.SceneObjectsRow, "Scene Object Count");
+
+                        UpdateObjectRow(data, ref m_UIState.GCAllocRow, "GC Allocation In Frame Count", "GC Allocated In Frame");
+
+                        if (!m_UIState.CounterBasedUI.visible)
+                            UIElementsHelper.SetVisibility(m_UIState.CounterBasedUI, true);
+
+                        var platformSpecifics = m_MemoryModule.GetPlatformSpecificText(data, ProfilerWindow);
+                        if (!string.IsNullOrEmpty(platformSpecifics))
+                        {
+                            m_SimplePaneStringBuilder.Append(platformSpecifics);
+                        }
+                    }
+                    else
+                    {
+                        if (m_UIState.CounterBasedUI.visible)
+                            UIElementsHelper.SetVisibility(m_UIState.CounterBasedUI, false);
+                        m_SimplePaneStringBuilder.Append( m_MemoryModule.GetSimpleMemoryPaneText(data, ProfilerWindow, false));
+                    }
+
+                    if(m_SimplePaneStringBuilder.Length > 0)
+                    {
+                        UIElementsHelper.SetVisibility(m_UIState.Text, true);
+                        m_UIState.Text.value = m_SimplePaneStringBuilder.ToString();
+                    }
+                    else
+                    {
+                        UIElementsHelper.SetVisibility(m_UIState.Text, false);
+                    }
+                }
+            }
+        }
+
+        void UpdateObjectRow(RawFrameDataView data, ref ObjectTableRow row, string countMarkerName, string sizeMarkerName = null)
+        {
+            row.Count.text = data.GetCounterValueAsLong(data.GetMarkerId(countMarkerName)).ToString();
+            if(!string.IsNullOrEmpty(sizeMarkerName))
+                row.Size.text = EditorUtility.FormatBytes(data.GetCounterValueAsLong(data.GetMarkerId(sizeMarkerName)));
+        }
+
+        void ConnectionChanged(string playerName)
+        {
+            if (m_ConnectionState != null)
+                UIElementsHelper.SetVisibility(m_UIState.EditorWarningLabel, m_ConnectionState.connectionName == "Editor");
+        }
+
+        protected override VisualElement CreateView()
+        {
+            VisualTreeAsset memoryModuleViewTree = EditorGUIUtility.Load(ResourcePath.MemoryModuleUxmlPath) as VisualTreeAsset;
+
+            var root = memoryModuleViewTree.CloneTree();
+
+            m_UIState = new UIState();
+
+            var toolbar = root.Q("memory-module__toolbar");
+            m_UIState.DetailedToolbarSection = toolbar.Q("memory-module__toolbar__detailed-controls");
+
+            m_UIState.DetailedMenu = toolbar.Q<UnityEngine.UIElements.Button>("memory-module__toolbar__detail-view-menu");
+            m_UIState.DetailedMenuLabel = m_UIState.DetailedMenu.Q<Label>("memory-module__toolbar__detail-view-menu__label");
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Simple"), false, () => ViewChanged(ProfilerMemoryView.Simple));
+            menu.AddItem(new GUIContent("Detailed"), false, () => ViewChanged(ProfilerMemoryView.Detailed));
+            m_UIState.DetailedMenu.clicked += () =>
+            {
+                menu.DropDown(UIElementsHelper.GetRect(m_UIState.DetailedMenu));
+            };
+
+            var takeCapture = toolbar.Q<UnityEngine.UIElements.Button>("memory-module__toolbar__take-sample-button");
+            takeCapture.clicked += () => m_MemoryModule.TakeCapture();
+
+            var gatherObjectReferencesToggle = toolbar.Q<Toggle>("memory-module__toolbar__gather-references-toggle");
+            gatherObjectReferencesToggle.RegisterValueChangedCallback((evt) => m_MemoryModule.SetGatherObjectReferences(evt.newValue));
+            gatherObjectReferencesToggle.SetValueWithoutNotify(m_MemoryModule.GetGatherObjectReferences());
+
+            var installPackageButton = toolbar.Q<UnityEngine.UIElements.Button>("memory-module__toolbar__install-package-button");
+
+            // in the main code base, this button offers to install the memory profiler package, here it is swapped to be one that opens it.
+            installPackageButton.text = Content.OpenMemoryProfiler;
+            installPackageButton.clicked += () => EditorWindow.GetWindow<MemoryProfilerWindow>();
+
+            m_UIState.EditorWarningLabel = toolbar.Q("memory-module__toolbar__editor-warning");
+
+            m_ConnectionState = PlayerConnectionGUIUtility.GetConnectionState(ProfilerWindow, ConnectionChanged);
+            UIElementsHelper.SetVisibility(m_UIState.EditorWarningLabel, m_ConnectionState.connectionName == "Editor");
+
+            m_UIState.ViewArea = root.Q("memory-module__view-area");
+
+            m_UIState.SimpleView = m_UIState.ViewArea.Q("memory-module__simple-area");
+            m_UIState.CounterBasedUI = m_UIState.SimpleView.Q("memory-module__simple-area__counter-based-ui");
+
+            var normalizedToggle = m_UIState.CounterBasedUI.Q<Toggle>("memory-module__simple-area__breakdown__normalized-toggle");
+            normalizedToggle.value = m_OverrideMemoryProfilerModule.Normalized;
+            normalizedToggle.RegisterValueChangedCallback((evt) =>
+            {
+                m_OverrideMemoryProfilerModule.Normalized = evt.newValue;
+                UpdateContent(ProfilerWindow.selectedFrameIndex);
+            });
+
+            m_UIState.TopLevelBreakdown = m_UIState.CounterBasedUI.Q<PackagedMemoryUsageBreakdown>("memory-usage-breakdown__top-level");
+            m_UIState.TopLevelBreakdown.Setup();
+            m_UIState.Breakdown = m_UIState.CounterBasedUI.Q<PackagedMemoryUsageBreakdown>("memory-usage-breakdown");
+            m_UIState.Breakdown.Setup();
+
+            var m_ObjectStatsTable = m_UIState.CounterBasedUI.Q("memory-usage-breakdown__object-stats_list");
+
+            SetupObjectTableRow(m_ObjectStatsTable.Q("memory-usage-breakdown__object-stats__textures"), ref m_UIState.TexturesRow, Content.Textures);
+            SetupObjectTableRow(m_ObjectStatsTable.Q("memory-usage-breakdown__object-stats__meshes"), ref m_UIState.MeshesRow, Content.Meshes);
+            SetupObjectTableRow(m_ObjectStatsTable.Q("memory-usage-breakdown__object-stats__materials"), ref m_UIState.MaterialsRow, Content.Materials);
+            SetupObjectTableRow(m_ObjectStatsTable.Q("memory-usage-breakdown__object-stats__animation-clips"), ref m_UIState.AnimationClipsRow, Content.AnimationClips);
+            SetupObjectTableRow(m_ObjectStatsTable.Q("memory-usage-breakdown__object-stats__assets"), ref m_UIState.AssetsRow, Content.Assets, true);
+            SetupObjectTableRow(m_ObjectStatsTable.Q("memory-usage-breakdown__object-stats__game-objects"), ref m_UIState.GameObjectsRow, Content.GameObjects, true);
+            SetupObjectTableRow(m_ObjectStatsTable.Q("memory-usage-breakdown__object-stats__scene-objects"), ref m_UIState.SceneObjectsRow, Content.SceneObjects, true);
+
+            var m_GCAllocExtraRow = m_UIState.CounterBasedUI.Q<VisualElement>("memory-usage-breakdown__object-stats__gc");
+            SetupObjectTableRow(m_GCAllocExtraRow, ref m_UIState.GCAllocRow, Content.GCAlloc);
+
+            m_UIState.Text = m_UIState.SimpleView.Q<TextField>("memory-module__simple-area__label");
+
+            var detailedView = m_UIState.ViewArea.Q<IMGUIContainer>("memory-module__detaile-snapshot-area");// new IMGUIContainer();
+            detailedView.onGUIHandler = () => m_MemoryModule.DrawDetailedMemoryPane();
+            m_UIState.DetailedView = detailedView;
+
+            m_UIState.NoDataView = m_UIState.ViewArea.Q("memory-module__no-frame-data__area");
+            m_UIState.NoDataView.Q<Label>("memory-module__no-frame-data__label").text = Content.NoFrameDataAvailable;
+
+            ViewChanged(m_OverrideMemoryProfilerModule.ShowDetailedMemoryPane);
+            return root;
+        }
+
+        void SetupObjectTableRow(VisualElement rowRoot, ref ObjectTableRow row, string name, bool sizesUnknown = false)
+        {
+            rowRoot.Q<Label>("memory-usage-breakdown__object-table__name").text = name;
+            row.Count = rowRoot.Q<Label>("memory-usage-breakdown__object-table__count-column");
+            row.Count.text = "0";
+            row.Size = rowRoot.Q<Label>("memory-usage-breakdown__object-table__size-column");
+            row.Size.text = sizesUnknown? "-" : "0";
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (ProfilerWindow != null)
+                ProfilerWindow.SelectedFrameIndexChanged -= UpdateContent;
+
+            if (m_ConnectionState != null)
+                m_ConnectionState.Dispose();
+            m_ConnectionState = null;
+
+            m_UIState = null;
+        }
+    }
+
+}
+#endif
