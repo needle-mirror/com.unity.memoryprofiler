@@ -16,8 +16,8 @@
 							<ui:Label text="A" display-tooltip-when-elided="true" name="memory-usage-breakdown__legend__header-icon-text" class="snapshot-list__item image-tint-color__snapshot-a open-snapshot__compare-tag legend__header-icon-text background-color__snapshot-a" />
 						</ui:VisualElement>
 						<ui:VisualElement name="memory_usage-breakdown__legend__header__sort-group">
-							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-disabled legend__header__sort-ascending" />
-							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-disabled" />
+							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-ascending--disabled legend__header__sort-ascending" />
+							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-descending--disabled" />
 						</ui:VisualElement>
 					</ui:VisualElement>
 				</ui:VisualElement>
@@ -32,8 +32,8 @@
 							<ui:Label text="B" display-tooltip-when-elided="true" name="memory-usage-breakdown__legend__header-icon-text" class="snapshot-list__item image-tint-color__snapshot-a open-snapshot__compare-tag legend__header-icon-text background-color__snapshot-b" />
 						</ui:VisualElement>
 						<ui:VisualElement name="memory_usage-breakdown__legend__header__sort-group">
-							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-disabled legend__header__sort-ascending" />
-							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-disabled" />
+							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-ascending--disabled legend__header__sort-ascending" />
+							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-descending--disabled" />
 						</ui:VisualElement>
 					</ui:VisualElement>
 				</ui:VisualElement>
@@ -48,8 +48,8 @@
 							<ui:Label text="A-B" display-tooltip-when-elided="true" name="memory-usage-breakdown__legend__header-icon-text" class="snapshot-list__item image-tint-color__snapshot-a open-snapshot__compare-tag legend__header-icon-text background-color__snapshot-diff memory-usage-breakdown__legend__header-diff-icon" />
 						</ui:VisualElement>
 						<ui:VisualElement name="memory_usage-breakdown__legend__header__sort-group">
-							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-disabled legend__header__sort-ascending" />
-							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-disabled" />
+							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-ascending--disabled legend__header__sort-ascending" />
+							<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-descending--disabled" />
 						</ui:VisualElement>
 					</ui:VisualElement>
 				</ui:VisualElement>

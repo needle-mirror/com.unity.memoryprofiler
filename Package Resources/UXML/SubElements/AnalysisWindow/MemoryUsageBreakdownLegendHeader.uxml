@@ -5,9 +5,9 @@
 		<ui:VisualElement name="memory-usage-breakdown__legend__header" class="legend__header" style="margin-top: 4px;">
 			<ui:VisualElement name="memory-usage-breakdown__legend__header-row" class="legend__header-row" style="position: relative;">
 				<ui:VisualElement name="memory-usage-breakdown__legend__header-groupA" style="position: absolute; right: auto; top: auto; left: auto; bottom: auto; width: 32px; height: 20px;">
-					<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-descending--disabled legend__header__sort" style="rotate: 270deg; padding-left: -2px; padding-right: -2px; padding-top: -2px; padding-bottom: -2px;" />
+					<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-descending" class="legend__header__sort-descending legend__header__sort-descending--disabled legend__header__sort" style="padding-left: -2px; padding-right: -2px; padding-top: -2px; padding-bottom: -2px;" />
 					<ui:VisualElement name="memory-usage-breakdown__legend__header__diff-icon" class="legend__header__diff" />
-					<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-ascending--disabled legend__header__sort-ascending legend__header__sort" style="rotate: 90deg; -unity-slice-left: 0; -unity-slice-top: 0; -unity-slice-right: 0; -unity-slice-bottom: 0;" />
+					<ui:VisualElement name="memory-usage-breakdown__legend__header__sort-ascending" class="legend__header__sort-ascending--disabled legend__header__sort-ascending legend__header__sort" style="-unity-slice-left: 0; -unity-slice-top: 0; -unity-slice-right: 0; -unity-slice-bottom: 0;" />
 				</ui:VisualElement>
 			</ui:VisualElement>
 		</ui:VisualElement>

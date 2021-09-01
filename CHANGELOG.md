@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-preview.2] - 2021-09-01
+
+### Changed
+ - Fixed error messages appearing about `90deg` and `270deg` being an `UnsupportedUnit` for Unity versions before 2021.2.
+ - The 'A' icon in the break down table header is now hiden when in single snapshot mode.
+
 ## [0.4.0-preview.1] - 2021-08-31
 
 Recommended Unity versions to upgrade to when using this package version:

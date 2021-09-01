@@ -118,6 +118,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public const string DiffColumnControls = "memory-usage-breakdown__legend-table-diff-column-controls";
             public static readonly string ColorBoxUnused = "memory-usage-breakdown__legend__color-box__unused";
             public static readonly string LegendUsedReserved = "memory-usage-breakdown__legend__used-reserved";
+            public static readonly string HeaderIcon ="memory-usage-breakdown__legend__head-icon";
         }
 
         public string HeaderText { get; private set; }
@@ -248,6 +249,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void SetBAndDiffVisibility(bool visibility)
         {
+            UIElementsHelper.SetVisibility(m_Root.Q(ElementAndStyleNames.HeaderIcon),visibility);
             UIElementsHelper.SetVisibility(m_MemoryUsageTable.Q(ElementAndStyleNames.LegendTableSnapshotBColumn), visibility);
             UIElementsHelper.SetVisibility(m_MemoryUsageTable.Q(ElementAndStyleNames.LegendTableDiffColumn), visibility);
             UIElementsHelper.SetVisibility(this.Q<VisualElement>(ElementAndStyleNames.HeaderB), visibility);
