@@ -394,14 +394,14 @@ namespace Unity.MemoryProfiler.Editor
                     First = snaps.Current.Snapshot;
                     firstGUIData = First.GuiData;
                     firstGUIData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode);
-                    firstStillExists = false;
+                    firstStillExists = true;
                 }
                 else if (Second == snaps.Current.Snapshot)
                 {
                     Second = snaps.Current.Snapshot;
                     secondGUIData = Second.GuiData;
                     secondGUIData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode);
-                    secondStillExists = false;
+                    secondStillExists = true;
                 }
             }
             // if it's gone, close the second first as it would otherwise switch into the position of the First

@@ -634,14 +634,17 @@ namespace Unity.MemoryProfiler.Editor
                 new MetaColumn("rootReferenceAreaName", "Root Reference Area Name", new MetaType(typeof(string), DataMatchMethod.AsString), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.NativeAllocations.RootReferenceId, (id) =>
                 {
-                    for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)
+                    if (id > 0)
                     {
-                        if (m_Snapshot.NativeRootReferences.Id[i] == id)
+                        for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)
                         {
-                            return m_Snapshot.NativeRootReferences.AreaName[i];
+                            if (m_Snapshot.NativeRootReferences.Id[i] == id)
+                            {
+                                return m_Snapshot.NativeRootReferences.AreaName[i];
+                            }
                         }
                     }
-                    return "Unknown";
+                    return "No Root Area";
                 }, (ref long o, string v) =>
                     {
                         for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)
@@ -659,14 +662,17 @@ namespace Unity.MemoryProfiler.Editor
                 new MetaColumn("rootReferenceObjectName", "Root Reference Object Name", new MetaType(typeof(string), DataMatchMethod.AsString), false, Grouping.groupByDuplicate, null)
                 , DataArray.MakeColumn_Transform(m_Snapshot.NativeAllocations.RootReferenceId, (id) =>
                 {
-                    for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)
+                    if (id > 0)
                     {
-                        if (m_Snapshot.NativeRootReferences.Id[i] == id)
+                        for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)
                         {
-                            return m_Snapshot.NativeRootReferences.ObjectName[i];
+                            if (m_Snapshot.NativeRootReferences.Id[i] == id)
+                            {
+                                return m_Snapshot.NativeRootReferences.ObjectName[i];
+                            }
                         }
                     }
-                    return "Unknown";
+                    return "No Root";
                 }, (ref long o, string v) =>
                     {
                         for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)

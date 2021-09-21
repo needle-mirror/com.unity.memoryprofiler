@@ -4,11 +4,26 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+
+## [0.4.1-preview.1] - 2021-09-21
+
+### Added
+ - Added two capture options when capturing the Editor, allowing you to choose whether or not the Memory Profiler should close all open snapshots and trigger a Garbage Collection before taking the capture. The default behavior is to do both of these to reduce the noise when capturing the memory usage in the Editor.
+
+### Changed
+ - Changed capture logic when capturing snapshots from a Player to not close open snapshots and trigger a Garbage Collection in the capturing Editor.
+ - Fixed platform icons so they show up for more platforms.
+ - Fixed the Memory Profiler Module UI so it shows non-broken, single data set Memory Breakdown bars and a functional object data list again.
+ - Fixed a calculation for the `Memory Usage` breakdown where `Virtual Machine` memory was faultily subtracted from `Other`. 
+ - Fixed Managed Memory Breakdown bars not swapping A and B bars when swapping the Snapshot.
+ - Fixed the value of Untracked so it stays as `Unknown` on sorting, instead of changing to `0 B`.
+ - Fixed Allocation tables to not show allocations without a proper root object id as associated with `ExecutableAndDlls` but instead as having an `Unkown` root object.
+
 ## [0.4.0-preview.2] - 2021-09-01
 
 ### Changed
  - Fixed error messages appearing about `90deg` and `270deg` being an `UnsupportedUnit` for Unity versions before 2021.2.
- - The 'A' icon in the break down table header is now hiden when in single snapshot mode.
+ - The 'A' icon in the break down table header is now hidden when in single snapshot mode.
 
 ## [0.4.0-preview.1] - 2021-08-31
 

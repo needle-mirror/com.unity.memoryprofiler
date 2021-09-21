@@ -50,7 +50,8 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         // all UI Element and similar references should be grouped into this class.
         // Since the things this reference get recreated every time the module is selected, these references shouldn't linger beyond the Dispose()
         UIState m_UIState = null;
-        class UIState {
+        class UIState
+        {
             public VisualElement ViewArea;
             public VisualElement NoDataView;
             public VisualElement SimpleView;
@@ -76,12 +77,12 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             public ObjectTableRow GCAllocRow;
         }
 
-        ulong[] m_Used = new ulong[6];
-        ulong[] m_Reserved = new ulong[6];
+        List<ulong[]> m_Used;
+        List<ulong[]> m_Reserved;
 
-        ulong[] m_TotalUsed = new ulong[1];
-        ulong[] m_TotalReserved = new ulong[1];
-        StringBuilder m_SimplePaneStringBuilder = new StringBuilder(1024);
+        ulong[] m_TotalUsed;
+        ulong[] m_TotalReserved;
+        StringBuilder m_SimplePaneStringBuilder;
 
         bool m_AddedSimpleDataView = false;
 
@@ -90,11 +91,34 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         IConnectionState m_ConnectionState;
 
-        public MemoryProfilerModuleViewController(ProfilerWindow profilerWindow, MemoryProfilerModuleOverride overrideModule, /*MemoryProfilerModule*/object memoryModule) : base(profilerWindow)
+        public MemoryProfilerModuleViewController(ProfilerWindow profilerWindow, MemoryProfilerModuleOverride overrideModule, /*MemoryProfilerModule*/ object memoryModule) : base(profilerWindow)
         {
             profilerWindow.SelectedFrameIndexChanged += UpdateContent;
             m_MemoryModule = memoryModule;
             m_OverrideMemoryProfilerModule = overrideModule;
+
+            // MemoryUsageBreakdown APIs currently expect to work with 2 sets of data for snapshots diffing
+            const int k_AmountOfTotalNumbersExpectedByMemoryUsageBreakdown = 2;
+            // And arrays with 3 sets of each detailed number where the 3rd one is the diff value, calculated which will be calculated by MemoryUsageBreakdown code and stored in that array.
+            const int k_AmountOfDetailedNumbersExpectedByMemoryUsageBreakdown = 3;
+            // Similarly, we don't need to calculate the Untracked value.
+            // That is being done by the MemoryUsageBreakdown APIs based on whether or not there is a known total,
+            // if Untracked should be shown, and by subtracting what is accounted for in the details from the provided total.
+            // Therefore, we only need to provide values for the 6 tracked categories we want to show.
+            const int k_AmountOfMemoryCategoriesExclusingUntracked = 6;
+
+            m_Used = new List<ulong[]>(k_AmountOfMemoryCategoriesExclusingUntracked);
+            m_Reserved = new List<ulong[]>(k_AmountOfMemoryCategoriesExclusingUntracked);
+
+            m_TotalUsed = new ulong[k_AmountOfTotalNumbersExpectedByMemoryUsageBreakdown];
+            m_TotalReserved = new ulong[k_AmountOfTotalNumbersExpectedByMemoryUsageBreakdown];
+            m_SimplePaneStringBuilder = new StringBuilder(1024);
+
+            for (int i = 0; i < k_AmountOfMemoryCategoriesExclusingUntracked; i++)
+            {
+                m_Used.Add(new ulong[k_AmountOfDetailedNumbersExpectedByMemoryUsageBreakdown]);
+                m_Reserved.Add(new ulong[k_AmountOfDetailedNumbersExpectedByMemoryUsageBreakdown]);
+            }
         }
 
         int[] oneFrameAvailabilityBuffer = new int[1];
@@ -211,34 +235,34 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
                         if (!totalIsKnown)
                             systemUsedMemory = totalReserved;
 
-                        m_UIState.TopLevelBreakdown.SetValues(new ulong[]{systemUsedMemory}, new List<ulong[]>{m_TotalReserved}, new List<ulong[]>{m_TotalUsed}, m_OverrideMemoryProfilerModule.Normalized, new ulong[]{maxSystemUsedMemory}, totalIsKnown);
+                        m_UIState.TopLevelBreakdown.SetValues(new ulong[] {systemUsedMemory, systemUsedMemory}, new List<ulong[]> {m_TotalReserved}, new List<ulong[]> {m_TotalUsed}, m_OverrideMemoryProfilerModule.Normalized, new ulong[] {maxSystemUsedMemory, maxSystemUsedMemory}, totalIsKnown);
 
-                        m_Used[4] = totalUsed;
-                        m_Reserved[4] = totalReserved;
+                        m_Used[4][0] = totalUsed;
+                        m_Reserved[4][0] = totalReserved;
 
                         var gfxReservedId = data.GetMarkerId("Gfx Reserved Memory");
-                        m_Reserved[1] = m_Used[1] = (ulong)data.GetCounterValueAsLong(gfxReservedId);
+                        m_Reserved[1][0] = m_Used[1][0] = (ulong)data.GetCounterValueAsLong(gfxReservedId);
 
                         var managedUsedId = data.GetMarkerId("GC Used Memory");
-                        m_Used[0] = (ulong)data.GetCounterValueAsLong(managedUsedId);
+                        m_Used[0][0] = (ulong)data.GetCounterValueAsLong(managedUsedId);
                         var managedReservedId = data.GetMarkerId("GC Reserved Memory");
-                        m_Reserved[0] = (ulong)data.GetCounterValueAsLong(managedReservedId);
+                        m_Reserved[0][0] = (ulong)data.GetCounterValueAsLong(managedReservedId);
 
                         var audioReservedId = data.GetMarkerId("Audio Used Memory");
-                        m_Reserved[2] = m_Used[2] = (ulong)data.GetCounterValueAsLong(audioReservedId);
+                        m_Reserved[2][0] = m_Used[2][0] = (ulong)data.GetCounterValueAsLong(audioReservedId);
 
                         var videoReservedId = data.GetMarkerId("Video Used Memory");
-                        m_Reserved[3] = m_Used[3] = (ulong)data.GetCounterValueAsLong(videoReservedId);
+                        m_Reserved[3][0] = m_Used[3][0] = (ulong)data.GetCounterValueAsLong(videoReservedId);
 
 
                         var profilerUsedId = data.GetMarkerId("Profiler Used Memory");
-                        m_Used[5] = (ulong)data.GetCounterValueAsLong(profilerUsedId);
+                        m_Used[5][0] = (ulong)data.GetCounterValueAsLong(profilerUsedId);
                         var profilerReservedId = data.GetMarkerId("Profiler Reserved Memory");
-                        m_Reserved[5] = (ulong)data.GetCounterValueAsLong(profilerReservedId);
+                        m_Reserved[5][0] = (ulong)data.GetCounterValueAsLong(profilerReservedId);
 
-                        m_Used[4] -= Math.Min(m_Used[0] + m_Used[1] + m_Used[2] + m_Used[3] + m_Used[5], m_Used[4]);
-                        m_Reserved[4] -= Math.Min(m_Reserved[0] + m_Reserved[1] + m_Reserved[2] + m_Reserved[3] + m_Reserved[5], m_Reserved[4]);
-                        m_UIState.Breakdown.SetValues(new ulong[]{systemUsedMemory},new List<ulong[]>{ m_Reserved}, new List<ulong[]>{m_Used}, m_OverrideMemoryProfilerModule.Normalized, new ulong[]{maxSystemUsedMemory}, totalIsKnown);
+                        m_Used[4][0] -= Math.Min(m_Used[0][0] + m_Used[1][0] + m_Used[2][0] + m_Used[3][0] + m_Used[5][0], m_Used[4][0]);
+                        m_Reserved[4][0] -= Math.Min(m_Reserved[0][0] + m_Reserved[1][0] + m_Reserved[2][0] + m_Reserved[3][0] + m_Reserved[5][0], m_Reserved[4][0]);
+                        m_UIState.Breakdown.SetValues(new ulong[] {systemUsedMemory, systemUsedMemory}, m_Reserved, m_Used, m_OverrideMemoryProfilerModule.Normalized, new ulong[] {maxSystemUsedMemory, maxSystemUsedMemory }, totalIsKnown);
 
                         UpdateObjectRow(data, ref m_UIState.TexturesRow, "Texture Count", "Texture Memory");
                         UpdateObjectRow(data, ref m_UIState.MeshesRow, "Mesh Count", "Mesh Memory");
@@ -263,10 +287,10 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
                     {
                         if (m_UIState.CounterBasedUI.visible)
                             UIElementsHelper.SetVisibility(m_UIState.CounterBasedUI, false);
-                        m_SimplePaneStringBuilder.Append( m_MemoryModule.GetSimpleMemoryPaneText(data, ProfilerWindow, false));
+                        m_SimplePaneStringBuilder.Append(m_MemoryModule.GetSimpleMemoryPaneText(data, ProfilerWindow, false));
                     }
 
-                    if(m_SimplePaneStringBuilder.Length > 0)
+                    if (m_SimplePaneStringBuilder.Length > 0)
                     {
                         UIElementsHelper.SetVisibility(m_UIState.Text, true);
                         m_UIState.Text.value = m_SimplePaneStringBuilder.ToString();
@@ -282,7 +306,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         void UpdateObjectRow(RawFrameDataView data, ref ObjectTableRow row, string countMarkerName, string sizeMarkerName = null)
         {
             row.Count.text = data.GetCounterValueAsLong(data.GetMarkerId(countMarkerName)).ToString();
-            if(!string.IsNullOrEmpty(sizeMarkerName))
+            if (!string.IsNullOrEmpty(sizeMarkerName))
                 row.Size.text = EditorUtility.FormatBytes(data.GetCounterValueAsLong(data.GetMarkerId(sizeMarkerName)));
         }
 
@@ -346,8 +370,10 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
             m_UIState.TopLevelBreakdown = m_UIState.CounterBasedUI.Q<PackagedMemoryUsageBreakdown>("memory-usage-breakdown__top-level");
             m_UIState.TopLevelBreakdown.Setup();
+            m_UIState.TopLevelBreakdown.SetBAndDiffVisibility(false);
             m_UIState.Breakdown = m_UIState.CounterBasedUI.Q<PackagedMemoryUsageBreakdown>("memory-usage-breakdown");
             m_UIState.Breakdown.Setup();
+            m_UIState.Breakdown.SetBAndDiffVisibility(false);
 
             var m_ObjectStatsTable = m_UIState.CounterBasedUI.Q("memory-usage-breakdown__object-stats_list");
 
@@ -381,7 +407,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             row.Count = rowRoot.Q<Label>("memory-usage-breakdown__object-table__count-column");
             row.Count.text = "0";
             row.Size = rowRoot.Q<Label>("memory-usage-breakdown__object-table__size-column");
-            row.Size.text = sizesUnknown? "-" : "0";
+            row.Size.text = sizesUnknown ? "-" : "0";
         }
 
         protected override void Dispose(bool disposing)
@@ -397,6 +423,5 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             m_UIState = null;
         }
     }
-
 }
 #endif

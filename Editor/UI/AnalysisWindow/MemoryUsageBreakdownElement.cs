@@ -207,6 +207,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var percentageSelected = PercentageSelected(i);
                 m_SelectedElement[i].style.SetBarWidthInPercent(percentageSelected);
             }
+            for (int i = 0; i < barValuesSet.Length; i++)
+            {
+                // Only used and selected have been set yet, not the total
+                barValuesSet[i] = false;
+            }
         }
 
         public void Setup(MemoryUsageBreakdown memoryUsageBreakdown, VisualElement colorBox, Label rowName, Label rowASize, Label rowBSize = null, Label diffSize = null)
@@ -224,8 +229,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_RowName.text = Text;
 
-            UIElementsHelper.SetVisibility(m_ColorBox.Q<VisualElement>(ElementAndStyleNames.ColorBoxUnused),ShowUsed);
-            UIElementsHelper.SetVisibility(m_RowName.parent.Q<VisualElement>(ElementAndStyleNames.LegendUsedReserved),ShowUsed);
+            UIElementsHelper.SetVisibility(m_ColorBox.Q<VisualElement>(ElementAndStyleNames.ColorBoxUnused), ShowUsed);
+            UIElementsHelper.SetVisibility(m_RowName.parent.Q<VisualElement>(ElementAndStyleNames.LegendUsedReserved), ShowUsed);
 
             SetValues(new[] { stats[0].totalBytes, stats[1].totalBytes} , new[] { stats[0].usedBytes, stats[1].usedBytes });
         }

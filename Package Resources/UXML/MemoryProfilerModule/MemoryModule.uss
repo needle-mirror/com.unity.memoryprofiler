@@ -91,6 +91,10 @@
     color: rgb(134, 134, 134);
 }
 
+.memory-usage-breakdown__object-table__legend-row {
+    flex-direction: row;
+}
+
 .memory-usage-breakdown__object-table__count-column {
     -unity-text-align: upper-right;
 }
@@ -101,6 +105,7 @@
 }
 
 .memory-usage-breakdown__object-table__name-column {
+    -unity-text-align: middle-left;
     flex-grow: 1;
 }
 

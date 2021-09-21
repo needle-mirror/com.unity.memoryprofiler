@@ -72,6 +72,8 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static readonly GUIContent CaptureNativeObjectsItem = new GUIContent("Native Objects");
         public static readonly GUIContent CaptureNativeAllocationsItem = new GUIContent("Native Allocations");
         public static readonly GUIContent CaptureScreenshotItem = new GUIContent("Screenshot");
+        public static readonly GUIContent CloseSnapshotsItem = new GUIContent("Close open snapshots before capturing Editor");
+        public static readonly GUIContent GCCollectItem = new GUIContent("Run Garbage Collection before capturing Editor");
 
         public static readonly GUIContent OpenSettingsOption = new GUIContent("Open Preferences");
 

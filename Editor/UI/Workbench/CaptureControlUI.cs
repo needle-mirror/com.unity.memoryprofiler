@@ -59,6 +59,12 @@ namespace Unity.MemoryProfiler.Editor
         [SerializeField]
         bool m_CaptureWithScreenshot = true;
 
+        [SerializeField]
+        bool m_CloseSnapshotsWhenCapturingEditor = true;
+
+        [SerializeField]
+        bool m_GCCollectWhenCapturingEditor = true;
+
         [NonSerialized]
         LegacyReader m_LegacyReader;
 
@@ -145,10 +151,16 @@ namespace Unity.MemoryProfiler.Editor
             var menu = new GenericMenu();
             menu.AddItem(TextContent.CaptureManagedObjectsItem, mo, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.ManagedObjects, !mo); });
             menu.AddItem(TextContent.CaptureNativeObjectsItem, no, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeObjects, !no); });
-            //For now disable all the native allocation flags in one go, the callstack flags will have an effect only when the player has call-stacks support
+            //For now disable all the native allocation flags in one go, the call-stack flags will have an effect only when the player has call-stacks support
             menu.AddItem(TextContent.CaptureNativeAllocationsItem, na, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeAllocations | CaptureFlags.NativeStackTraces, !na); });
             menu.AddSeparator("");
             menu.AddItem(TextContent.CaptureScreenshotItem, m_CaptureWithScreenshot, () => { m_CaptureWithScreenshot = !m_CaptureWithScreenshot; });
+            if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Editor)
+            {
+                menu.AddItem(TextContent.CloseSnapshotsItem, m_CloseSnapshotsWhenCapturingEditor, () => { m_CloseSnapshotsWhenCapturingEditor = !m_CloseSnapshotsWhenCapturingEditor; });
+                menu.AddItem(TextContent.GCCollectItem, m_GCCollectWhenCapturingEditor, () => { m_GCCollectWhenCapturingEditor = !m_GCCollectWhenCapturingEditor; });
+            }
+
             return menu;
         }
 
@@ -325,10 +337,16 @@ namespace Unity.MemoryProfiler.Editor
 
         void ClearAllDataAndGCCollect()
         {
-            m_OpenSnapshotsManager.CloseAllOpenSnapshots();
-            m_ParentWindow.UIState.ClearAllOpenModes();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
+            if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Editor && m_CloseSnapshotsWhenCapturingEditor)
+            {
+                m_OpenSnapshotsManager.CloseAllOpenSnapshots();
+                m_ParentWindow.UIState.ClearAllOpenModes();
+            }
+            if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Editor && m_GCCollectWhenCapturingEditor)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
         }
 
         bool m_SnapshotInProgress;
@@ -364,6 +382,7 @@ namespace Unity.MemoryProfiler.Editor
             m_ScreenshotInProgress = true;
 
             MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.CapturedSnapshotEvent>();
+
             ClearAllDataAndGCCollect();
 
             string basePath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, FileExtensionContent.SnapshotTempFileName);

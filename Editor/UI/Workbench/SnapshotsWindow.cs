@@ -257,9 +257,12 @@ namespace Unity.MemoryProfiler.Editor
                     buildTarget = BuildTarget.WSAPlayer;
                     break;
                 case RuntimePlatform.PS4:
+                case RuntimePlatform.PS5:
                     buildTarget = BuildTarget.PS4;
                     break;
                 case RuntimePlatform.XboxOne:
+                case RuntimePlatform.GameCoreXboxOne:
+                case RuntimePlatform.GameCoreXboxSeries:
                     buildTarget = BuildTarget.XboxOne;
                     break;
                 case RuntimePlatform.tvOS:
@@ -270,6 +273,9 @@ namespace Unity.MemoryProfiler.Editor
                     break;
                 case RuntimePlatform.Lumin:
                     buildTarget = BuildTarget.Lumin;
+                    break;
+                case RuntimePlatform.Stadia:
+                    buildTarget = BuildTarget.Stadia;
                     break;
                 default:
                     // Unknown target

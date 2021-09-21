@@ -254,8 +254,34 @@ namespace Unity.MemoryProfiler.Editor.UI
             var snapshotTargetMemoryStats = cs.MetaData.TargetMemoryStats.Value;
             systemUsedMemory = snapshotTargetMemoryStats.TotalVirtualMemory;
 
-            var unityMemoryReserved = snapshotTargetMemoryStats.TotalReservedMemory - snapshotTargetMemoryStats.GcHeapReservedMemory - snapshotTargetMemoryStats.GraphicsUsedMemory - snapshotTargetMemoryStats.ProfilerReservedMemory - snapshotTargetMemoryStats.AudioUsedMemory - cs.ManagedHeapSections.VirtualMachineMemoryReserved;
-            var unityMemoryUsed = snapshotTargetMemoryStats.TotalUsedMemory - snapshotTargetMemoryStats.GcHeapUsedMemory - snapshotTargetMemoryStats.GraphicsUsedMemory - snapshotTargetMemoryStats.ProfilerUsedMemory - snapshotTargetMemoryStats.AudioUsedMemory - cs.ManagedHeapSections.VirtualMachineMemoryReserved;
+            var reservedMemoryAttributedToSpecificCategories =
+                snapshotTargetMemoryStats.GcHeapReservedMemory
+                + snapshotTargetMemoryStats.GraphicsUsedMemory
+                + snapshotTargetMemoryStats.ProfilerReservedMemory
+                + snapshotTargetMemoryStats.AudioUsedMemory;
+            var usedMemoryAttributedToSpecificCategories =
+                snapshotTargetMemoryStats.GcHeapUsedMemory
+                + snapshotTargetMemoryStats.GraphicsUsedMemory
+                + snapshotTargetMemoryStats.ProfilerUsedMemory
+                + snapshotTargetMemoryStats.AudioUsedMemory;
+
+            var unityMemoryReserved = snapshotTargetMemoryStats.TotalReservedMemory - reservedMemoryAttributedToSpecificCategories;
+            var unityMemoryUsed = snapshotTargetMemoryStats.TotalUsedMemory - usedMemoryAttributedToSpecificCategories;
+
+            if (reservedMemoryAttributedToSpecificCategories > snapshotTargetMemoryStats.TotalReservedMemory)
+            {
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                Debug.LogError("Reserved Memory attributed to categories is bigger than known reserved memory by " + EditorUtility.FormatBytes((long)(reservedMemoryAttributedToSpecificCategories - snapshotTargetMemoryStats.TotalReservedMemory)));
+#endif
+                unityMemoryReserved = 0;
+            }
+            if (usedMemoryAttributedToSpecificCategories > snapshotTargetMemoryStats.TotalUsedMemory)
+            {
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                Debug.LogError("Used Memory attributed to categories is bigger than known used memory by " + EditorUtility.FormatBytes((long)(usedMemoryAttributedToSpecificCategories - snapshotTargetMemoryStats.TotalUsedMemory)));
+#endif
+                unityMemoryUsed = 0;
+            }
 
             // TODO: Temp (memoryStats2.TempAllocatorUsedMemory) should likely get it's own section in the bar
 

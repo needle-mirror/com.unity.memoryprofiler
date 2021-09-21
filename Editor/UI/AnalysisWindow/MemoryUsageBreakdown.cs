@@ -118,7 +118,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public const string DiffColumnControls = "memory-usage-breakdown__legend-table-diff-column-controls";
             public static readonly string ColorBoxUnused = "memory-usage-breakdown__legend__color-box__unused";
             public static readonly string LegendUsedReserved = "memory-usage-breakdown__legend__used-reserved";
-            public static readonly string HeaderIcon ="memory-usage-breakdown__legend__head-icon";
+            public static readonly string HeaderIcon = "memory-usage-breakdown__legend__head-icon";
         }
 
         public string HeaderText { get; private set; }
@@ -145,6 +145,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         ulong[] m_MaxTotalBytesToNormalizeTo = new ulong[2];
 
         public bool ShowUnknown { get; private set; }
+        public bool TotalIsKnown { get; private set; }
 
         public string UnknownName { get; private set; } = Content.UnknownText;
 
@@ -249,7 +250,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void SetBAndDiffVisibility(bool visibility)
         {
-            UIElementsHelper.SetVisibility(m_Root.Q(ElementAndStyleNames.HeaderIcon),visibility);
+            UIElementsHelper.SetVisibility(m_Root.Q(ElementAndStyleNames.HeaderIcon), visibility);
             UIElementsHelper.SetVisibility(m_MemoryUsageTable.Q(ElementAndStyleNames.LegendTableSnapshotBColumn), visibility);
             UIElementsHelper.SetVisibility(m_MemoryUsageTable.Q(ElementAndStyleNames.LegendTableDiffColumn), visibility);
             UIElementsHelper.SetVisibility(this.Q<VisualElement>(ElementAndStyleNames.HeaderB), visibility);
@@ -259,6 +260,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         void SetTotalUsed(ulong[] totalBytes, bool normalized, ulong[] maxTotalBytesToNormalizeTo, bool totalIsKnown = true, bool setBars = true)
         {
             m_TotalBytes = totalBytes;
+            TotalIsKnown = totalIsKnown;
             for (int i = 0; i < totalBytes.Length; i++)
             {
                 m_Normalized = normalized;
@@ -463,7 +465,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UnknownRoot = nameAndColorTree;
             }
 
-            SetTotalUsed(m_TotalBytes, m_Normalized, m_MaxTotalBytesToNormalizeTo, true, false);
+            SetTotalUsed(m_TotalBytes, m_Normalized, m_MaxTotalBytesToNormalizeTo, TotalIsKnown, false);
         }
 
         void ClearColumns()

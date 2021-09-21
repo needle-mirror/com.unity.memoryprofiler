@@ -19,7 +19,7 @@ When using __Unity 2018 or 2019__ you must enable __Preview Packages__ in the Pa
 
 When using __Unity 2020__ you must enable __Preview Packages__ in the Project Settings > Package Manager > Advanced Settings section. 
 
-When using __Unity 2021 or newer__ you can select the `+` button in the Package Manager window, select the option __Add By Name__ and enter `com.unity.memoryprofiler` to install the package.
+When using __Unity 2021 or newer__ you can select the `+` button in the Package Manager window, select the option __Add By Name__ and enter `com.unity.memoryprofiler` to install the package. Or for any Unity version newer than 2021.2.0a5, you can just click __[this link to install it by name](com.unity3d.kharma:upmpackage/com.unity.memoryprofiler)__.
 
 ## Requirements
 This version of the Memory Profiler is compatible with the following versions of the Unity Editor:
