@@ -45,8 +45,11 @@ namespace Unity.MemoryProfiler.Editor
 
         static Dictionary<BuildTarget, string> s_PlatformIconClasses = new Dictionary<BuildTarget, string>();
 
+        IUIStateHolder m_ParentWindow;
+
         public void InitializeSnapshotsWindow(IUIStateHolder parentWindow, VisualElement rRoot, VisualElement leftPane, VisualElement right)
         {
+            m_ParentWindow = parentWindow;
             m_MemorySnapshotsCollection = new SnapshotCollection(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath);
             m_MemorySnapshotsCollection.SessionNameChanged += (sessionId, sessionName) => UpdateSessionName(sessionId, sessionName);
             m_MemorySnapshotsCollection.SessionNameChanged += (sessionId, sessionName) => m_OpenSnapshots.UpdateSessionName(sessionId, sessionName);
@@ -227,60 +230,9 @@ namespace Unity.MemoryProfiler.Editor
 
         static string GetPlatformIconClass(RuntimePlatform platform)
         {
-            BuildTarget buildTarget = BuildTarget.NoTarget;
-            switch (platform)
-            {
-                case RuntimePlatform.OSXEditor:
-                case RuntimePlatform.OSXPlayer:
-                    buildTarget = BuildTarget.StandaloneOSX;
-                    break;
-                case RuntimePlatform.WindowsPlayer:
-                case RuntimePlatform.WindowsEditor:
-                    buildTarget = BuildTarget.StandaloneWindows;
-                    break;
-                case RuntimePlatform.IPhonePlayer:
-                    buildTarget = BuildTarget.iOS;
-                    break;
-                case RuntimePlatform.Android:
-                    buildTarget = BuildTarget.Android;
-                    break;
-                case RuntimePlatform.LinuxPlayer:
-                case RuntimePlatform.LinuxEditor:
-                    buildTarget = BuildTarget.StandaloneLinux64;
-                    break;
-                case RuntimePlatform.WebGLPlayer:
-                    buildTarget = BuildTarget.WebGL;
-                    break;
-                case RuntimePlatform.WSAPlayerX86:
-                case RuntimePlatform.WSAPlayerX64:
-                case RuntimePlatform.WSAPlayerARM:
-                    buildTarget = BuildTarget.WSAPlayer;
-                    break;
-                case RuntimePlatform.PS4:
-                case RuntimePlatform.PS5:
-                    buildTarget = BuildTarget.PS4;
-                    break;
-                case RuntimePlatform.XboxOne:
-                case RuntimePlatform.GameCoreXboxOne:
-                case RuntimePlatform.GameCoreXboxSeries:
-                    buildTarget = BuildTarget.XboxOne;
-                    break;
-                case RuntimePlatform.tvOS:
-                    buildTarget = BuildTarget.tvOS;
-                    break;
-                case RuntimePlatform.Switch:
-                    buildTarget = BuildTarget.Switch;
-                    break;
-                case RuntimePlatform.Lumin:
-                    buildTarget = BuildTarget.Lumin;
-                    break;
-                case RuntimePlatform.Stadia:
-                    buildTarget = BuildTarget.Stadia;
-                    break;
-                default:
-                    // Unknown target
-                    return null;
-            }
+            BuildTarget buildTarget = platform.GetBuildTarget();
+            if (buildTarget == BuildTarget.NoTarget)
+                return null;
 
             if (!s_PlatformIconClasses.ContainsKey(buildTarget))
             {
@@ -319,7 +271,10 @@ namespace Unity.MemoryProfiler.Editor
                     TextContent.RenameSnapshotDialogAccept,
                     TextContent.RenameSnapshotDialogCancel);
                 if (close)
+                {
                     m_OpenSnapshots.CloseCapture(snapshot);
+                    m_ParentWindow.Window.Focus();
+                }
                 return close;
             }
             return true;

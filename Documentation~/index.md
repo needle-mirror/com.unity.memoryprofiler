@@ -60,6 +60,9 @@ The Memory Profiler package has the following known limitations:
   * Application Stack memory
   * Memory allocated using [Marshal.AllocHGlobal](https://docs.microsoft.com/en-us/dotnet/api/system.runtime.interopservices.marshal.allochglobal)
 
+### Known Issues:
+ * The Memory Profiler reports the wrong Total Committed Memory value for Android devices on Unity versions before 2021.1.0a1 or before 2020.2.0b8. It reports the total RAM that the device has, not the total amount of RAM used. [(Case 1267773)](https://issuetracker.unity3d.com/product/unity/issues/guid/1267773/)
+
 ### Data concerns when sharing snapshots
 The memory snapshots you take with the Memory Profiler UI or the [Memory Profiler API](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MemoryProfiler.html) contain the entire contents of the managed heap of the Player or Editor instance you are capturing.
 

@@ -16,6 +16,8 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             float totalInputArea = 0f;
             for (int i = 0; i < values.Length; i++)
                 totalInputArea += values[i];
+            if (totalInputArea <= 0f)
+                throw new ArgumentException("The provided values add up to a non-positive total of " + totalInputArea);
 
             float totalOutputArea = targetRect.width * targetRect.height;
             bool vertical = targetRect.width > targetRect.height;
@@ -28,8 +30,14 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
                 float currentInputValue = values[index];
 
-                if (currentInputValue <= 0f)
+                if (currentInputValue < 0f)
                     throw new ArgumentException("only positive float values are supported. found: " + currentInputValue);
+                if (currentInputValue == 0f)
+                {
+#if DEBUG_VALIDATION
+                    Debug.LogError("Found a zero sized Tree Map Group Item");
+#endif
+                }
 
                 float currentOutputArea = currentInputValue * totalOutputArea / totalInputArea;
                 unfinishedRects = AddRect(unfinishedRects, currentOutputArea, targetRect, vertical);
@@ -63,40 +71,40 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             {
                 if (existing.Count == 0)
                 {
-                    result.Add(new Rect(space.xMin, space.yMin, area / space.height, space.height));
+                    result.Add(new Rect(space.xMin, space.yMin, space.height > 0 ? area / space.height : 0, space.height));
                 }
                 else
                 {
                     float totalSize = GetArea(existing) + area;
-                    float width = totalSize / space.height;
+                    float width = space.height > 0 ? totalSize / space.height : 0;
                     float yPosition = space.yMin;
                     foreach (Rect old in existing)
                     {
                         float itemArea = GetArea(old);
-                        result.Add(new Rect(old.xMin, yPosition, width, itemArea / width));
+                        result.Add(new Rect(old.xMin, yPosition, width, width > 0 ? itemArea / width : 0));
                         yPosition += itemArea / width;
                     }
-                    result.Add(new Rect(space.xMin, yPosition, width, area / width));
+                    result.Add(new Rect(space.xMin, yPosition, width, width > 0 ? area / width : 0));
                 }
             }
             else
             {
                 if (existing.Count == 0)
                 {
-                    result.Add(new Rect(space.xMin, space.yMin, space.width, area / space.width));
+                    result.Add(new Rect(space.xMin, space.yMin, space.width, space.width > 0 ? area / space.width : 0));
                 }
                 else
                 {
                     float totalSize = GetArea(existing) + area;
-                    float height = totalSize / space.width;
+                    float height = space.width > 0 ? totalSize / space.width : 0;
                     float xPosition = space.xMin;
                     foreach (Rect old in existing)
                     {
                         float itemArea = GetArea(old);
-                        result.Add(new Rect(xPosition, old.yMin, itemArea / height, height));
+                        result.Add(new Rect(xPosition, old.yMin, height > 0 ? itemArea / height : 0, height));
                         xPosition += itemArea / height;
                     }
-                    result.Add(new Rect(xPosition, space.yMin, area / height, height));
+                    result.Add(new Rect(xPosition, space.yMin, height > 0 ? area / height : 0, height));
                 }
             }
             return result;
@@ -123,11 +131,21 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
         private static float GetAverageAspect(List<Rect> rects)
         {
             float aspect = 0f;
+            var count = rects.Count;
             foreach (Rect r in rects)
             {
-                aspect += r.height / r.width;
+                if (r.height > 0f && r.width > 0f)
+                {
+                    aspect += r.height / r.width;
+                }
+                else
+                {
+                    // ignore rects with no surface area
+                    --count;
+                }
             }
-            return aspect / rects.Count;
+            // avoid NaN if all rects so far have no surface area
+            return aspect / Math.Max(1, count);
         }
 
         private static float GetArea(Rect rect)

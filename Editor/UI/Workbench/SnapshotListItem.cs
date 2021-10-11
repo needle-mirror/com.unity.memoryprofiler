@@ -38,12 +38,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_SnapshotRenameField.SetValueWithoutNotify(SnapshotNameLabel.text);
                     if (value)
                     {
-                        EditorApplication.delayCall += () => { m_SnapshotRenameFieldTextInput.Focus(); };
+                        EditorCoroutines.Editor.EditorCoroutineUtility.StartCoroutine(FocusRenamFieldDelayed(), this);
                     }
                 }
             }
         }
         bool m_RenamingFieldVisible;
+
+        IEnumerator FocusRenamFieldDelayed()
+        {
+            // wait for two frames, as the EditorWindow might still be getting it's focus back from the "close to rename" popup
+            yield return null;
+            yield return null;
+            m_SnapshotRenameFieldTextInput.Focus();
+        }
 
         Func<SnapshotFileData, string, bool> m_Rename;
         Action<SnapshotFileData> m_Open;
@@ -251,11 +259,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         internal void AssignCallbacks(
-        Func<SnapshotFileData, string, bool> rename,
-        Action<SnapshotFileData> open,
-        Func<SnapshotFileData, bool> canRenameSnaphot,
+            Func<SnapshotFileData, string, bool> rename,
+            Action<SnapshotFileData> open,
+            Func<SnapshotFileData, bool> canRenameSnaphot,
             Action<SnapshotFileData> deleteCapture
-            )
+        )
         {
             m_Rename = rename;
             m_Open = open;
@@ -304,7 +312,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_CanRenameSnaphot(snapshot))
             {
                 RenamingFieldVisible = true;
-                EditorApplication.delayCall += () => { m_SnapshotRenameFieldTextInput.Focus(); };
             }
         }
 
@@ -333,7 +340,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Snapshot = snapshotFileData;
             if (snapshotFileData != null && snapshotFileData.GuiData != null)
             {
-
                 snapshotFileData.GuiData.VisualElement = this;
 
                 screenshot.image = snapshotFileData.GuiData.MetaScreenshot != null ? snapshotFileData.GuiData.MetaScreenshot : Texture2D.blackTexture;
@@ -378,7 +384,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Instantiates a <see cref="SnapshotListItem"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<SnapshotListItem, UxmlTraits> { }
+        public new class UxmlFactory : UxmlFactory<SnapshotListItem, UxmlTraits> {}
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="SnapshotListItem"/>.

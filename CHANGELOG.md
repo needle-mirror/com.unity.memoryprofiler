@@ -4,6 +4,13 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.4.2-preview.1] - 2021-10-11
+
+### Fixed
+ - Fixed an exception thrown by the Tree Map when opening a snapshot that contains a group of types that collectively "use" 0 B, preventing the opening of the snapshot [(Case 1368289)](https://issuetracker.unity3d.com/product/unity/issues/guid/1368289/). 
+ - Fixed compilation on earlier 2019.4 patch versions which failed due to usage of some newer RuntimePlatform enum values.
+ - Fixed the profiler target drop-down to no longer cause a TargetParameterCountException and draw as blank button on 2022.1.0a13 or newer.
+ - Fixed the snapshot rename work-flow when renaming an open snapshot so that the name input field gets the keyboard focus after closing the dialog prompt.
 
 ## [0.4.1-preview.1] - 2021-09-21
 
