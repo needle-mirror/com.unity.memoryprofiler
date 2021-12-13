@@ -18,9 +18,13 @@ namespace Unity.MemoryProfiler.Editor
         //supported archs
         public const int x64ArchPtrSize = 8;
         public const int x86ArchPtrSize = 4;
+        public const int NoArchPtrSize = 0;
 
         public static bool ValidateVirtualMachineInfo(VirtualMachineInformation vmInfo)
         {
+            if (vmInfo.PointerSize == NoArchPtrSize)
+                return true; //this case can only happen on legacy UWP .NET snapshots
+
             if (!(vmInfo.PointerSize == x64ArchPtrSize || vmInfo.PointerSize == x86ArchPtrSize))
                 return false;
 
@@ -212,6 +216,9 @@ namespace Unity.MemoryProfiler.Editor
             public string[] AreaName;
             public string[] ObjectName;
             public Dictionary<long, long> IdToIndex;
+            public readonly ulong ExecutableAndDllsReportedValue;
+            public const string ExecutableAndDllsRootReferenceName = "ExecutableAndDlls";
+            readonly long k_ExecutableAndDllsRootReferenceIndex = -1;
 
             public NativeRootReferenceEntriesCache(ref FileReader reader)
             {
@@ -242,6 +249,11 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 for (long i = 0; i < Count; i++)
                 {
+                    if (k_ExecutableAndDllsRootReferenceIndex == -1 && ObjectName[i] == ExecutableAndDllsRootReferenceName)
+                    {
+                        k_ExecutableAndDllsRootReferenceIndex = i;
+                        ExecutableAndDllsReportedValue = AccumulatedSize[i];
+                    }
                     IdToIndex.Add(Id[i], i);
                 }
             }
@@ -690,6 +702,10 @@ namespace Unity.MemoryProfiler.Editor
                         long idx = DynamicArrayAlgorithms.BinarySearch(StartAddress, address);
                         if (idx < 0)
                         {
+                            // -1 means the address is smaller than the first StartAddress, early out with an invalid bytesAndOffset
+                            if (idx == -1)
+                                return bytesAndOffset;
+                            // otherwise, a negative Index just means there was no direct hit and ~idx - 1 will give us the index to the next smaller StartAddress
                             idx = ~idx - 1;
                         }
 
@@ -1021,6 +1037,9 @@ namespace Unity.MemoryProfiler.Editor
             public long Count;
             public DynamicArray<int> From { private set; get; }
             public DynamicArray<int> To { private set; get; }
+#if DEBUG_VALIDATION // could be always present but currently only used for validation in the crawler
+            public long IndexOfFirstNativeToGCHandleConnection = -1;
+#endif
 
             unsafe public ConnectionEntriesCache(ref FileReader reader, NativeObjectEntriesCache nativeObjects, long gcHandlesCount, bool connectionsNeedRemaping)
             {
@@ -1050,10 +1069,18 @@ namespace Unity.MemoryProfiler.Editor
                         }
                         instanceIDToIndex.Add(instanceIds[i], i);
                     }
+#if DEBUG_VALIDATION
+                    if (instanceIDToGcHandleIndex.Count > 0)
+                        IndexOfFirstNativeToGCHandleConnection = Count;
+#endif
 
                     DynamicArray<int> fromRemap = new DynamicArray<int>(Count + instanceIDToGcHandleIndex.Count, Allocator.Persistent);
                     DynamicArray<int> toRemap = new DynamicArray<int>(fromRemap.Count, Allocator.Persistent);
 
+                    // add all Native to Native connections.
+                    // The indexes they link to are all bigger than gcHandlesCount.
+                    // Such indices in the From/To arrays indicate a link from a native object to a native object
+                    // and subtracting gcHandlesCount from them gives the Native Object index
                     for (long i = 0; i < Count; ++i)
                     {
                         fromRemap[i] = (int)(gcHandlesCount + instanceIDToIndex[From[i]]);
@@ -1069,6 +1096,7 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         enumerator.MoveNext();
                         fromRemap[i] = (int)(gcHandlesCount + instanceIDToIndex[enumerator.Current.Key]);
+                        // elements in To that are `To[i] < gcHandlesCount` are indexes into the GCHandles list
                         toRemap[i] = enumerator.Current.Value;
                     }
 

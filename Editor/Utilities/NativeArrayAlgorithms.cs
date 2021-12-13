@@ -17,7 +17,11 @@ namespace Unity.MemoryProfiler.Containers
             /// <param name="array">Pre sorted native array</param>
             /// <param name="value"></param>
             /// <remarks>Note that there are no checks in regards to the provided NativeArray's sort state.</remarks>
-            /// <returns>Index of the value</returns>
+            /// <returns>Index of the value. -1 means the item wasn't found. Index < 0 means that no direct hit was found and that
+            ///  * ~Index is the index to the next bigger item
+            ///  * * ~Index >= array.Count if there is no bigger item
+            ///  * ~Index-1 is the next smaller item.
+            ///  * * ~Index-1 == -1 means Index == -1, i.e. item not found.</returns>
             public static long BinarySearch<T>(DynamicArray<T> array, T value) where T : unmanaged, IComparable<T>
             {
                 unsafe
@@ -25,23 +29,39 @@ namespace Unity.MemoryProfiler.Containers
                     switch (array.Count)
                     {
                         case 1:
-                            if (array[0].CompareTo(value) == 0)
+                            switch (array[0].CompareTo(value))
                             {
-                                return 0;
+                                case 0:
+                                    return 0;
+                                case -1:
+                                    return ~1;
+                                case 1:
+                                    return ~0; // this is -1, just specifying that the insertion point would be 0
+                                default:
+                                    throw new ArgumentOutOfRangeException("CompareTo returned an unexpected value (not 0, -1 or 1");
                             }
-                            return -1;
-
                         case 2:
-                            if (array[0].CompareTo(value) == 0)
+                            switch (array[0].CompareTo(value))
                             {
-                                return 0;
+                                case 0:
+                                    return 0;
+                                case -1:
+                                    switch (array[1].CompareTo(value))
+                                    {
+                                        case 0:
+                                            return 1;
+                                        case -1:
+                                            return ~2;
+                                        case 1:
+                                            return ~1;
+                                        default:
+                                            throw new ArgumentOutOfRangeException("CompareTo returned an unexpected value (not 0, -1 or 1");
+                                    }
+                                case 1:
+                                    return ~0; // this is -1, just specifying that the insertion point would be 0
+                                default:
+                                    throw new ArgumentOutOfRangeException("CompareTo returned an unexpected value (not 0, -1 or 1");
                             }
-
-                            if (array[1].CompareTo(value) == 0)
-                            {
-                                return 1;
-                            }
-                            return -1;
                     }
 
                     long left = 0;
@@ -63,6 +83,16 @@ namespace Unity.MemoryProfiler.Containers
                                 return mid;
                         }
                     }
+                    // No direct hit was found but the last compared item was Bigger than the searched for item
+                    // this result is going to be negative but if the calling code is looking for an insertion point within the sorted array,
+                    // or will happily consider the item that is just slightly smaller than the searched item as the found item, it can do
+                    //
+                    // if(returnedValue < 0) var nextBiggerItemAndInsertionPoint = returnedValue = ~returnedValue;
+                    // or
+                    // if(returnedValue < 0) var nextSmallerItem = returnedValue = ~returnedValue -1;
+                    //
+                    // if that last compared item was the very first item in the array but bigger than the searched item,
+                    // left is 0 and there is no smaller item to insert in front of. The return value in this case is then -1
                     return ~left;
                 }
             }
@@ -110,7 +140,6 @@ namespace Unity.MemoryProfiler.Containers
             }
 
             static void IntroSortInternal<T>(ref NativeArrayData<T> array, int low, int high, int depth, int partitionThreshold) where T : unmanaged, IComparable<T>
-
             {
                 while (high > low)
                 {
@@ -241,7 +270,7 @@ namespace Unity.MemoryProfiler.Containers
                 Swap(ref array, left, (high - 1));
                 return left;
             }
-            
+
             unsafe static void SwapSortAscending<T>(ref NativeArrayData<T> array, int left, int mid, int right) where T : unmanaged, IComparable<T>
             {
                 var typeSize = UnsafeUtility.SizeOf<T>();
@@ -307,7 +336,7 @@ namespace Unity.MemoryProfiler.Containers
                     }
                 }
             }
-            
+
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             unsafe static void Swap<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : unmanaged, IComparable<T>
             {

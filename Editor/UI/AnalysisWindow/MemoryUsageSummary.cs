@@ -19,6 +19,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         MemoryUsageBreakdown m_AllocationBreakdown;
 
         Label m_SelectionLabel;
+        Toggle m_NormalizedToggle;
 
         public MemoryUsageSummary(VisualElement root)
         {
@@ -54,6 +55,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             // TODO: Implement Selection tracking and Highlighting
             UIElementsHelper.SetVisibility(m_SelectionLabel, false);
 
+            bool normalizedSetting = EditorPrefs.GetBool("com.unity.memoryprofiler:MemoryUsageSummary.Normalized", false);
+            m_NormalizedToggle = m_MemoryUsageSummary.Q<Toggle>("memory-usage-summary-section__normalized-toggle");
+            m_NormalizedToggle.value = normalizedSetting;
+            SetNormalized(normalizedSetting);
+            UIElementsHelper.SetVisibility(m_NormalizedToggle, false);
+            m_NormalizedToggle.RegisterValueChangedCallback(ToggleNormalized);
+
             m_Used = new List<ulong[]>();
             m_Reserved = new List<ulong[]>();
 
@@ -62,6 +70,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_Used.Add(new ulong[Enum.GetValues(typeof(Columns)).Length]);
                 m_Reserved.Add(new ulong[Enum.GetValues(typeof(Columns)).Length]);
             }
+        }
+
+        void ToggleNormalized(ChangeEvent<bool> evt)
+        {
+            EditorPrefs.SetBool("com.unity.memoryprofiler:MemoryUsageSummary.Normalized", evt.newValue);
+            SetNormalized(evt.newValue);
+        }
+
+        void SetNormalized(bool normalized)
+        {
+            m_HighLevelBreakdown.Normalized = normalized;
+            m_CommittedTrackingStatusBreakdown.Normalized = normalized;
+            m_ManagedBreakdown.Normalized = normalized;
+            m_AllocationBreakdown.Normalized = normalized;
         }
 
         ulong[] m_TotalCommitedUsed = new ulong[3];
@@ -113,10 +135,28 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UIElementsHelper.SetVisibility(m_ManagedBreakdown.parent, true);
             }
 
+            var virtualMachineMemoryName = TextContent.DefaultVirtualMachineMemoryCategoryLabel;
+
             m_systemUsed[0] = m_systemUsed[1] = 0ul;
             if (snapshotA.MetaData.TargetMemoryStats.HasValue)
             {
                 GetHighLevelBreakdownValues(snapshotA, 0, out m_systemUsed[0]);
+            }
+
+            if (snapshotA.MetaData.TargetInfo.HasValue)
+            {
+                switch (snapshotA.MetaData.TargetInfo.Value.ScriptingBackend)
+                {
+                    case ScriptingImplementation.Mono2x:
+                        virtualMachineMemoryName = TextContent.MonoVirtualMachineMemoryCategoryLabel;
+                        break;
+                    case ScriptingImplementation.IL2CPP:
+                        virtualMachineMemoryName = TextContent.IL2CPPVirtualMachineMemoryCategoryLabel;
+                        break;
+                    case ScriptingImplementation.WinRTDotNET:
+                    default:
+                        break;
+                }
             }
 
             if (snapshotB != null && snapshotB.MetaData.TargetMemoryStats.HasValue)
@@ -124,37 +164,59 @@ namespace Unity.MemoryProfiler.Editor.UI
                 GetHighLevelBreakdownValues(snapshotB, 1, out m_systemUsed[1]);
             }
 
-            var totalIsKnown = m_systemUsed[0] != 0ul;
+            if (snapshotB != null && snapshotB.MetaData.TargetInfo.HasValue)
+            {
+                switch (snapshotB.MetaData.TargetInfo.Value.ScriptingBackend)
+                {
+                    case ScriptingImplementation.Mono2x:
+                        if (virtualMachineMemoryName != TextContent.MonoVirtualMachineMemoryCategoryLabel)
+                            virtualMachineMemoryName = TextContent.DefaultVirtualMachineMemoryCategoryLabel;
+                        break;
+                    case ScriptingImplementation.IL2CPP:
+                        if (virtualMachineMemoryName != TextContent.IL2CPPVirtualMachineMemoryCategoryLabel)
+                            virtualMachineMemoryName = TextContent.DefaultVirtualMachineMemoryCategoryLabel;
+                        break;
+                    case ScriptingImplementation.WinRTDotNET:
+                    default:
+                        break;
+                }
+            }
+            bool[] totalIsKnown = new bool[2];
+            totalIsKnown[0] = m_systemUsed[0] != 0ul;
+            totalIsKnown[1] = m_systemUsed[1] != 0ul;
 
-            if (!totalIsKnown)
+            if (!totalIsKnown[0])
                 m_systemUsed[0] = m_TotalCommitedReserved[0];
+            if (!totalIsKnown[1])
+                m_systemUsed[1] = m_TotalCommitedReserved[1];
 
-            // TODO: for Diff view, offer normalized option and set this to the bigger of the two snapshots totals
-            var maxToNormalizeTo = m_systemUsed;
+            var maxToNormalizeTo = GetMaxToNormalizeTo(m_systemUsed, m_Reserved);
 
-            m_HighLevelBreakdown.SetValues(m_systemUsed, m_Reserved, m_Used, false, maxToNormalizeTo, totalIsKnown);
-            m_CommittedTrackingStatusBreakdown.SetValues(m_systemUsed, new List<ulong[]> {m_TotalCommitedReserved}, new List<ulong[]> {m_TotalCommitedUsed}, false, maxToNormalizeTo, totalIsKnown);
+            m_HighLevelBreakdown.SetValues(m_systemUsed, m_Reserved, m_Used, snapshotB == null || m_NormalizedToggle.value, maxToNormalizeTo, totalIsKnown, nameOfKnownTotal: "System Used Memory");
+            m_HighLevelBreakdown.SetCategoryName(virtualMachineMemoryName, (int)BreakdownOrder.ManagedDomain);
+
+            var totalCommittedReserved = new List<ulong[]> { m_TotalCommitedReserved };
+            var totalCommittedUsed = new List<ulong[]> { m_TotalCommitedUsed };
+            m_CommittedTrackingStatusBreakdown.SetValues(m_systemUsed, totalCommittedReserved, totalCommittedUsed, snapshotB == null || m_NormalizedToggle.value, maxToNormalizeTo, totalIsKnown, nameOfKnownTotal: "System Used Memory");
 
             // managed breakdown
 
             ulong[] totalManagedMemory = new ulong[2];
-            totalManagedMemory[0] = snapshotA.ManagedHeapSections.ManagedHeapMemoryReserved + snapshotA.ManagedHeapSections.VirtualMachineMemoryReserved + snapshotA.ManagedStacks.StackMemoryReserved;
-            if (snapshotB != null)
-                totalManagedMemory[1] = snapshotB.ManagedHeapSections.ManagedHeapMemoryReserved + snapshotB.ManagedHeapSections.VirtualMachineMemoryReserved + snapshotB.ManagedStacks.StackMemoryReserved;
-
-            // TODO: for Diff view, offer normalized option and set this to the bigger of the two snapshots totals
-            maxToNormalizeTo = totalManagedMemory;
 
             List<ulong[]> reserved = new List<ulong[]>();
             List<ulong[]> used = new List<ulong[]>();
-            var hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotA, (int)Columns.A, totalManagedMemory[0], maxToNormalizeTo, reserved, used);
+            var hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotA, (int)Columns.A, totalManagedMemory, reserved, used);
             if (hasValidManagedData && snapshotB != null)
-                hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotB, (int)Columns.B, totalManagedMemory[1], maxToNormalizeTo, reserved, used);
+                hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotB, (int)Columns.B, totalManagedMemory, reserved, used);
 
             if (hasValidManagedData)
             {
+                maxToNormalizeTo = GetMaxToNormalizeTo(totalManagedMemory, reserved);
+
                 UIElementsHelper.SetVisibility(m_ManagedBreakdown, true);
-                m_ManagedBreakdown.SetValues(totalManagedMemory, reserved, null, false, maxToNormalizeTo, true);
+                m_ManagedBreakdown.SetValues(totalManagedMemory, reserved, null, snapshotB == null || m_NormalizedToggle.value, maxToNormalizeTo);
+
+                m_ManagedBreakdown.SetCategoryName(virtualMachineMemoryName, 0);
             }
             else
             {
@@ -220,15 +282,45 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (snapshotB != null && snapshotB.MetaData.TargetMemoryStats.HasValue)
                         totalReservedMemory[1] = snapshotB.MetaData.TargetMemoryStats.Value.TotalVirtualMemory;
 
-                    // TODO: for Diff view, offer normalized option and set this to the bigger of the two snapshots totals
-                    maxToNormalizeTo = totalReservedMemory;
+                    maxToNormalizeTo = GetMaxToNormalizeTo(totalReservedMemory, reserved);
 
-                    m_AllocationBreakdown.SetValues(m_systemUsed,  reserved , null, false, maxToNormalizeTo, true);
+                    m_AllocationBreakdown.SetValues(m_systemUsed,  reserved , null, snapshotB == null || m_NormalizedToggle.value, maxToNormalizeTo);
                 }
             }
         }
 
-        bool GetHighLevelBreakDownForSnapshot(CachedSnapshot cs, int column, ulong totalReservedMemory, ulong[] maxToNormalizeTo, List<ulong[]> reserved, List<ulong[]> used)
+        ulong[] GetMaxToNormalizeTo(ulong[] totalValues, List<ulong[]> reserved)
+        {
+            var reservedTotals = new ulong[totalValues.Length];
+            for (int i = 0; i < reserved.Count; i++)
+            {
+                for (int ii = 0; ii < totalValues.Length; ii++)
+                {
+                    reservedTotals[ii] += reserved[i][ii];
+                }
+            }
+            var reservedMax = reservedTotals[0];
+            for (int i = 1; i < reservedTotals.Length; i++)
+            {
+                if (reservedMax < reservedTotals[i])
+                    reservedMax = reservedTotals[i];
+            }
+            var max = totalValues[0];
+            for (int i = 1; i < totalValues.Length; i++)
+            {
+                if (max < totalValues[i])
+                    max = totalValues[i];
+            }
+            max = Math.Max(max, reservedMax);
+            var maxToNormalizeTo = new ulong[totalValues.Length];
+            for (int i = 0; i < totalValues.Length; i++)
+            {
+                maxToNormalizeTo[i] = max;
+            }
+            return maxToNormalizeTo;
+        }
+
+        bool GetHighLevelBreakDownForSnapshot(CachedSnapshot cs, int column, ulong[] totalManagedMemory, List<ulong[]> reserved, List<ulong[]> used)
         {
             if (cs.HasMemoryLabelSizesAndGCHeapTypes && cs.CaptureFlags.HasFlag(Format.CaptureFlags.ManagedObjects))
             {
@@ -244,6 +336,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     - cs.ManagedHeapSections.StartAddress[cs.ManagedHeapSections.FirstAssumedActiveHeapSectionIndex]
                     - cs.CrawledData.ActiveHeapMemoryUsage;
                 reserved[3][column] = used[3][column] = cs.ManagedHeapSections.ManagedHeapMemoryReserved - reserved[1][column] - reserved[2][column];
+
+                totalManagedMemory[column] = cs.ManagedHeapSections.ManagedHeapMemoryReserved + cs.ManagedHeapSections.VirtualMachineMemoryReserved + cs.ManagedStacks.StackMemoryReserved;
+
                 return true;
             }
             return false;
@@ -252,6 +347,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         void GetHighLevelBreakdownValues(CachedSnapshot cs, int column, out ulong systemUsedMemory)
         {
             var snapshotTargetMemoryStats = cs.MetaData.TargetMemoryStats.Value;
+            var snapshotTargetInfo = cs.MetaData.TargetInfo.Value;
             systemUsedMemory = snapshotTargetMemoryStats.TotalVirtualMemory;
 
             var reservedMemoryAttributedToSpecificCategories =
@@ -298,18 +394,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Reserved[(int)BreakdownOrder.Other][column] = unityMemoryReserved;
             m_Used[(int)BreakdownOrder.Other][column] = unityMemoryUsed;
 
-            m_Used[(int)BreakdownOrder.ExecutableAndDlls][column] = m_Reserved[(int)BreakdownOrder.ExecutableAndDlls][column] = 0ul;
-            for (int i = 0; i < cs.NativeRootReferences.ObjectName.Length; i++)
-            {
-                if (cs.NativeRootReferences.ObjectName[i] == "ExecutableAndDlls")
-                {
-                    m_Used[(int)BreakdownOrder.ExecutableAndDlls][column] = m_Reserved[(int)BreakdownOrder.ExecutableAndDlls][column] = cs.NativeRootReferences.AccumulatedSize[i];
-                    break;
-                }
-            }
-
             m_Reserved[(int)BreakdownOrder.Profiler][column] = snapshotTargetMemoryStats.ProfilerReservedMemory;
             m_Used[(int)BreakdownOrder.Profiler][column] = snapshotTargetMemoryStats.ProfilerUsedMemory;
+
+            m_Used[(int)BreakdownOrder.ExecutableAndDlls][column] = m_Reserved[(int)BreakdownOrder.ExecutableAndDlls][column] = cs.NativeRootReferences.ExecutableAndDllsReportedValue;
 
             m_TotalCommitedReserved[column] = snapshotTargetMemoryStats.TotalReservedMemory + m_Reserved[(int)BreakdownOrder.ManagedDomain][column] + m_Reserved[(int)BreakdownOrder.ExecutableAndDlls][column];
             m_TotalCommitedUsed[column] = snapshotTargetMemoryStats.TotalUsedMemory + m_Used[(int)BreakdownOrder.ManagedDomain][column] + m_Used[(int)BreakdownOrder.ExecutableAndDlls][column];
@@ -321,6 +409,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_CommittedTrackingStatusBreakdown.SetBAndDiffVisibility(visibility);
             m_ManagedBreakdown.SetBAndDiffVisibility(visibility);
             m_AllocationBreakdown.SetBAndDiffVisibility(visibility);
+            UIElementsHelper.SetVisibility(m_NormalizedToggle, visibility);
         }
     }
 }

@@ -148,7 +148,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 get
                 {
                     // can't contain anything
-                    yield return null;
+                    yield break;
                 }
             }
 

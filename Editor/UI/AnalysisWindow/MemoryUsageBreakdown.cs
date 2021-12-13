@@ -84,12 +84,21 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         static class Content
         {
+            public const string TotalLabelSeparator = " | ";
             public static readonly string UnknownText = L10n.Tr("Unknown");
+            public static readonly string KnownTotalName = L10n.Tr("Total");
             public static readonly string TotalFormatString = L10n.Tr("Total: {0}");
             public static readonly string TotalLabelTooltip = L10n.Tr("The Total memory usage.");
-            public static readonly string TotalAndMaxFormatString = L10n.Tr("Total: {0} | Max: {1}");
-            public static readonly string TotalAndMaxLabelTooltip = L10n.Tr("The bar is scaled in relation to the frame with the highest total memory usage (Max).");
-            public static readonly string TotalAndMaxLabelTooltipForMaxValue = L10n.Tr("This is one of the frames with the highest total memory usage (Max).");
+            public static readonly string KnownTotalFormatString = L10n.Tr("{0}: {1}");
+            public static readonly string KnownTotalLabelTooltip = L10n.Tr("The {0} memory usage.");
+            public static readonly string TotalLabelTooltipWhenLessThanTotalTracked = L10n.Tr("The Total Tracked memory usage and the Total System Used memory usage differed. The OS reported less memory as 'In Use' than Unity's systems can account for. This could be down to a faulty memory query to the OS, or that the OS doesn't treat all memory Unity uses as 'In Use' by this app, e.g. due to shared DLLs.");
+            public static readonly string MaxFormatString = L10n.Tr("Max: {0}");
+            public static string GetTotalAndMaxLabelTooltip(bool denormalizeFrameBased) => denormalizeFrameBased ? TotalAndMaxLabelTooltipFrameBased : TotalAndMaxLabelTooltipSnapshotBased;
+            public static readonly string TotalAndMaxLabelTooltipFrameBased = L10n.Tr("The bar is scaled in relation to the frame with the highest total memory usage (Max).");
+            public static readonly string TotalAndMaxLabelTooltipSnapshotBased = L10n.Tr("The bar is scaled in relation to snapshot with the highest total memory usage (Max).");
+            public static string GetTotalAndMaxLabelTooltipForMaxValue(bool denormalizeFrameBased) => denormalizeFrameBased ? TotalAndMaxLabelTooltipForMaxValueFrameBased : TotalAndMaxLabelTooltipForMaxValueSnapshotBased;
+            public static readonly string TotalAndMaxLabelTooltipForMaxValueFrameBased = L10n.Tr("This is one of the frames with the highest total memory usage (Max).");
+            public static readonly string TotalAndMaxLabelTooltipForMaxValueSnapshotBased = L10n.Tr("This is the snapshot with the highest total memory usage (Max).");
         }
 
         static class ElementAndStyleNames
@@ -123,7 +132,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public string HeaderText { get; private set; }
 
+        public bool DenormalizeFrameBased { get; set; }
+
         ulong[] m_TotalBytes = new ulong[2];
+        ulong[] m_TotalTrackedBytes = new ulong[2];
 
         public ulong[] TotalBytes
         {
@@ -145,9 +157,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         ulong[] m_MaxTotalBytesToNormalizeTo = new ulong[2];
 
         public bool ShowUnknown { get; private set; }
-        public bool TotalIsKnown { get; private set; }
+        public bool[] TotalIsKnown { get; private set; }
 
         public string UnknownName { get; private set; } = Content.UnknownText;
+        public string KnownTotalName { get; private set; } = Content.KnownTotalName;
 
         VisualTreeAsset m_NameAndColor;
         VisualTreeAsset m_Size;
@@ -168,10 +181,26 @@ namespace Unity.MemoryProfiler.Editor.UI
         Label m_UnknownRowDiffColumnSize;
 
         ulong[] m_UnknownSize = new ulong[2];
+        private bool[] m_UnknownUnknown = new bool[2];
 
         public override VisualElement contentContainer
         {
             get { return m_Content; }
+        }
+
+        public bool Normalized
+        {
+            get
+            {
+                return m_Normalized;
+            }
+            internal set
+            {
+                if (m_Normalized == value)
+                    return;
+                m_Normalized = value;
+                SetTotalUsed(m_TotalBytes, m_TotalTrackedBytes, m_Normalized, m_MaxTotalBytesToNormalizeTo, TotalIsKnown, m_UnknownUnknown, setBars: true);
+            }
         }
 
         public enum CompareMode
@@ -180,7 +209,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Diff
         }
 
-        public CompareMode Mode;
+        public CompareMode Mode { get; private set;}
         VisualElement[] m_KnownParts = new VisualElement[2];
 
         public MemoryUsageBreakdown(string headerText, bool showUnknown = false, bool singleMode = true)
@@ -191,6 +220,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Init(headerText, m_TotalBytes, showUnknown, UnknownName);
 
             Mode = singleMode ? CompareMode.Single : CompareMode.Diff;
+            SetBAndDiffVisibility(!singleMode);
         }
 
         public MemoryUsageBreakdown()
@@ -231,21 +261,55 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_KnownParts[1] = m_Content.Q<VisualElement>(ElementAndStyleNames.MemoryUsageBarB).Q<VisualElement>(ElementAndStyleNames.MemoryUsageBarKnownParts);
         }
 
-        public void SetValues(ulong[] totalBytes, List<ulong[]> reserved, List<ulong[]> used, bool normalized, ulong[] maxTotalBytesToNormalizeTo, bool totalIsKnown = true, bool setBars = true)
+        public void SetValues(ulong[] totalBytes, List<ulong[]> reserved, List<ulong[]> used, bool normalized, ulong[] maxTotalBytesToNormalizeTo, bool[] totalIsKnown = null, bool setBars = true, string nameOfKnownTotal = null)
         {
             GatherElements();
             SetupElements();
             m_SortControls.ClearStates();
             m_TotalBytes = totalBytes;
+
+            if (!string.IsNullOrEmpty(nameOfKnownTotal))
+                KnownTotalName = nameOfKnownTotal;
+
+            ulong[] totalTracked = new ulong[totalBytes.Length];
+
+            bool[] unknownUnknown = new bool[totalBytes.Length];
+            if (totalIsKnown == null)
+            {
+                totalIsKnown = new bool[totalBytes.Length];
+                for (int i = 0; i < totalIsKnown.Length; i++)
+                {
+                    totalIsKnown[i] = true;
+                }
+            }
+            for (int i = 0; i < unknownUnknown.Length; i++)
+            {
+                unknownUnknown[i] = !totalIsKnown[i];
+            }
             for (int i = 0; i < m_Elements.Count && i < reserved.Count; i++)
             {
-                if (used == null || i >= used.Count)
-                    m_Elements[i].SetValues(reserved[i], new ulong[] { 0, 0, 0 });
-                else
-                    m_Elements[i].SetValues(reserved[i], used[i]);
+                for (int ii = 0; ii < totalTracked.Length; ii++)
+                {
+                    totalTracked[ii] += reserved[i][ii];
+                    if (totalIsKnown[ii] && totalTracked[ii] > totalBytes[ii])
+                    {
+                        unknownUnknown[ii] = true;
+                    }
+                    if (used == null || i >= used.Count)
+                        m_Elements[i].SetValues(reserved[i], new ulong[] { 0, 0, 0 });
+                    else
+                        m_Elements[i].SetValues(reserved[i], used[i]);
+                }
             }
+            SetTotalUsed(totalBytes, totalTracked, normalized, maxTotalBytesToNormalizeTo, totalIsKnown, unknownUnknown, setBars);
+        }
 
-            SetTotalUsed(totalBytes, normalized, maxTotalBytesToNormalizeTo, totalIsKnown: totalIsKnown, setBars);
+        public void SetCategoryName(string name, int elementIndex)
+        {
+            if (m_Elements != null && elementIndex < m_Elements.Count)
+            {
+                m_Elements[elementIndex].UpdateText(name);
+            }
         }
 
         public void SetBAndDiffVisibility(bool visibility)
@@ -255,12 +319,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_MemoryUsageTable.Q(ElementAndStyleNames.LegendTableDiffColumn), visibility);
             UIElementsHelper.SetVisibility(this.Q<VisualElement>(ElementAndStyleNames.HeaderB), visibility);
             UIElementsHelper.SetVisibility(this.Q<VisualElement>(ElementAndStyleNames.MemoryUsageBarB), visibility);
+            if (visibility)
+                Mode = CompareMode.Diff;
+            else
+                Mode = CompareMode.Single;
         }
 
-        void SetTotalUsed(ulong[] totalBytes, bool normalized, ulong[] maxTotalBytesToNormalizeTo, bool totalIsKnown = true, bool setBars = true)
+        void SetTotalUsed(ulong[] totalBytes, ulong[] totalTracked, bool normalized, ulong[] maxTotalBytesToNormalizeTo, bool[] totalIsKnown, bool[] unknownUnknown, bool setBars = true)
         {
             m_TotalBytes = totalBytes;
             TotalIsKnown = totalIsKnown;
+            m_TotalTrackedBytes = totalTracked;
+
             for (int i = 0; i < totalBytes.Length; i++)
             {
                 m_Normalized = normalized;
@@ -268,18 +338,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 UpdateTotalSizeText(i);
 
-                var knownBytes = 0ul;
-                for (int ii = 0; ii < m_Elements.Count; ii++)
-                {
-                    knownBytes += (ulong)m_Elements[ii].stats[i].totalBytes;
-                }
-
-                var unknownUnknown = !totalIsKnown;
                 m_UnknownSize[i] = m_TotalBytes[i];
 
                 for (int ii = 0; ii < m_Elements.Count; ii++)
                 {
-                    var percentage = (m_Elements[ii].stats[i].totalBytes / (float)knownBytes) * 100;
+                    var percentage = (m_Elements[ii].stats[i].totalBytes / (float)m_TotalTrackedBytes[i]) * 100;
                     var ve = m_Elements[ii].parent.Q<VisualElement>($"memory-usage-breakdown__memory-usage-bar-{Enum.GetName(typeof(MemoryUsageBreakdownElement.StatsIdx), i)}").Q<VisualElement>(ElementAndStyleNames.MemoryUsageBarKnownParts).Children().ToArray();
                     if (!m_Elements[ii].barValuesSet[i] && setBars && totalBytes[i] != 0)
                     {
@@ -291,13 +354,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (elementSize > m_UnknownSize[i])
                     {
                         m_UnknownSize[i] = 0ul;
-                        unknownUnknown = true;
+                        unknownUnknown[i] = true;
                     }
                     else
                         m_UnknownSize[i] -= Math.Min(elementSize, m_UnknownSize[i]);
                 }
 
-                var totalBarByteAmount = knownBytes;
+                if (m_TotalTrackedBytes[i] > m_TotalBytes[i] && KnownTotalName == Content.KnownTotalName)
+                {
+                    // showing a separate Total isn't desired, so take the bigger of the two
+                    m_TotalBytes[i] = m_TotalTrackedBytes[i];
+                }
+
+                var totalBarByteAmount = Math.Max(m_TotalTrackedBytes[i], m_TotalBytes[i]);
+
                 if (!ShowUnknown && m_Normalized)
                     totalBarByteAmount = m_TotalBytes[i];
 
@@ -306,7 +376,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (ShowUnknown || !m_Normalized)
                 {
-                    var percentage = knownBytes / (float)totalBarByteAmount * 100;
+                    var percentage = m_TotalTrackedBytes[i] / (float)totalBarByteAmount * 100;
                     m_KnownParts[i].style.width = new Length(Mathf.RoundToInt(percentage), LengthUnit.Percent);
                 }
                 else
@@ -324,10 +394,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_UnknownBar[i].tooltip = MemoryUsageBreakdownElement.BuildTooltipText(HeaderText, UnknownName, (ulong)GetTotalBytes(i), m_UnknownSize[i]);
                     m_UnknownRoot.tooltip = m_UnknownBar[i].tooltip;
 
-                    m_UnknownRowColumnSize[i].text = unknownUnknown ? Content.UnknownText : MemoryUsageBreakdownElement.BuildRowSizeText(m_UnknownSize[i], m_UnknownSize[i], false);
+                    m_UnknownRowColumnSize[i].text = unknownUnknown[i] ? Content.UnknownText : MemoryUsageBreakdownElement.BuildRowSizeText(m_UnknownSize[i], m_UnknownSize[i], false);
 
                     var unknownDiff = m_UnknownSize[0] > m_UnknownSize[1] ? m_UnknownSize[0] - m_UnknownSize[1] : m_UnknownSize[1] - m_UnknownSize[0];
-                    m_UnknownRowDiffColumnSize.text = unknownUnknown ? Content.UnknownText : MemoryUsageBreakdownElement.BuildRowSizeText(unknownDiff, unknownDiff, false);
+                    m_UnknownRowDiffColumnSize.text = unknownUnknown[i] ? Content.UnknownText : MemoryUsageBreakdownElement.BuildRowSizeText(unknownDiff, unknownDiff, false);
 
                     UIElementsHelper.SetVisibility(m_UnknownRoot.Q<VisualElement>(ElementAndStyleNames.ColorBoxUnused), false);
                     UIElementsHelper.SetVisibility(m_UnknownRoot.Q<VisualElement>(ElementAndStyleNames.LegendUsedReserved), false);
@@ -336,19 +406,58 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (m_UnknownRoot != null && m_UnknownRoot.visible != ShowUnknown)
                     UIElementsHelper.SetVisibility(m_UnknownRoot, ShowUnknown);
             }
+            if (m_UnknownUnknown.Length != unknownUnknown.Length)
+                m_UnknownUnknown = new bool[unknownUnknown.Length];
+            unknownUnknown.CopyTo(m_UnknownUnknown, 0);
         }
 
         void UpdateTotalSizeText(int i)
         {
-            if (!m_Normalized && m_TotalBytes[i] < m_MaxTotalBytesToNormalizeTo[i])
+            var totalBarByteAmount = Math.Max(m_TotalTrackedBytes[i], m_TotalBytes[i]);
+            if (!m_Normalized && totalBarByteAmount < m_MaxTotalBytesToNormalizeTo[i])
             {
-                m_HeaderSize[i].text = string.Format(Content.TotalAndMaxFormatString, EditorUtility.FormatBytes((long)m_TotalBytes[i]), EditorUtility.FormatBytes((long)m_MaxTotalBytesToNormalizeTo[i]));
-                m_HeaderSize[i].tooltip = Content.TotalAndMaxLabelTooltip;
+                var text = "";
+                string tooltip;
+                if (m_TotalTrackedBytes[i] > m_TotalBytes[i])
+                {
+                    text += string.Format(Content.KnownTotalFormatString, KnownTotalName, EditorUtility.FormatBytes((long)m_TotalBytes[i]));
+                    text += Content.TotalLabelSeparator;
+                    text += string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i]));
+                    text += Content.TotalLabelSeparator;
+                    tooltip = Content.TotalLabelTooltipWhenLessThanTotalTracked + "\n" + Content.GetTotalAndMaxLabelTooltip(DenormalizeFrameBased);
+                }
+                else
+                {
+                    text += string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i]));
+                    text += Content.TotalLabelSeparator;
+                    tooltip = Content.GetTotalAndMaxLabelTooltip(DenormalizeFrameBased);
+                }
+                text += string.Format(Content.MaxFormatString, EditorUtility.FormatBytes((long)m_MaxTotalBytesToNormalizeTo[i]));
+                m_HeaderSize[i].text = text;
+                m_HeaderSize[i].tooltip = tooltip;
             }
             else
             {
-                m_HeaderSize[i].text = string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalBytes[i]));
-                m_HeaderSize[i].tooltip = m_Normalized ? Content.TotalLabelTooltip : Content.TotalAndMaxLabelTooltipForMaxValue;
+                if (m_TotalTrackedBytes[i] > m_TotalBytes[i])
+                {
+                    m_HeaderSize[i].text = string.Format(Content.KnownTotalFormatString, KnownTotalName, EditorUtility.FormatBytes((long)m_TotalBytes[i]))
+                        + Content.TotalLabelSeparator
+                        + string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i]));
+                    m_HeaderSize[i].tooltip = Content.TotalLabelTooltipWhenLessThanTotalTracked;
+
+                    if (!m_Normalized)
+                    {
+                        if (totalBarByteAmount < m_MaxTotalBytesToNormalizeTo[i])
+                            m_HeaderSize[i].tooltip += "\n" + Content.GetTotalAndMaxLabelTooltip(DenormalizeFrameBased);
+                        else
+                            m_HeaderSize[i].tooltip += "\n" + Content.GetTotalAndMaxLabelTooltipForMaxValue(DenormalizeFrameBased);
+                    }
+                }
+                else
+                {
+                    m_HeaderSize[i].text = string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalBytes[i]));
+                    m_HeaderSize[i].tooltip = m_Normalized ? Content.TotalLabelTooltip : Content.GetTotalAndMaxLabelTooltipForMaxValue(DenormalizeFrameBased);
+                }
             }
         }
 
@@ -465,7 +574,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UnknownRoot = nameAndColorTree;
             }
 
-            SetTotalUsed(m_TotalBytes, m_Normalized, m_MaxTotalBytesToNormalizeTo, TotalIsKnown, false);
+            ulong[] totalTracked = new ulong[m_TotalBytes.Length];
+            m_TotalBytes.CopyTo(totalTracked, 0);
+
+            bool[] unknownUnknown = new bool[m_TotalBytes.Length];
+
+            SetTotalUsed(m_TotalBytes, totalTracked, m_Normalized, m_MaxTotalBytesToNormalizeTo, TotalIsKnown, unknownUnknown);
         }
 
         void ClearColumns()

@@ -12,7 +12,7 @@
                         <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Virtual Machine" show-used="false" background-color-class="background-color__memory-summary-category__managed__virtual-machine" total-bytes="100000000" class="background-color__memory-summary-category__managed__virtual-machine" />
                         <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Graphics &amp; Graphics Driver" show-used="false" background-color-class="background-color__memory-summary-category__gfx" total-bytes="500000000" class="background-color__memory-summary-category__gfx" />
                         <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Audio" background-color-class="background-color__memory-summary-category__audio" total-bytes="500000000" used-bytes="300000000" class="background-color__memory-summary-category__audio" />
-                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Other" show-used="true" background-color-class="background-color__memory-summary-category__unity-other" total-bytes="500000000" used-bytes="300000000" class="background-color__memory-summary-category__unity-other" />
+                        <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Other Native Memory" show-used="true" background-color-class="background-color__memory-summary-category__unity-other" total-bytes="500000000" used-bytes="300000000" class="background-color__memory-summary-category__unity-other" />
                         <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Profiler" show-used="true" background-color-class="background-color__memory-summary-category__profiler" total-bytes="500000000" used-bytes="300000000" class="background-color__memory-summary-category__profiler" />
                         <Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdownElement text="Executable &amp; DLLs" background-color-class="background-color__memory-summary-category__video" total-bytes="500000000" used-bytes="300000000" class="background-color__memory-summary-category__video" />
                     </Unity.MemoryProfiler.Editor.UI.MemoryUsageBreakdown>
@@ -35,6 +35,9 @@
                 </ui:VisualElement>
                 <ui:Label text="No Item Selected" display-tooltip-when-elided="true" name="memory-usage-summary-section__selection-label" class="memory-usage-summary-section__selection-label" />
             </ui:Foldout>
+			<ui:VisualElement class="memory-usage-summary-section__top-header__toggle-area">
+				<ui:Toggle text="Normalized" tooltip="Normalize bars to their snapshots total memory usage or scale it in relation to the maximal memory usage of the two snapshots" name="memory-usage-summary-section__normalized-toggle" class="memory-usage-summary-section__normalized-toggle" />
+			</ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

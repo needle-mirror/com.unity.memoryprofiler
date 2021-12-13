@@ -83,6 +83,12 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 
         public static readonly string TotalUsedMemory = "Total Used: {0}";
         public static readonly GUIContent TotalAvailableSystemResources = new GUIContent("Hardware Resources: {0}", "Hardware Resources: {0} ({1} RAM + {2} VRAM)");
+        public static readonly GUIContent TotalAvailableSystemResourcesUnifiedStatusUnknown = new GUIContent("Hardware Resources: {0}", "Hardware Resources: {0} Memory");
+        public static readonly GUIContent TotalAvailableSystemResourcesUnified = new GUIContent("Hardware Resources: {0}", "Hardware Resources: {0} Unified Memory");
+
+        public const string DefaultVirtualMachineMemoryCategoryLabel = "Virtual Machine (Scripting)";
+        public const string MonoVirtualMachineMemoryCategoryLabel = "Virtual Machine (Mono)";
+        public const string IL2CPPVirtualMachineMemoryCategoryLabel = "Virtual Machine (IL2CPP)";
 
         public const string ImportSnapshotWindowTitle = "Import snapshot file";
         public const string DeleteSnapshotDialogTitle = "Delete Snapshot";

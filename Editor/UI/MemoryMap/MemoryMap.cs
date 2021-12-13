@@ -10,7 +10,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         public enum DisplayElements
         {
             Allocations   = 1 << 0,
-            MangedObjects = 1 << 1,
+            ManagedObjects = 1 << 1,
             NativeObjects = 1 << 2,
             VirtualMemory = 1 << 3,
         }
@@ -489,7 +489,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     }
                 }
 
-                if (ShowDisplayElement(DisplayElements.MangedObjects))
+                if (ShowDisplayElement(DisplayElements.ManagedObjects))
                 {
                     Color32 color = m_ColorManaged[(int)EntryColors.Object];
                     Render(m_Snapshot.SortedManagedObjects, m_GroupsMangedObj, i, stripGroupAddrBegin, stripGroupAddrEnd, (Color32 c) => new Color32(color.r, color.g, color.b, c.a));
@@ -553,7 +553,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 GUILayout.Space(Styles.MemoryMap.LegendSpacerWidth);
             }
 
-            if (ShowDisplayElement(DisplayElements.MangedObjects))
+            if (ShowDisplayElement(DisplayElements.ManagedObjects))
             {
                 GUI.backgroundColor = m_ColorManaged[(int)EntryColors.Object];
                 GUILayout.Toggle(true, "Managed Object", Styles.MemoryMap.SeriesLabel);

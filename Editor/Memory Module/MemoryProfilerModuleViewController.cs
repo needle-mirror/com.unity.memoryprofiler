@@ -35,6 +35,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             public static readonly string SceneObjects = L10n.Tr("Scene Objects");
             public static readonly string GCAlloc = L10n.Tr("GC allocated in frame");
             public static readonly string OpenMemoryProfiler = L10n.Tr("Open Memory Profiler");
+            public const string SystemUsedMemoryCounterName = "System Used Memory";
         }
 
         struct ObjectTableRow
@@ -125,7 +126,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         bool CheckMemoryStatsAvailablity(long frameIndex)
         {
-            var dataNotAvailable = frameIndex < 0 || frameIndex < ProfilerWindow.firstAvailableFrameIndex || frameIndex > ProfilerWindow.lastAvailableFrameIndex;
+            var dataNotAvailable = frameIndex < 0 || frameIndex<ProfilerWindow.firstAvailableFrameIndex || frameIndex> ProfilerWindow.lastAvailableFrameIndex;
             if (!dataNotAvailable)
             {
                 ProfilerDriver.GetStatisticsAvailable(UnityEngine.Profiling.ProfilerArea.Memory, (int)frameIndex, oneFrameAvailabilityBuffer);
@@ -183,7 +184,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             if (m_CachedArray == null || m_CachedArray.Length != frameCountToCheck)
                 m_CachedArray = new float[frameCountToCheck];
             float maxValueInRange;
-            ProfilerDriver.GetCounterValuesBatch(UnityEngine.Profiling.ProfilerArea.Memory, "System Used Memory", (int)firstFrameToCheck, 1, m_CachedArray, out maxValueInRange);
+            ProfilerDriver.GetCounterValuesBatch(UnityEngine.Profiling.ProfilerArea.Memory, Content.SystemUsedMemoryCounterName, (int)firstFrameToCheck, 1, m_CachedArray, out maxValueInRange);
             if (maxValueInRange > max)
                 max = (ulong)maxValueInRange;
             m_MaxSystemUsedMemory = max;
@@ -211,11 +212,12 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
                     m_SimplePaneStringBuilder.Clear();
                     if (data.valid && data.GetMarkerId("Total Reserved Memory") != FrameDataView.invalidMarkerId)
                     {
-                        var systemUsedMemoryId = data.GetMarkerId("System Used Memory");
+                        var systemUsedMemoryId = data.GetMarkerId(Content.SystemUsedMemoryCounterName);
 
                         var systemUsedMemory = (ulong)data.GetCounterValueAsLong(systemUsedMemoryId);
 
-                        var totalIsKnown = (systemUsedMemoryId != FrameDataView.invalidMarkerId && systemUsedMemory > 0);
+                        bool[] totalIsKnown = new bool[m_TotalUsed.Length];
+                        totalIsKnown[0] = (systemUsedMemoryId != FrameDataView.invalidMarkerId && systemUsedMemory > 0);
 
                         var maxSystemUsedMemory = m_MaxSystemUsedMemory = systemUsedMemory;
                         if (!m_OverrideMemoryProfilerModule.Normalized)
@@ -232,7 +234,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
                         m_TotalUsed[0] = totalUsed;
                         m_TotalReserved[0] = totalReserved;
 
-                        if (!totalIsKnown)
+                        if (!totalIsKnown[0])
                             systemUsedMemory = totalReserved;
 
                         m_UIState.TopLevelBreakdown.SetValues(new ulong[] {systemUsedMemory, systemUsedMemory}, new List<ulong[]> {m_TotalReserved}, new List<ulong[]> {m_TotalUsed}, m_OverrideMemoryProfilerModule.Normalized, new ulong[] {maxSystemUsedMemory, maxSystemUsedMemory}, totalIsKnown);
@@ -262,7 +264,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
                         m_Used[4][0] -= Math.Min(m_Used[0][0] + m_Used[1][0] + m_Used[2][0] + m_Used[3][0] + m_Used[5][0], m_Used[4][0]);
                         m_Reserved[4][0] -= Math.Min(m_Reserved[0][0] + m_Reserved[1][0] + m_Reserved[2][0] + m_Reserved[3][0] + m_Reserved[5][0], m_Reserved[4][0]);
-                        m_UIState.Breakdown.SetValues(new ulong[] {systemUsedMemory, systemUsedMemory}, m_Reserved, m_Used, m_OverrideMemoryProfilerModule.Normalized, new ulong[] {maxSystemUsedMemory, maxSystemUsedMemory }, totalIsKnown);
+                        m_UIState.Breakdown.SetValues(new ulong[] {systemUsedMemory, systemUsedMemory}, m_Reserved, m_Used, m_OverrideMemoryProfilerModule.Normalized, new ulong[] {maxSystemUsedMemory, maxSystemUsedMemory }, totalIsKnown, nameOfKnownTotal: Content.SystemUsedMemoryCounterName);
 
                         UpdateObjectRow(data, ref m_UIState.TexturesRow, "Texture Count", "Texture Memory");
                         UpdateObjectRow(data, ref m_UIState.MeshesRow, "Mesh Count", "Mesh Memory");
@@ -370,6 +372,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
             m_UIState.TopLevelBreakdown = m_UIState.CounterBasedUI.Q<PackagedMemoryUsageBreakdown>("memory-usage-breakdown__top-level");
             m_UIState.TopLevelBreakdown.Setup();
+            m_UIState.TopLevelBreakdown.DenormalizeFrameBased = true;
             m_UIState.TopLevelBreakdown.SetBAndDiffVisibility(false);
             m_UIState.Breakdown = m_UIState.CounterBasedUI.Q<PackagedMemoryUsageBreakdown>("memory-usage-breakdown");
             m_UIState.Breakdown.Setup();

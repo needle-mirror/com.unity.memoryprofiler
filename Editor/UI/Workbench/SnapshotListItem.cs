@@ -363,9 +363,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     UIElementsHelper.SetVisibility(m_TotalRamBarHolder, true);
 
-                    var totalAvailableMemory = snapshotFileData.GuiData.TargetInfo.Value.TotalPhysicalMemory + snapshotFileData.GuiData.TargetInfo.Value.TotalGraphicsMemory;
-                    // virtual memory could include swap so, clamp to total available
+                    var totalAvailableMemory = PlatformsHelper.GetPlatformSpecificTotalAvailableMemory(snapshotFileData.GuiData.TargetInfo.Value);
                     var totalUsedMemory = Math.Min(snapshotFileData.GuiData.MemoryStats.Value.TotalVirtualMemory, totalAvailableMemory);
+                    if (totalUsedMemory == 0)
+                    {
+                        // Fallback for platforms where System Used Memory isn't implemented yet
+                        totalUsedMemory = snapshotFileData.GuiData.MemoryStats.Value.TotalReservedMemory;
+                    }
+                    // if more is used than available, we might have a non unified device in a mixed platform or otherwise mis-accounted the available space
+                    // assume that the apps memory still fitted in when the snapshot was taken.
+                    totalAvailableMemory = Math.Max(totalAvailableMemory, totalUsedMemory);
                     // Set width in percent
                     var filledInPercent = ((float)totalUsedMemory / (float)totalAvailableMemory * 100f);
                     m_TotalRamBarUsed.style.SetBarWidthInPercent(filledInPercent);

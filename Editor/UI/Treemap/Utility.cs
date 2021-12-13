@@ -52,7 +52,20 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                     int resultIndex = index - unfinishedRects.Count + 1;
                     for (int rectIndex = 0; rectIndex < unfinishedRects.Count; rectIndex++)
                     {
-                        result[resultIndex++] = unfinishedRects[rectIndex];
+                        var rect = unfinishedRects[rectIndex];
+                        if (float.IsNaN(rect.x) || float.IsNaN(rect.y))
+                        {
+                            // Eventually, rects that get too small need to be culled out earlier,
+                            // but for the sake of error reduction, replace invalidly small rects with zero rects.
+                            // Also, once we hit this size, nothing bigger is going to come after it so, lets speed this up
+                            for (int i = resultIndex; i < result.Length; i++)
+                            {
+                                result[i] = Rect.zero;
+                            }
+                            return result;
+                        }
+                        else
+                            result[resultIndex++] = rect;
                     }
 
                     targetRect = GetNewTarget(unfinishedRects, targetRect, vertical);

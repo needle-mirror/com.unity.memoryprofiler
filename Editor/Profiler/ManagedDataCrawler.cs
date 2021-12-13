@@ -579,10 +579,11 @@ namespace Unity.MemoryProfiler.Editor
             }
 #endif
             int cachedPtrOffset = -1;
-            int iField_UnityEngineObject_m_CachedPtr = Array.FindIndex(
+            int fieldIndicesIndex = Array.FindIndex(
                 snapshot.TypeDescriptions.FieldIndices[iTypeDescription_UnityEngineObject]
                 , iField => snapshot.FieldDescriptions.FieldDescriptionName[iField] == "m_CachedPtr");
 
+            int iField_UnityEngineObject_m_CachedPtr = fieldIndicesIndex >= 0 ? snapshot.TypeDescriptions.FieldIndices[iTypeDescription_UnityEngineObject][fieldIndicesIndex] : -1;
             if (iField_UnityEngineObject_m_CachedPtr >= 0)
             {
                 cachedPtrOffset = snapshot.FieldDescriptions.Offset[iField_UnityEngineObject_m_CachedPtr];
@@ -596,6 +597,12 @@ namespace Unity.MemoryProfiler.Editor
             }
 #endif
 
+#if DEBUG_VALIDATION
+            // These are used to double-check that all Native -> Managed connections reported via GCHandles on Native Objects are correctly found via m_CachedPtr
+            long firstManagedToNativeConnection = snapshot.CrawledData.Connections.Count;
+            Dictionary<ulong, int> managedObjectAddressToNativeObjectIndex = new Dictionary<ulong, int>();
+#endif
+
             for (int i = 0; i != objectInfos.Count; i++)
             {
                 //Must derive of unity Object
@@ -605,7 +612,8 @@ namespace Unity.MemoryProfiler.Editor
 
                 if (DerivesFrom(snapshot.TypeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
                 {
-                    var heapSection = snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
+                    // TODO: Add index to a list of Managed Unity Objects here
+                    var heapSection =  snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
                     if (!heapSection.IsValid)
                     {
                         Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
@@ -617,23 +625,53 @@ namespace Unity.MemoryProfiler.Editor
 
                         if (!snapshot.NativeObjects.nativeObjectAddressToInstanceId.TryGetValue(cachedPtr, out instanceID))
                             instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
+                        // cachedPtr == 0UL or instanceID == CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone -> Leaked Shell
+                        // TODO: Add index to a list of leaked shells here.
                     }
 
-                    if (instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone && snapshot.NativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
+                    if (instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone)
                     {
-                        snapshot.NativeObjects.ManagedObjectIndex[objectInfo.NativeObjectIndex] = i;
+                        if (snapshot.NativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
+                            snapshot.NativeObjects.ManagedObjectIndex[objectInfo.NativeObjectIndex] = i;
+
+                        if (snapshot.HasConnectionOverhaul)
+                        {
+                            snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
+                            var rc = ++snapshot.NativeObjects.refcount[objectInfo.NativeObjectIndex];
+                            snapshot.NativeObjects.refcount[objectInfo.NativeObjectIndex] = rc;
+#if DEBUG_VALIDATION
+                            managedObjectAddressToNativeObjectIndex.Add(objectInfo.PtrObject, objectInfo.NativeObjectIndex);
+#endif
+                        }
                     }
                 }
+                //else
+                //{
+                // TODO: Add index to a list of Pure C# Objects here
+                //}
 
                 objectInfos[i] = objectInfo;
+            }
 
-                if (snapshot.HasConnectionOverhaul && instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone)
+#if DEBUG_VALIDATION
+            // Double-check that all Native -> Managed connections reported via GCHandles on Native Objects have been correctly found via m_CachedPtr
+            if (snapshot.Connections.IndexOfFirstNativeToGCHandleConnection >= 0)
+            {
+                var gcHandlesCount = snapshot.GcHandles.Count;
+                for (long nativeConnectionIndex = snapshot.Connections.IndexOfFirstNativeToGCHandleConnection; nativeConnectionIndex < snapshot.Connections.Count; nativeConnectionIndex++)
                 {
-                    snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
-                    var rc = ++snapshot.NativeObjects.refcount[objectInfo.NativeObjectIndex];
-                    snapshot.NativeObjects.refcount[objectInfo.NativeObjectIndex] = rc;
+                    var nativeObjectIndex = snapshot.Connections.From[nativeConnectionIndex] - gcHandlesCount;
+                    var managedShellAddress = snapshot.GcHandles.Target[snapshot.Connections.To[nativeConnectionIndex]];
+                    var managedObjectIndex = snapshot.CrawledData.MangedObjectIndexByAddress[managedShellAddress];
+                    var managedObject = snapshot.CrawledData.ManagedObjects[managedObjectIndex];
+                    if (managedObject.NativeObjectIndex != nativeObjectIndex)
+                        Debug.LogError("Native Object is not correctly linked with its Managed Object");
+                    bool foundConnection = managedObjectAddressToNativeObjectIndex.ContainsKey(managedShellAddress);
+                    if (!foundConnection)
+                        Debug.LogError("Native Object is not correctly linked with its Managed Object");
                 }
             }
+#endif
         }
 
         static bool DerivesFrom(CachedSnapshot.TypeDescriptionEntriesCache typeDescriptions, int iTypeDescription, int potentialBase)
@@ -670,7 +708,9 @@ namespace Unity.MemoryProfiler.Editor
 
 
                 ulong fieldAddr;
-                if (fieldLocation.TryReadPointer(out fieldAddr) == BytesAndOffset.PtrReadError.Success)
+                if (fieldLocation.TryReadPointer(out fieldAddr) == BytesAndOffset.PtrReadError.Success
+                    // don't process null pointers
+                    && fieldAddr != 0)
                 {
                     crawlData.CrawlDataStack.Push(new StackCrawlData() { ptr = fieldAddr, ptrFrom = ptrFrom, typeFrom = iTypeDescription, indexOfFrom = indexOfFrom, fieldFrom = iField, fromArrayIndex = -1 });
                 }
@@ -739,7 +779,9 @@ namespace Unity.MemoryProfiler.Editor
                     if (arrayData.TryReadPointer(out arrayDataPtr) != BytesAndOffset.PtrReadError.Success)
                         return false;
 
-                    dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayDataPtr, ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
+                    // don't process null pointers
+                    if (arrayDataPtr != 0)
+                        dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayDataPtr, ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
                     arrayData = arrayData.NextPointer();
                 }
             }

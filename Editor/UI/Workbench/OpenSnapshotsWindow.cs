@@ -233,16 +233,12 @@ namespace Unity.MemoryProfiler.Editor
                     UIElementsHelper.SetVisibility(itemUI.TotalAvailableBar, true);
                     var info = snapshotGUIData.TargetInfo.Value;
 
-                    totalAvailableMemory = info.TotalPhysicalMemory + info.TotalGraphicsMemory;
+                    totalAvailableMemory = PlatformsHelper.GetPlatformSpecificTotalAvailableMemory(info);
 
-                    var totalAvailableTooltip = string.Format(TextContent.TotalAvailableSystemResources.tooltip,
-                        EditorUtility.FormatBytes((long)totalAvailableMemory),
-                        EditorUtility.FormatBytes((long)info.TotalPhysicalMemory),
-                        EditorUtility.FormatBytes((long)info.TotalGraphicsMemory));
-                    itemUI.TotalAvailableBar.tooltip = totalAvailableTooltip;
-                    itemUI.TotalAvailableMemory.tooltip = totalAvailableTooltip;
-                    itemUI.TotalAvailableMemory.text = string.Format(TextContent.TotalAvailableSystemResources.text,
-                        EditorUtility.FormatBytes((long)totalAvailableMemory));
+                    var totalAvailableInfoText = PlatformsHelper.GetPlatformSpecificTotalAvailableMemoryText(info);
+                    itemUI.TotalAvailableBar.tooltip = totalAvailableInfoText.tooltip;
+                    itemUI.TotalAvailableMemory.tooltip = totalAvailableInfoText.tooltip;
+                    itemUI.TotalAvailableMemory.text = totalAvailableInfoText.text;
                 }
                 else
                 {
@@ -255,7 +251,18 @@ namespace Unity.MemoryProfiler.Editor
                     var totalUsed = string.Format(TextContent.TotalUsedMemory,
                         EditorUtility.FormatBytes((long)snapshotGUIData.MemoryStats.Value.TotalVirtualMemory));
                     itemUI.TotalUseddBar.tooltip = totalUsed;
-                    float usagePercentage = (float)snapshotGUIData.MemoryStats.Value.TotalVirtualMemory / totalAvailableMemory * 100f;
+
+                    var totalKnownUsedMemory = snapshotGUIData.MemoryStats.Value.TotalVirtualMemory;
+                    if (totalKnownUsedMemory == 0)
+                    {
+                        // Fallback for platforms where System Used Memory isn't implemented yet
+                        totalKnownUsedMemory = snapshotGUIData.MemoryStats.Value.TotalReservedMemory;
+                    }
+                    // if more is used than available, we might have a non unified device in a mixed platform or otherwise mis-accounted the available space
+                    // assume that the apps memory still fitted in when the snapshot was taken.
+                    totalAvailableMemory = Math.Max(totalAvailableMemory, totalKnownUsedMemory);
+                    float usagePercentage = (float)totalKnownUsedMemory / totalAvailableMemory * 100f;
+
                     itemUI.TotalUseddBar.style.SetBarWidthInPercent(usagePercentage);
                     itemUI.TotalUsedMemory.text = totalUsed;
                     itemUI.MemoryUsageDial.Percentage = Mathf.RoundToInt(usagePercentage);

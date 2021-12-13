@@ -8,9 +8,14 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
 {
     internal static class LegacyPackedMemorySnapshotConverter
     {
-        const uint kCurrentVersion = 8;
         const int kCurrentConversionStepCount = 8;
 
+        /// <summary>
+        /// This converts .memsnap, .memsnap2 and .memsnap3 snapshots to .snap format
+        /// </summary>
+        /// <param name="snapshot"></param>
+        /// <param name="writePath"></param>
+        /// <returns></returns>
         public static IEnumerator Convert(LegacyPackedMemorySnapshot snapshot, string writePath)
         {
             if (snapshot == null)
@@ -36,8 +41,11 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
             status.StepStatus = "Writing metadata";
             yield return status;
 
-            //snapshot version will always be the current one for conversion operations
-            writer.WriteEntry(EntryType.Metadata_Version, kCurrentVersion);
+            // A converted Legacy Snapshot (.memsnap*) can only contain information present in legacy snapshots.
+            // The newer snapshot versions changed or added data and their snapshotversion indicates what the data is structured like or which data is present
+            // Converted Legacy snapshots therefore have to default to the bare minimum version to not confuse other parts of the package code
+            // that rely on the snapshot version for parsing the file, and gauging what data it can expect to find.
+            writer.WriteEntry(EntryType.Metadata_Version, (uint)Unity.MemoryProfiler.Editor.Format.FormatVersion.SnapshotMinSupportedFormatVersion);
 
             //timestamp with conversion date
             writer.WriteEntry(EntryType.Metadata_RecordDate, (ulong)DateTime.Now.Ticks);
@@ -58,7 +66,11 @@ namespace Unity.MemoryProfiler.Editor.Legacy.LegacyFormats
             // Write metadata
             writer.WriteEntryArray(EntryType.Metadata_UserMetadata, metaDataBytes);
 
-            writer.WriteEntry(EntryType.Metadata_CaptureFlags, (UInt32)UnityEngine.Profiling.Memory.Experimental.CaptureFlags.ManagedObjects); //capture just managed
+            var captureFlags = UnityEngine.Profiling.Memory.Experimental.CaptureFlags.ManagedObjects;
+            if (snapshot.m_NativeObjects.Length > 0)
+                captureFlags |= UnityEngine.Profiling.Memory.Experimental.CaptureFlags.NativeObjects;
+
+            writer.WriteEntry(EntryType.Metadata_CaptureFlags, (UInt32)captureFlags); //capture just managed
 
             // Write managed heap sections
             status.IncrementStep();

@@ -4,7 +4,25 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [0.4.2-preview.1] - 2021-10-11
+## [0.4.3-preview.1] - 2021-12-13
+
+### Added
+ - Added a toggle to the Memory Usage Summary when comparing snapshots to switch between normalizing the bars to their respective total, or scaling them to the bigger of the two.
+
+### Fixed
+ - Fixed an exception that occurred when creating a new UI Document via `Create > UI Toolkit > UI Document`.
+ - Fixed an Index Out Of Bounds exception in ManagedMemorySectionEntriesCache.Find on opening some snapshots, particularly IL2CPP snapshots.
+ - Fixed an issue which affected the crawling of some snapshots that prevented Managed Objects of types inheriting from UnityEngine.Object from being properly connected with their Native Objects and therefore not showing their Native Sizes, Instance IDs and Native Object Names in the tables [(Case 1383114)](https://issuetracker.unity3d.com/product/unity/issues/guid/1383114/).
+ - Fixed "Failed To read Object, please report a bug." Objects appearing in snapshots with only one or two managed heap sections.
+ - Fixed "abnormal mesh bounds" error to not appear on opening snapshots.
+ - Fixed total available memory so it no longer adds GPU memory on unified memory platforms.
+ - Fixed `Memory Usage` breakdown categories adding up to more than the `Total` value [(Case 1381034)](https://fogbugz.unity3d.com/f/cases/1381034/).
+
+### Changed
+ - Renamed the Memory Usage Breakdown category `Other` to `Other Native Memory` to improve clarity slightly. It shows all native memory usage tracked by Unity's Memory Manager that does not show up in the other, more specific categories.
+ - Renamed the Memory Usage Breakdown category `Virtual Machine` to `Virtual Machine (IL2CPP)`, `Virtual Machine (Mono)` or `Virtual Machine (Scripting)` depending on which scripting back-end is used, or if two different ones are used when comparing snapshots.
+
+## [0.4.2-preview.1] - 2021-10-22
 
 ### Fixed
  - Fixed an exception thrown by the Tree Map when opening a snapshot that contains a group of types that collectively "use" 0 B, preventing the opening of the snapshot [(Case 1368289)](https://issuetracker.unity3d.com/product/unity/issues/guid/1368289/). 
@@ -112,9 +130,30 @@ or any newer version of Unity.
  - Removed `Managed Global` from references list of managed objects.
 
 
-## [0.2.9-preview.1] - 2021-02-05
+## [0.2.10-preview.1] - 2021-07-30
+### Changed
+  - Fixed an issue where snapshots taken on UWP using the .NET scripting backend, could not be loaded by the package.
+
+### Removed
+  - Removed ReflectionUtility as it was no longer used by the package.
+
+
+## [0.2.9-preview.3] - 2021-05-26
+### Changed
+  - Fixed an issue with the creation of several string buffers inside the snapshot file reader, where buffer memory would not be zero initialized.
+  - Fixed an issue where compilation against Unity Editor 2021.2 was broken.
+  - Fixed target connection dropdown being broken on 2021.2.
+
+
+## [0.2.9-preview.2] - 2021-05-26
+### Changed
+  - Fixed an unused variable warning for kCurrentVersion ([case 1329193](https://fogbugz.unity3d.com/f/cases/1329193/))
+
+
+## [0.2.9-preview.1] - 2021-03-17
 ### Changed
   - Updated from Unity Distribution License to Unity Companion License
+  - Fixed an issue with setting capture folder path, failing to correctly parse the provided path
 
 
 ## [0.2.8-preview.2] - 2021-01-18

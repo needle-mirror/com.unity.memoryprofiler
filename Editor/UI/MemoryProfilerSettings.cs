@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEngine;
 using System.IO;
 using System;
+using System.Text;
 #if UNITY_2021_2_OR_NEWER
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.MemoryProfilerModule")]
@@ -16,7 +17,6 @@ namespace Unity.MemoryProfiler.Editor
         public const string HeapWarningWindowOptOutKey = "Unity.MemoryProfiler.HeapWarningPopup";
 
         const string k_LastImportPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastImportPath";
-        const string k_LastXMLLoadPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastXMLLoadPath";
         const string k_SnapshotPathEditorPerf = "Unity.MemoryProfiler.Editor.MemorySnapshotStoragePath";
         const string k_MemoryProfilerPackageOverridesMemoryModuleUIEditorPerf = "Unity.MemoryProfiler.Editor.MemoryProfilerPackageOverridesMemoryModuleUI";
         const string k_DefaultPath = "./MemoryCaptures";
@@ -45,57 +45,47 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        public static string LastXMLLoadPath
-        {
-            get
-            {
-                return SessionState.GetString(k_LastXMLLoadPathPrefKey, Application.dataPath);
-            }
-            set
-            {
-                SessionState.SetString(k_LastXMLLoadPathPrefKey, value);
-            }
-        }
-
         public static string AbsoluteMemorySnapshotStoragePath
         {
             get
             {
                 string folderPath = MemoryProfilerSettings.MemorySnapshotStoragePath;
-                if (folderPath.StartsWith("./"))
+                //split the string
+                var pathTokens = folderPath.Split(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+                if (pathTokens.Length == 0)
+                    return null;
+
+                StringBuilder pathSb = new StringBuilder();
+                if (!pathTokens[0].StartsWith(".")) //ensure that we are a relative path
                 {
-                    folderPath = Path.Combine(Application.dataPath.Replace("/Assets", ""), MemoryProfilerSettings.MemorySnapshotStoragePath.Replace("./", ""));
-                }
-                else if (folderPath.StartsWith("../"))
-                {
-                    var path = Application.dataPath.Split('/');
-                    int folderUpCount = 1;
-                    while (folderPath.IndexOf("../", folderUpCount * 3) == folderUpCount * 3)
-                    {
-                        folderUpCount++;
-                    }
-                    int pathLength = path.Length - 1 - folderUpCount;
-                    if (pathLength > 0)
-                    {
-                        string combinedPath = path[0] + Path.DirectorySeparatorChar;
-                        for (int i = 1; i < pathLength; i++)
-                        {
-                            combinedPath = Path.Combine(combinedPath, path[i]);
-                        }
-                        folderPath = Path.Combine(combinedPath, folderPath.Substring(folderUpCount * 3));
-                    }
-                    else
-                    {
-                        Debug.LogError(folderPath + " Is not a valid relative path, it has more instances of '../' than folders above the project folder. Please change the path for memory snapshots in the Preferences.");
-                        return null;
-                    }
-                }
-                else
-                {
-                    Debug.LogError(folderPath + " Is not a valid path. Only relative paths starting with './' or '../' are allowed. Please change the path for memory snapshots in the Preferences.");
+                    Debug.LogError(folderPath + " Is not a valid relative path, as it doesn't start with './'. Please change the path for memory snapshots in the Preferences.");
                     return null;
                 }
-                return folderPath;
+
+                if (!pathTokens[0].StartsWith("..")) //relative path first set to start in ./
+                {
+                    pathSb.Append(Application.dataPath.Replace("/Assets", ""));
+                }
+
+                for (int i = 1; i < pathTokens.Length; ++i)
+                {
+                    pathSb.Append(Path.DirectorySeparatorChar);
+                    pathSb.Append(pathTokens[i]);
+                }
+
+                var res = pathSb.ToString();
+                try
+                {
+                    //will throw for invalid paths
+                    Path.GetFullPath(res);
+                }
+                catch (Exception)
+                {
+                    Debug.LogError(folderPath + " Is not a valid relative path, it has more instances of '../' than folders above the project folder. Please change the path for memory snapshots in the Preferences.");
+                    return null;
+                }
+
+                return res;
             }
         }
 
@@ -117,8 +107,8 @@ namespace Unity.MemoryProfiler.Editor
                 EditorPrefs.SetBool(k_MemoryProfilerPackageOverridesMemoryModuleUIEditorPerf, value);
             }
         }
-        public static event Action InstallUIOverride = delegate { };
-        public static event Action UninstallUIOverride = delegate { };
+        public static event Action InstallUIOverride = delegate {};
+        public static event Action UninstallUIOverride = delegate {};
 #endif
 
         public static void ResetMemorySnapshotStoragePathToDefault()
@@ -187,7 +177,6 @@ namespace Unity.MemoryProfiler.Editor
                 menu.AddItem(Content.ResetSettings, false, () =>
                 {
                     MemoryProfilerSettings.ResetMemorySnapshotStoragePathToDefault();
-
                 });
                 var position = new Rect(Event.current.mousePosition, Vector2.zero);
                 menu.DropDown(position);

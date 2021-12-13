@@ -151,6 +151,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetBarElements();
         }
 
+        public void UpdateText(string breakdownName)
+        {
+            Text = breakdownName;
+            tooltip = BuildTooltipText(m_BreakdownParent.HeaderText, Text, (ulong)m_BreakdownParent.GetTotalBytes(0), stats[0].totalBytes, ShowUsed, stats[0].usedBytes, ShowSelected, stats[0].selectedBytes);
+            m_RowName.text = Text;
+            m_RowName.tooltip = m_RowASize.tooltip = tooltip;
+        }
+
         public static string BuildTooltipText(string memoryBreakDownName, string elementName, ulong totalBytes, ulong reservedBytes, bool showUsed = false, ulong usedBytes = 0, bool showSelected = false, ulong selectedBytes = 0)
         {
             // Unity/Other Used: 27MB
