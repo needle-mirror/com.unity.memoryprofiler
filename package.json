@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "0.4.3-preview.1",
+  "version": "0.4.4-preview.2",
   "unity": "2019.4",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -16,14 +16,14 @@
     "com.unity.editorcoroutines": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "0.4.3-preview.1"
+    "com.unity.memoryprofiler.tests": "0.4.4-preview.2"
   },
   "upmCi": {
-    "footprint": "043366eccaa447632095b547f7e6f5262d8d6b03"
+    "footprint": "b5db9c8632bec41cdfb4b6637d65048c5075ffd4"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "39f8abe7e36affd5f5479abde03af3c593f37939"
+    "revision": "b56d802a5bfdaf9e509e0a3812b85bc656e52671"
   }
 }

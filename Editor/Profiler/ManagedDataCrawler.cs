@@ -360,9 +360,12 @@ namespace Unity.MemoryProfiler.Editor
         public string ReadString()
         {
             int strLength = ReadInt32();
-            if (offset + sizeof(int) + (strLength * 2) > bytes.Length)
+            if (strLength < 0 || offset + sizeof(int) + (strLength * 2) > bytes.Length)
             {
-                throw new ArgumentOutOfRangeException("Attempted to read outside of binary buffer.");
+#if DEBUG_VALIDATION
+                Debug.LogError("Attempted to read outside of binary buffer.");
+#endif
+                return "Invalid String object, please report a bug!";
             }
             unsafe
             {
@@ -736,7 +739,7 @@ namespace Unity.MemoryProfiler.Editor
             ManagedObjectInfo obj;
             bool wasAlreadyCrawled;
 
-            obj = ParseObjectHeader(snapshot, data, out wasAlreadyCrawled, false);
+            obj = ParseObjectHeader(snapshot, data, out wasAlreadyCrawled, false, byteOffset);
             bool addConnection = (data.typeFrom >= 0 || data.fieldFrom >= 0);
             if (addConnection)
                 ++obj.RefCount;
@@ -795,7 +798,7 @@ namespace Unity.MemoryProfiler.Editor
             if (snapshot.TypeDescriptions.HasFlag(iTypeDescription, TypeFlags.kArray))
                 return ArrayTools.ReadArrayObjectSizeInBytes(snapshot, address, iTypeDescription);
 
-            if (snapshot.TypeDescriptions.TypeDescriptionName[iTypeDescription] == "System.String")
+            if (snapshot.TypeDescriptions.ITypeString == iTypeDescription)
                 return StringTools.ReadStringObjectSizeInBytes(bo, snapshot.VirtualMachineInformation);
 
             //array and string are the only types that are special, all other types just have one size, which is stored in the type description
@@ -809,14 +812,14 @@ namespace Unity.MemoryProfiler.Editor
             if (snapshot.TypeDescriptions.HasFlag(iTypeDescription, TypeFlags.kArray))
                 return ArrayTools.ReadArrayObjectSizeInBytes(snapshot, byteOffset, iTypeDescription);
 
-            if (snapshot.TypeDescriptions.TypeDescriptionName[iTypeDescription] == "System.String")
+            if (snapshot.TypeDescriptions.ITypeString == iTypeDescription)
                 return StringTools.ReadStringObjectSizeInBytes(byteOffset, snapshot.VirtualMachineInformation);
 
             //array and string are the only types that are special, all other types just have one size, which is stored in the type description
             return snapshot.TypeDescriptions.Size[iTypeDescription];
         }
 
-        static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, StackCrawlData crawlData, out bool wasAlreadyCrawled, bool ignoreBadHeaderError)
+        static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, StackCrawlData crawlData, out bool wasAlreadyCrawled, bool ignoreBadHeaderError, BytesAndOffset byteOffset)
         {
             var objectList = snapshot.CrawledData.ManagedObjects;
             var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
@@ -826,7 +829,7 @@ namespace Unity.MemoryProfiler.Editor
             int idx = 0;
             if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(crawlData.ptr, out idx))
             {
-                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo))
+                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo, byteOffset))
                 {
                     objectInfo.ManagedObjectIndex = (int)objectList.Count;
                     objectList.Add(objectInfo);
@@ -841,7 +844,7 @@ namespace Unity.MemoryProfiler.Editor
             if (objectInfo.PtrObject == 0)
             {
                 idx = objectInfo.ManagedObjectIndex;
-                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo))
+                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo, byteOffset))
                 {
                     objectInfo.ManagedObjectIndex = idx;
                     objectList[idx] = objectInfo;
@@ -856,7 +859,7 @@ namespace Unity.MemoryProfiler.Editor
             return objectInfo;
         }
 
-        public static bool TryParseObjectHeader(CachedSnapshot snapshot, StackCrawlData data, out ManagedObjectInfo info)
+        public static bool TryParseObjectHeader(CachedSnapshot snapshot, StackCrawlData data, out ManagedObjectInfo info, BytesAndOffset boHeader)
         {
             bool resolveFailed = false;
             var heap = snapshot.ManagedHeapSections;
@@ -864,7 +867,7 @@ namespace Unity.MemoryProfiler.Editor
             info.ManagedObjectIndex = -1;
 
             ulong ptrIdentity = 0;
-            var boHeader = heap.Find(data.ptr, snapshot.VirtualMachineInformation);
+            if (!boHeader.IsValid) boHeader = heap.Find(data.ptr, snapshot.VirtualMachineInformation);
             if (!boHeader.IsValid)
                 resolveFailed = true;
             else
@@ -936,6 +939,13 @@ namespace Unity.MemoryProfiler.Editor
         {
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
+            if (length < 0 || length * 2 > bo.bytes.Length - bo.offset - sizeof(int))
+            {
+#if DEBUG_VALIDATION
+                Debug.LogError("Found a String Object of impossible length.");
+#endif
+                length = 0;
+            }
 
             return virtualMachineInformation.ObjectHeaderSize + /*lengthfield*/ 1 + (length * /*utf16=2bytes per char*/ 2) + /*2 zero terminators*/ 2;
         }

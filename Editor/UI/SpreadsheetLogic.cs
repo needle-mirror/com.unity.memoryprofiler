@@ -16,11 +16,12 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// </summary>
     internal abstract class SpreadsheetLogic
     {
-        public event Action<long> RowSelectionChanged = delegate { };
+        public event Action<long> RowSelectionChanged = delegate {};
         protected void OnRowSelectionChanged(long row)
         {
             RowSelectionChanged(row);
         }
+
         //used to catch infinite loop caused by implementation
         const long k_MaxRow = 100000000;
 
@@ -235,7 +236,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 rectHeader.x += rectHeader.width;
             }
-            GUILayout.Space(rectHeader.width < maxWidth ? rectHeader.width : maxWidth);
+            GUILayout.Space(totalHeaderWidth < maxWidth ? totalHeaderWidth : maxWidth);
 
             m_Splitter.EndHorizontalSplit();
 
@@ -257,10 +258,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (Event.current.type == EventType.Layout)
             {
                 EditorGUILayout.BeginHorizontal();
-                for (int k = 0; k < m_Splitter.realSizes.Length; ++k)
-                {
-                    GUILayout.Space(m_Splitter.realSizes[k]);
-                }
+                GUILayout.Space(totalHeaderWidth);
                 EditorGUILayout.EndHorizontal();
             }
 
@@ -343,7 +341,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             float yMax = m_GUIState.ScrollPosition.y + m_GUIState.RectData.height;
             if (m_GUIState.FirstVisibleRow > 60000)
             {
-                GUI.BeginClip(new Rect(m_GUIState.RectData.x, m_GUIState.ScrollPosition.y, m_GUIState.RectData.width, m_GUIState.RectData.height));
+                GUI.BeginClip(new Rect(m_GUIState.RectData.x, m_GUIState.ScrollPosition.y, m_GUIState.RectData.width + m_GUIState.ScrollPosition.x, m_GUIState.RectData.height));
                 heightBeforeFirstVisibleRowAdjustedForClip -= m_GUIState.ScrollPosition.y;
                 yMax -= m_GUIState.ScrollPosition.y;
             }

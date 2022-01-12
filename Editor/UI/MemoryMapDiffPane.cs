@@ -82,6 +82,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         MemoryMap.MemoryMapDiff m_MemoryMap;
+        FirstSnapshotAge m_CurrentFirstSnapshotAge;
 
         UI.DatabaseSpreadsheet m_Spreadsheet;
 
@@ -238,6 +239,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIState.SnapshotMode mode2 = m_UIState.SecondMode as UIState.SnapshotMode;
             m_ActiveMode = mode1;
 
+            m_CurrentFirstSnapshotAge = m_UIState.SnapshotAge;
             m_MemoryMap = new MemoryMap.MemoryMapDiff();
             m_MemoryMap.Setup(mode1.snapshot, mode2.snapshot);
             m_MemoryMap.RegionSelected += OnSelectRegions;
@@ -383,9 +385,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         void OpenTable(Database.TableReference tableRef, Database.Table table, Database.CellPosition pos, bool focus)
         {
             Filter existingFilter = null;
+            var existingColumnCount = 0;
             if (m_Spreadsheet != null)
             {
                 existingFilter = m_Spreadsheet.GetCurrentFilterCopy();
+                existingColumnCount = m_Spreadsheet.DisplayTable.GetMetaData().GetColumnCount();
             }
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
             m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
@@ -393,7 +397,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (existingFilter != null)
             {
                 var state = m_Spreadsheet.CurrentState;
-                state.Filter = existingFilter;
+                if (existingColumnCount > 0)
+                {
+                    var newColumnCount = m_Spreadsheet.DisplayTable.GetMetaData().GetColumnCount();
+                    // only copy filters over if the column counts match
+                    if (existingColumnCount == newColumnCount)
+                        state.Filter = existingFilter;
+                }
                 m_Spreadsheet.CurrentState = state;
             }
 
@@ -417,6 +427,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             EditorGUILayout.BeginHorizontal(Styles.MemoryMap.ContentToolbar);
 
             var age = m_UIState.SnapshotAge;
+            if (m_CurrentFirstSnapshotAge != age)
+            {
+                // first snapshot age changed, recalculate Memory Map
+                m_MemoryMap.Setup((m_UIState.FirstMode as UIState.SnapshotMode).snapshot, (m_UIState.SecondMode as UIState.SnapshotMode).snapshot);
+                m_CurrentFirstSnapshotAge = age;
+                m_UIStateHolder.Repaint();
+            }
 
             if (GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, age == FirstSnapshotAge.Older ? "Old (A)" : "New (A)", EditorStyles.radioButton))
             {

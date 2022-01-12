@@ -33,10 +33,12 @@ namespace Unity.MemoryProfiler.Editor
 
         DateTime m_DateTime;
 
-        public string SessionName {
+        public string SessionName
+        {
             get => m_SessionName;
-            set {
-                if(m_SessionName != value || value != DynamicUIElements.Foldout.text)
+            set
+            {
+                if (m_SessionName != value || value != DynamicUIElements.Foldout.text)
                 {
                     m_SessionName = value;
                     SessionNameChanged(value);
@@ -45,6 +47,19 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
         private string m_SessionName;
+        public string UnityVersion
+        {
+            get => m_UnityVersion;
+            set
+            {
+                if (m_UnityVersion != value)
+                {
+                    m_UnityVersion = value;
+                    DynamicUIElements.UpdateFoldoutUI(this);
+                }
+            }
+        }
+        public string m_UnityVersion;
 
         public event Action<string> SessionNameChanged = delegate {};
 
@@ -57,7 +72,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (Foldout == null)
                     return;
                 Foldout.text = string.Format(TextContent.SessionFoldoutLabel.text, session.SessionName, session.ProductName);
-                Foldout.tooltip = string.Format(TextContent.SessionFoldoutLabel.tooltip, Foldout.text, session.SessionId);
+                Foldout.tooltip = string.Format(TextContent.SessionFoldoutLabel.tooltip, Foldout.text, session.UnityVersion, session.SessionId);
             }
         }
 
@@ -65,6 +80,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             SessionId = firstSnapshot.GuiData.SessionId;
             m_SessionName = firstSnapshot.GuiData.ProductName;
+            UnityVersion = firstSnapshot.GuiData.UnityVersion;
             ProductName = firstSnapshot.GuiData.ProductName;
             m_DateTime = firstSnapshot.GuiData.UtcDateTime;
             m_Snapshots = new List<SnapshotFileData>
@@ -88,7 +104,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
             m_Snapshots.Add(snapshot);
-            // The list is always sorted 
+            // The list is always sorted
             //Sort();
         }
 
@@ -104,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public void Sort()
         {
-            // The list is always sorted 
+            // The list is always sorted
             //m_Snapshots.Sort();
         }
     }
@@ -122,8 +138,10 @@ namespace Unity.MemoryProfiler.Editor
         int m_SnapshotIndex;
         List<SessionInfo> m_Files;
 
-        public SessionListEnumerator Current {
-            get {
+        public SessionListEnumerator Current
+        {
+            get
+            {
                 return new SessionListEnumerator { SessionInfo = m_Files[m_SessionIndex], Snapshot = m_Files[m_SessionIndex][m_SnapshotIndex] };
             }
         }
@@ -145,7 +163,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (m_Files == null)
                 return false;
-            if(m_SessionIndex == -1 || (m_SessionIndex < m_Files.Count && m_Files[m_SessionIndex].Count <= m_SnapshotIndex + 1))
+            if (m_SessionIndex == -1 || (m_SessionIndex < m_Files.Count && m_Files[m_SessionIndex].Count <= m_SnapshotIndex + 1))
             {
                 ++m_SessionIndex;
                 m_SnapshotIndex = 0;
@@ -175,9 +193,9 @@ namespace Unity.MemoryProfiler.Editor
         DirectoryInfo m_Info;
         List<SessionInfo> m_Sessions = new List<SessionInfo>();
         Dictionary<uint, SessionInfo> m_SessionsDictionary = new Dictionary<uint, SessionInfo>();
-        public event Action<SnapshotCollectionEnumerator> collectionRefresh = delegate { };
-        public event Action<SessionInfo> sessionDeleted = delegate { };
-        public event Action<uint, string> SessionNameChanged = delegate { };
+        public event Action<SnapshotCollectionEnumerator> collectionRefresh = delegate {};
+        public event Action<SessionInfo> sessionDeleted = delegate {};
+        public event Action<uint, string> SessionNameChanged = delegate {};
 
         public string Name { get { return m_Info.Name; } }
 
@@ -257,7 +275,7 @@ namespace Unity.MemoryProfiler.Editor
             var id = fileData.GuiData.SessionId;
             m_SessionsDictionary[fileData.GuiData.SessionId].SessionNameChanged += (s) => SessionNameChanged(id, s);
         }
-        
+
         void RemoveSnapshotFromSessionsList(SnapshotFileData fileData)
         {
             var session = fileData.GuiData.SessionId;
@@ -355,7 +373,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public void RemoveSnapshotFromCollection(SnapshotCollectionEnumerator iter)
         {
-            if(iter.Current.Snapshot == null)
+            if (iter.Current.Snapshot == null)
             {
                 RemoveSessionFromCollection(iter.Current.SessionInfo);
             }
@@ -498,7 +516,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 for (int i = 0; i < m_Sessions.Count; ++i)
                 {
-                    if(m_Sessions[i].Snapshots != null && m_Sessions[i].Count > 0)
+                    if (m_Sessions[i].Snapshots != null && m_Sessions[i].Count > 0)
                     {
                         for (int j = 0; j < m_Sessions[i].Count; j++)
                         {

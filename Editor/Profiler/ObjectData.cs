@@ -719,7 +719,7 @@ namespace Unity.MemoryProfiler.Editor
                 o.m_data.managed.objectPtr = ptr;
                 o.managedObjectData = snapshot.ManagedHeapSections.Find(ptr, snapshot.VirtualMachineInformation);
                 ManagedObjectInfo info = default(ManagedObjectInfo);
-                if (Crawler.TryParseObjectHeader(snapshot, new Crawler.StackCrawlData() { ptr = ptr }, out info))
+                if (Crawler.TryParseObjectHeader(snapshot, new Crawler.StackCrawlData() { ptr = ptr }, out info, o.managedObjectData))
                 {
                     if (asTypeIndex >= 0)
                     {

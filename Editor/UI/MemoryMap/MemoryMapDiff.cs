@@ -157,7 +157,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             {
                 SetupView(value);
                 ForceRepaint = true;
-                UnityEditor.EditorPrefs.SetInt("Unity.MemoryProfiler.Editor.UI.MemoryMap.BytesInRow", (int)m_BytesInRow);
+                UnityEditor.EditorPrefs.SetInt("Unity.MemoryProfiler.Editor.UI.MemoryMapDiff.BytesInRow", (int)m_BytesInRow);
             }
         }
 
@@ -253,9 +253,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             for (int snapshotIdx = 0; snapshotIdx < m_Snapshots.Length; ++snapshotIdx)
                 regionCount += m_Snapshots[snapshotIdx].NativeMemoryRegions.Count + m_Snapshots[snapshotIdx].ManagedHeapSections.Count + m_Snapshots[snapshotIdx].ManagedStacks.Count;
 
-            m_SnapshotMemoryRegion = new DiffMemoryRegion[regionCount];
-
-            int regionIndex = 0;
+            var snapshotMemoryRegions = new List<DiffMemoryRegion>((int)regionCount);
 
             int offset = 0;
 
@@ -263,30 +261,30 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             for (int i = 0; i != m_Snapshots[0].SortedNativeRegionsEntries.Count; ++i)
             {
-                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)m_SnapshotMemoryRegion.Length);
+                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)snapshotMemoryRegions.Count);
 
-                DiffMemoryRegion region = CreateNativeRegion(regionIndex, m_Snapshots[0], i);
+                DiffMemoryRegion region = CreateNativeRegion(snapshotMemoryRegions.Count, m_Snapshots[0], i);
                 region.m_Snapshot = PresenceInSnapshots.First;
-                m_SnapshotMemoryRegion[regionIndex++] = region;
+                snapshotMemoryRegions.Add(region);
             }
 
-            int offsetMax = regionIndex;
+            int offsetMax = snapshotMemoryRegions.Count;
 
             for (int i = 0; i != m_Snapshots[1].SortedNativeRegionsEntries.Count; ++i)
             {
-                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)m_SnapshotMemoryRegion.Length);
+                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)snapshotMemoryRegions.Count);
 
                 ulong  addr = m_Snapshots[1].SortedNativeRegionsEntries.Address(i);
                 ulong  size = (ulong)m_Snapshots[1].SortedNativeRegionsEntries.Size(i);
                 string name = m_Snapshots[1].SortedNativeRegionsEntries.Name(i);
 
-                while (offset < offsetMax && m_SnapshotMemoryRegion[offset].AddressBegin < addr) offset++;
+                while (offset < offsetMax && snapshotMemoryRegions[offset].AddressBegin < addr) offset++;
 
-                for (int j = offset; j < offsetMax && m_SnapshotMemoryRegion[j].AddressBegin == addr; ++j)
+                for (int j = offset; j < offsetMax && snapshotMemoryRegions[j].AddressBegin == addr; ++j)
                 {
-                    if (m_SnapshotMemoryRegion[j].Name == name && m_SnapshotMemoryRegion[j].Size == size)
+                    if (snapshotMemoryRegions[j].Name == name && snapshotMemoryRegions[j].Size == size)
                     {
-                        m_SnapshotMemoryRegion[j].m_Snapshot |= PresenceInSnapshots.Second;
+                        snapshotMemoryRegions[j].m_Snapshot |= PresenceInSnapshots.Second;
                         name = null;
                         break;
                     }
@@ -294,80 +292,167 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 if (name != null)
                 {
-                    DiffMemoryRegion region = CreateNativeRegion(regionIndex, m_Snapshots[1], i);
+                    DiffMemoryRegion region = CreateNativeRegion(snapshotMemoryRegions.Count, m_Snapshots[1], i);
                     region.m_Snapshot = PresenceInSnapshots.Second;
-                    m_SnapshotMemoryRegion[regionIndex++] = region;
+                    snapshotMemoryRegions.Add(region);
                 }
             }
 
-            offset = regionIndex;
+            offset = snapshotMemoryRegions.Count;
 
             for (int i = 0; i != m_Snapshots[0].SortedManagedHeapEntries.Count; ++i)
             {
-                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)m_SnapshotMemoryRegion.Length);
+                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)snapshotMemoryRegions.Count);
 
-                DiffMemoryRegion region = CreateManagedHeapRegion(regionIndex, m_Snapshots[0], i);
+                DiffMemoryRegion region = CreateManagedHeapRegion(snapshotMemoryRegions.Count, m_Snapshots[0], i);
                 region.m_Snapshot = PresenceInSnapshots.First;
-                m_SnapshotMemoryRegion[regionIndex++] = region;
+                snapshotMemoryRegions.Add(region);
             }
 
-            offsetMax = regionIndex;
+            offsetMax = snapshotMemoryRegions.Count;
 
             for (int i = 0; i != m_Snapshots[1].SortedManagedHeapEntries.Count; ++i)
             {
-                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)m_SnapshotMemoryRegion.Length);
+                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)snapshotMemoryRegions.Count);
 
                 ulong  addr = m_Snapshots[1].SortedManagedHeapEntries.Address(i);
                 ulong  size = (ulong)m_Snapshots[1].SortedManagedHeapEntries.Size(i);
+                var regionType = m_Snapshots[1].ManagedHeapSections.SectionType[i] == CachedSnapshot.MemorySectionType.GarbageCollector ? RegionType.Managed : RegionType.ManagedDomain;
 
-                while (offset < offsetMax && m_SnapshotMemoryRegion[offset].AddressBegin < addr) offset++;
+                // find the first region that overlaps with the start address, not just the first region that matches the start address
+                while (offset < offsetMax && snapshotMemoryRegions[offset].AddressEnd < addr) ++offset;
 
-                for (int j = offset; j < offsetMax && m_SnapshotMemoryRegion[j].AddressBegin == addr; ++j)
+                for (int j = offset; j < offsetMax && snapshotMemoryRegions[j].AddressBegin <= addr; ++j)
                 {
-                    if (m_SnapshotMemoryRegion[j].Size == size)
+                    if (snapshotMemoryRegions[j].Type != regionType)
+                        continue;
+                    // Managed regions get welded together as the heap expands and split apart as parts are freed.
+                    // Once freed these address ranges don't get reused so while the region changed (got split) the pages used here stayed the same.
+                    // regions can therefor either be exactly the same, or overlap fully or in part with each other
+                    if (snapshotMemoryRegions[j].Size == size && snapshotMemoryRegions[j].AddressBegin == addr)
                     {
-                        m_SnapshotMemoryRegion[j].m_Snapshot |= PresenceInSnapshots.Second;
+                        // it's the exact same managed region
+                        snapshotMemoryRegions[j].m_Snapshot |= PresenceInSnapshots.Second;
                         addr = size = 0;
                         break;
                     }
+                    else if (snapshotMemoryRegions[j].AddressEnd > addr + size)
+                    {
+                        // ToDo: consider splitting other region into non shared part(s) and shared part to fix faulty drawing? would have to insert the new parts after the old one. Also would be needed for partial overlaps. seems overkill
+                        var regionToSplit = snapshotMemoryRegions[j];
+                        if (regionToSplit.AddressBegin < addr)
+                        {
+                            var splitSize = addr - regionToSplit.AddressBegin;
+                            var nonMatchingPartInFrontOfSharedRegion = new DiffMemoryRegion(regionType, regionToSplit.AddressBegin, splitSize, regionToSplit.Name);
+                            nonMatchingPartInFrontOfSharedRegion.m_Snapshot = PresenceInSnapshots.First;
+
+                            snapshotMemoryRegions.Insert(j, nonMatchingPartInFrontOfSharedRegion);
+                            ++j;
+                            ++offset;
+                            ++offsetMax;
+
+                            regionToSplit = new DiffMemoryRegion(regionType, nonMatchingPartInFrontOfSharedRegion.AddressEnd + 1, regionToSplit.Size - nonMatchingPartInFrontOfSharedRegion.Size, regionToSplit.Name);
+
+                            if (regionToSplit.Size == size)
+                            {
+                                regionToSplit.m_Snapshot |= PresenceInSnapshots.Second;
+                                snapshotMemoryRegions[j] = regionToSplit; // technically unnecessary unless DiffMemoryRegion is converted to a struct
+                                addr = size = 0;
+                                break;
+                            }
+                        }
+                        // the region from snapshot 0 overlaps the entirety of this Managed region.
+                        DiffMemoryRegion region = CreateManagedHeapRegion(snapshotMemoryRegions.Count, m_Snapshots[1], i);
+                        region.m_Snapshot = PresenceInSnapshots.Both;
+                        snapshotMemoryRegions.Add(region);
+
+                        if (regionToSplit.Size > size)
+                        {
+                            var splitSize = regionToSplit.Size - size;
+                            var nonMatchingPartAfterSharedRegion = new DiffMemoryRegion(regionType, region.AddressEnd + 1, splitSize, regionToSplit.Name);
+                            nonMatchingPartAfterSharedRegion.m_Snapshot = PresenceInSnapshots.First;
+                            snapshotMemoryRegions[j] = nonMatchingPartAfterSharedRegion;
+                        }
+                        addr = size = 0;
+                        break;
+                    }
+                    else if (snapshotMemoryRegions[j].Size > 0)
+                    {
+                        // the region from snapshot 0 partially overlaps this managed region.
+                        // We need to split this region into the part that is shared, and the part that isn't.
+                        // This increases the region count
+                        var regionToSplit = j;
+                        if (snapshotMemoryRegions[j].AddressBegin == addr)
+                        {
+                            // The other region fits within this one, so it's fully shared
+                            snapshotMemoryRegions[j].m_Snapshot |= PresenceInSnapshots.Second;
+                            var sharedSize = snapshotMemoryRegions[j].AddressEnd - addr;
+                            addr += sharedSize;
+                            if (sharedSize > size)
+                                size = 0;
+                            else
+                                size -= sharedSize;
+                            // addr changed, get the next region
+                            while (j < offsetMax - 1 && snapshotMemoryRegions[j].AddressBegin < addr) ++j;
+                        }
+
+                        if (snapshotMemoryRegions[j].AddressBegin > addr)
+                        {
+                            // if there is a gap between the start of this region and the next found region,
+                            // split it off as only present in second, then continue with the remainder
+                            ulong splitSize = addr + size < snapshotMemoryRegions[j].AddressBegin ? size : snapshotMemoryRegions[j].AddressBegin - addr;
+                            if (splitSize != 0)
+                            {
+                                var splitRegion = new DiffMemoryRegion(regionType, addr, splitSize, m_Snapshots[1].ManagedHeapSections.SectionName[i]);
+                                splitRegion.m_Snapshot = PresenceInSnapshots.Second;
+                                snapshotMemoryRegions.Add(splitRegion);
+
+                                // continue processing the remaining size of the region
+                                addr = splitRegion.AddressEnd;
+                                size -= splitSize;
+                            }
+                        }
+                        if (size != 0 && regionToSplit < j)
+                            --j; // do another round on this region, see if more can be distributed on it.
+                    }
                 }
 
-                if (addr != 0)
+                if (size != 0)
                 {
-                    DiffMemoryRegion region = CreateManagedHeapRegion(regionIndex, m_Snapshots[1], i);
+                    DiffMemoryRegion region = CreateManagedHeapRegion(snapshotMemoryRegions.Count, m_Snapshots[1], i);
                     region.m_Snapshot = PresenceInSnapshots.Second;
-                    m_SnapshotMemoryRegion[regionIndex++] = region;
+                    snapshotMemoryRegions.Add(region);
                 }
             }
 
 
-            offset = regionIndex;
+            offset = snapshotMemoryRegions.Count;
 
             for (int i = 0; i != m_Snapshots[0].SortedManagedStacksEntries.Count; ++i)
             {
-                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)m_SnapshotMemoryRegion.Length);
+                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)snapshotMemoryRegions.Count);
 
-                DiffMemoryRegion region = CreateManagedStackRegion(regionIndex, m_Snapshots[0], i);
+                DiffMemoryRegion region = CreateManagedStackRegion(snapshotMemoryRegions.Count, m_Snapshots[0], i);
                 region.m_Snapshot = PresenceInSnapshots.First;
-                m_SnapshotMemoryRegion[regionIndex++] = region;
+                snapshotMemoryRegions.Add(region);
             }
 
-            offsetMax = regionIndex;
+            offsetMax = snapshotMemoryRegions.Count;
 
             for (int i = 0; i != m_Snapshots[1].SortedManagedStacksEntries.Count; ++i)
             {
-                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)m_SnapshotMemoryRegion.Length);
+                if (processed++ % 10000 == 0) ProgressBarDisplay.UpdateProgress((float)processed / (float)snapshotMemoryRegions.Count);
 
                 ulong  addr = m_Snapshots[1].SortedManagedStacksEntries.Address(i);
                 ulong  size = (ulong)m_Snapshots[1].SortedManagedStacksEntries.Size(i);
 
-                while (offset < offsetMax && m_SnapshotMemoryRegion[offset].AddressBegin < addr) offset++;
+                while (offset < offsetMax && snapshotMemoryRegions[offset].AddressBegin < addr) offset++;
 
-                for (int j = offset; j < offsetMax && m_SnapshotMemoryRegion[j].AddressBegin == addr; ++j)
+                for (int j = offset; j < offsetMax && snapshotMemoryRegions[j].AddressBegin == addr; ++j)
                 {
-                    if (m_SnapshotMemoryRegion[j].Size == size)
+                    if (snapshotMemoryRegions[j].Size == size)
                     {
-                        m_SnapshotMemoryRegion[j].m_Snapshot |= PresenceInSnapshots.Second;
+                        snapshotMemoryRegions[j].m_Snapshot |= PresenceInSnapshots.Second;
                         addr = size = 0;
                         break;
                     }
@@ -375,16 +460,16 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
                 if (addr != 0)
                 {
-                    DiffMemoryRegion region = CreateManagedStackRegion(regionIndex, m_Snapshots[1], i);
+                    DiffMemoryRegion region = CreateManagedStackRegion(snapshotMemoryRegions.Count, m_Snapshots[1], i);
                     region.m_Snapshot = PresenceInSnapshots.Second;
-                    m_SnapshotMemoryRegion[regionIndex++] = region;
+                    snapshotMemoryRegions.Add(region);
                 }
             }
 
 
             ProgressBarDisplay.UpdateProgress(0.0f, "Sorting regions ..");
 
-            Array.Resize(ref m_SnapshotMemoryRegion, regionIndex);
+            m_SnapshotMemoryRegion = snapshotMemoryRegions.ToArray();
 
             Array.Sort(m_SnapshotMemoryRegion, delegate(MemoryRegion a, MemoryRegion b)
             {
@@ -549,9 +634,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                             var nativeObjectStartAddrress = snapshot.SortedNativeObjects.Address(nativeObjectIndex);
                             // only if Dynamic Heap Allocator was used instead of System Allocator, do Native Allocations, and with those, Native Objects, have to fall within a Native Region
                             while (snapshot.NativeMemoryRegions.UsesDynamicHeapAllocator &&
-                                maxObjectAddressBasedOnRegion < nativeObjectStartAddrress)
+                                   maxObjectAddressBasedOnRegion < nativeObjectStartAddrress)
                             {
-
                                 if (++regionIndex >= m_SnapshotMemoryRegion.Length)
                                 {
                                     minObjectAddressBasedOnRegion = 0;
@@ -568,7 +652,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                                 {
                                     minObjectAddressBasedOnAllocation = 0;
                                     maxObjectAddressBasedOnAllocation = 0;
-                                    if(snapshot.NativeMemoryRegions.UsesDynamicHeapAllocator)
+                                    if (snapshot.NativeMemoryRegions.UsesDynamicHeapAllocator)
                                         Debug.LogError("A Native Allocation was recorded as being outside of a Native Region. This shouldn't happen when the Dynamic Heap Allocator (i.e not a System Allocator) is used. Please report this as a bug.");
                                     break;
                                 }
@@ -624,6 +708,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             CreateGroups();
 
             SetupGroups();
+
+            ForceRepaint = true;
 
             ProgressBarDisplay.ClearBar();
         }

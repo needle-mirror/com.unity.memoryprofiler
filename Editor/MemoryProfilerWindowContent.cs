@@ -79,7 +79,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 
         public static readonly string UnknownSession = "Unknown Session";
         public static readonly string SessionName = "Session {0}";
-        public static readonly GUIContent SessionFoldoutLabel = new GUIContent("{0} - {1}", "{0} - Session ID: {1}");
+        public static readonly GUIContent SessionFoldoutLabel = new GUIContent("{0} - {1}", "{0} - Unity {1} - Session ID: {2}");
 
         public static readonly string TotalUsedMemory = "Total Used: {0}";
         public static readonly GUIContent TotalAvailableSystemResources = new GUIContent("Hardware Resources: {0}", "Hardware Resources: {0} ({1} RAM + {2} VRAM)");

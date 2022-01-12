@@ -207,6 +207,9 @@ namespace Unity.MemoryProfiler.Editor
                 UIElementsHelper.SwitchVisibility(itemUI.NoData, itemUI.DataContainer);
                 itemUI.Name.text = "";
                 itemUI.Date.text = "";
+                itemUI.ProjectName.text = "";
+                itemUI.ProjectName.tooltip = "";
+                itemUI.SessionName.text = "";
                 itemUI.Image.image = null;
                 UIElementsHelper.SetVisibility(itemUI.PlatformIcon, false);
                 UIElementsHelper.SetVisibility(itemUI.EditorPlatformIcon, false);
@@ -226,6 +229,7 @@ namespace Unity.MemoryProfiler.Editor
 
                 itemUI.ProjectName.text = snapshotGUIData.ProductName;
                 itemUI.SessionName.text = snapshotGUIData.SessionName;
+                itemUI.SessionName.tooltip = $"{itemUI.SessionName.text} - Unity {snapshotGUIData.UnityVersion}";
                 ulong totalAvailableMemory = 0;
                 if (snapshotGUIData.TargetInfo.HasValue)
                 {

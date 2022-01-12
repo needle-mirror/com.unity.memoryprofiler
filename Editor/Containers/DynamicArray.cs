@@ -150,6 +150,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 }
 
                 m_Data = newMem;
+                m_Capacity = newCapacity;
             }
         }
         
@@ -158,8 +159,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             Checks.CheckEquals(true, IsCreated);
             if (Count + 1 >= m_Capacity)
                 ResizeInternalBuffer(m_Capacity * 2, false);
-            this[Count] = value;
-            ++Count;
+            this[++Count - 1] = value;
         }
 
         public T Pop()

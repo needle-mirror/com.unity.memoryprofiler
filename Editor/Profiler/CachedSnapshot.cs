@@ -775,6 +775,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             public const int ITypeInvalid = -1;
             const int k_DefaultFieldProcessingBufferSize = 64;
+            const string k_SystemStringTypeName = "System.String";
             const string k_SystemObjectTypeName = "System.Object";
             const string k_SystemValueTypeName = "System.ValueType";
             const string k_SystemEnumTypeName = "System.Enum";
@@ -800,6 +801,7 @@ namespace Unity.MemoryProfiler.Editor
             public int ITypeValueType;
             public int ITypeObject;
             public int ITypeEnum;
+            public int ITypeString;
             public Dictionary<ulong, int> TypeInfoToArrayIndex;
             public Dictionary<int, int> TypeIndexToArrayIndex;
 
@@ -938,6 +940,7 @@ namespace Unity.MemoryProfiler.Editor
                 ITypeValueType = Array.FindIndex(TypeDescriptionName, x => x == k_SystemValueTypeName);
                 ITypeObject = Array.FindIndex(TypeDescriptionName, x => x == k_SystemObjectTypeName);
                 ITypeEnum = Array.FindIndex(TypeDescriptionName, x => x == k_SystemEnumTypeName);
+                ITypeString = Array.FindIndex(TypeDescriptionName, x => x == k_SystemObjectTypeName);
             }
 
             public void Dispose()

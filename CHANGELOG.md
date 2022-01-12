@@ -4,6 +4,21 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.4.4-preview.2] - 2022-01-12
+
+### Added
+ - Added the Unity version a capture was made in to the tool-tip of the Session label of opened snapshots.
+
+### Fixed
+ - Fixed tables drawing blank areas when scrolled past row 60000 and scrolling to the right.
+ - Fixed the Fragmentation view's Memory Map drawing of Managed Memory regions while comparing snapshots when they changed size between captures. They would previously show the entire region as changed and not show which objects within them were new or deleted. [(Case 1388611)](https://issuetracker.unity3d.com/product/unity/issues/guid/1388611/)
+ - Fixed an IndexOutOfBoundsException when sorting size tables in the Memory Map's Object list and switching to the Region or Allocations lists.
+ - Fixed the row size option in the Fragmentation view not being properly stored across sessions for Fragmentation analysis of snapshots in comparison mode. 
+ - Fixed an issue where the crawler would find impossibly big string objects, inflating Managed Object Memory and causing exceptions when these were to be drawn in a table [(Case 1393878)](https://issuetracker.unity3d.com/product/unity/issues/guid/1393878/).
+
+### Changed
+ - Renamed the `References` column to `Referenced By` to improve clarity slightly.
+
 ## [0.4.3-preview.1] - 2021-12-13
 
 ### Added

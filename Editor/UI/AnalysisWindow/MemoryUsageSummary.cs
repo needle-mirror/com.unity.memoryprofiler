@@ -331,10 +331,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 reserved[0][column] = used[0][column] = cs.ManagedHeapSections.VirtualMachineMemoryReserved;
                 reserved[1][column] = used[1][column] = cs.CrawledData.ManagedObjectMemoryUsage;
-                reserved[2][column] = used[2][column] = cs.ManagedHeapSections.StartAddress[cs.ManagedHeapSections.LastAssumedActiveHeapSectionIndex]
-                    + cs.ManagedHeapSections.SectionSize[cs.ManagedHeapSections.LastAssumedActiveHeapSectionIndex]
-                    - cs.ManagedHeapSections.StartAddress[cs.ManagedHeapSections.FirstAssumedActiveHeapSectionIndex]
-                    - cs.CrawledData.ActiveHeapMemoryUsage;
+                reserved[2][column] = used[2][column] = cs.CrawledData.ActiveHeapMemoryEmptySpace;
                 reserved[3][column] = used[3][column] = cs.ManagedHeapSections.ManagedHeapMemoryReserved - reserved[1][column] - reserved[2][column];
 
                 totalManagedMemory[column] = cs.ManagedHeapSections.ManagedHeapMemoryReserved + cs.ManagedHeapSections.VirtualMachineMemoryReserved + cs.ManagedStacks.StackMemoryReserved;

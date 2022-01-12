@@ -50,6 +50,7 @@ namespace Unity.MemoryProfiler.Editor
         public readonly uint SessionId;
         public readonly string Date;
         public readonly string ProductName;
+        public readonly string UnityVersion;
         public readonly DateTime UtcDateTime;
         public readonly string MetaContent;
         public readonly string MetaPlatform;
@@ -137,6 +138,7 @@ namespace Unity.MemoryProfiler.Editor
             MetaContent = snapshotMetadata.Content;
             MetaPlatform = snapshotMetadata.Platform;
             SessionId = snapshotMetadata.SessionGUID;
+            UnityVersion = snapshotMetadata.UnityVersion;
             ProductName = snapshotMetadata.ProductName;
             TargetInfo = snapshotMetadata.TargetInfo;
             MemoryStats = snapshotMetadata.TargetMemoryStats;
