@@ -8,6 +8,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class MemoryUsageBreakdownElement : VisualElement
     {
+        internal const string ElementHoveredPseudoState = "memory-usage-breakdown__element--hovered";
+        internal const string ElementSelectedPseudoState = "memory-usage-breakdown__element--selected";
         static class Content
         {
             public static readonly string SelectedFormatStringPartOfTooltip = L10n.Tr("\nSelected: {0}\n({1:0.0}% of {2})");
@@ -32,6 +34,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             b = 1,
             Diff
         };
+
+        public event Action<int> Selected = delegate {};
+        public event Action<int> Deselected = delegate {};
+        public int Id { get; private set; }
 
         public string Text { get; private set; }
 
@@ -139,16 +145,34 @@ namespace Unity.MemoryProfiler.Editor.UI
             stats[0].totalBytes = total[0];
             stats[1].usedBytes = used[1];
             stats[1].totalBytes = total[1];
+            UpdateDisplayToValues();
+        }
+
+        void UpdateDisplayToValues()
+        {
             var tooltipText = BuildTooltipText(m_BreakdownParent.HeaderText, Text, (ulong)m_BreakdownParent.GetTotalBytes(0), stats[0].totalBytes, ShowUsed, stats[0].usedBytes, ShowSelected, stats[0].selectedBytes);
             tooltip = tooltipText;
-            m_RowASize.text = BuildRowSizeText(total[0], used[0], ShowUsed, showSelected);
+            m_RowASize.text = BuildRowSizeText(stats[0].totalBytes, stats[0].usedBytes, ShowUsed, ShowSelected);
 
-            m_RowBSize.text = BuildRowSizeText(total[1], used[1], ShowUsed, showSelected);
-            stats[2].totalBytes = total[0] > total[1] ? total[0] - total[1] : total[1] - total[0];
-            stats[2].usedBytes = used[0] > used[1] ? used[0] - used[1] : used[1] - used[0];
-            m_DiffSize.text = BuildRowSizeText(stats[2].totalBytes, stats[2].usedBytes, ShowUsed, showSelected);
+            m_RowBSize.text = BuildRowSizeText(stats[1].totalBytes, stats[1].usedBytes, ShowUsed, ShowSelected);
+            stats[2].totalBytes = stats[0].totalBytes > stats[1].totalBytes ? stats[0].totalBytes - stats[1].totalBytes : stats[1].totalBytes - stats[0].totalBytes;
+            stats[2].usedBytes = stats[0].usedBytes > stats[1].usedBytes ? stats[0].usedBytes - stats[1].usedBytes : stats[1].usedBytes - stats[0].usedBytes;
+            m_DiffSize.text = BuildRowSizeText(stats[2].totalBytes, stats[2].usedBytes, ShowUsed, ShowSelected);
             m_RowName.tooltip = m_RowASize.tooltip = tooltip;
             SetBarElements();
+        }
+
+        public void SetSelected(ulong selectedBytesA, ulong selectedBytesB)
+        {
+            ShowSelected = true;
+            stats[0].selectedBytes = selectedBytesA;
+            stats[1].selectedBytes = selectedBytesB;
+            UpdateDisplayToValues();
+        }
+
+        public void ClearSelected()
+        {
+            ShowSelected = false;
         }
 
         public void UpdateText(string breakdownName)
@@ -222,15 +246,28 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public void Setup(MemoryUsageBreakdown memoryUsageBreakdown, VisualElement colorBox, Label rowName, Label rowASize, Label rowBSize = null, Label diffSize = null)
+        public void Setup(MemoryUsageBreakdown memoryUsageBreakdown, int id, VisualElement colorBox, Label rowName, Label rowASize, Label rowBSize = null, Label diffSize = null)
         {
             SetUpBars();
+            Id = id;
             m_BreakdownParent = memoryUsageBreakdown;
             m_RowName = rowName;
+            m_RowName.parent.RegisterClickEvent(OnSelected);
+            m_RowName.parent.RegisterCallback<MouseEnterEvent>(OnMouseEnter);
+            m_RowName.parent.RegisterCallback<MouseLeaveEvent>(OnMouseLeave);
             m_ColorBox = colorBox;
             m_RowASize = rowASize;
+            m_RowASize.RegisterClickEvent(OnSelected);
+            m_RowASize.RegisterCallback<MouseEnterEvent>(OnMouseEnter);
+            m_RowASize.RegisterCallback<MouseLeaveEvent>(OnMouseLeave);
             m_RowBSize = rowBSize;
+            m_RowBSize.RegisterClickEvent(OnSelected);
+            m_RowBSize.RegisterCallback<MouseEnterEvent>(OnMouseEnter);
+            m_RowBSize.RegisterCallback<MouseLeaveEvent>(OnMouseLeave);
             m_DiffSize = diffSize;
+            m_DiffSize.RegisterClickEvent(OnSelected);
+            m_DiffSize.RegisterCallback<MouseEnterEvent>(OnMouseEnter);
+            m_DiffSize.RegisterCallback<MouseLeaveEvent>(OnMouseLeave);
 
             if (!string.IsNullOrEmpty(BackgroundColorClass))
                 m_ColorBox.AddToClassList(BackgroundColorClass);
@@ -256,6 +293,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_BackgroundElement[i].AddToClassList(ElementAndStyleNames.BarBackground);
                 m_BackgroundElement[i].style.marginLeft = m_BackgroundElement[i].style.marginRight = (StyleLength)1.5;
                 bar.hierarchy.Add(m_BackgroundElement[i]);
+                m_BackgroundElement[i].RegisterClickEvent(OnSelected);
+                m_BackgroundElement[i].RegisterCallback<MouseEnterEvent>(OnMouseEnter);
+                m_BackgroundElement[i].RegisterCallback<MouseLeaveEvent>(OnMouseLeave);
 
                 m_ReservedElement[i] = new VisualElement();
                 m_ReservedElement[i].AddToClassList(ElementAndStyleNames.BarReserved);
@@ -280,6 +320,68 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetBarElements();
 
             m_BarsSetup = true;
+        }
+
+        void OnSelected()
+        {
+            if (!m_BreakdownParent.SelectableElements)
+                return;
+
+            if (m_RowName.parent.ClassListContains(ElementSelectedPseudoState))
+            {
+                Deselect();
+                return;
+            }
+            m_RowName.parent.AddToClassList(ElementSelectedPseudoState);
+            for (int i = 0; i < m_BackgroundElement.Length; i++)
+            {
+                m_BackgroundElement[i].AddToClassList(ElementSelectedPseudoState);
+            }
+            m_RowASize.AddToClassList(ElementSelectedPseudoState);
+            m_RowBSize.AddToClassList(ElementSelectedPseudoState);
+            m_DiffSize.AddToClassList(ElementSelectedPseudoState);
+            Selected(Id);
+        }
+
+        public void Deselect(bool fireEvent = true)
+        {
+            if (!m_BreakdownParent.SelectableElements)
+                return;
+            for (int i = 0; i < m_BackgroundElement.Length; i++)
+            {
+                m_BackgroundElement[i].RemoveFromClassList(ElementSelectedPseudoState);
+            }
+            m_RowName.parent.RemoveFromClassList(ElementSelectedPseudoState);
+            m_RowASize.RemoveFromClassList(ElementSelectedPseudoState);
+            m_RowBSize.RemoveFromClassList(ElementSelectedPseudoState);
+            m_DiffSize.RemoveFromClassList(ElementSelectedPseudoState);
+            if (fireEvent)
+                Deselected(Id);
+        }
+
+        void OnMouseEnter(MouseEnterEvent e)
+        {
+            for (int i = 0; i < m_BackgroundElement.Length; i++)
+            {
+                m_BackgroundElement[i].AddToClassList(ElementHoveredPseudoState);
+            }
+            m_RowName.parent.AddToClassList(ElementHoveredPseudoState);
+            m_RowASize.AddToClassList(ElementHoveredPseudoState);
+            m_RowBSize.AddToClassList(ElementHoveredPseudoState);
+            m_DiffSize.AddToClassList(ElementHoveredPseudoState);
+        }
+
+        void OnMouseLeave(MouseLeaveEvent e)
+        {
+            for (int i = 0; i < m_BackgroundElement.Length; i++)
+            {
+                m_BackgroundElement[i].RemoveFromClassList(ElementHoveredPseudoState);
+            }
+
+            m_RowName.parent.RemoveFromClassList(ElementHoveredPseudoState);
+            m_RowASize.RemoveFromClassList(ElementHoveredPseudoState);
+            m_RowBSize.RemoveFromClassList(ElementHoveredPseudoState);
+            m_DiffSize.RemoveFromClassList(ElementHoveredPseudoState);
         }
 
         static class ElementAndStyleNames

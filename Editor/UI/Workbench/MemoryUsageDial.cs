@@ -51,7 +51,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         static readonly Color32 k_Green = new Color32(136, 176, 49, byte.MaxValue);
         static readonly Color32 k_Yellow = new Color32(221, 124, 69, byte.MaxValue);
         static readonly Color32 k_Red = new Color32(219, 89, 81, byte.MaxValue);
-        static readonly ushort[] k_Indices = new ushort[] {
+        static readonly ushort[] k_Indices = new ushort[]
+        {
             0, 1, 2,
             1, 3, 2,
         };
@@ -104,7 +105,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_Label != null)
                 m_Label.text = string.Format("{0:0}%", percentage);
             m_Percentage = percentage;
-            m_ValueCutoff = (byte)((percentage / 100f)*byte.MaxValue);
+            m_ValueCutoff = (byte)((percentage / 100f) * byte.MaxValue);
             RegenerateTexture();
             MarkDirtyRepaint();
         }
@@ -125,7 +126,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void GenerateVisualContent(MeshGenerationContext obj)
         {
-            if(m_Texture == null)
+            if (m_Texture == null)
                 RegenerateTexture();
             Quad(contentRect.position, contentRect.size, Color.white, m_Texture, obj);
         }
@@ -175,7 +176,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void RegenerateTexture()
         {
-            if(m_BaseTexture == null)
+            if (m_BaseTexture == null)
             {
 #if UNITY_2020_1_OR_NEWER
                 m_BaseTexture = resolvedStyle.backgroundImage.texture;
@@ -188,10 +189,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (m_Texture != null)
             {
-                if(m_Texture.width != m_BaseTexture.width || m_Texture.height != m_BaseTexture.height)
+                if (m_Texture.width != m_BaseTexture.width || m_Texture.height != m_BaseTexture.height)
+                {
                     UnityEngine.Object.DestroyImmediate(m_Texture);
+                    m_Texture = new Texture2D((int)m_BaseTexture.width, m_BaseTexture.height, TextureFormat.RGBA32, false, true);
+                }
             }
-            m_Texture = new Texture2D((int)m_BaseTexture.width, m_BaseTexture.height, TextureFormat.RGBA32, false, true);
+            else
+                m_Texture = new Texture2D((int)m_BaseTexture.width, m_BaseTexture.height, TextureFormat.RGBA32, false, true);
+
             m_Texture.name = "MemoryUsageDial Generated";
             m_Texture.wrapMode = TextureWrapMode.Clamp;
             m_Texture.filterMode = FilterMode.Point;
@@ -199,7 +205,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var rawTexture = m_Texture.GetRawTextureData<Color32>();
             var rawBaseTexture = m_BaseTexture.GetRawTextureData<Color32>();
-
             unsafe
             {
                 var ptr = rawTexture.GetUnsafePtr();
@@ -226,14 +231,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     c->a = a;
                 }
             }
-            m_Texture.Apply(false, true);
+            m_Texture.Apply(false, false);
         }
-
 
         /// <summary>
         /// Instantiates a <see cref="MemoryUsageDial"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<MemoryUsageDial, UxmlTraits> { }
+        public new class UxmlFactory : UxmlFactory<MemoryUsageDial, UxmlTraits> {}
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="MemoryUsageDial"/>.

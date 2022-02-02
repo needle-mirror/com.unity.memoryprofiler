@@ -86,14 +86,6 @@ namespace Unity.MemoryProfiler.Editor.Database
 
     internal class LinkRequestSceneHierarchy : LinkRequest
     {
-        static MethodInfo ReflectGetLocalGuidMethod()
-        {
-            return typeof(EditorGUIUtility).Assembly.GetType("UnityEditor.EditorConnectionInternal").GetMethod("GetLocalGuid");
-        }
-
-        static MethodInfo GetLocalGuid = null;
-        
-
         public override bool IsPingLink => true;
         int instanceId = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
         uint sessionId = uint.MaxValue;
@@ -108,24 +100,7 @@ namespace Unity.MemoryProfiler.Editor.Database
 
         public void Ping()
         {
-            if (GetLocalGuid == null)
-                GetLocalGuid = ReflectGetLocalGuidMethod();
-            if(GetLocalGuid == null)
-            {
-                UnityEngine.Debug.LogWarning("Pinging objects based on their Instance ID does not work in this Unity version. To enable that functionality, please update your Unity installation to 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer.");
-                return;
-            }
-
-            var currentGUID = (uint)GetLocalGuid.Invoke(null, null);
-
-            if (currentGUID == sessionId)
-            {
-                Selection.instanceIDs = new int[0];
-                Selection.activeInstanceID = instanceId;
-                EditorGUIUtility.PingObject(instanceId);
-            }
-            else
-                UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, sessionId, currentGUID);
+            EditorAssetFinderUtility.Ping(instanceId, sessionId);
         }
     }
 }

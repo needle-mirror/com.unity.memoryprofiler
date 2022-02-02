@@ -12,8 +12,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class SummaryPane : ViewPane
     {
-        internal class History : HistoryEvent
+        internal class ViewStateHistory : ViewStateChangedHistoryEvent
         {
+            public ViewStateHistory(SummaryPane pane)
+            {
+            }
+
+            protected override bool IsEqual(HistoryEvent evt)
+            {
+                return evt != null && evt is ViewStateHistory;
+            }
+        }
+
+        internal class History : ViewOpenHistoryEvent
+        {
+            public override ViewStateChangedHistoryEvent ViewStateChangeRestorePoint => throw new NotImplementedException();
+
             protected override bool IsEqual(HistoryEvent evt)
             {
                 return evt != null && evt is History;
@@ -30,7 +44,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override string ViewName { get { return TextContent.SummaryView.text; } }
 
-        public SummaryPane(IUIStateHolder s, IViewPaneEventListener l):base(s, l)
+        public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose;
+
+        bool m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+
+        public SummaryPane(IUIStateHolder s, IViewPaneEventListener l) : base(s, l)
         {
             VisualTreeAsset summaryViewTree;
             summaryViewTree = AssetDatabase.LoadAssetAtPath(ResourcePaths.SummaryPaneUxmlPath, typeof(VisualTreeAsset)) as VisualTreeAsset;
@@ -38,15 +56,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_VisualElements = new[] { summaryViewTree.Clone() };
         }
 
-        public void OpenHistoryEvent(History e)
+        public void OpenHistoryEvent(History e, bool reopen, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
         {
-            ////m_TreeMap.SelectItem(a);
-            ////OpenMetricData(a._metric);
-            //if (e == null) return;
-            //m_EventListener.OnRepaint();
         }
 
-        public override HistoryEvent GetCurrentHistoryEvent()
+        public override void SetSelectionFromHistoryEvent(SelectionEvent selectionEvent)
+        {
+#if ENABLE_MEMORY_PROFILER_DEBUG
+            throw new NotImplementedException();
+#endif
+        }
+
+        public override ViewOpenHistoryEvent GetOpenHistoryEvent()
         {
             return new History();
         }
@@ -59,6 +80,20 @@ namespace Unity.MemoryProfiler.Editor.UI
         public override void OnGUI(Rect r)
         {
             throw new System.InvalidOperationException();
+        }
+
+        public override ViewStateChangedHistoryEvent GetViewStateFilteringChangesSinceLastSelectionOrViewClose()
+        {
+            m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+
+            var stateEvent = new ViewStateHistory(this);
+            stateEvent.ChangeType = ViewStateChangedHistoryEvent.StateChangeType.FiltersChanged;
+            return stateEvent;
+        }
+
+        public override void OnSelectionChanged(MemorySampleSelection selection)
+        {
+            throw new NotImplementedException();
         }
     }
 }

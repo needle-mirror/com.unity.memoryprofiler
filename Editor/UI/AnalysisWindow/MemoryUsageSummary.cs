@@ -7,8 +7,10 @@ using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class MemoryUsageSummary
+    internal class MemoryUsageSummary : SelectionDetailsProducer
     {
+        public event Action<MemorySampleSelection> SelectionChangedEvt = delegate {};
+
         VisualElement m_MemoryUsageSummary;
 
         InfoBox m_OldSnapshotInfo;
@@ -21,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         Label m_SelectionLabel;
         Toggle m_NormalizedToggle;
 
-        public MemoryUsageSummary(VisualElement root)
+        public MemoryUsageSummary(VisualElement root, IUIStateHolder memoryProfilerWindow)
         {
             if (root.childCount == 0)
             {
@@ -34,19 +36,32 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_MemoryUsageSummary = root;
             }
+            memoryProfilerWindow.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.HighlevelBreakdownElement, this);
 
             m_OldSnapshotInfo = m_MemoryUsageSummary.Q<InfoBox>("memory-usage-summary-section__old-snapshot-info-box");
             m_OldSnapshotInfo.DocumentationLink = DocumentationUrls.Requirements;
             UIElementsHelper.SetVisibility(m_OldSnapshotInfo, false);
 
             m_HighLevelBreakdown = m_MemoryUsageSummary.Q<MemoryUsageBreakdown>("memory-usage-summary-section__high-level-summary");
+            m_HighLevelBreakdown.Setup(true, 0);
+            m_HighLevelBreakdown.ElementSelected += OnBreakdownElementSelected;
+            m_HighLevelBreakdown.ElementDeselected += OnBreakdownElementDeselected;
+
             m_CommittedTrackingStatusBreakdown = m_MemoryUsageSummary.Q<MemoryUsageBreakdown>("memory-usage-summary-section__high-level-summary__top-level");
+            m_CommittedTrackingStatusBreakdown.Setup(true, 1);
+            m_CommittedTrackingStatusBreakdown.ElementSelected += OnBreakdownElementSelected;
+            m_CommittedTrackingStatusBreakdown.ElementDeselected += OnBreakdownElementDeselected;
+
             m_ManagedBreakdown = m_MemoryUsageSummary.Q<MemoryUsageBreakdown>("memory-usage-summary-section__managed-memory");
+            m_ManagedBreakdown.Setup(true, 2);
+            m_ManagedBreakdown.ElementSelected += OnBreakdownElementSelected;
+            m_ManagedBreakdown.ElementDeselected += OnBreakdownElementDeselected;
+
             m_AllocationBreakdown = m_MemoryUsageSummary.Q<MemoryUsageBreakdown>("memory-usage-summary-section__allocation-types-summary");
-            m_HighLevelBreakdown.Setup();
-            m_CommittedTrackingStatusBreakdown.Setup();
-            m_ManagedBreakdown.Setup();
-            m_AllocationBreakdown.Setup();
+            m_AllocationBreakdown.Setup(true, 3);
+            m_AllocationBreakdown.ElementSelected += OnBreakdownElementSelected;
+            m_AllocationBreakdown.ElementDeselected += OnBreakdownElementDeselected;
+
             UIElementsHelper.SetVisibility(m_ManagedBreakdown.parent, true);
             // TODO: fix calculation of data and unhide
             UIElementsHelper.SetVisibility(m_AllocationBreakdown, false);
@@ -99,10 +114,24 @@ namespace Unity.MemoryProfiler.Editor.UI
             Profiler,
             ExecutableAndDlls,
         }
+        static readonly string[] k_BreakdownOrderNames = new[] {"Managed Heap", "Managed Virtual Machine", "Graphics & Graphics Driver", "Audio", "Other Native Memory", "Profiler", "Executable & DLLs" };
+
+        enum ManagedBreakdownOrder
+        {
+            ManagedDomain = 0,
+            ManagedObjects,
+            EmptyActiveHeapSpace,
+            EmptyFragmentedHeapSpace,
+        }
+        static readonly string[] k_ManagedBreakdownOrderNames = new[] {"Managed Domain", "Managed Objects", "Empty Active Heap Space", "Empty Fragmented Heap Space" };
 
         List<ulong[]> m_Used;
         List<ulong[]> m_Reserved;
         ulong[] m_systemUsed = new ulong[2];
+
+
+        List<ulong[]> m_ManagedUsed;
+        List<ulong[]> m_ManagedReserved;
 
         enum Columns
         {
@@ -203,18 +232,18 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             ulong[] totalManagedMemory = new ulong[2];
 
-            List<ulong[]> reserved = new List<ulong[]>();
-            List<ulong[]> used = new List<ulong[]>();
-            var hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotA, (int)Columns.A, totalManagedMemory, reserved, used);
+            m_ManagedReserved = new List<ulong[]>();
+            m_ManagedUsed = new List<ulong[]>();
+            var hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotA, (int)Columns.A, totalManagedMemory, m_ManagedReserved, m_ManagedUsed);
             if (hasValidManagedData && snapshotB != null)
-                hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotB, (int)Columns.B, totalManagedMemory, reserved, used);
+                hasValidManagedData = GetHighLevelBreakDownForSnapshot(snapshotB, (int)Columns.B, totalManagedMemory, m_ManagedReserved, m_ManagedUsed);
 
             if (hasValidManagedData)
             {
-                maxToNormalizeTo = GetMaxToNormalizeTo(totalManagedMemory, reserved);
+                maxToNormalizeTo = GetMaxToNormalizeTo(totalManagedMemory, m_ManagedReserved);
 
                 UIElementsHelper.SetVisibility(m_ManagedBreakdown, true);
-                m_ManagedBreakdown.SetValues(totalManagedMemory, reserved, null, snapshotB == null || m_NormalizedToggle.value, maxToNormalizeTo);
+                m_ManagedBreakdown.SetValues(totalManagedMemory, m_ManagedReserved, null, snapshotB == null || m_NormalizedToggle.value, maxToNormalizeTo);
 
                 m_ManagedBreakdown.SetCategoryName(virtualMachineMemoryName, 0);
             }
@@ -254,8 +283,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 {
-                    used = new List<ulong[]>();
-                    reserved = new List<ulong[]>();
+                    var used = new List<ulong[]>();
+                    var reserved = new List<ulong[]>();
                     for (int i = 0; i < 2; i++)
                     {
                         used.Add(new ulong[3]);
@@ -329,10 +358,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                     used.Add(new ulong[3]);
                     reserved.Add(new ulong[3]);
                 }
-                reserved[0][column] = used[0][column] = cs.ManagedHeapSections.VirtualMachineMemoryReserved;
-                reserved[1][column] = used[1][column] = cs.CrawledData.ManagedObjectMemoryUsage;
-                reserved[2][column] = used[2][column] = cs.CrawledData.ActiveHeapMemoryEmptySpace;
-                reserved[3][column] = used[3][column] = cs.ManagedHeapSections.ManagedHeapMemoryReserved - reserved[1][column] - reserved[2][column];
+                reserved[(int)ManagedBreakdownOrder.ManagedDomain][column] = used[(int)ManagedBreakdownOrder.ManagedDomain][column] = cs.ManagedHeapSections.VirtualMachineMemoryReserved;
+                reserved[(int)ManagedBreakdownOrder.ManagedObjects][column] = used[(int)ManagedBreakdownOrder.ManagedObjects][column] = cs.CrawledData.ManagedObjectMemoryUsage;
+                reserved[(int)ManagedBreakdownOrder.EmptyActiveHeapSpace][column] = used[(int)ManagedBreakdownOrder.EmptyActiveHeapSpace][column] = cs.CrawledData.ActiveHeapMemoryEmptySpace;
+                reserved[(int)ManagedBreakdownOrder.EmptyFragmentedHeapSpace][column] = used[(int)ManagedBreakdownOrder.EmptyFragmentedHeapSpace][column] = cs.ManagedHeapSections.ManagedHeapMemoryReserved - reserved[(int)ManagedBreakdownOrder.ManagedObjects][column] - reserved[(int)ManagedBreakdownOrder.EmptyActiveHeapSpace][column];
 
                 totalManagedMemory[column] = cs.ManagedHeapSections.ManagedHeapMemoryReserved + cs.ManagedHeapSections.VirtualMachineMemoryReserved + cs.ManagedStacks.StackMemoryReserved;
 
@@ -407,6 +436,152 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ManagedBreakdown.SetBAndDiffVisibility(visibility);
             m_AllocationBreakdown.SetBAndDiffVisibility(visibility);
             UIElementsHelper.SetVisibility(m_NormalizedToggle, visibility);
+        }
+
+        void OnBreakdownElementSelected(int breakdownId, int elementId)
+        {
+            string breakdownName = GetBreakdownById(breakdownId).name;
+            SelectionChangedEvt(new MemorySampleSelection(breakdownName, breakdownId, elementId));
+        }
+
+        void OnBreakdownElementDeselected(int breakdownId, int elementId)
+        {
+            SelectionChangedEvt(MemorySampleSelection.InvalidMainSelection);
+        }
+
+        public void OnSelectionChanged(MemorySampleSelection selection)
+        {
+            if (selection.Type != MemorySampleSelectionType.HighlevelBreakdownElement || selection.SecondaryItemIndex != 0)
+                m_HighLevelBreakdown.ClearSelection();
+            if (selection.Type != MemorySampleSelectionType.HighlevelBreakdownElement || selection.SecondaryItemIndex != 1)
+                m_CommittedTrackingStatusBreakdown.ClearSelection();
+            if (selection.Type != MemorySampleSelectionType.HighlevelBreakdownElement || selection.SecondaryItemIndex != 2)
+            {
+                m_ManagedBreakdown.ClearSelection();
+                m_HighLevelBreakdown.ClearSelectedRanges();
+            }
+            if (selection.Type != MemorySampleSelectionType.HighlevelBreakdownElement || selection.SecondaryItemIndex != 3)
+                m_AllocationBreakdown.ClearSelection();
+        }
+
+        MemoryUsageBreakdown GetBreakdownById(int breakdownId)
+        {
+            switch (breakdownId)
+            {
+                case 0:
+                    return m_HighLevelBreakdown;
+                case 1:
+                    return m_CommittedTrackingStatusBreakdown;
+                case 2:
+                    return m_ManagedBreakdown;
+                case 3:
+                    return m_AllocationBreakdown;
+            }
+            return null;
+        }
+
+        public override void OnShowDetailsForSelection(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        {
+            switch (selectedItem.SecondaryItemIndex)
+            {
+                case 0:
+                    HighLevelBreakdownSelectionDetails(mainUI, selectedItem);
+                    break;
+                case 1:
+                    CommittedTrackingStatusBreakdownSelectionDetails(mainUI, selectedItem);
+                    break;
+                case 2:
+                    ManagedBreakdownSelectionDetails(mainUI, selectedItem);
+                    break;
+                case 3:
+                    AllocationBreakdownSelectionDetails(mainUI, selectedItem);
+                    break;
+            }
+        }
+
+        void HighLevelBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        {
+            if (selectedItem.ItemIndex == -1)
+            {
+                mainUI.SetItemName($"{m_HighLevelBreakdown.HeaderText} : Untracked Memory");
+                mainUI.SetDescription(TextContent.UntrackedMemoryDescription);
+                mainUI.SetDocumentationURL(DocumentationUrls.UntrackedMemoryDocumentation);
+                return;
+            }
+            var item = (BreakdownOrder)selectedItem.ItemIndex;
+            mainUI.SetItemName($"{m_HighLevelBreakdown.HeaderText} : {k_BreakdownOrderNames[selectedItem.ItemIndex]}");
+            switch (item)
+            {
+                case BreakdownOrder.ManagedHeap:
+                    mainUI.SetDescription(TextContent.ManagedHeapDescription);
+                    break;
+                case BreakdownOrder.ManagedDomain:
+                    mainUI.SetDescription(TextContent.ManagedDomainDescription);
+                    break;
+                case BreakdownOrder.Graphics:
+                    mainUI.SetDescription(TextContent.GraphicsDescription);
+                    break;
+                case BreakdownOrder.Audio:
+                    mainUI.SetDescription(TextContent.AudioDescription);
+                    break;
+                case BreakdownOrder.Other:
+                    mainUI.SetDescription(TextContent.OtherNativeDescription);
+                    break;
+                case BreakdownOrder.Profiler:
+                    mainUI.SetDescription(TextContent.ProfilerDescription);
+                    break;
+                case BreakdownOrder.ExecutableAndDlls:
+                    mainUI.SetDescription(TextContent.ExecutableAndDllsDescription);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        void CommittedTrackingStatusBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        {
+            if (selectedItem.ItemIndex == -1)
+            {
+                mainUI.SetItemName($"{m_CommittedTrackingStatusBreakdown.HeaderText} : Untracked Memory");
+                mainUI.SetDescription(TextContent.UntrackedMemoryDescription);
+                mainUI.SetDocumentationURL(DocumentationUrls.UntrackedMemoryDocumentation);
+                return;
+            }
+            mainUI.SetItemName($"{m_CommittedTrackingStatusBreakdown.HeaderText} : Tracked Memory");
+            mainUI.SetItemName(m_CommittedTrackingStatusBreakdown.HeaderText);
+            mainUI.SetDescription(TextContent.TrackedMemoryDescription);
+            mainUI.SetDocumentationURL(DocumentationUrls.UntrackedMemoryDocumentation);
+        }
+
+        void ManagedBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        {
+            mainUI.SetItemName($"{m_ManagedBreakdown.HeaderText} : {k_ManagedBreakdownOrderNames[selectedItem.ItemIndex]}");
+            var item = (ManagedBreakdownOrder)selectedItem.ItemIndex;
+            switch (item)
+            {
+                case ManagedBreakdownOrder.ManagedDomain:
+                    mainUI.SetDescription(TextContent.ManagedDomainDescription);
+                    //m_HighLevelBreakdown.SelectRange((int)BreakdownOrder.ManagedDomain, m_ManagedReserved[(int)selectedItem.ItemIndex][0], m_ManagedReserved[(int)selectedItem.ItemIndex][1]);
+                    break;
+                case ManagedBreakdownOrder.ManagedObjects:
+                    mainUI.SetDescription(TextContent.ManagedObjectsDescription);
+                    break;
+                case ManagedBreakdownOrder.EmptyActiveHeapSpace:
+                    mainUI.SetDescription(TextContent.EmptyActiveHeapDescription);
+                    break;
+                case ManagedBreakdownOrder.EmptyFragmentedHeapSpace:
+                    mainUI.SetDescription(TextContent.EmptyFragmentedHeapDescription);
+                    //m_HighLevelBreakdown.SelectRange((int)BreakdownOrder.ManagedHeap, m_ManagedReserved[(int)selectedItem.ItemIndex][0], m_ManagedReserved[(int)selectedItem.ItemIndex][1]);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        void AllocationBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        {
+            mainUI.SetItemName(m_AllocationBreakdown.HeaderText);
+            // TODO: Implement Once added to UI
         }
     }
 }

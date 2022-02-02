@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Database;
+using Unity.MemoryProfiler.Editor.UIContentData;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -48,7 +49,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         const string k_NullPtrAddr = "0x0000000000000000";
         const string k_NullRef = "null";
-        const string k_FailedToReadObject = "Failed To read Object, please report a bug.";
+        const string k_FailedToReadObject = TextContent.InvalidObjectPleaseReportABugMessageShort;
         const string k_ArrayClosedSqBrackets = "[]";
 
         public ObjectDataFormatter BaseFormatter;
@@ -278,14 +279,12 @@ namespace Unity.MemoryProfiler.Editor
                         return k_NullRef;
                     }
                     var arr = ObjectData.FromManagedPointer(m_Snapshot, ptr);
-                    if(!arr.IsValid)
+                    if (!arr.IsValid)
                         return k_FailedToReadObject;
                     return FormatArray(arr, formatter);
                 }
                 case ObjectDataType.Type:
                     return m_Snapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
-                case ObjectDataType.Global:
-                    return "<global>";
                 case ObjectDataType.NativeObject:
                     return FormatPointer(m_Snapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
                 default:

@@ -45,6 +45,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public long FirstVisibleRowIndex;//sequential index assigned to all visible row. Differ from row index if there are invisible rows
             public double HeightBeforeFirstVisibleRow;//using double since this value will be maintained by offseting it.
             public long SelectedRow = -1;
+            public bool SelectionIsLatent = false;
 
             public GUIState() {}
 
@@ -59,6 +60,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 FirstVisibleRowIndex = copy.FirstVisibleRowIndex;
                 HeightBeforeFirstVisibleRow = copy.HeightBeforeFirstVisibleRow;
                 SelectedRow = copy.SelectedRow;
+                SelectionIsLatent = copy.SelectionIsLatent;
             }
         };
         protected GUIState m_GUIState = new GUIState();
@@ -102,8 +104,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             public bool processMouseClick = true;
         }
 
-        protected abstract void DrawHeader(long col, Rect r, ref GUIPipelineState pipe);
-        protected abstract void DrawRow(long row, Rect r, long index, bool selected, ref GUIPipelineState pipe);
+        protected abstract void DrawHeader(long col, Rect r, SplitterStateEx splitter, ref GUIPipelineState pipe);
+        protected abstract void DrawRow(long row, Rect r, long index, bool selected, bool latentSelected, ref GUIPipelineState pipe);
         protected abstract void DrawCell(long row, long col, Rect r, long index, bool abSelected, ref GUIPipelineState pipe);
 
         protected float GetCumulativeHeight(long rowMin, long rowMaxExclusive, out long outNextRow, ref long rowMinIndex)
@@ -152,13 +154,38 @@ namespace Unity.MemoryProfiler.Editor.UI
             UpdateDirtyRowRange(dirtyRange);
         }
 
-        public void Goto(Database.CellPosition pos)
+        public void Goto(Database.CellPosition pos, bool onlyScrollIfNeeded = true, bool selectRow = true)
         {
             long rowIndex = 0;
             long nextRow = 0;
             var y = GetCumulativeHeight(0, pos.row, out nextRow, ref rowIndex);
+            if (onlyScrollIfNeeded && m_GUIState.HasRectData)
+            {
+                if (m_GUIState.ScrollPosition.y <= y)
+                {
+                    var currentY = m_GUIState.ScrollPosition.y;
+                    var maxY = m_GUIState.FirstVisibleRowY + m_GUIState.RectData.height;
+                    var lastVisibleRow = m_GUIState.FirstVisibleRowIndex;
+                    for (long i = lastVisibleRow; i != -1 && i < k_MaxRow; i = GetNextVisibleRow(i))
+                    {
+                        currentY += GetRowHeight(i);
+                        if (currentY < maxY)
+                            lastVisibleRow = i;
+                        else
+                            break; // the row isn't fully visible anymore
+                    }
+                    if (lastVisibleRow >= rowIndex)
+                    {
+                        // the row to Go To is still in the visible range
+                        // just change the selected row without changing the scroll position
+                        m_GUIState.SelectedRow = pos.row;
+                        return;
+                    }
+                }
+            }
             m_GUIState.ScrollPosition = new Vector2(0, y);
-            m_GUIState.SelectedRow = pos.row;
+            if (selectRow)
+                m_GUIState.SelectedRow = pos.row;
             m_GUIState.FirstVisibleRow = pos.row < 0 ? 0 : pos.row;
             m_GUIState.FirstVisibleRowIndex = rowIndex;
             m_GUIState.FirstVisibleRowY = y;
@@ -181,9 +208,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             var xLocal = pos.x - m_Splitter.m_TopLeft.x;
             long col = 0;
-            while (col < m_Splitter.realSizes.Length)
+            while (col < m_Splitter.Length)
             {
-                xLocal -= m_Splitter.realSizes[col];
+                xLocal -= m_Splitter[col];
                 if (xLocal < 0) return col;
                 ++col;
             }
@@ -227,12 +254,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             Rect rectHeader = new Rect(m_Splitter.m_TopLeft.x, m_Splitter.m_TopLeft.y, 0, Styles.General.Header.fixedHeight);
 
             float totalHeaderWidth = 0;
-            for (int k = 0; k < m_Splitter.realSizes.Length; ++k)
+            for (int k = 0; k < m_Splitter.Length; ++k)
             {
-                rectHeader.width = m_Splitter.realSizes[k];
+                rectHeader.width = m_Splitter[k];
                 totalHeaderWidth += rectHeader.width;
 
-                DrawHeader(k, rectHeader, ref pipe);
+                DrawHeader(k, rectHeader, m_Splitter, ref pipe);
 
                 rectHeader.x += rectHeader.width;
             }
@@ -366,23 +393,23 @@ namespace Unity.MemoryProfiler.Editor.UI
                     r.width = m_GUIState.RectData.width;
                     Rect rRow = new Rect(m_GUIState.ScrollPosition.x, r.y, r.width, r.height);
 
-                    DrawRow(i, rRow, m_GUIState.FirstVisibleRowIndex + j, i == m_GUIState.SelectedRow, ref pipe);
-                    for (long k = 0; k < m_Splitter.realSizes.Length; ++k)
+                    DrawRow(i, rRow, m_GUIState.FirstVisibleRowIndex + j, i == m_GUIState.SelectedRow, m_GUIState.SelectionIsLatent, ref pipe);
+                    for (long k = 0; k < m_Splitter.Length; ++k)
                     {
                         if (k == 0)
                         {
-                            r.xMax = m_Splitter.realSizes[k];
+                            r.xMax = m_Splitter[k];
                         }
                         else
                         {
-                            r.width = m_Splitter.realSizes[k] - k_SmallMargin;
+                            r.width = m_Splitter[k] - k_SmallMargin;
                         }
-                        if (m_Splitter.realSizes[k] > 0)
+                        if (m_Splitter[k] > 0)
                         {
                             DrawCell(i, k, r, m_GUIState.FirstVisibleRowIndex + j, i == m_GUIState.SelectedRow, ref pipe);
                         }
 
-                        r.x += m_Splitter.realSizes[k];
+                        r.x += m_Splitter[k];
                     }
 
                     r.y += h;

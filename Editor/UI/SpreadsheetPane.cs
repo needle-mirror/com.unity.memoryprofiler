@@ -20,33 +20,77 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public int CurrentTableIndex { get; private set; }
 
+        public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose;
+        bool m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+
         protected bool m_NeedRefresh = false;
 
-        internal class History : HistoryEvent
+        internal class ViewStateHistory : ViewStateChangedHistoryEvent
         {
+            public readonly DatabaseSpreadsheet.State SpreadsheetState;
+
+            public ViewStateHistory(DatabaseSpreadsheet.State spreadsheetState)
+            {
+                SpreadsheetState = spreadsheetState;
+            }
+
+            protected override bool IsEqual(HistoryEvent evt)
+            {
+                var other = evt as ViewStateHistory;
+                return other != null &&
+                    SpreadsheetState.Equals(other.SpreadsheetState);
+            }
+        }
+
+        internal class History : ViewOpenHistoryEvent
+        {
+            public override ViewStateChangedHistoryEvent ViewStateChangeRestorePoint => m_ViewStateHistory;
+
+            ViewStateHistory m_ViewStateHistory;
             readonly Database.TableReference m_Table;
-            readonly DatabaseSpreadsheet.State m_SpreadsheetState;
 
             public History(SpreadsheetPane spreadsheetPane, UIState.BaseMode mode, Database.CellLink cell)
             {
                 Mode = mode;
                 m_Table = spreadsheetPane.m_CurrentTableLink;
-                m_SpreadsheetState = spreadsheetPane.m_Spreadsheet.CurrentState;
+                m_ViewStateHistory = new ViewStateHistory(spreadsheetPane.m_Spreadsheet.CurrentState);
             }
 
-            public void Restore(SpreadsheetPane pane)
+            public void Restore(SpreadsheetPane pane, bool reopen = false, ViewStateChangedHistoryEvent viewState = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
             {
-                var table = pane.m_UIState.CurrentMode.GetSchema().GetTableByReference(m_Table);
-                if (table == null)
+                ViewStateHistory viewStateToRestore = m_ViewStateHistory;
+                if (viewState != null && viewState is ViewStateHistory)
+                    viewStateToRestore = viewState as ViewStateHistory;
+
+                if (reopen)
                 {
-                    Debug.LogError("No table named '" + m_Table.Name + "' found.");
-                    return;
+                    var table = pane.m_UIState.CurrentMode.GetSchema().GetTableByReference(m_Table);
+                    if (table == null)
+                    {
+                        Debug.LogError("No table named '" + m_Table.Name + "' found.");
+                        return;
+                    }
+                    pane.m_CurrentTableLink = m_Table;
+                    pane.CurrentTableIndex = pane.m_UIState.CurrentMode.GetTableIndex(table);
+                    pane.m_Spreadsheet = new UI.DatabaseSpreadsheet(pane.m_UIState.FormattingOptions, table, pane, viewStateToRestore.SpreadsheetState);
+                    pane.m_Spreadsheet.UserChangedFilters += pane.OnUserChangedSpreadsheetFilters;
+                    pane.m_Spreadsheet.LinkClicked += pane.OnSpreadsheetClick;
+                    pane.m_Spreadsheet.RowSelectionChanged += pane.OnRowSelected;
+                    pane.m_EventListener.OnRepaint();
                 }
-                pane.m_CurrentTableLink = m_Table;
-                pane.CurrentTableIndex = pane.m_UIState.CurrentMode.GetTableIndex(table);
-                pane.m_Spreadsheet = new UI.DatabaseSpreadsheet(pane.m_UIState.FormattingOptions, table, pane, m_SpreadsheetState);
-                pane.m_Spreadsheet.LinkClicked += pane.OnSpreadsheetClick;
-                pane.m_EventListener.OnRepaint();
+
+                pane.m_Spreadsheet.CurrentState = viewStateToRestore.SpreadsheetState;
+
+                // restore the selection, needs to happen after first state reset to ensure selected item is found correctly
+                if (selectionEvent != null)
+                {
+                    var state = viewStateToRestore.SpreadsheetState;
+                    state.SelectedRow = selectionEvent.Selection.FindSelectionInTable(pane.m_UIState, pane.m_Spreadsheet.DisplayTable);
+                    state.SelectionIsLatent = selectionIsLatent;
+                    viewStateToRestore = new ViewStateHistory(state);
+
+                    pane.m_Spreadsheet.CurrentState = viewStateToRestore.SpreadsheetState;
+                }
             }
 
             public override string ToString()
@@ -78,11 +122,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return false;
 
                 return m_Table == hEvt.m_Table
-                    && m_SpreadsheetState.Filter == hEvt.m_SpreadsheetState.Filter
-                    && m_SpreadsheetState.FirstVisibleRow == hEvt.m_SpreadsheetState.FirstVisibleRow
-                    && m_SpreadsheetState.FirstVisibleRowIndex == hEvt.m_SpreadsheetState.FirstVisibleRowIndex
-                    && m_SpreadsheetState.SelectedCell == hEvt.m_SpreadsheetState.SelectedCell
-                    && m_SpreadsheetState.SelectedRow == hEvt.m_SpreadsheetState.SelectedRow;
+                    && m_ViewStateHistory.SpreadsheetState.Filter == hEvt.m_ViewStateHistory.SpreadsheetState.Filter
+                    && m_ViewStateHistory.SpreadsheetState.FirstVisibleRow == hEvt.m_ViewStateHistory.SpreadsheetState.FirstVisibleRow
+                    && m_ViewStateHistory.SpreadsheetState.FirstVisibleRowIndex == hEvt.m_ViewStateHistory.SpreadsheetState.FirstVisibleRowIndex
+                    && m_ViewStateHistory.SpreadsheetState.SelectedCell == hEvt.m_ViewStateHistory.SpreadsheetState.SelectedCell
+                    && m_ViewStateHistory.SpreadsheetState.SelectedRow == hEvt.m_ViewStateHistory.SpreadsheetState.SelectedRow;
             }
         }
 
@@ -153,13 +197,43 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_EventListener.OnOpenLink(link);
         }
 
+        void OnRowSelected(long rowIndex)
+        {
+            var selection = new MemorySampleSelection(m_UIState, m_Spreadsheet.DisplayTable, rowIndex);
+            m_UIState.RegisterSelectionChangeEvent(selection);
+        }
+
+        void OnUserChangedSpreadsheetFilters()
+        {
+            var selection = m_UIState.history.GetLastSelectionEvent(MemorySampleSelectionRank.MainSelection);
+            if (selection != null && selection.Selection.Valid)
+            {
+                ApplyActiveSelectionAfterOpening(selection);
+            }
+        }
+
+        public override void SetSelectionFromHistoryEvent(SelectionEvent selectionEvent)
+        {
+            if (selectionEvent.Selection.Rank == MemorySampleSelectionRank.MainSelection)
+                m_Spreadsheet.RestoreSelectedRow(selectionEvent.Selection.FindSelectionInTable(m_UIState, m_Spreadsheet.DisplayTable));
+            else
+            {
+                var currentState = m_Spreadsheet.CurrentState;
+                currentState.SelectionIsLatent = true;
+                m_Spreadsheet.CurrentState = currentState;
+                m_EventListener.OnRepaint();
+            }
+        }
+
         public void OpenTable(Database.TableReference tableRef, Database.Table table)
         {
             CloseCurrentTable();
             m_CurrentTableLink = tableRef;
             CurrentTableIndex = m_UIState.CurrentMode.GetTableIndex(table);
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
+            m_Spreadsheet.UserChangedFilters += OnUserChangedSpreadsheetFilters;
             m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
+            m_Spreadsheet.RowSelectionChanged += OnRowSelected;
             m_EventListener.OnRepaint();
         }
 
@@ -169,18 +243,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_CurrentTableLink = tableRef;
             CurrentTableIndex = m_UIState.CurrentMode.GetTableIndex(table);
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
+            m_Spreadsheet.UserChangedFilters += OnUserChangedSpreadsheetFilters;
             m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
+            m_Spreadsheet.RowSelectionChanged += OnRowSelected;
             m_Spreadsheet.Goto(pos);
             m_EventListener.OnRepaint();
         }
 
-        public void OpenHistoryEvent(History e)
+        public void OpenHistoryEvent(History e, bool reopen, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
         {
             if (e == null) return;
-            e.Restore(this);
+            e.Restore(this, reopen, viewStateToRestore, selectionEvent, selectionIsLatent);
         }
 
-        public override UI.HistoryEvent GetCurrentHistoryEvent()
+        public override UI.ViewOpenHistoryEvent GetOpenHistoryEvent()
         {
             if (m_Spreadsheet != null && m_CurrentTableLink != null)
             {
@@ -196,6 +272,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
             return null;
+        }
+
+        public override ViewStateChangedHistoryEvent GetViewStateFilteringChangesSinceLastSelectionOrViewClose()
+        {
+            m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+
+            var stateEvent = new ViewStateHistory(m_Spreadsheet.CurrentState);
+            stateEvent.ChangeType = ViewStateChangedHistoryEvent.StateChangeType.FiltersChanged;
+            return stateEvent;
         }
 
         private void OnGUI_OptionBar()
@@ -239,10 +324,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 GUILayout.BeginArea(r);
                 EditorGUILayout.BeginVertical();
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Label("Filters:");
-
                 m_Spreadsheet.OnGui_Filters();
-                GUILayout.FlexibleSpace();
                 EditorGUILayout.EndHorizontal();
 
                 EditorGUILayout.BeginHorizontal();
@@ -259,6 +341,37 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     m_EventListener.OnRepaint();
                 }
+            }
+        }
+
+        public override void OnSelectionChanged(MemorySampleSelection selection)
+        {
+            if (selection.Rank == MemorySampleSelectionRank.SecondarySelection)
+                m_Spreadsheet.SetSelectionAsLatent(true);
+            switch (selection.Type)
+            {
+                case MemorySampleSelectionType.NativeObject:
+                case MemorySampleSelectionType.ManagedObject:
+                case MemorySampleSelectionType.UnifiedObject:
+                case MemorySampleSelectionType.NativeType:
+                case MemorySampleSelectionType.ManagedType:
+                case MemorySampleSelectionType.Allocation:
+                case MemorySampleSelectionType.AllocationSite:
+                case MemorySampleSelectionType.Symbol:
+                case MemorySampleSelectionType.AllocationCallstack:
+                case MemorySampleSelectionType.NativeRegion:
+                case MemorySampleSelectionType.ManagedRegion:
+                case MemorySampleSelectionType.Allocator:
+                case MemorySampleSelectionType.Label:
+                case MemorySampleSelectionType.Connection:
+                    // TODO: check that this is the type of item currently shown and if the selection wasn't made in this spreadsheet, that it is appropriately updated. For now, assume it was made in this spreadsheet.
+                    break;
+                case MemorySampleSelectionType.None:
+                case MemorySampleSelectionType.HighlevelBreakdownElement:
+                default:
+                    if (selection.Rank == MemorySampleSelectionRank.MainSelection)
+                        m_Spreadsheet?.ClearSelection();
+                    break;
             }
         }
 

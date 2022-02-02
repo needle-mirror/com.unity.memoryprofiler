@@ -4,6 +4,43 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-preview.1] - 2022-02-02
+
+### Added
+ - Added selection events to the view history.
+ - Added details panel. This is context aware and will show extra information about whatever the current selection is.
+   - Referenced By (Raw) section: This section of the details panel shows the connections to the current selection, where applicable. This can be used to determine the paths to objects that are holding objects in memory and is currently designed as a 1:1 match to the references column click through from the object tables.
+   - Selection Details section: This section of the details panel displays, where possible, additional information about the currently selected item e.g. the fields on a managed object or the description of the currently selected memory usage overview category.
+     - Showing these details is currently only implemented for Managed or Native Objects, Managed or Native Types and the breakdown categories in the Memory Usage Overview.
+     - If an Object is selected that inherits from UnityEngine.Object (a "Unity Object") that has a Managed Shell to its Native Object, the Selection Details treat it as one object, giving you all the info for both of them and list out details separately as well were useful.
+     - Where applicable, the selected item is searched for in the editor. If there is exactly one item found in the editor which match the search criteria, which is either the Instance ID (if the capture is from the current Editor Session) or its Name and Type, two things become available
+       - The "Select in Editor" button to ping the object in the Scene Hierarchy or Project Browser and to select the object so it's details are shown in any open Inspector view.
+       - If applicable, a preview is loaded from the object in the Editor. (NOTE: This is NOT how the object necessarily looked in the build. The search logic may have found a different object or it may have been changed since the build was made. This is just to potentially help in identifying the Object in the capture faster.)
+     - Regardless of the results of the search for a specific object, the new "Search in Scene/Project" button can always help in finding Assets or Scene Objects quickly.
+     - In Unity 2021.1 and newer, an additional button will open Quick Search.  
+- Added the ability to hide table columns and reduced the set of columns shown by default down to the most commonly useful ones. The reasoning for hiding these is:
+   -  With the managed fields moved to the Selection Details section, the "Static" and "Field Target Size" columns have become redundant, and so has the ability to expand Managed Objects to see their fields, and the "Address" column to see the field layout clearer.
+   -  With the Selection Details section showing a Unity Object's managed and Native info as one, the Managed Objects no longer show their Native Object's size and instead of splitting their size into a Managed Size and a Native Size column, the tables now only show one Size column and one Name Column by default.
+   -  The Native Instance ID is also shown in the Selection Details under the Advanced tab. The most important info from it is considered for the "Status" displayed in the "Basic" info section (i.e. negative = Runtime Created, Positive = Loaded from file).
+   -  If you took a snapshot of the current editor session, the Instance ID is used by the "Select in Editor" button in the Selection Details section to select the instance. It therefore no longer needs to be displayed as a link in the table.
+   -  All other links in the tables have also been disabled, as they would only help see further details for an object, that now live in the Selection Details section
+ - Added a "Count" and a "Total Size" label above each table that dynamically adjusts as you filter the table.
+ - The Managed Fields inspector in the Selection Details section has some additions over what was previously shown in the tables: 
+   - It links up NativeArray fields that point to native Allocations with these allocations for easier analysis of DOTS memory usage.
+   - For IntPtr fields, it tries to find the Object, Allocation or Region that the IntPtr points at, and shows the information it finds.
+   - For UnityEngine.Object.m_CachedPointer it shows the Native Object that the Managed Shell Object points to.
+   - Recursive reference chains are caught and truncated so that it is safe to use Alt/Option + LMB click to expand the tree all the way. Though right now, to keep processing times low, it only searches 3 levels deep at a time.
+ - Added toggle to truncate type names in the details panel. It can be accessed through the kebab menu icon and the context menu of both the managed object inspector and referenced by tree views.
+
+ ### Fixed
+ - Fixed Fragmentation page to show an Allocations table with root object and area names when comparing snapshots.
+
+### Changed
+ - Memory Usage Overview categories can now be selected, either via their colored bar or via their row in the table below it. Selecting the category will show a description of what is encompassed in this category in the Selection Details section.
+ - Reduced the amount of memory used for snapshot preview images in the Editor.
+ - The Name column in the tables now shows managed string content in quotes.
+ - On capturing or importing a snapshot, the Snapshot side bar is now toggled visible if it was not before. It also scrolls to reveal the new snapshot.
+
 ## [0.4.4-preview.2] - 2022-01-12
 
 ### Added

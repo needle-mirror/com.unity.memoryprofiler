@@ -29,7 +29,7 @@ namespace Unity.MemoryProfiler.Editor
         VisualTreeAsset m_SessionListItemTree;
 
         VisualElement m_EmptyWorkbenchText;
-        VisualElement m_SnapshotList;
+        ScrollView m_SnapshotList;
         bool m_ShowEmptySnapshotListHint = true;
         [NonSerialized]
         OpenSnapshotsManager m_OpenSnapshots = new OpenSnapshotsManager();
@@ -59,9 +59,12 @@ namespace Unity.MemoryProfiler.Editor
             // setup the references for the snapshot list to be used for initial filling of the snapshot items as well as new captures and imports
             var snaphsotWindowToggle = rRoot.Q<ToolbarToggle>("toolbar__snaphsot-window-toggle");
             snaphsotWindowToggle.RegisterValueChangedCallback(ToggleSnapshotWindowVisibility);
+
+            snaphsotWindowToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] {"icon_button", "square-button-icon", "icon-button__snapshot-icon"}));
+
             m_Splitter = rRoot.Q<TwoPaneSplitView>("snapshot-window__splitter");
             m_EmptyWorkbenchText = rRoot.Q("session-list__empty-text");
-            m_SnapshotList = rRoot.Q("session-list__scroll-view");
+            m_SnapshotList = rRoot.Q<ScrollView>("session-list__scroll-view");
             UIElementsHelper.SetScrollViewVerticalScrollerVisibility(m_SnapshotList as ScrollView, false);
 
             m_SessionListItemTree = AssetDatabase.LoadAssetAtPath(ResourcePaths.SessionListItemUxmlPath, typeof(VisualTreeAsset)) as VisualTreeAsset;
@@ -75,7 +78,15 @@ namespace Unity.MemoryProfiler.Editor
             m_MemorySnapshotsCollection.collectionRefresh += RefreshSnapshotList;
             m_MemorySnapshotsCollection.collectionRefresh += m_OpenSnapshots.RefreshOpenSnapshots;
             m_MemorySnapshotsCollection.sessionDeleted += (sessionInfo) => m_SnapshotList.Remove(sessionInfo.DynamicUIElements.Root);
+            m_MemorySnapshotsCollection.SnapshotCountIncreased += () => { if (!snaphsotWindowToggle.value) ToggleSnapshotWindowVisibility(ChangeEvent<bool>.GetPooled(false, true)); };
+            m_MemorySnapshotsCollection.SnapshotTakenAndAdded += (snap) => { EditorCoroutineUtility.StartCoroutine(ScrollToNewSnapshot(snap), parentWindow as EditorWindow); };
             //SidebarWidthChanged += openSnapshotsPanel.UpdateWidth;
+        }
+
+        IEnumerator ScrollToNewSnapshot(SnapshotFileData snap)
+        {
+            yield return null;
+            m_SnapshotList.ScrollTo(snap.GuiData.VisualElement);
         }
 
         public void RegisterAdditionalCaptureButton(Button captureButton)

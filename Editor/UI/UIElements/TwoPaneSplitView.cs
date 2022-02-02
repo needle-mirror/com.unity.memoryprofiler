@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <summary>
         /// Instantiates a <see cref="TwoPaneSplitView"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<TwoPaneSplitView, UxmlTraits> { }
+        public new class UxmlFactory : UxmlFactory<TwoPaneSplitView, UxmlTraits> {}
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="TwoPaneSplitView"/>.
@@ -73,7 +73,9 @@ namespace Unity.MemoryProfiler.Editor
         VisualElement m_DragLine;
         VisualElement m_DragLineAnchor;
 
-        bool m_CollapseMode;
+        public bool hasCollapsedPanes => m_LeftCollapsed || m_RightCollapsed;
+        bool m_LeftCollapsed;
+        bool m_RightCollapsed;
 
         VisualElement m_Content;
 
@@ -170,7 +172,7 @@ namespace Unity.MemoryProfiler.Editor
         /// Collapse one of the panes of the split view. This will hide the resizer and make the other child take up all available space.
         /// </summary>
         /// <param name="index">Index of child to collapse.</param>
-        public void CollapseChild(int index)
+        public void CollapseChild(int index, bool retainMinSize = false)
         {
             if (m_LeftPane == null)
                 return;
@@ -182,37 +184,79 @@ namespace Unity.MemoryProfiler.Editor
                 m_RightPane.style.width = StyleKeyword.Initial;
                 m_RightPane.style.height = StyleKeyword.Initial;
                 m_RightPane.style.flexGrow = 1;
-                m_LeftPane.style.display = DisplayStyle.None;
+                if (retainMinSize)
+                {
+                    if (orientation == TwoPaneSplitViewOrientation.Horizontal)
+                        m_LeftPane.style.maxWidth = m_LeftPane.style.minWidth;
+                    else
+                        m_LeftPane.style.maxHeight = m_LeftPane.style.minHeight;
+                    m_Resizer.ApplyDelta(float.NegativeInfinity);
+                }
+                else
+                    m_LeftPane.style.display = DisplayStyle.None;
+                m_LeftCollapsed = true;
             }
             else
             {
                 m_LeftPane.style.width = StyleKeyword.Initial;
                 m_LeftPane.style.height = StyleKeyword.Initial;
                 m_LeftPane.style.flexGrow = 1;
-                m_RightPane.style.display = DisplayStyle.None;
+                if (retainMinSize)
+                {
+                    if (orientation == TwoPaneSplitViewOrientation.Horizontal)
+                        m_RightPane.style.maxWidth = m_RightPane.style.minWidth;
+                    else
+                        m_RightPane.style.maxHeight = m_RightPane.style.minHeight;
+                    m_Resizer.ApplyDelta(float.PositiveInfinity);
+                }
+                else
+                    m_RightPane.style.display = DisplayStyle.None;
+                m_RightCollapsed = true;
             }
-
-            m_CollapseMode = true;
         }
 
         /// <summary>
         /// Un-collapse the split view. This will restore the split view to the state it was before the previous collapse.
         /// </summary>
-        public void UnCollapse()
+        public void UnCollapse(int index = -1)
         {
             if (m_LeftPane == null)
                 return;
 
-            m_LeftPane.style.display = DisplayStyle.Flex;
-            m_RightPane.style.display = DisplayStyle.Flex;
+            if (index == -1 || index == 0)
+            {
+                m_LeftPane.style.display = DisplayStyle.Flex;
+                m_LeftPane.style.maxWidth = StyleKeyword.Initial;
+                m_LeftPane.style.flexGrow = 0;
+                m_LeftCollapsed = false;
+            }
 
-            m_DragLine.style.display = DisplayStyle.Flex;
-            m_DragLineAnchor.style.display = DisplayStyle.Flex;
+            if (index == -1 || index == 1)
+            {
+                m_RightPane.style.display = DisplayStyle.Flex;
+                m_RightPane.style.maxWidth = StyleKeyword.Initial;
+                m_RightPane.style.flexGrow = 0;
+                m_RightCollapsed = false;
+            }
 
-            m_LeftPane.style.flexGrow = 0;
-            m_RightPane.style.flexGrow = 0;
-            m_CollapseMode = false;
-
+            if (!hasCollapsedPanes)
+            {
+                m_DragLine.style.display = DisplayStyle.Flex;
+                m_DragLineAnchor.style.display = DisplayStyle.Flex;
+            }
+            else
+            {
+                // TODO: This doesn't work. Right now, the TwoPaneSplitView only works if there is always one pane visible. Revisit this if a different behavior is needed
+                //if (m_LeftCollapsed)
+                //{
+                //    m_Resizer.ApplyDelta(float.NegativeInfinity);
+                //}
+                //else
+                //{
+                //    m_Resizer.ApplyDelta(float.PositiveInfinity);
+                //}
+            }
+            OnSizeChange();
             Init(m_FixedPaneIndex, m_FixedPaneInitialDimension, m_Orientation);
         }
 
@@ -356,8 +400,14 @@ namespace Unity.MemoryProfiler.Editor
 
         void OnSizeChange()
         {
-            if (m_CollapseMode)
+            if (hasCollapsedPanes)
+            {
+                if (fixedPaneIndex == 0 && m_RightCollapsed)
+                    m_Resizer.ApplyDelta(float.PositiveInfinity);
+                if (fixedPaneIndex == 1 && m_LeftCollapsed)
+                    m_Resizer.ApplyDelta(float.NegativeInfinity);
                 return;
+            }
 
             var maxLength = this.resolvedStyle.width;
             var dragLinePos = m_DragLineAnchor.resolvedStyle.left;
@@ -411,5 +461,4 @@ namespace Unity.MemoryProfiler.Editor
         /// </summary>
         Vertical
     }
-
 }

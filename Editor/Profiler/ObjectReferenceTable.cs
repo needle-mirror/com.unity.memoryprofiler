@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor
             : base(schema, formatter, snapshot, crawledData, metaType)
         {
             m_Object = obj;
-            m_References = ObjectConnection.GetAllObjectConnectingTo(snapshot, obj);
+            m_References = ObjectConnection.GetAllReferencingObjects(snapshot, obj);
             InitObjectList();
         }
 

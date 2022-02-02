@@ -5,6 +5,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
@@ -33,7 +34,7 @@ namespace Unity.MemoryProfiler.Editor
         public int arrayIndexFrom;
 
         public ConnectionType connectionType;
-        public int GetUnifiedIndexFrom(CachedSnapshot snapshot)
+        public long GetUnifiedIndexFrom(CachedSnapshot snapshot)
         {
             switch (connectionType)
             {
@@ -48,7 +49,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        public int GetUnifiedIndexTo(CachedSnapshot snapshot)
+        public long GetUnifiedIndexTo(CachedSnapshot snapshot)
         {
             switch (connectionType)
             {
@@ -208,16 +209,22 @@ namespace Unity.MemoryProfiler.Editor
 
     internal class ManagedData
     {
+        public bool Crawled { private set; get; }
         const int k_ManagedObjectBlockSize = 32768;
         const int k_ManagedConnectionsBlockSize = 65536;
         public BlockList<ManagedObjectInfo> ManagedObjects { private set; get; }
         public Dictionary<ulong, int> MangedObjectIndexByAddress { private set; get; }
         public BlockList<ManagedConnection> Connections { private set; get; }
+        public Dictionary<int, int> NativeUnityObjectTypeIndexToManagedBaseTypeIndex { get; private set; }
         public ulong ManagedObjectMemoryUsage { private set; get; }
         public ulong AbandonedManagedObjectMemoryUsage { private set; get; }
         public ulong ActiveHeapMemoryUsage { private set; get; }
         public ulong ActiveHeapMemoryEmptySpace { private set; get; }
         public ulong AbandonedManagedObjectActiveHeapMemoryUsage { private set; get; }
+        // ConnectionsMappedToUnifiedIndex and ConnectionsMappedToNativeIndex are derived structure used in accelerating searches in the details view
+        public Dictionary<long, List<int>> ConnectionsMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
+        public Dictionary<long, List<int>> ConnectionsMappedToNativeIndex { private set; get; } = new Dictionary<long, List<int>>();
+
 
         public ManagedData(long rawGcHandleCount, long rawConnectionsCount)
         {
@@ -226,6 +233,7 @@ namespace Unity.MemoryProfiler.Editor
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsBlockSize, rawConnectionsCount);
 
             MangedObjectIndexByAddress = new Dictionary<ulong, int>();
+            NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new Dictionary<int, int>();
         }
 
         internal void AddUpTotalMemoryUsage(CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)
@@ -260,6 +268,32 @@ namespace Unity.MemoryProfiler.Editor
                 - managedMemorySections.StartAddress[managedMemorySections.FirstAssumedActiveHeapSectionIndex]
                 - ActiveHeapMemoryUsage;
         }
+
+        internal void FinishedCrawling()
+        {
+            Crawled = true;
+        }
+
+        public void CreateConnectionMaps(CachedSnapshot cs)
+        {
+            for (var i = 0; i < Connections.Count; i++)
+            {
+                var key = Connections[i].GetUnifiedIndexTo(cs);
+                if (ConnectionsMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
+                    unifiedIndexList.Add(i);
+                else
+                    ConnectionsMappedToUnifiedIndex[key] = new List<int> { i };
+            }
+
+            for (var i = 0; i < Connections.Count; i++)
+            {
+                var key = Connections[i].UnityEngineNativeObjectIndex;
+                if (ConnectionsMappedToNativeIndex.TryGetValue(key, out var nativeObjectList))
+                    nativeObjectList.Add(i);
+                else
+                    ConnectionsMappedToNativeIndex[key] = new List<int> { i };
+            }
+        }
     }
 
     internal struct BytesAndOffset
@@ -291,10 +325,10 @@ namespace Unity.MemoryProfiler.Editor
 
             switch (pointerSize)
             {
-                case VMTools.x64ArchPtrSize:
+                case VMTools.X64ArchPtrSize:
                     ptr = BitConverter.ToUInt64(bytes, offset);
                     return PtrReadError.Success;
-                case VMTools.x86ArchPtrSize:
+                case VMTools.X86ArchPtrSize:
                     ptr = BitConverter.ToUInt32(bytes, offset);
                     return PtrReadError.Success;
                 default: //should never happen
@@ -315,6 +349,11 @@ namespace Unity.MemoryProfiler.Editor
         public Int32 ReadInt32()
         {
             return BitConverter.ToInt32(bytes, offset);
+        }
+
+        public Int32 ReadInt32(int additionalOffset)
+        {
+            return BitConverter.ToInt32(bytes, offset + additionalOffset);
         }
 
         public Int64 ReadInt64()
@@ -360,19 +399,31 @@ namespace Unity.MemoryProfiler.Editor
         public string ReadString()
         {
             int strLength = ReadInt32();
-            if (strLength < 0 || offset + sizeof(int) + (strLength * 2) > bytes.Length)
+            int additionalOffsetForObjectHeader = 0;
+            if (strLength < 0 || (long)offset + (long)sizeof(int) + ((long)strLength * (long)2) > bytes.Length)
             {
+                // Why is the header not included for object data in the tables?
+                // this workaround here is flakey!
+                additionalOffsetForObjectHeader = 16;
+                strLength = ReadInt32(additionalOffsetForObjectHeader);
+                if (strLength < 0 || (long)offset + (long)sizeof(int) + ((long)strLength * (long)2) > bytes.Length)
+                {
 #if DEBUG_VALIDATION
-                Debug.LogError("Attempted to read outside of binary buffer.");
+                    Debug.LogError("Attempted to read outside of binary buffer.");
 #endif
-                return "Invalid String object, please report a bug!";
+                    return "Invalid String object, " + TextContent.InvalidObjectPleaseReportABugMessage;
+                }
+                // find out what causes this and fix it, then remove the additionalOffsetForObjectHeader workaround
+#if DEBUG_VALIDATION
+                Debug.LogError("String reading is broken.");
+#endif
             }
             unsafe
             {
                 fixed(byte* ptr = bytes)
                 {
                     string str = null;
-                    char* begin = (char*)(ptr + (offset + sizeof(int)));
+                    char* begin = (char*)(ptr + (offset + additionalOffsetForObjectHeader + sizeof(int)));
                     str = new string(begin, 0, strLength);
 
                     return str;
@@ -456,6 +507,7 @@ namespace Unity.MemoryProfiler.Editor
                     var target = snapshot.GcHandles.Target[i];
 
                     moi.ManagedObjectIndex = i;
+                    moi.ITypeDescription = -1;
 
                     //this can only happen pre 19.3 scripting snapshot implementations where we dumped all handle targets but not the handles.
                     //Eg: multiple handles can have the same target. Future facing we need to start adding that as we move forward
@@ -536,10 +588,26 @@ namespace Unity.MemoryProfiler.Editor
             status.IncrementStep();
             status.StepStatus = "Crawling connection data";
             yield return status;
-            ConnectNativeToManageObject(crawlData);
-            AddupRawRefCount(crawlData.CachedMemorySnapshot);
 
-            crawlData.CachedMemorySnapshot.CrawledData.AddUpTotalMemoryUsage(crawlData.CachedMemorySnapshot.ManagedHeapSections);
+            // these key Unity Types will never show up as objects of their managed base type as they are only ever used via derived types
+            if (snapshot.TypeDescriptions.ITypeUnityMonoBehaviour >= 0 && snapshot.NativeTypes.MonoBehaviourIdx >= 0)
+            {
+                snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.Add(snapshot.NativeTypes.MonoBehaviourIdx, snapshot.TypeDescriptions.ITypeUnityMonoBehaviour);
+            }
+            if (snapshot.TypeDescriptions.ITypeUnityScriptableObject >= 0 && snapshot.NativeTypes.ScriptableObjectIdx >= 0)
+            {
+                snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.Add(snapshot.NativeTypes.ScriptableObjectIdx, snapshot.TypeDescriptions.ITypeUnityScriptableObject);
+            }
+            if (snapshot.TypeDescriptions.ITypeUnityComponent >= 0 && snapshot.NativeTypes.ComponentIdx >= 0)
+            {
+                snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.Add(snapshot.NativeTypes.ComponentIdx, snapshot.TypeDescriptions.ITypeUnityComponent);
+            }
+            ConnectNativeToManageObject(crawlData);
+            AddupRawRefCount(snapshot);
+
+            snapshot.CrawledData.AddUpTotalMemoryUsage(crawlData.CachedMemorySnapshot.ManagedHeapSections);
+            snapshot.CrawledData.CreateConnectionMaps(snapshot);
+            snapshot.CrawledData.FinishedCrawling();
         }
 
         static void AddupRawRefCount(CachedSnapshot snapshot)
@@ -573,32 +641,7 @@ namespace Unity.MemoryProfiler.Editor
             if (snapshot.TypeDescriptions.Count == 0)
                 return;
 
-            // Get UnityEngine.Object
-            int iTypeDescription_UnityEngineObject = Array.FindIndex(snapshot.TypeDescriptions.TypeDescriptionName, x => x == "UnityEngine.Object");
-#if DEBUG_VALIDATION //This shouldn't really happen
-            if (iTypeDescription_UnityEngineObject < 0)
-            {
-                throw new Exception("Unable to find UnityEngine.Object");
-            }
-#endif
-            int cachedPtrOffset = -1;
-            int fieldIndicesIndex = Array.FindIndex(
-                snapshot.TypeDescriptions.FieldIndices[iTypeDescription_UnityEngineObject]
-                , iField => snapshot.FieldDescriptions.FieldDescriptionName[iField] == "m_CachedPtr");
-
-            int iField_UnityEngineObject_m_CachedPtr = fieldIndicesIndex >= 0 ? snapshot.TypeDescriptions.FieldIndices[iTypeDescription_UnityEngineObject][fieldIndicesIndex] : -1;
-            if (iField_UnityEngineObject_m_CachedPtr >= 0)
-            {
-                cachedPtrOffset = snapshot.FieldDescriptions.Offset[iField_UnityEngineObject_m_CachedPtr];
-            }
-
-#if DEBUG_VALIDATION
-            if (cachedPtrOffset < 0)
-            {
-                Debug.LogWarning("Could not find unity object instance id field or m_CachedPtr");
-                return;
-            }
-#endif
+            int cachedPtrOffset = snapshot.TypeDescriptions.IFieldUnityObjectMCachedPtrOffset;
 
 #if DEBUG_VALIDATION
             // These are used to double-check that all Native -> Managed connections reported via GCHandles on Native Objects are correctly found via m_CachedPtr
@@ -612,8 +655,8 @@ namespace Unity.MemoryProfiler.Editor
                 var objectInfo = objectInfos[i];
                 objectInfo.NativeObjectIndex = -1;
                 int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
-
-                if (DerivesFrom(snapshot.TypeDescriptions, objectInfo.ITypeDescription, iTypeDescription_UnityEngineObject))
+                int nativeTypeIndex;
+                if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue(objectInfo.ITypeDescription, out nativeTypeIndex))
                 {
                     // TODO: Add index to a list of Managed Unity Objects here
                     var heapSection =  snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
@@ -637,6 +680,36 @@ namespace Unity.MemoryProfiler.Editor
                         if (snapshot.NativeObjects.instanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
                             snapshot.NativeObjects.ManagedObjectIndex[objectInfo.NativeObjectIndex] = i;
 
+                        if (nativeTypeIndex == -1)
+                        {
+                            nativeTypeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[objectInfo.NativeObjectIndex];
+                            snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex[objectInfo.ITypeDescription] = nativeTypeIndex;
+
+                            if (!snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.ContainsKey(nativeTypeIndex))
+                            {
+                                // Check if this managed object's managed type cou
+                                var typeName = snapshot.TypeDescriptions.TypeDescriptionName[objectInfo.ITypeDescription];
+                                if (typeName.StartsWith("Unity"))
+                                {
+                                    var startOfNamespaceStrippedManagedTypeName = typeName.LastIndexOf('.') + 1;
+                                    var managedTypeNameLength = typeName.Length - startOfNamespaceStrippedManagedTypeName;
+                                    var nativeTypeNameLength = snapshot.NativeTypes.TypeName[nativeTypeIndex].Length;
+                                    if (managedTypeNameLength == nativeTypeNameLength)
+                                    {
+                                        unsafe
+                                        {
+                                            fixed(char* nativeName = snapshot.NativeTypes.TypeName[nativeTypeIndex], managedName = typeName)
+                                            {
+                                                // no need to create a bunch of managed substrings in a hot loop
+                                                char* managedSubstring = managedName + startOfNamespaceStrippedManagedTypeName;
+                                                if (UnsafeUtility.MemCmp(managedSubstring, nativeName, managedTypeNameLength) == 0)
+                                                    snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.Add(nativeTypeIndex, objectInfo.ITypeDescription);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (snapshot.HasConnectionOverhaul)
                         {
                             snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
@@ -675,20 +748,6 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 #endif
-        }
-
-        static bool DerivesFrom(CachedSnapshot.TypeDescriptionEntriesCache typeDescriptions, int iTypeDescription, int potentialBase)
-        {
-            if (iTypeDescription < 0) return false;
-            if (iTypeDescription == potentialBase)
-                return true;
-
-            var baseIndex = typeDescriptions.BaseOrElementTypeIndex[iTypeDescription];
-
-            if (baseIndex < 0)
-                return false;
-            var baseArrayIndex = typeDescriptions.TypeIndex2ArrayIndex(baseIndex);
-            return DerivesFrom(typeDescriptions, baseArrayIndex, potentialBase);
         }
 
         static void CrawlRawObjectData(IntermediateCrawlData crawlData, BytesAndOffset bytesAndOffset, int iTypeDescription, bool useStaticFields, ulong ptrFrom, int indexOfFrom)
@@ -815,11 +874,11 @@ namespace Unity.MemoryProfiler.Editor
             if (snapshot.TypeDescriptions.ITypeString == iTypeDescription)
                 return StringTools.ReadStringObjectSizeInBytes(byteOffset, snapshot.VirtualMachineInformation);
 
-            //array and string are the only types that are special, all other types just have one size, which is stored in the type description
+            // array and string are the only types that are special, all other types just have one size, which is stored in the type description
             return snapshot.TypeDescriptions.Size[iTypeDescription];
         }
 
-        static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, StackCrawlData crawlData, out bool wasAlreadyCrawled, bool ignoreBadHeaderError, BytesAndOffset byteOffset)
+        internal static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, StackCrawlData crawlData, out bool wasAlreadyCrawled, bool ignoreBadHeaderError, BytesAndOffset byteOffset)
         {
             var objectList = snapshot.CrawledData.ManagedObjects;
             var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
@@ -926,20 +985,55 @@ namespace Unity.MemoryProfiler.Editor
 
     internal static class StringTools
     {
-        public static string ReadString(BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
+        public static string ReadString(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
         {
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
-            var firstChar = lengthPointer.Add(4);
+            var firstChar = lengthPointer.Add(sizeof(int));
+
+            if (length < 0 || (long)length * 2 > bo.bytes.Length - bo.offset - sizeof(int))
+            {
+#if DEBUG_VALIDATION
+                Debug.LogError("Found a String Object of impossible length.");
+#endif
+                length = 0;
+            }
 
             return System.Text.Encoding.Unicode.GetString(firstChar.bytes, firstChar.offset, length * 2);
         }
 
-        public static int ReadStringObjectSizeInBytes(BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
+        public static string ReadFirstStringLine(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, bool addQuotes)
+        {
+            var str = ReadString(bo, virtualMachineInformation);
+            var firstLineBreak = str.IndexOf('\n');
+            const int maxCharsInLine = 30;
+            if (firstLineBreak >= 0)
+            {
+                if (firstLineBreak < maxCharsInLine && str.Length > maxCharsInLine)
+                {
+                    // reduce our working set
+                    str = str.Substring(0, Math.Min(str.Length, maxCharsInLine));
+                }
+                str = str.Replace("\n", "\\n");
+                str += " {...}";
+            }
+            if (addQuotes)
+            {
+                if (firstLineBreak >= 0)
+                    return $"\"{str}"; // open ended quote
+                return $"\"{str}\"";
+            }
+            else
+            {
+                return str;
+            }
+        }
+
+        public static int ReadStringObjectSizeInBytes(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
         {
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
-            if (length < 0 || length * 2 > bo.bytes.Length - bo.offset - sizeof(int))
+            if (length < 0 || (long)length * 2 > bo.bytes.Length - bo.offset - sizeof(int))
             {
 #if DEBUG_VALIDATION
                 Debug.LogError("Found a String Object of impossible length.");

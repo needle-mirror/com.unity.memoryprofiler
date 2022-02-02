@@ -8,6 +8,7 @@ using UnityEditor;
 using System;
 using System.Text;
 using Unity.EditorCoroutines.Editor;
+using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -15,7 +16,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         public Button NoSnapshotOpenedCaptureButton { get; private set; }
 
-        enum AnalysisPage
+        internal enum AnalysisPage
         {
             Summary = 0,
             ObjectsAndAllocations,
@@ -26,6 +27,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         VisualElement m_AnalysisWindow;
         IUIStateHolder m_UIStateHolder;
+        PathsToRootDetailView m_PathsToRootDetailView;
 
         VisualElement m_NoDataLoaded;
         VisualElement m_DataLoaded;
@@ -44,9 +46,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_ToolbarExtension;
         VisualElement m_ViewSelectionUI;
 
-        public AnalysisWindow(IUIStateHolder memoryProfilerWindow, VisualElement root, SnapshotsWindow snapshotsWindow)
+        ViewPane m_ActiveViewPane;
+
+        public AnalysisWindow(IUIStateHolder memoryProfilerWindow, VisualElement root, SnapshotsWindow snapshotsWindow, PathsToRootDetailView pathsToRootDetailView)
         {
             m_UIStateHolder = memoryProfilerWindow;
+            m_PathsToRootDetailView = pathsToRootDetailView;
 
             var analysisRoot = root.Q("analysis-window");
             m_AnalysisWindow = analysisRoot;
@@ -87,6 +92,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_OldViewLogic = new OldViewLogic(memoryProfilerWindow, this, m_ToolbarExtension, viewSelectorButton);
             memoryProfilerWindow.UIStateChanged += m_OldViewLogic.OnUIStateChanged;
             m_OldViewLogic.ViewPaneChanged += OnViewPaneChanged;
+            memoryProfilerWindow.UIState.SelectionChanged += m_PathsToRootDetailView.UpdateRootObjects;
+            m_PathsToRootDetailView.SelectionChangedEvt += memoryProfilerWindow.UIState.RegisterSelectionChangeEvent;
 
             snapshotsWindow.SwappedSnapshots += () => Recrate(m_UIStateHolder?.UIState?.CurrentMode?.CurrentViewPane);
 
@@ -95,7 +102,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             memoryProfilerWindow.UIStateChanged += m_OldHistoryLogic.OnUIStateChanged;
 
             var memoryUsageSummaryRoot = m_AnalysisWindow.Q("MemoryUsageSummary");
-            m_MemoryUsageSummary = new MemoryUsageSummary(memoryUsageSummaryRoot);
+            m_MemoryUsageSummary = new MemoryUsageSummary(memoryUsageSummaryRoot, memoryProfilerWindow);
+            memoryProfilerWindow.UIState.SelectionChanged += m_MemoryUsageSummary.OnSelectionChanged;
+            m_MemoryUsageSummary.SelectionChangedEvt += memoryProfilerWindow.UIState.RegisterSelectionChangeEvent;
 
             m_TopIssues = new TopIssues(m_AnalysisWindow.Q("top-ten-issues-section"));
 
@@ -109,12 +118,18 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             //m_ViewPane.Add(m_SummaryPane.VisualElements[0]);
 
+            memoryProfilerWindow.UIState.SelectionChanged += OnSelectionChanged;
             RibbonButtonClicked(0);
+        }
+
+        void OnSelectionChanged(MemorySampleSelection selection)
+        {
+            if (m_ActiveViewPane != null)
+                m_ActiveViewPane.OnSelectionChanged(selection);
         }
 
         void RibbonButtonClicked(int index)
         {
-            m_OldViewLogic.AddCurrentHistoryEvent();
             m_CurrentPage = (AnalysisPage)index;
             switch (m_CurrentPage)
             {
@@ -171,6 +186,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void Recrate(ViewPane viewPane)
         {
+            m_ActiveViewPane = viewPane;
             if (viewPane == null)
             {
                 UIElementsHelper.SetVisibility(m_NoDataLoaded, true);

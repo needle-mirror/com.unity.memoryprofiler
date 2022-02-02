@@ -42,7 +42,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             RefreshMesh();
         }
 
-        public Item GetItemByObjectUID(int objectUID)
+        public Item GetItemByObjectUID(long objectUID)
         {
             return _items.Find(x => x.Metric.GetObjectUID() == objectUID);
         }
@@ -148,21 +148,24 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             SelectItem(item);
         }
 
-        public void SelectGroup(Group group)
+        public bool SelectGroup(Group group, bool record)
         {
             _selectedItem = null;
             _selectedGroup = group;
             UpdateItemRectOfGroup(_selectedGroup);
             RefreshGroupMesh(_selectedGroup);
 
+            bool groupSelected = true;
             if (group.Items.Count == 1)
             {
                 if (OnClickItem != null)
                 {
-                    OnClickItem(group.Items[0], false);
+                    OnClickItem(group.Items[0], record);
+                    groupSelected = false;
                 }
             }
             RefreshSelectionMesh();
+            return groupSelected;
         }
 
         public void SelectItem(Item item)
@@ -174,6 +177,19 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                 UpdateItemRectOfGroup(_selectedGroup);
                 RefreshGroupMesh(_selectedGroup);
             }
+            RefreshSelectionMesh();
+        }
+
+        public void ClearSelection()
+        {
+            _selectedGroup = null;
+            _selectedItem = null;
+
+            if (m_SelectionGroupMesh != null)
+                m_SelectionGroupMesh.CleanupMeshes();
+
+            if (m_SelectionMesh != null)
+                m_SelectionMesh.CleanupMeshes();
             RefreshSelectionMesh();
         }
 
@@ -217,14 +233,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
         {
             if (clearSelection)
             {
-                _selectedGroup = null;
-                _selectedItem = null;
-
-                if (m_SelectionGroupMesh != null)
-                    m_SelectionGroupMesh.CleanupMeshes();
-
-                if (m_SelectionMesh != null)
-                    m_SelectionMesh.CleanupMeshes();
+                ClearSelection();
             }
 
             m_ZoomArea.FocusTo(1, Vector2.zero, null, true);
@@ -265,6 +274,8 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             {
                 Group newGroup = new Group();
                 newGroup.Name = groupName;
+                newGroup.MetricType = metric.MetricType;
+                newGroup.TypeIndex = metric.GetTypeIndex();
                 newGroup.Items = new List<Item>();
                 _groups.Add(groupName, newGroup);
             }
@@ -273,12 +284,14 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             _groups[groupName].Items.Add(item);
         }
 
-        public void AddEmptyObjectCount(string groupName)
+        public void AddEmptyObjectCount(string groupName, int nativeTypeIndex)
         {
             if (!_groups.ContainsKey(groupName))
             {
                 Group newGroup = new Group();
                 newGroup.Name = groupName;
+                newGroup.MetricType = ObjectMetricType.Native;
+                newGroup.TypeIndex = nativeTypeIndex;
                 newGroup.Items = new List<Item>();
                 _groups.Add(groupName, newGroup);
             }

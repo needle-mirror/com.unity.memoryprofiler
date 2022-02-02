@@ -66,5 +66,25 @@ namespace Unity.MemoryProfiler.Editor
             return true;
 #endif
         }
+
+        public static Image GetImageWithClasses(string[] classNames)
+        {
+            var img = new Image();
+            foreach (var className in classNames)
+            {
+                img.AddToClassList(className);
+            }
+            img.style.alignSelf = Align.Center;
+            return img;
+        }
+
+        public static void RegisterClickEvent(this VisualElement element, Action callback)
+        {
+#if UNITY_2020_1_OR_NEWER
+            element.RegisterCallback<ClickEvent>((e) => callback());
+#else
+            element.AddManipulator(new Clickable(callback));
+#endif
+        }
     }
 }

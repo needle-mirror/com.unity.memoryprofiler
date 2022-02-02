@@ -1,0 +1,57 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" mui="Unity.MemoryProfiler.Editor.UI" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" memory="Unity.MemoryProfiler.Editor" memoryUI="Unity.MemoryProfiler.Editor.UI" noNamespaceSchemaLocation="../../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+	<Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="300" name="details-panel__splitter" orientation="Vertical">
+        <ui:VisualElement name="reference-trees" class="details-panel__section">
+            <ui:Foldout text="References" name="details-panel__section-header__references" display-tooltip-when-elided="true" class="details-panel__section-header">
+				<Unity.MemoryProfiler.Editor.UI.Ribbon name="references__ribbon__container" show-help-button="false" alignment="FlexStart" style="align-items: stretch;">
+					<Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Referenced By (Raw)" toggled="true" name="raw-connections" style="flex-grow: 1;" />
+				</Unity.MemoryProfiler.Editor.UI.Ribbon>
+				<ui:IMGUIContainer name="references-imguicontainer" style="flex-grow: 1; margin-top: 0;" />
+			</ui:Foldout>
+        </ui:VisualElement>
+        <ui:VisualElement name="selected-item-details" class="details-panel__section">
+			<ui:Foldout name="details-panel__section-header__selection-details" text="Selection Details" class="details-panel__section-header">
+				<ui:Label name="selected-item-details__item-title" />
+				<Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="selected-item-details__unity-item-title" />
+				
+				<ui:VisualElement name="selected-item-details__find-buttons" class="selected-item-details__area selected-item-details__find-buttons">
+					<ui:VisualElement name="selected-item-details__find-buttons__select-in-editor__holder" class="selected-item-details__find-buttons">
+						<ui:Button text="Select in Editor" name="selected-item-details__find-buttons__select-in-editor" />
+					</ui:VisualElement>
+					<ui:VisualElement name="selected-item-details__find-buttons__search-in-editor__holder" class="selected-item-details__find-buttons">
+						<ui:Button text="Search in Project" name="selected-item-details__find-buttons__search-in-editor" />
+						<ui:Button text="Open in Quick Search" name="selected-item-details__find-buttons__quick-search" />
+					</ui:VisualElement>
+				</ui:VisualElement>
+				
+				<ui:ScrollView name="selected-item-details__selection-details__scroll-area">
+				
+					<ui:VisualElement name="selected-item-details__item-description-and-documentation-link"  class="selected-item-details__area">
+						<ui:TextField name="selected-item-details__item-description" multiline="true" class="selectable-label"/>
+						<ui:VisualElement name="selected-item-details__documentation-link-area">
+							<ui:Button name="selected-item-details__item-documentation-button" class=""> 
+								<ui:Image class="icon-button icon-button__help-icon square-button-icon" />
+								<ui:Label text="Open Manual" />
+							</ui:Button>
+						</ui:VisualElement>
+					</ui:VisualElement>
+					<ui:VisualElement name="selected-item-details__grouped-elements" class="selected-item-details__area" />
+					<ui:VisualElement name="selected-item-details__dynamic-elements" class="selected-item-details__area" />
+					
+					<ui:VisualElement name="selected-item-details__preview-area"  class="selected-item-details__area">
+						<ui:Foldout name="selected-item-details__preview__foldout" class="selected-item-details__generic-foldout" text="Preview (taken from Editor)">
+							<ui:Image name="selected-item-details__preview" class="selected-item-details__preview" />
+						</ui:Foldout>
+					</ui:VisualElement>
+				
+				
+				<ui:VisualElement name="selected-item-details__managed-field-inspector-area" class="selected-item-details__area">
+					<ui:Foldout name="selected-item-details__managed-field-inspector__foldout" class="selected-item-details__managed-field-inspector__foldout" text="Managed Fields">
+						<ui:IMGUIContainer name="selected-item-details__managed-field-inspector__imguicontainer" class="selected-item-details__managed-field-inspector__imguicontainer" />
+					</ui:Foldout>
+				</ui:VisualElement>
+				
+				</ui:ScrollView>
+			</ui:Foldout>
+        </ui:VisualElement>
+    </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
+</ui:UXML>

@@ -1,0 +1,6 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" mui="Unity.MemoryProfiler.Editor.UI" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" memory="Unity.MemoryProfiler.Editor" memoryUI="Unity.MemoryProfiler.Editor.UI" noNamespaceSchemaLocation="../../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+	<ui:Foldout name="selected-item-details__group__header-foldout" text="Basic" class="selected-item-details__group__header-foldout">
+		<ui:VisualElement name="selected-item-details__group__content" class="selected-item-details__group__content">
+		</ui:VisualElement>
+	</ui:Foldout>
+</ui:UXML>

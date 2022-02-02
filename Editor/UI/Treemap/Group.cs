@@ -8,6 +8,8 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
     internal class Group : IComparable<Group>
     {
         public string Name;
+        public ObjectMetricType MetricType;
+        public long TypeIndex;
         public Rect Position;
         public List<Item> Items;
         public int EmptyObjectCount = 0;

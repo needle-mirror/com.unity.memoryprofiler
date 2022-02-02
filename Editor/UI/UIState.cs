@@ -33,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
-    enum FirstSnapshotAge
+    enum SnapshotAge
     {
         None,
         Older,
@@ -85,20 +85,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             public abstract Database.Table GetTableByIndex(int index);
             public abstract void UpdateTableSelectionNames();
 
-            public virtual HistoryEvent GetCurrentHistoryEvent()
-            {
-                if (CurrentViewPane == null) return null;
-                return CurrentViewPane.GetCurrentHistoryEvent();
-            }
-
-            public void TransitPane(ViewPane newPane)
+            public void TransitPane(ViewPane newPane, bool recordHistory)
             {
                 if (CurrentViewPane != newPane && CurrentViewPane != null)
                 {
+                    if (recordHistory)
+                    {
+                        // store view state changes if needed
+                        if (CurrentViewPane.ViewStateFilteringChangedSinceLastSelectionOrViewClose)
+                            CurrentViewPane.m_UIState.AddHistoryEvent(CurrentViewPane.GetViewStateFilteringChangesSinceLastSelectionOrViewClose());
+                        CurrentViewPane.m_UIState.AddHistoryEvent(CurrentViewPane.GetCloseHistoryEvent());
+                    }
                     CurrentViewPane.OnClose();
                 }
                 CurrentViewPane = newPane;
                 ViewPaneChanged(newPane);
+                if (recordHistory)
+                    CurrentViewPane?.m_UIState.AddHistoryEvent(CurrentViewPane.GetOpenHistoryEvent());
             }
 
             public abstract Database.Schema GetSchema();
@@ -185,7 +188,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_RawSnapshotReader = snapshot;
 
                 ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(snapshot.FullPath)));
-
                 var cachedSnapshot = new CachedSnapshot(snapshot);
                 using (s_CrawlManagedData.Auto())
                 {
@@ -239,7 +241,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (CurrentViewPane != null)
                     CurrentViewPane.OnClose();
-
                 SchemaToDisplay = null;
                 m_RawSchema.Clear();
                 m_RawSchema = null;
@@ -381,9 +382,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public History history = new History();
 
+        public SelectionDetailsFactory CustomSelectionDetailsFactory = new SelectionDetailsFactory();
+
         public event Action<BaseMode, ViewMode> ModeChanged = delegate {};
 
-        public FirstSnapshotAge SnapshotAge { get; private set; }
+        public event Action<MemorySampleSelection> SelectionChanged = delegate {};
+
+        public SnapshotAge FirstSnapshotAge { get; private set; }
 
         public BaseMode CurrentMode
         {
@@ -440,6 +445,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         public readonly DefaultHotKey HotKey = new DefaultHotKey();
         public readonly FormattingOptions FormattingOptions;
 
+        public MemorySampleSelection MainSelection { get; private set; } = MemorySampleSelection.InvalidMainSelection;
+
+        public MemorySampleSelection SecondarySelection { get; private set; } = MemorySampleSelection.InvalidSecondarySelection;
+
         public UIState()
         {
             FormattingOptions = new FormattingOptions();
@@ -452,6 +461,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             //FormattingOptions.AddFormatter("pointer", PointerFormatter);
 
             noMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, default(FileReader));
+
+            // When History is cleared, the selection is cleared as well as it is stored in the History
+            history.lastSelectionEventCleared += SendSelectionClearedEvent;
         }
 
         public void AddHistoryEvent(HistoryEvent he)
@@ -462,8 +474,75 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        public void RegisterSelectionChangeEvent(MemorySampleSelection selection)
+        {
+            var historySelectionEvent = new SelectionEvent(selection);
+            if (selection.Rank == MemorySampleSelectionRank.MainSelection)
+            {
+                // if the view filtering has changed since the last selection was made in this view, we need to store the filter state first
+                // otherwise, when going backwards in history, we wouldn't know what list was shown and might apply a filter where the selected object is not present
+                if (CurrentMode.CurrentViewPane.ViewStateFilteringChangedSinceLastSelectionOrViewClose)
+                    history.AddEvent(CurrentMode.CurrentViewPane.GetViewStateFilteringChangesSinceLastSelectionOrViewClose());
+                MainSelection = selection;
+                SecondarySelection = MemorySampleSelection.InvalidSecondarySelection;
+            }
+            else
+                SecondarySelection = selection;
+
+            history.SetCurrentSelectionEvent(historySelectionEvent);
+            SelectionChanged(historySelectionEvent.Selection);
+        }
+
+        /// <summary>
+        /// Just notifies everyone that the selection was cleared without recording it to history
+        /// </summary>
+        void SendSelectionClearedEvent()
+        {
+            SelectionChanged(MemorySampleSelection.InvalidMainSelection);
+        }
+
+        internal void RestoreSelectionFromHistoryEvent(SelectionEvent selEvt, bool updateCurrentViewPane = true)
+        {
+            if (updateCurrentViewPane)
+                CurrentMode?.CurrentViewPane?.SetSelectionFromHistoryEvent(selEvt);
+
+            if (selEvt.Selection.Rank == MemorySampleSelectionRank.MainSelection)
+            {
+                MainSelection = selEvt.Selection;
+                SecondarySelection = MemorySampleSelection.InvalidSecondarySelection;
+            }
+            else
+                SecondarySelection = selEvt.Selection;
+
+            SelectionChanged(selEvt.Selection);
+        }
+
+        /// <summary>
+        /// Clears the Selection and records it in the history
+        /// </summary>
+        /// <param name="rank"></param>
+        public void ClearSelection(MemorySampleSelectionRank rank)
+        {
+            var clearSelection = MemorySampleSelection.InvalidMainSelection;
+
+            if (rank == MemorySampleSelectionRank.MainSelection)
+            {
+                MainSelection = clearSelection;
+                SecondarySelection = MemorySampleSelection.InvalidSecondarySelection;
+            }
+            else
+            {
+                clearSelection = MemorySampleSelection.InvalidSecondarySelection;
+                SecondarySelection = clearSelection;
+            }
+
+            history.SetCurrentSelectionEvent(new SelectionEvent(clearSelection));
+            SelectionChanged(clearSelection);
+        }
+
         public void ClearDiffMode()
         {
+            SendSelectionClearedEvent();
             diffMode = null;
             if (CurrentViewMode == ViewMode.ShowDiff)
             {
@@ -484,14 +563,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (FirstMode != null)
                 FirstMode.Clear();
             FirstMode = null;
+            SendSelectionClearedEvent();
             CurrentViewMode = ViewMode.ShowNone;
             diffMode = null;
             history.Clear();
-            SnapshotAge = FirstSnapshotAge.None;
+            FirstSnapshotAge = SnapshotAge.None;
+        }
+
+        public void Clear()
+        {
+            ClearAllOpenModes();
+            SelectionChanged = delegate {};
         }
 
         public void ClearFirstMode()
         {
+            SendSelectionClearedEvent();
             if (FirstMode != null)
                 FirstMode.Clear();
             FirstMode = null;
@@ -499,7 +586,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (diffMode != null)
             {
                 ClearDiffMode();
-                SnapshotAge = FirstSnapshotAge.None;
+                FirstSnapshotAge = SnapshotAge.None;
             }
 
             if (CurrentViewMode == ViewMode.ShowFirst)
@@ -514,6 +601,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void ClearSecondMode()
         {
+            SendSelectionClearedEvent();
             if (SecondMode != null)
                 SecondMode.Clear();
             SecondMode = null;
@@ -521,7 +609,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (diffMode != null)
             {
                 ClearDiffMode();
-                SnapshotAge = FirstSnapshotAge.None;
+                FirstSnapshotAge = SnapshotAge.None;
             }
 
             if (CurrentViewMode == ViewMode.ShowSecond)
@@ -564,15 +652,15 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void SwapLastAndCurrentSnapshot(bool keepCurrentSnapshotOpen = true)
         {
             // TODO: find out if we actually need to clear this or if it can be saved with the mode
-            history.Clear();
+            //history.Clear();
             var temp = SecondMode;
             SecondMode = FirstMode;
             FirstMode = temp;
 
-            if (SnapshotAge == FirstSnapshotAge.Newer)
-                SnapshotAge = FirstSnapshotAge.Older;
-            else if (SnapshotAge == FirstSnapshotAge.Older)
-                SnapshotAge = FirstSnapshotAge.Newer;
+            if (FirstSnapshotAge == SnapshotAge.Newer)
+                FirstSnapshotAge = SnapshotAge.Older;
+            else if (FirstSnapshotAge == SnapshotAge.Older)
+                FirstSnapshotAge = SnapshotAge.Newer;
 
             if (CurrentViewMode != ViewMode.ShowDiff)
             {
@@ -589,8 +677,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             history.Clear();
             diffMode = new DiffMode(FormattingOptions.ObjectDataFormatter, snapshotAIsOlder ? FirstMode : SecondMode , snapshotAIsOlder ? SecondMode : FirstMode, snapshotAIsOlder, sameSessionDiff);
             CurrentViewMode = ViewMode.ShowDiff;
-            if (snapshotAIsOlder)
-                SnapshotAge = FirstSnapshotAge.Older;
+
+            FirstSnapshotAge = snapshotAIsOlder ? SnapshotAge.Older : SnapshotAge.Newer;
         }
 
         public void TransitModeToOwningTable(Table table)

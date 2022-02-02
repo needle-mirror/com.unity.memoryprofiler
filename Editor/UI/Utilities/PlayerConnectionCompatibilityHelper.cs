@@ -3,6 +3,7 @@ using System;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
+using Unity.MemoryProfiler.Editor.UIContentData;
 #if UNITY_2020_1_OR_NEWER
 using UnityEditor.Networking.PlayerConnection;
 using UnityEngine.Networking.PlayerConnection;
@@ -44,7 +45,7 @@ namespace Unity.MemoryProfiler.Editor
             var connectionWindowType = assembly.GetType(k_ConnectionTreeWindowTypeName);
             if (connectionWindowType == null)
             {
-                Debug.LogWarning("In Unity Editor Versions from 2021.2.0a1 to 2021.2.0a19 the connection dropdown doesn't work. Please update Unity. If you are on a 2021.2.0a19 or newer and see this, please report a bug.");
+                Debug.LogWarning("In Unity Editor Versions from 2021.2.0a1 to 2021.2.0a19 the connection drop-down doesn't work. Please update Unity. If you are on a 2021.2.0a19 or newer and see this, " + TextContent.PleaseReportABugMessage);
                 return;
             }
             s_ConstructConnectionWindow = connectionWindowType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[] { internalInterface.UnderlyingSystemType, typeof(Rect) }, null);
@@ -63,7 +64,7 @@ namespace Unity.MemoryProfiler.Editor
             s_2Params[1] = rect;
             if (s_ConstructConnectionWindow == null)
             {
-                Debug.LogWarning("In Unity Editor Versions from 2021.2.0a1 to 2021.2.0a19 the connection dropdown doesn't work. Please update Unity. If you are on a 2021.2.0a19 or newer and see this, please report a bug.");
+                Debug.LogWarning("In Unity Editor Versions from 2021.2.0a1 to 2021.2.0a19 the connection dropdown doesn't work. Please update Unity. If you are on a 2021.2.0a19 or newer and see this, " + TextContent.PleaseReportABugMessage);
                 return;
             }
             var windowContent = s_ConstructConnectionWindow.Invoke(s_2Params) as PopupWindowContent;

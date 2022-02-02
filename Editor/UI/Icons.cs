@@ -12,7 +12,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public const string IconFolder = "Packages/com.unity.memoryprofiler/Package Resources/Icons/";
         public static Texture2D MemoryProfilerWindowTabIcon { get { return LoadIcon(IconFolder + "Memory Profiler.png"); } }
 
-        static Texture2D LoadIcon(string resourcePath, bool autoScale = false)
+        public static Texture2D LoadIcon(string resourcePath, bool autoScale = false)
         {
             if (string.IsNullOrEmpty(resourcePath))
                 return null;

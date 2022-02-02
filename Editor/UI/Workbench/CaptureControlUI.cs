@@ -39,6 +39,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         VisualElement m_CaptureButtonWithDropdown;
         ToolbarButton m_ImportButton;
+        ToolbarToggle m_DetailsToggle;
         [NonSerialized]
         SnapshotCollection m_SnapshotsCollection;
         [NonSerialized]
@@ -48,6 +49,7 @@ namespace Unity.MemoryProfiler.Editor
         [NonSerialized]
         IUIStateHolder m_ParentWindow;
         IConnectionState m_PlayerConnectionState = null;
+        TwoPaneSplitView m_Splitter;
 
         [SerializeField]
         CaptureFlags m_CaptureFlags = CaptureFlags.ManagedObjects
@@ -77,6 +79,8 @@ namespace Unity.MemoryProfiler.Editor
 
             m_LegacyReader = new LegacyReader();
 
+            m_Splitter = root.Q<TwoPaneSplitView>("details-panel__splitter");
+
             // Add toolbar functionality
 #if UNITY_2020_1_OR_NEWER
             m_PlayerConnectionState = PlayerConnectionGUIUtility.GetConnectionState(parentWindow.Window);
@@ -91,6 +95,12 @@ namespace Unity.MemoryProfiler.Editor
 
             m_ImportButton = root.Q<ToolbarButton>("toolbar__import-button");
             m_ImportButton.clicked += ImportCapture;
+
+            m_DetailsToggle = root.Q<ToolbarToggle>("toolbar__details-toggle");
+            m_DetailsToggle.RegisterValueChangedCallback(ToggleDetailsVisibility);
+
+            //we have to do this to get the image on the left as it cant be added another way.
+            m_DetailsToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] {"icon_button", "square-button-icon", "icon-button__details-icon"}));
 
             var exportButton = root.Q<Button>("toolbar__export-button");
             exportButton.clicked += () => OpenExportMenu(exportButton.GetRect());
@@ -115,6 +125,14 @@ namespace Unity.MemoryProfiler.Editor
             CompilationPipeline.assemblyCompilationStarted += StartedCompilationCallback;
             CompilationPipeline.assemblyCompilationFinished += FinishedCompilationCallback;
 #endif
+        }
+
+        void ToggleDetailsVisibility(ChangeEvent<bool> evt)
+        {
+            if (evt.newValue)
+                m_Splitter.UnCollapse();
+            else
+                m_Splitter.CollapseChild(1);
         }
 
         public void RegisterAdditionalCaptureButton(Button captureButton)

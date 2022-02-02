@@ -5,8 +5,6 @@ namespace Unity.MemoryProfiler.Editor.UI
     internal abstract class HistoryEvent : IEquatable<HistoryEvent>
     {
         protected const string seperator = "::";
-        //public abstract bool IsSame(HistoryEvent e);
-        public UIState.BaseMode Mode;
 
         protected abstract bool IsEqual(HistoryEvent evt);
 
@@ -14,6 +12,27 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             return IsEqual(other);
         }
+    }
+
+    // These events are only logged for saving the view state when a selection is made or before a new view is opened
+    // They are used for restoring the view state when going backwards, they will no be shown in a history log (hidden) and:
+    // History navigation will read them to restore the view state when going backwards but otherwise skip them
+    internal abstract class ViewStateChangedHistoryEvent : HistoryEvent
+    {
+        public enum StateChangeType
+        {
+            ViewClosed,
+            FiltersChanged
+        }
+        public StateChangeType ChangeType { get; set; }
+    }
+
+    // Stores everything needed to reopen the view to what it was after it was opened the first time,
+    // before manually applying filters or manually selection items.
+    internal abstract class ViewOpenHistoryEvent : HistoryEvent
+    {
+        public UIState.BaseMode Mode;
+        public abstract ViewStateChangedHistoryEvent ViewStateChangeRestorePoint { get; }
     }
 
     /// <summary>
@@ -24,16 +43,23 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         public System.Collections.Generic.List<HistoryEvent> events = new System.Collections.Generic.List<HistoryEvent>();
         public int backCount = 0;
+        int m_FirstSelectionEventIndex = -1;
         public bool hasPresentEvent = false;
 
         public event System.Action historyChanged = delegate {};
+        public event System.Action lastSelectionEventCleared = delegate {};
 
         public void Clear()
         {
+            var fromerCurrentEventIndex = GetCurrent();
             backCount = 0;
             hasPresentEvent = false;
             events.Clear();
             historyChanged();
+
+            if (m_FirstSelectionEventIndex >= fromerCurrentEventIndex)
+                lastSelectionEventCleared();
+            m_FirstSelectionEventIndex = -1;
         }
 
         protected int eventCount
@@ -41,7 +67,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             get
             {
                 if (hasPresentEvent) return events.Count;
-                return events.Count + 1;
+                return events.Count;
             }
         }
         public bool isPresent
@@ -66,6 +92,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        public bool presentEventIsFollowedByViewChange
+        {
+            get
+            {
+                return hasFuture && events[GetCurrent() + 1] is ViewStateChangedHistoryEvent stateChange
+                    && stateChange.ChangeType == ViewStateChangedHistoryEvent.StateChangeType.FiltersChanged;
+            }
+        }
 
         public void AddEvent(HistoryEvent e)
         {
@@ -73,6 +107,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 //remove future
                 var i = events.Count - backCount;
+                if (i >= m_FirstSelectionEventIndex)
+                    m_FirstSelectionEventIndex = -1;
                 events.RemoveRange(i, backCount);
             }
             backCount = 0;
@@ -94,6 +130,56 @@ namespace Unity.MemoryProfiler.Editor.UI
             historyChanged();
         }
 
+        internal SelectionEvent GetLastSelectionEvent(MemorySampleSelectionRank maxRank)
+        {
+            for (int i = events.Count - (1 + backCount); i >= 0; i--)
+            {
+                if (events[i] is SelectionEvent)
+                {
+                    var selectionEvent = events[i] as SelectionEvent;
+                    if (selectionEvent.Selection.Rank <= maxRank)
+                        return selectionEvent;
+                }
+            }
+            return null;
+        }
+
+        internal SelectionEvent GetNextSelectionEvent(MemorySampleSelectionRank maxRank)
+        {
+            for (int i = events.Count - (1 + backCount); i < events.Count; i++)
+            {
+                if (events[i] is SelectionEvent)
+                {
+                    var selectionEvent = events[i] as SelectionEvent;
+                    if (selectionEvent.Selection.Rank <= maxRank)
+                        return selectionEvent;
+                }
+            }
+            return null;
+        }
+
+        internal ViewStateChangedHistoryEvent GetLastViewStateChangeEvent()
+        {
+            for (int i = events.Count - (1 + backCount); i >= 0; i--)
+            {
+                if (events[i] is ViewOpenHistoryEvent)
+                    return (events[i] as ViewOpenHistoryEvent).ViewStateChangeRestorePoint;
+                else if (events[i] is ViewStateChangedHistoryEvent)
+                    return events[i] as ViewStateChangedHistoryEvent;
+            }
+            return null;
+        }
+
+        internal ViewOpenHistoryEvent GetLastOpenEvent()
+        {
+            for (int i = events.Count - (1 + backCount); i >= 0; i--)
+            {
+                if (events[i] is ViewOpenHistoryEvent)
+                    return events[i] as ViewOpenHistoryEvent;
+            }
+            return null;
+        }
+
         public void SetPresentEvent(HistoryEvent ePresent)
         {
             if (ePresent == null) return;
@@ -106,22 +192,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (hasPast)
             {
-                if (isPresent && !hasPresentEvent)
-                {
-                    //remove last event
-                    int l = events.Count - 1;
-                    var e = events[l];
-                    events.RemoveAt(l);
-                    historyChanged();
-                    return e;
-                }
-                else
-                {
-                    ++backCount;
-                    var i = GetCurrent();
-                    historyChanged();
-                    return events[i];
-                }
+                ++backCount;
+                var i = GetCurrent();
+                historyChanged();
+                if (i + 1 == m_FirstSelectionEventIndex)
+                    lastSelectionEventCleared();
+                return events[i];
             }
 
             historyChanged();
@@ -155,6 +231,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 strOut += e.ToString() + "\n";
             }
             UnityEngine.Debug.Log(strOut);
+        }
+
+        public void SetCurrentSelectionEvent(SelectionEvent historySelectionEvent)
+        {
+            AddEvent(historySelectionEvent);
+            if (m_FirstSelectionEventIndex == -1)
+                m_FirstSelectionEventIndex = GetCurrent();
         }
     }
 }

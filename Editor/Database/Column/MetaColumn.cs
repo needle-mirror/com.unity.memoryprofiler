@@ -35,6 +35,7 @@ namespace Unity.MemoryProfiler.Editor.Database
         public readonly int DefaultDisplayWidth;
 
         public readonly bool IsPrimaryKey;
+        public bool ShownByDefault = true;
         public string FormatName { get; set; }
 
         public readonly Operation.Grouping.IGroupAlgorithm DefaultGroupAlgorithm;
@@ -70,6 +71,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             Index = 0;
             Name = mc.Name;
             IsPrimaryKey = mc.IsPrimaryKey;
+            ShownByDefault = mc.ShownByDefault;
             DisplayName = mc.DisplayName;
             Type = mc.Type;
             FormatName = mc.FormatName;

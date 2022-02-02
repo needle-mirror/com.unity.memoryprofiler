@@ -64,6 +64,13 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         ProfileTarget_Info,
         ProfileTarget_MemoryStats,
         NativeMemoryLabels_Size,
+        SceneObjects_Name,
+        SceneObjects_Path,
+        SceneObjects_AssetPath,
+        SceneObjects_BuildIndex,
+        SceneObjects_RootIdCounts,
+        SceneObjects_RootIdOffsets,
+        SceneObjects_RootIds,
         Count, //used to keep track of entry count, only add c++ matching entries above this one
     }
 }

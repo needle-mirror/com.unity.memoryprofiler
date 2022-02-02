@@ -31,37 +31,68 @@ namespace Unity.MemoryProfiler.Editor.UI
             public static readonly  GUIContent ColorSchemeLabel = new GUIContent("Color scheme");
         }
 
-
-        internal class History : HistoryEvent
+        internal class ViewStateHistory : ViewStateChangedHistoryEvent
         {
-            MemoryMapDiffPane.TableDisplayMode m_TableDisplay;
-            MemoryMap.MemoryMapDiff.ViewState m_State;
-            DatabaseSpreadsheet.State m_TableState;
+            public readonly MemoryMapDiffPane.TableDisplayMode TableDisplay;
+            public readonly MemoryMapDiff.ViewState State;
+            public readonly DatabaseSpreadsheet.State SpreadsheetState;
+            public readonly bool FirstSnapshotActive;
 
-            bool m_FirstSnapshotActive;
+            public ViewStateHistory(MemoryMapDiff.ViewState state, DatabaseSpreadsheet.State spreadsheetState, MemoryMapDiffPane.TableDisplayMode tableDisplay, bool firstSnapshotActive)
+            {
+                State = state;
+                TableDisplay = tableDisplay;
+                SpreadsheetState = spreadsheetState;
+                FirstSnapshotActive = firstSnapshotActive;
+            }
+
+            protected override bool IsEqual(HistoryEvent evt)
+            {
+                var other = evt as ViewStateHistory;
+                return other != null &&
+                    State.Equals(other.State) &&
+                    SpreadsheetState.Equals(other.SpreadsheetState) &&
+                    TableDisplay == other.TableDisplay &&
+                    FirstSnapshotActive == other.FirstSnapshotActive;
+            }
+        }
+
+        internal class History : ViewOpenHistoryEvent
+        {
+            public override ViewStateChangedHistoryEvent ViewStateChangeRestorePoint => m_ViewState;
+            ViewStateHistory m_ViewState;
 
             public History(MemoryMapDiffPane pane)
             {
                 Mode = pane.m_UIState.CurrentMode;
 
-                m_TableDisplay = pane.m_CurrentTableView;
-                m_TableState = pane.m_Spreadsheet.CurrentState;
-                m_State = pane.m_MemoryMap.CurrentViewState;
-                m_FirstSnapshotActive = (pane.m_ActiveMode == pane.m_UIState.FirstMode);
+                m_ViewState = pane.GetViewStateFilteringChangesSinceLastSelectionOrViewClose() as ViewStateHistory;
             }
 
-            public void Restore(MemoryMapDiffPane pane)
+            public void Restore(MemoryMapDiffPane pane, bool reopen, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
             {
-                pane.m_CurrentTableView = m_TableDisplay;
-                pane.m_MemoryMap.CurrentViewState = m_State;
+                ViewStateHistory viewState = m_ViewState;
+                if (viewStateToRestore != null && viewStateToRestore is ViewStateHistory)
+                    viewState = viewStateToRestore as ViewStateHistory;
 
-                if (m_FirstSnapshotActive)
+                if (selectionEvent != null)
+                {
+                    var tableState = viewState.SpreadsheetState;
+                    tableState.SelectedRow = selectionEvent.Selection.RowIndex;
+                    tableState.SelectionIsLatent = selectionIsLatent;
+                    viewState = new ViewStateHistory(viewState.State, tableState, viewState.TableDisplay, viewState.FirstSnapshotActive);
+                }
+
+                pane.m_CurrentTableView = viewState.TableDisplay;
+                pane.m_MemoryMap.CurrentViewState = viewState.State;
+
+                if (viewState.FirstSnapshotActive)
                     pane.m_ActiveMode = pane.m_UIState.FirstMode as UIState.SnapshotMode;
                 else
                     pane.m_ActiveMode = pane.m_UIState.SecondMode as UIState.SnapshotMode;
 
-                pane.OnSelectRegions(m_State.HighlightedAddrMin, m_State.HighlightedAddrMax);
-                pane.m_Spreadsheet.CurrentState = m_TableState;
+                pane.OnSelectRegions(viewState.State.HighlightedAddrMin, viewState.State.HighlightedAddrMax);
+                pane.m_Spreadsheet.CurrentState = viewState.SpreadsheetState;
                 pane.m_EventListener.OnRepaint();
             }
 
@@ -82,7 +113,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         MemoryMap.MemoryMapDiff m_MemoryMap;
-        FirstSnapshotAge m_CurrentFirstSnapshotAge;
+        SnapshotAge m_CurrentFirstSnapshotAge;
 
         UI.DatabaseSpreadsheet m_Spreadsheet;
 
@@ -152,6 +183,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UnityEditor.EditorPrefs.SetInt("Unity.MemoryProfiler.Editor.UI.MemoryMapPaneDiff.TableDisplayMode", (int)m_CurrentTableView);
             }
         }
+
+        public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose;
+        bool m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
 
         GUIContent[] m_DisplayElementsList = null;
         GUIContent[] m_ColorSchemeList = null;
@@ -239,7 +273,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIState.SnapshotMode mode2 = m_UIState.SecondMode as UIState.SnapshotMode;
             m_ActiveMode = mode1;
 
-            m_CurrentFirstSnapshotAge = m_UIState.SnapshotAge;
+            m_CurrentFirstSnapshotAge = m_UIState.FirstSnapshotAge;
             m_MemoryMap = new MemoryMap.MemoryMapDiff();
             m_MemoryMap.Setup(mode1.snapshot, mode2.snapshot);
             m_MemoryMap.RegionSelected += OnSelectRegions;
@@ -259,6 +293,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OnSelectRegions(ulong minAddr, ulong maxAddr)
         {
+            m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = true;
             var lr = new Database.LinkRequestTable();
             lr.LinkToOpen = new Database.TableLink();
 
@@ -272,7 +307,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else if (CurrentTableView == TableDisplayMode.Allocations)
             {
-                lr.LinkToOpen.TableName = "RawNativeAllocation";
+                lr.LinkToOpen.TableName = "AllNativeAllocations";
                 lr.LinkToOpen.RowWhere = new List<Database.View.Where.Builder>();
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("address", Database.Operation.Operator.GreaterEqual, new Expression.MetaExpression(minAddr.ToString(), false)));
                 lr.LinkToOpen.RowWhere.Add(new Database.View.Where.Builder("address", Database.Operation.Operator.Less, new Expression.MetaExpression(maxAddr.ToString(), false)));
@@ -297,14 +332,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public override UI.HistoryEvent GetCurrentHistoryEvent()
+        public override UI.ViewOpenHistoryEvent GetOpenHistoryEvent()
         {
             return new History(this);
         }
 
-        public void RestoreHistoryEvent(UI.HistoryEvent history)
+        public override ViewStateChangedHistoryEvent GetViewStateFilteringChangesSinceLastSelectionOrViewClose()
         {
-            (history as History).Restore(this);
+            m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+            var viewState = new ViewStateHistory(m_MemoryMap.CurrentViewState, m_Spreadsheet?.CurrentState ?? new DatabaseSpreadsheet.State(), m_CurrentTableView, m_ActiveMode == m_UIState.FirstMode);
+            viewState.ChangeType = ViewStateChangedHistoryEvent.StateChangeType.FiltersChanged;
+            return viewState;
+        }
+
+        public void RestoreHistoryEvent(UI.HistoryEvent history, bool reopen, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
+        {
+            (history as History).Restore(this, reopen, viewStateToRestore, selectionEvent, selectionIsLatent);
         }
 
         void OpenLinkRequest(Database.LinkRequestTable link, bool focus)
@@ -358,13 +401,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
             }
 
-            //add current event in history
-            m_UIState.AddHistoryEvent(GetCurrentHistoryEvent());
             var tableLinkRequest = link as Database.LinkRequestTable;
             if (tableLinkRequest != null)
             {
                 if (tableLinkRequest.LinkToOpen.TableName == ObjectTable.TableName)
                 {
+                    // TODO: Remove Object table linking, move all details to Details view.
+                    // This currently can't be used properly with selection & view History
+
                     //open object link in the same pane
                     OpenLinkRequest(tableLinkRequest, true);
                     return;
@@ -375,6 +419,43 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             //open the link in the spreadsheet pane
             m_EventListener.OnOpenLink(link, m_ActiveMode);
+        }
+
+        void OnRowSelected(long rowIndex)
+        {
+            var snapshotAge = m_UIState.FirstSnapshotAge;
+            if (m_ActiveMode != m_UIState.FirstMode)
+                snapshotAge = m_UIState.FirstSnapshotAge == SnapshotAge.Newer ? SnapshotAge.Older : SnapshotAge.Newer;
+
+            var selection = new MemorySampleSelection(m_UIState, m_Spreadsheet.DisplayTable, rowIndex, snapshotAge);
+            m_UIState.RegisterSelectionChangeEvent(selection);
+        }
+
+        void OnUserChangedSpreadsheetFilters()
+        {
+            var selection = m_UIState.history.GetLastSelectionEvent(MemorySampleSelectionRank.MainSelection);
+            if (selection != null && selection.Selection.Valid)
+            {
+                ApplyActiveSelectionAfterOpening(selection);
+            }
+        }
+
+        public override void ApplyActiveSelectionAfterOpening(SelectionEvent selectionEvent)
+        {
+            // TODO: find selected object in Memory Map and frame it
+        }
+
+        public override void SetSelectionFromHistoryEvent(SelectionEvent selectionEvent)
+        {
+            if (selectionEvent.Selection.Rank == MemorySampleSelectionRank.MainSelection)
+                m_Spreadsheet.RestoreSelectedRow(selectionEvent.Selection.FindSelectionInTable(m_UIState, m_Spreadsheet.DisplayTable));
+            else
+            {
+                var currentState = m_Spreadsheet.CurrentState;
+                currentState.SelectionIsLatent = true;
+                m_Spreadsheet.CurrentState = currentState;
+                m_EventListener.OnRepaint();
+            }
         }
 
         void OpenTable(Database.TableReference tableRef, Database.Table table, bool focus)
@@ -392,7 +473,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 existingColumnCount = m_Spreadsheet.DisplayTable.GetMetaData().GetColumnCount();
             }
             m_Spreadsheet = new UI.DatabaseSpreadsheet(m_UIState.FormattingOptions, table, this);
+            m_Spreadsheet.UserChangedFilters += OnUserChangedSpreadsheetFilters;
             m_Spreadsheet.LinkClicked += OnSpreadsheetClick;
+            m_Spreadsheet.RowSelectionChanged += OnRowSelected;
             m_Spreadsheet.Goto(pos);
             if (existingFilter != null)
             {
@@ -426,7 +509,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             EditorGUILayout.BeginHorizontal(Styles.MemoryMap.ContentToolbar);
 
-            var age = m_UIState.SnapshotAge;
+            var age = m_UIState.FirstSnapshotAge;
             if (m_CurrentFirstSnapshotAge != age)
             {
                 // first snapshot age changed, recalculate Memory Map
@@ -435,7 +518,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UIStateHolder.Repaint();
             }
 
-            if (GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, age == FirstSnapshotAge.Older ? "Old (A)" : "New (A)", EditorStyles.radioButton))
+            if (GUILayout.Toggle(m_ActiveMode == m_UIState.FirstMode, age == SnapshotAge.Older ? "Old (A)" : "New (A)", EditorStyles.radioButton))
             {
                 if (m_ActiveMode != m_UIState.FirstMode)
                 {
@@ -444,7 +527,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            if (GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, age == FirstSnapshotAge.Older ? "New (B)" : "Old (B)",  EditorStyles.radioButton))
+            if (GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, age == SnapshotAge.Older ? "New (B)" : "Old (B)",  EditorStyles.radioButton))
             {
                 if (m_ActiveMode != m_UIState.SecondMode)
                 {
@@ -476,9 +559,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 EditorGUILayout.BeginVertical();
 
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Label("Filters:");
                 m_Spreadsheet.OnGui_Filters();
-                GUILayout.FlexibleSpace();
                 EditorGUILayout.EndHorizontal();
 
                 EditorGUILayout.BeginHorizontal();
@@ -564,6 +645,37 @@ namespace Unity.MemoryProfiler.Editor.UI
                 menu.DropDown(popupRect);
             }
             EditorGUILayout.EndHorizontal();
+        }
+
+        public override void OnSelectionChanged(MemorySampleSelection selection)
+        {
+            if (selection.Rank == MemorySampleSelectionRank.SecondarySelection)
+                m_Spreadsheet.SetSelectionAsLatent(true);
+            switch (selection.Type)
+            {
+                case MemorySampleSelectionType.NativeObject:
+                case MemorySampleSelectionType.ManagedObject:
+                case MemorySampleSelectionType.UnifiedObject:
+                case MemorySampleSelectionType.Allocation:
+                case MemorySampleSelectionType.AllocationSite:
+                case MemorySampleSelectionType.Symbol:
+                case MemorySampleSelectionType.AllocationCallstack:
+                case MemorySampleSelectionType.NativeRegion:
+                case MemorySampleSelectionType.ManagedRegion:
+                case MemorySampleSelectionType.Allocator:
+                    // TODO: check that this is the type of item currently shown and if the selection wasn't made in this view, that it is appropriately updated. For now, assume it was made in this view.
+                    break;
+                case MemorySampleSelectionType.None:
+                case MemorySampleSelectionType.Label:
+                case MemorySampleSelectionType.NativeType:
+                case MemorySampleSelectionType.ManagedType:
+                case MemorySampleSelectionType.Connection:
+                case MemorySampleSelectionType.HighlevelBreakdownElement:
+                default:
+                    if (selection.Rank == MemorySampleSelectionRank.MainSelection)
+                        m_Spreadsheet.ClearSelection();
+                    break;
+            }
         }
     }
 }

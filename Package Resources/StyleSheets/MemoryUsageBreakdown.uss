@@ -30,8 +30,56 @@
     border-bottom-right-radius: 2px;
 }
 
+
 .memory-usage-breakdown__memory-usage-bar__background {
     flex-grow: 1;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.memory-usage-breakdown__memory-usage-bar__background:hover {
+    background-color: rgb(30, 30, 30);
+    border-left-color: rgb(64, 64, 64);
+    border-right-color: rgb(64, 64, 64);
+    border-top-color: rgb(64, 64, 64);
+    border-bottom-color: rgb(64, 64, 64);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.memory-usage-breakdown__memory-usage-bar__background.memory-usage-breakdown__element--hovered{
+    background-color: rgb(30, 30, 30);
+    border-left-color: rgb(64, 64, 64);
+    border-right-color: rgb(64, 64, 64);
+    border-top-color: rgb(64, 64, 64);
+    border-bottom-color: rgb(64, 64, 64);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.memory-usage-breakdown__memory-usage-bar__background.memory-usage-breakdown__element--selected{
+    border-left-color: rgb(255, 255, 255);
+    border-right-color: rgb(255, 255, 255);
+    border-top-color: rgb(255, 255, 255);
+    border-bottom-color: rgb(255, 255, 255);
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
     border-top-left-radius: 2px;
     border-bottom-left-radius: 2px;
     border-top-right-radius: 2px;
@@ -66,6 +114,37 @@
 .memory-usage-bar__element__unknown {
     width: 20%;
     height: 100%;
+}
+
+.memory-usage-bar__element__unknown.memory-usage-breakdown__element--hovered{
+    background-color: rgb(30, 30, 30);
+    border-left-color: rgb(64, 64, 64);
+    border-right-color: rgb(64, 64, 64);
+    border-top-color: rgb(64, 64, 64);
+    border-bottom-color: rgb(64, 64, 64);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.memory-usage-bar__element__unknown.memory-usage-breakdown__element--selected{
+    border-left-color: rgb(255, 255, 255);
+    border-right-color: rgb(255, 255, 255);
+    border-top-color: rgb(255, 255, 255);
+    border-bottom-color: rgb(255, 255, 255);
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
+    border-top-left-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
 }
 
 .memory-usage-breakdown__memory-usage-bar__remainder {
@@ -112,6 +191,18 @@
     border-bottom-color: rgb(64, 64, 64);
     border-bottom-width: 1px;
     -unity-text-align: middle-right;
+}
+
+.legend__row:hover {
+    background-color: rgb(30, 30, 30);
+}
+
+.legend__row.memory-usage-breakdown__element--hovered{
+    background-color: rgb(30, 30, 30);
+}
+
+.legend__row.memory-usage-breakdown__element--selected{
+    background-color: rgb(14, 129, 193);
 }
 
 .legend__used-reserved-label {

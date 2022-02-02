@@ -161,6 +161,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public string UnknownName { get; private set; } = Content.UnknownText;
         public string KnownTotalName { get; private set; } = Content.KnownTotalName;
+        public int Id { get; private set; } = -1;
+
+        public event Action<int, int> ElementSelected = delegate {};
+        public event Action<int, int> ElementDeselected = delegate {};
 
         VisualTreeAsset m_NameAndColor;
         VisualTreeAsset m_Size;
@@ -210,6 +214,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         public CompareMode Mode { get; private set;}
+
+        public bool SelectableElements = false;
+
         VisualElement[] m_KnownParts = new VisualElement[2];
 
         public MemoryUsageBreakdown(string headerText, bool showUnknown = false, bool singleMode = true)
@@ -253,7 +260,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Content = m_MemoryUsageBar;
 
             m_UnknownBar[0] = m_MemoryUsageBar.Q(ElementAndStyleNames.MemoryUsageBarA).Q(ElementAndStyleNames.MemoryUsageBarUnknown);
+            m_UnknownBar[0].RegisterClickEvent(OnSelectedUnkown);
+            m_UnknownBar[0].RegisterCallback<MouseEnterEvent>(OnMouseEnterUnkown);
+            m_UnknownBar[0].RegisterCallback<MouseLeaveEvent>(OnMouseLeaveUnkown);
             m_UnknownBar[1] = m_MemoryUsageBar.Q(ElementAndStyleNames.MemoryUsageBarB).Q(ElementAndStyleNames.MemoryUsageBarUnknown);
+            m_UnknownBar[1].RegisterClickEvent(OnSelectedUnkown);
+            m_UnknownBar[1].RegisterCallback<MouseEnterEvent>(OnMouseEnterUnkown);
+            m_UnknownBar[1].RegisterCallback<MouseLeaveEvent>(OnMouseLeaveUnkown);
             m_SortControls = new SortControl(m_Root.Q(ElementAndStyleNames.ColumnAControls), m_Root.Q(ElementAndStyleNames.ColumnBControls), m_Root.Q(ElementAndStyleNames.DiffColumnControls), SortElements);
             Setup();
 
@@ -342,7 +355,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 for (int ii = 0; ii < m_Elements.Count; ii++)
                 {
-                    var percentage = (m_Elements[ii].stats[i].totalBytes / (float)m_TotalTrackedBytes[i]) * 100;
+                    var percentage = m_TotalTrackedBytes[i] > 0 ? (m_Elements[ii].stats[i].totalBytes / (float)m_TotalTrackedBytes[i]) * 100 : 100;
                     var ve = m_Elements[ii].parent.Q<VisualElement>($"memory-usage-breakdown__memory-usage-bar-{Enum.GetName(typeof(MemoryUsageBreakdownElement.StatsIdx), i)}").Q<VisualElement>(ElementAndStyleNames.MemoryUsageBarKnownParts).Children().ToArray();
                     if (!m_Elements[ii].barValuesSet[i] && setBars && totalBytes[i] != 0)
                     {
@@ -376,7 +389,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (ShowUnknown || !m_Normalized)
                 {
-                    var percentage = m_TotalTrackedBytes[i] / (float)totalBarByteAmount * 100;
+                    var percentage = totalBarByteAmount > 0 ? m_TotalTrackedBytes[i] / (float)totalBarByteAmount * 100 : 100;
                     m_KnownParts[i].style.width = new Length(Mathf.RoundToInt(percentage), LengthUnit.Percent);
                 }
                 else
@@ -422,13 +435,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     text += string.Format(Content.KnownTotalFormatString, KnownTotalName, EditorUtility.FormatBytes((long)m_TotalBytes[i]));
                     text += Content.TotalLabelSeparator;
-                    text += string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i]));
+                    text += string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i] + (long)m_UnknownSize[i]));
                     text += Content.TotalLabelSeparator;
                     tooltip = Content.TotalLabelTooltipWhenLessThanTotalTracked + "\n" + Content.GetTotalAndMaxLabelTooltip(DenormalizeFrameBased);
                 }
                 else
                 {
-                    text += string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i]));
+                    text += string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i] + (long)m_UnknownSize[i]));
                     text += Content.TotalLabelSeparator;
                     tooltip = Content.GetTotalAndMaxLabelTooltip(DenormalizeFrameBased);
                 }
@@ -442,7 +455,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     m_HeaderSize[i].text = string.Format(Content.KnownTotalFormatString, KnownTotalName, EditorUtility.FormatBytes((long)m_TotalBytes[i]))
                         + Content.TotalLabelSeparator
-                        + string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i]));
+                        + string.Format(Content.TotalFormatString, EditorUtility.FormatBytes((long)m_TotalTrackedBytes[i] + (long)m_UnknownSize[i]));
                     m_HeaderSize[i].tooltip = Content.TotalLabelTooltipWhenLessThanTotalTracked;
 
                     if (!m_Normalized)
@@ -476,8 +489,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             Setup();
         }
 
-        public void Setup()
+        public void Setup(bool selectableElements = false, int id = -1)
         {
+            SelectableElements = selectableElements;
+            Id = id;
+
             GatherElements();
 
             if (m_Elements.Count > 0)
@@ -545,20 +561,26 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             ClearColumns();
 
-            foreach (var element in m_Elements)
+            for (int i = 0; i < m_Elements.Count; i++)
             {
+                var element = m_Elements[i];
                 var handleLastRow = m_Elements.Last() == element && !ShowUnknown;
                 var nameAndColorTree = AddToTree(ElementAndStyleNames.LegendTableNameColumn, m_NameAndColor, handleLastRow);
                 var aColumnTree = AddToTree(ElementAndStyleNames.LegendTableSnapshotAColumn, m_Size, handleLastRow);
                 var bColumnTree = AddToTree(ElementAndStyleNames.LegendTableSnapshotBColumn, m_Size, handleLastRow);
                 var diffColumnTree = AddToTree(ElementAndStyleNames.LegendTableDiffColumn, m_Size, handleLastRow);
 
-                element.Setup(this,
+                element.Setup(this, i,
                     nameAndColorTree.Q(ElementAndStyleNames.LegendColorBox),
                     nameAndColorTree.Q<Label>(ElementAndStyleNames.LegendName),
                     aColumnTree.Q<Label>(ElementAndStyleNames.LegendSizeColumn),
                     bColumnTree.Q<Label>(ElementAndStyleNames.LegendSizeColumn),
                     diffColumnTree.Q<Label>(ElementAndStyleNames.LegendSizeColumn));
+
+                element.Selected -= OnSelectedElement;
+                element.Selected += OnSelectedElement;
+                element.Deselected -= OnDeselectedElement;
+                element.Deselected += OnDeselectedElement;
             }
 
             if (ShowUnknown)
@@ -568,10 +590,22 @@ namespace Unity.MemoryProfiler.Editor.UI
                 nameAndColorTree.Q<Label>(ElementAndStyleNames.LegendName).text = UnknownName;
 
                 m_UnknownRowColumnSize[0] = AddToTreeAsUnknownRow(ElementAndStyleNames.LegendTableSnapshotAColumn, m_Size);
+                m_UnknownRowColumnSize[0].RegisterClickEvent(OnSelectedUnkown);
+                m_UnknownRowColumnSize[0].RegisterCallback<MouseEnterEvent>(OnMouseEnterUnkown);
+                m_UnknownRowColumnSize[0].RegisterCallback<MouseLeaveEvent>(OnMouseLeaveUnkown);
                 m_UnknownRowColumnSize[1] = AddToTreeAsUnknownRow(ElementAndStyleNames.LegendTableSnapshotBColumn, m_Size);
+                m_UnknownRowColumnSize[1].RegisterClickEvent(OnSelectedUnkown);
+                m_UnknownRowColumnSize[1].RegisterCallback<MouseEnterEvent>(OnMouseEnterUnkown);
+                m_UnknownRowColumnSize[1].RegisterCallback<MouseLeaveEvent>(OnMouseLeaveUnkown);
                 m_UnknownRowDiffColumnSize = AddToTreeAsUnknownRow(ElementAndStyleNames.LegendTableDiffColumn, m_Size);
+                m_UnknownRowDiffColumnSize.RegisterClickEvent(OnSelectedUnkown);
+                m_UnknownRowDiffColumnSize.RegisterCallback<MouseEnterEvent>(OnMouseEnterUnkown);
+                m_UnknownRowDiffColumnSize.RegisterCallback<MouseLeaveEvent>(OnMouseLeaveUnkown);
 
-                m_UnknownRoot = nameAndColorTree;
+                m_UnknownRoot = nameAndColorTree.Q("memory-usage-breakdown__legend__name-and-color");
+                m_UnknownRoot.RegisterClickEvent(OnSelectedUnkown);
+                m_UnknownRoot.RegisterCallback<MouseEnterEvent>(OnMouseEnterUnkown);
+                m_UnknownRoot.RegisterCallback<MouseLeaveEvent>(OnMouseLeaveUnkown);
             }
 
             ulong[] totalTracked = new ulong[m_TotalBytes.Length];
@@ -580,6 +614,113 @@ namespace Unity.MemoryProfiler.Editor.UI
             bool[] unknownUnknown = new bool[m_TotalBytes.Length];
 
             SetTotalUsed(m_TotalBytes, totalTracked, m_Normalized, m_MaxTotalBytesToNormalizeTo, TotalIsKnown, unknownUnknown);
+        }
+
+        public void SelectRange(int index, ulong bytesA, ulong bytesB)
+        {
+            if (index > 0 && index < m_Elements.Count)
+                m_Elements[index].SetSelected(bytesA, bytesB);
+        }
+
+        public void ClearSelectedRanges()
+        {
+            foreach (var element in m_Elements)
+            {
+                element.ClearSelected();
+            }
+        }
+
+        void OnSelectedElement(int id)
+        {
+            foreach (var element in m_Elements)
+            {
+                if (element.Id != id)
+                    element.Deselect(false);
+            }
+            if (m_UnknownRoot != null && id != -1)
+                DeselectUnknown(false);
+            ElementSelected(Id, id);
+        }
+
+        void OnDeselectedElement(int id)
+        {
+            ElementDeselected(Id, id);
+        }
+
+        public void ClearSelection()
+        {
+            foreach (var element in m_Elements)
+            {
+                element.Deselect(false);
+            }
+            if (m_UnknownRoot != null)
+                DeselectUnknown(false);
+        }
+
+        void OnSelectedUnkown()
+        {
+            if (!SelectableElements)
+                return;
+            if (m_UnknownRoot.ClassListContains(MemoryUsageBreakdownElement.ElementSelectedPseudoState))
+            {
+                DeselectUnknown();
+                return;
+            }
+            m_UnknownRoot.AddToClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            for (int i = 0; i < m_UnknownBar.Length; i++)
+            {
+                m_UnknownBar[i].AddToClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            }
+            for (int i = 0; i < m_UnknownRowColumnSize.Length; i++)
+            {
+                m_UnknownRowColumnSize[i].AddToClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            }
+            m_UnknownRowDiffColumnSize.AddToClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            OnSelectedElement(-1);
+        }
+
+        void DeselectUnknown(bool fireEvent = true)
+        {
+            m_UnknownRoot.RemoveFromClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            for (int i = 0; i < m_UnknownBar.Length; i++)
+            {
+                m_UnknownBar[i].RemoveFromClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            }
+            for (int i = 0; i < m_UnknownRowColumnSize.Length; i++)
+            {
+                m_UnknownRowColumnSize[i].RemoveFromClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            }
+            m_UnknownRowDiffColumnSize.RemoveFromClassList(MemoryUsageBreakdownElement.ElementSelectedPseudoState);
+            if (fireEvent)
+                OnDeselectedElement(-1);
+        }
+
+        void OnMouseEnterUnkown(MouseEnterEvent e)
+        {
+            for (int i = 0; i < m_UnknownBar.Length; i++)
+            {
+                m_UnknownBar[i].AddToClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
+            }
+            for (int i = 0; i < m_UnknownRowColumnSize.Length; i++)
+            {
+                m_UnknownRowColumnSize[i].AddToClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
+            }
+            m_UnknownRoot.AddToClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
+            m_UnknownRowDiffColumnSize.AddToClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
+        }
+
+        void OnMouseLeaveUnkown(MouseLeaveEvent e)
+        {
+            for (int i = 0; i < m_UnknownBar.Length; i++)
+            {
+                m_UnknownBar[i].RemoveFromClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
+            }
+            for (int i = 0; i < m_UnknownRowColumnSize.Length; i++)
+            {
+                m_UnknownRowColumnSize[i].RemoveFromClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
+            }
+            m_UnknownRoot.RemoveFromClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
+            m_UnknownRowDiffColumnSize.RemoveFromClassList(MemoryUsageBreakdownElement.ElementHoveredPseudoState);
         }
 
         void ClearColumns()

@@ -69,7 +69,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
     //
     // Legend:
     //  <Chapter> - EntryType eg: NativeObjectName
-    public struct FileReader : IDisposable, IReader
+    public struct FileReader : IFileReader
     {
         [StructLayout(LayoutKind.Explicit, Size = 16, Pack = 4)]
         struct Blob16Byte{}
@@ -153,7 +153,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
             return entryData.Count;
         }
-        
+
         public GenericReadOperation Read(EntryType entry, DynamicArray<byte> buffer, long offset, long count)
         {
             unsafe

@@ -5,12 +5,10 @@
 		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style_dark.uss" />
 		<ui:VisualElement class="info-box">
             <ui:VisualElement class="info-box__icon-space">
-			<ui:VisualElement name="info-box__icon" class="info-box__info-icon info-box__icon" />
+				<ui:VisualElement name="info-box__icon" class="info-box__info-icon info-box__icon" />
             </ui:VisualElement>
             <ui:Label name="info-box__message-text" text="Info about something&#10;That may or may not be interesting" class="info-box__message" />
-
-                <ui:Button name="info-box__documentation-button" class="icon-button icon-button__help-icon" />
-
+            <ui:Button name="info-box__documentation-button" class="icon-button icon-button__help-icon" />
 		</ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

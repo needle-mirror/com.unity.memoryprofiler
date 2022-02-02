@@ -50,6 +50,19 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             }
         }
 
+        public int GetTypeIndex()
+        {
+            switch (MetricType)
+            {
+                case ObjectMetricType.Managed:
+                    return m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex].ITypeDescription;
+                case ObjectMetricType.Native:
+                    return m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[ObjectIndex];
+                default:
+                    return -1;
+            }
+        }
+
         public string GetName()
         {
             switch (MetricType)
@@ -77,7 +90,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             }
         }
 
-        public int GetObjectUID()
+        public long GetObjectUID()
         {
             switch (MetricType)
             {

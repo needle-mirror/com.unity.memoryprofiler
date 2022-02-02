@@ -42,7 +42,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         [NonSerialized] // to be shown in UI as e.g. $"Unity version '{MetaData.UnityVersion}'" to clarify that this is not the project version
         public string UnityVersion;
         public const uint InvalidSessionGUID = 0;
-        public MetaData(FileReader reader)
+        public MetaData(IFileReader reader)
         {
             unsafe
             {
@@ -191,6 +191,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         kArray = 1 << 1,
         kArrayRankMask = unchecked((int)0xFFFF0000)
     }
+
 
     internal struct VirtualMachineInformation
     {

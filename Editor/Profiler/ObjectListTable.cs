@@ -1,3 +1,4 @@
+#define PRUNE_UNNECESSARY_LINKS
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Database.Operation;
@@ -8,7 +9,7 @@ namespace Unity.MemoryProfiler.Editor
     /// Column that lists a unique index for each object.
     /// indices are unique inside a snapshot and do not uniquely identify an object through several snapshots
     /// </summary>
-    internal class ObjectListUnifiedIndexColumn : Database.ColumnTyped<int>
+    internal class ObjectListUnifiedIndexColumn : Database.ColumnTyped<long>
     {
         ObjectListTable m_Table;
         public ObjectListUnifiedIndexColumn(ObjectListTable table)
@@ -21,7 +22,7 @@ namespace Unity.MemoryProfiler.Editor
             return m_Table.GetObjectCount();
         }
 
-        public override int GetRowValue(long row)
+        public override long GetRowValue(long row)
         {
             var obj = m_Table.GetObjectData(row).displayObject;
             var i = obj.GetUnifiedObjectIndex(m_Table.Snapshot);
@@ -35,7 +36,7 @@ namespace Unity.MemoryProfiler.Editor
             return formatter.Format(i);
         }
 
-        public override void SetRowValue(long row, int value)
+        public override void SetRowValue(long row, long value)
         {
         }
     }
@@ -95,6 +96,7 @@ namespace Unity.MemoryProfiler.Editor
         {
         }
 
+#if !PRUNE_UNNECESSARY_LINKS
         public override Database.LinkRequest GetRowLink(long row)
         {
             var obj = m_Table.GetObjectData(row).displayObject;
@@ -133,6 +135,8 @@ namespace Unity.MemoryProfiler.Editor
                     return null;
             }
         }
+
+#endif
     }
 
     /// <summary>
@@ -219,8 +223,6 @@ namespace Unity.MemoryProfiler.Editor
                     return m_Table.Snapshot.TypeDescriptions.TypeDescriptionName[d.managedTypeIndex];
                 }
 
-                case ObjectDataType.Global:
-                    return "Global";
                 case ObjectDataType.Type:
                     return "Type";
                 case ObjectDataType.NativeObject:
@@ -376,10 +378,11 @@ namespace Unity.MemoryProfiler.Editor
         {
         }
 
+#if !PRUNE_UNNECESSARY_LINKS
         public override Database.LinkRequest GetRowLink(long row)
         {
             var obj = m_Table.GetObjectData(row).displayObject;
-            int i = obj.GetUnifiedObjectIndex(m_Table.Snapshot);
+            var i = obj.GetUnifiedObjectIndex(m_Table.Snapshot);
             if (i >= 0)
             {
                 var lr = new Database.LinkRequestTable();
@@ -393,6 +396,8 @@ namespace Unity.MemoryProfiler.Editor
             }
             return null;
         }
+
+#endif
     }
 
     /// <summary>
@@ -471,8 +476,6 @@ namespace Unity.MemoryProfiler.Editor
                     return "Managed Array";
                 case ObjectDataType.BoxedValue:
                     return "Managed Boxed Value";
-                case ObjectDataType.Global:
-                    return "Managed Global";
                 case ObjectDataType.NativeObject:
                     return "Native Object";
                 case ObjectDataType.Object:
@@ -498,6 +501,41 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         return GetObjecType(obj.m_Parent.obj) + ".Value";
                     }
+                    return "Managed Value";
+            }
+            return "";
+        }
+
+        public static string GetTopLevelObjectTypeColumnValue(ObjectDataType dataType)
+        {
+            switch (dataType)
+            {
+                case ObjectDataType.Array:
+                    return "Managed Array";
+                case ObjectDataType.BoxedValue:
+                    return "Managed Boxed Value";
+                case ObjectDataType.NativeObject:
+                    return "Native Object";
+                case ObjectDataType.Object:
+                    return "Managed Object";
+                case ObjectDataType.Type:
+                    return "Manage Type";
+                case ObjectDataType.Unknown:
+                    return "Unknown";
+                case ObjectDataType.ReferenceArray:
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                    UnityEngine.Debug.LogError($"Trying to get a Top Level ObjectType Column value for an ObjectType that isn't a Top Level one but a {dataType}");
+#endif
+                    return "Managed Array Reference";
+                case ObjectDataType.ReferenceObject:
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                    UnityEngine.Debug.LogError($"Trying to get a Top Level ObjectType Column value for an ObjectType that isn't a Top Level one but a {dataType}");
+#endif
+                    return "Managed Object Reference";
+                case ObjectDataType.Value:
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                    UnityEngine.Debug.LogError($"Trying to get a Top Level ObjectType Column value for an ObjectType that isn't a Top Level one but a {dataType}");
+#endif
                     return "Managed Value";
             }
             return "";
@@ -573,8 +611,26 @@ namespace Unity.MemoryProfiler.Editor
     /// if the object is managed, it will find the native object counterpart and output its name.
     /// Will output an empty string if the managed object is not linked to a native one.
     /// </summary>
-    internal class ObjectListNativeObjectNameLinkColumn : ObjectListNativeLinkColumn<string>
+    internal class ObjectListNativeObjectNameLinkColumn :
+#if PRUNE_UNNECESSARY_LINKS
+        Database.ColumnTyped<string>
     {
+        ObjectListTable m_Table;
+        public ObjectListNativeObjectNameLinkColumn(ObjectListTable table)
+        {
+            m_Table = table;
+        }
+
+#else
+        ObjectListNativeLinkColumn<string>
+    {
+        public ObjectListNativeObjectNameLinkColumn(ObjectListTable table)
+            : base(table)
+        {
+        }
+
+#endif
+
 #if MEMPROFILER_DEBUG_INFO
         public override string GetDebugString(long row)
         {
@@ -582,10 +638,6 @@ namespace Unity.MemoryProfiler.Editor
         }
 
 #endif
-        public ObjectListNativeObjectNameLinkColumn(ObjectListTable table)
-            : base(table)
-        {
-        }
 
         public override long GetRowCount()
         {
@@ -702,12 +754,25 @@ namespace Unity.MemoryProfiler.Editor
     /// Column for a native object's size. can be used for both native and managed objects
     /// if the object is managed, it will find the native object counterpart and output its size
     /// </summary>
-    internal class ObjectListNativeObjectSizeColumn : ObjectListNativeLinkColumn<long>
+    internal class ObjectListNativeObjectSizeColumn :
+#if PRUNE_UNNECESSARY_LINKS
+        Database.ColumnTyped<long>
+    {
+        ObjectListTable m_Table;
+        public ObjectListNativeObjectSizeColumn(ObjectListTable table)
+        {
+            m_Table = table;
+        }
+
+#else
+        ObjectListNativeLinkColumn<long>
     {
         public ObjectListNativeObjectSizeColumn(ObjectListTable table)
             : base(table)
         {
         }
+
+#endif
 
         public override long GetRowCount()
         {
@@ -745,12 +810,25 @@ namespace Unity.MemoryProfiler.Editor
     /// Column for an object's native instance ID. can be used for both native and managed objects
     /// if the object is managed, it will find the native object counterpart and output its instance ID
     /// </summary>
-    internal class ObjectListNativeInstanceIdLinkColumn : ObjectListNativeLinkColumn<int>
+    internal class ObjectListNativeInstanceIdLinkColumn :
+#if PRUNE_UNNECESSARY_LINKS
+        Database.ColumnTyped<int>
+    {
+        ObjectListTable m_Table;
+        public ObjectListNativeInstanceIdLinkColumn(ObjectListTable table)
+        {
+            m_Table = table;
+        }
+
+#else
+        ObjectListNativeLinkColumn<int>
     {
         public ObjectListNativeInstanceIdLinkColumn(ObjectListTable table)
             : base(table)
         {
         }
+
+#endif
 
         public override long GetRowCount()
         {
@@ -787,10 +865,13 @@ namespace Unity.MemoryProfiler.Editor
         {
         }
 
+#if !PRUNE_UNNECESSARY_LINKS
         public override Database.LinkRequest MakeLink(string tableName, int instanceId, long rowFrom)
         {
             return LinkRequestSceneHierarchy.MakeLinkRequest(GetRowValue(rowFrom), m_Table.Snapshot.MetaData.SessionGUID);
         }
+
+#endif
     }
 
     /// <summary>
@@ -867,58 +948,65 @@ namespace Unity.MemoryProfiler.Editor
             metaAll.displayName = TableDisplayName;
 
             var metaColName = new MetaColumn("Name", "Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 200);
-            var metaColIndex = new MetaColumn("Index", "Index", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(int)), "", 40);
+            var metaColIndex = new MetaColumn("Index", "Index", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(long)), "", 40);
+            metaColIndex.ShownByDefault = false;
             var metaColValue = new MetaColumn("Value", "Value", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 180);
             var metaColType = new MetaColumn("Type", "Type", new MetaType(typeof(string)), true, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 250);
             var metaColDataType = new MetaColumn("DataType", "Data Type", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 75);
             var metaColNOName = new MetaColumn("NativeObjectName", "Native Object Name", new MetaType(typeof(string)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(string)), "", 125);
+            metaColNOName.ShownByDefault = false;
             var metaColLength = new MetaColumn("Length", "Length", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 20);
+            metaColLength.ShownByDefault = false;
             var metaColStatic = new MetaColumn("Static", "Static", new MetaType(typeof(bool)), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(bool)), "", 50);
+            metaColStatic.ShownByDefault = false;
             var metaColRefCount = new MetaColumn("RefCount", "Referenced By", new MetaType(typeof(int), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(int)), "", 50);
             var metaColAbstractObjectSize = new MetaColumn("Size", "Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 75);
-            var metaColOwnerSize = new MetaColumn("ManagedSize", "Managed Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 65);
+            //var metaColOwnerSize = new MetaColumn("ManagedSize", "Managed Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 65);
             var metaColTargetSize = new MetaColumn("TargetSize", "Field Target Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 75);
-            var metaColNativeSize = new MetaColumn("NativeSize", "Native Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 75);
+            metaColTargetSize.ShownByDefault = false;
+            //var metaColNativeSize = new MetaColumn("NativeSize", "Native Size", new MetaType(typeof(long), DataMatchMethod.AsNumber), false, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.sumpositive, typeof(long)), "size", 75);
             var metaColNativeId = new MetaColumn("NativeInstanceId", "Native Instance ID", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate, null, "", 75);
-            var metaColAddress = new MetaColumn("Address", "Address", new MetaType(typeof(ulong)), true, Grouping.groupByDuplicate, null, "", 75);
+            metaColNativeId.ShownByDefault = false;
+            var metaColAddress = new MetaColumn("Address", "Address", new MetaType(typeof(ulong)), true, Grouping.groupByDuplicate, Grouping.GetMergeAlgo(Grouping.MergeAlgo.first, typeof(ulong)), "", 75);
+            metaColAddress.ShownByDefault = false;
 
             var metaManagedCol = new List<MetaColumn>();
             metaManagedCol.Add(metaColIndex);
             metaManagedCol.Add(metaColAddress);
+            metaManagedCol.Add(metaColType);
             metaManagedCol.Add(metaColName);
+            metaManagedCol.Add(metaColAbstractObjectSize);
+            metaManagedCol.Add(metaColRefCount);
             metaManagedCol.Add(metaColValue);
             metaManagedCol.Add(metaColLength);
-            metaManagedCol.Add(metaColType);
             metaManagedCol.Add(metaColNOName);
             metaManagedCol.Add(metaColStatic);
-            metaManagedCol.Add(metaColRefCount);
-            metaManagedCol.Add(metaColAbstractObjectSize);
             metaManagedCol.Add(metaColTargetSize);
 
             var metaNativeCol = new List<Database.MetaColumn>();
             metaNativeCol.Add(new Database.MetaColumn(metaColIndex));
             metaNativeCol.Add(new Database.MetaColumn(metaColAddress));
-            metaNativeCol.Add(new Database.MetaColumn(metaColNativeId));
-            metaNativeCol.Add(new Database.MetaColumn(metaColNOName));
             metaNativeCol.Add(new Database.MetaColumn(metaColType));
-            metaNativeCol.Add(new Database.MetaColumn(metaColRefCount));
+            metaNativeCol.Add(new Database.MetaColumn(metaColName));
             metaNativeCol.Add(new Database.MetaColumn(metaColAbstractObjectSize));
+            metaNativeCol.Add(new Database.MetaColumn(metaColRefCount));
+            metaNativeCol.Add(new Database.MetaColumn(metaColNativeId));
 
             var metaAllCol = new List<Database.MetaColumn>();
             metaAllCol.Add(new Database.MetaColumn(metaColIndex));
             metaAllCol.Add(new Database.MetaColumn(metaColAddress));
-            metaAllCol.Add(new Database.MetaColumn(metaColName));
-            metaAllCol.Add(new Database.MetaColumn(metaColValue));
-            metaAllCol.Add(new Database.MetaColumn(metaColLength));
             metaAllCol.Add(new Database.MetaColumn(metaColDataType));
             metaAllCol.Add(new Database.MetaColumn(metaColType));
+            metaAllCol.Add(new Database.MetaColumn(metaColName));
+            metaAllCol.Add(new Database.MetaColumn(metaColAbstractObjectSize));
+            metaAllCol.Add(new Database.MetaColumn(metaColRefCount));
+            metaAllCol.Add(new Database.MetaColumn(metaColValue));
+            metaAllCol.Add(new Database.MetaColumn(metaColLength));
             metaAllCol.Add(new Database.MetaColumn(metaColStatic));
             metaAllCol.Add(new Database.MetaColumn(metaColNativeId));
             metaAllCol.Add(new Database.MetaColumn(metaColNOName));
-            metaAllCol.Add(new Database.MetaColumn(metaColRefCount));
-            metaAllCol.Add(new Database.MetaColumn(metaColOwnerSize));
             metaAllCol.Add(new Database.MetaColumn(metaColTargetSize));
-            metaAllCol.Add(new Database.MetaColumn(metaColNativeSize));
+            //metaAllCol.Add(new Database.MetaColumn(metaColNativeSize));
 
             metaAll.SetColumns(metaAllCol.ToArray());
             metaManaged.SetColumns(metaManagedCol.ToArray());
@@ -963,40 +1051,41 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectMetaType.Managed:
                     col.Add(new ObjectListUnifiedIndexColumn(this));
                     col.Add(new ObjectListAddressColumn(this));
+                    col.Add(new ObjectListTypeColumn(this));
                     col.Add(new ObjectListNameColumn(this));
+                    col.Add(new ObjectListSizeColumn(this, true));
+                    col.Add(new ObjectListRefCountColumn(this));
                     col.Add(new ObjectListValueColumn(this));
                     col.Add(new ObjectListLengthColumn(this));
-                    col.Add(new ObjectListTypeColumn(this));
                     col.Add(new ObjectListNativeObjectNameLinkColumn(this));
                     col.Add(new ObjectListStaticColumn(this));
-                    col.Add(new ObjectListRefCountColumn(this));
-                    col.Add(new ObjectListSizeColumn(this, true));
                     col.Add(new ObjectListTargetSizeColumn(this));
                     break;
                 case ObjectMetaType.Native:
                     col.Add(new ObjectListUnifiedIndexColumn(this));
                     col.Add(new ObjectListAddressColumn(this));
-                    col.Add(new ObjectListNativeInstanceIdColumn(this));
-                    col.Add(new ObjectListNativeObjectNameColumn(this));
                     col.Add(new ObjectListTypeColumn(this));
-                    col.Add(new ObjectListRefCountColumn(this));
+                    col.Add(new ObjectListNativeObjectNameColumn(this));
                     col.Add(new ObjectListSizeColumn(this, false));
+                    col.Add(new ObjectListRefCountColumn(this));
+                    col.Add(new ObjectListNativeInstanceIdColumn(this));
                     break;
                 case ObjectMetaType.All:
                     col.Add(new ObjectListUnifiedIndexColumn(this));
                     col.Add(new ObjectListAddressColumn(this));
-                    col.Add(new ObjectListNameColumn(this));
-                    col.Add(new ObjectListValueColumn(this));
-                    col.Add(new ObjectListLengthColumn(this));
                     col.Add(new ObjectListObjectTypeColumn(this));
                     col.Add(new ObjectListTypeColumn(this));
+                    col.Add(new ObjectListNameColumn(this));
+                    col.Add(new ObjectListSizeColumn(this, false));
+                    col.Add(new ObjectListRefCountColumn(this));
+                    col.Add(new ObjectListValueColumn(this));
+                    col.Add(new ObjectListLengthColumn(this));
                     col.Add(new ObjectListStaticColumn(this));
                     col.Add(new ObjectListNativeInstanceIdLinkColumn(this));
                     col.Add(new ObjectListNativeObjectNameLinkColumn(this));
-                    col.Add(new ObjectListRefCountColumn(this));
-                    col.Add(new ObjectListSizeColumn(this, true));
                     col.Add(new ObjectListTargetSizeColumn(this));
-                    col.Add(new ObjectListNativeObjectSizeColumn(this));
+                    // Don't display the Native Size for a Managed Object anymore, that's highly confusing and leads to double counting if grouped
+                    //col.Add(new ObjectListNativeObjectSizeColumn(this));
                     break;
             }
 
@@ -1146,10 +1235,13 @@ namespace Unity.MemoryProfiler.Editor
                     if (moi.IsValid() && moi.NativeObjectIndex >= 0)
                         return Snapshot.NativeObjects.ObjectName[moi.NativeObjectIndex];
 
+                    if (moi.ITypeDescription == Snapshot.TypeDescriptions.ITypeString)
+                    {
+                        return StringTools.ReadFirstStringLine(moi.data, Snapshot.VirtualMachineInformation, true);
+                    }
                     return string.Empty;
                 case ObjectDataType.NativeObject:
                     return Snapshot.NativeObjects.ObjectName[obj.nativeObjectIndex];
-                case ObjectDataType.Global:
                 case ObjectDataType.Type:
                 case ObjectDataType.Unknown:
                 default:

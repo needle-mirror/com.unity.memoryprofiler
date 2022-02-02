@@ -26,6 +26,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
                     return new SimpleColumn<DataT>(cache, SimpleColumnDisplay.Default);
             }
         }
+
         public static SimpleColumn<DataT> MakeColumnUnmanaged<DataT>(DynamicArray<DataT> source1, long source1Count, DynamicArray<DataT> source2, long source2Count, bool hexdisplay) where DataT : unmanaged, IComparable
         {
             var cache = new Cache<DataT>(new AdaptorCombinedDynamicArray<DataT>(source1, source1Count, source2, source2Count));
@@ -70,7 +71,13 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             return new Column_Transform<DataOutT, DataInT>(cache, transform, untransform);
         }
 
+        public static Column_Transform<DataOutT, DataInT> MakeColumn_ManagedTransform<DataOutT, DataInT>(DataInT[] source, Column_Transform<DataOutT, DataInT>.Transformer transform, Column_Transform<DataOutT, DataInT>.Untransformer untransform)
 
+            where DataOutT : IComparable
+        {
+            var cache = new Cache<DataInT>(new AdaptorManagedArray<DataInT>(source));
+            return new Column_Transform<DataOutT, DataInT>(cache, transform, untransform);
+        }
 
         /// <summary>
         /// Upon request of a data value, it will request data from a DataSource in chunks and store it for later requests.
@@ -681,7 +688,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Soa
             }
         }
 
-        public class Column_Transform<DataOutT, DataInT> : Database.ColumnTyped<DataOutT> where DataOutT : System.IComparable where DataInT : System.IComparable
+        public class Column_Transform<DataOutT, DataInT> : Database.ColumnTyped<DataOutT> where DataOutT : System.IComparable
         {
             protected Cache<DataInT> m_Cache;
             public delegate DataOutT Transformer(DataInT a);

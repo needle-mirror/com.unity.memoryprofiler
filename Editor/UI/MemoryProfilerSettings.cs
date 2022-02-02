@@ -5,6 +5,7 @@ using UnityEngine;
 using System.IO;
 using System;
 using System.Text;
+using Unity.MemoryProfiler.Editor.UIContentData;
 #if UNITY_2021_2_OR_NEWER
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.MemoryProfilerModule")]
@@ -20,6 +21,9 @@ namespace Unity.MemoryProfiler.Editor
         const string k_SnapshotPathEditorPerf = "Unity.MemoryProfiler.Editor.MemorySnapshotStoragePath";
         const string k_MemoryProfilerPackageOverridesMemoryModuleUIEditorPerf = "Unity.MemoryProfiler.Editor.MemoryProfilerPackageOverridesMemoryModuleUI";
         const string k_DefaultPath = "./MemoryCaptures";
+        const string k_TruncateTypes = "Unity.MemoryProfiler.Editor.MemoryProfilerTruncateTypes";
+
+        public static event Action TruncateStateChanged = delegate {};
 
         public static string MemorySnapshotStoragePath
         {
@@ -30,6 +34,18 @@ namespace Unity.MemoryProfiler.Editor
             set
             {
                 EditorPrefs.SetString(k_SnapshotPathEditorPerf, value);
+            }
+        }
+
+        public static bool MemorySnapshotTruncateTypes
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_TruncateTypes);
+            }
+            private set
+            {
+                EditorPrefs.SetBool(k_TruncateTypes, value);
             }
         }
 
@@ -119,6 +135,12 @@ namespace Unity.MemoryProfiler.Editor
         public static void ResetAllOptOutModalDialogSettings()
         {
             EditorPrefs.SetBool(HeapWarningWindowOptOutKey, false);
+        }
+
+        public static void ToggleTruncateTypes()
+        {
+            EditorPrefs.SetBool(k_TruncateTypes, !MemorySnapshotTruncateTypes);
+            TruncateStateChanged.Invoke();
         }
     }
 
@@ -239,6 +261,11 @@ namespace Unity.MemoryProfiler.Editor
                 if (GUILayout.Button(Content.ResetOptOutDialogsButton))
                 {
                     MemoryProfilerSettings.ResetAllOptOutModalDialogSettings();
+                }
+                var newTruncateValue = EditorGUILayout.Toggle(new GUIContent(TextContent.TruncateTypeName), MemoryProfilerSettings.MemorySnapshotTruncateTypes);
+                if (newTruncateValue != MemoryProfilerSettings.MemorySnapshotTruncateTypes)
+                {
+                    MemoryProfilerSettings.ToggleTruncateTypes();
                 }
             }
             GUILayout.EndVertical();

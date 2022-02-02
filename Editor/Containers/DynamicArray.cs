@@ -7,13 +7,12 @@ using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
-
     public unsafe struct DynamicArray<T> : IDisposable where T : unmanaged
     {
         void* m_Data;
         long m_Capacity;
         Allocator m_Label;
-        
+
         public long Count { get; private set; }
 
         public long Capacity
@@ -28,7 +27,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public bool IsCreated { get; private set; }
 
-        public DynamicArray(Allocator label) : this(0, label) { }
+        public DynamicArray(Allocator label) : this(0, label) {}
 
         public DynamicArray(long initialSize, Allocator label, bool memClear = false)
         {
@@ -128,7 +127,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             if (newSize > m_Capacity)
                 ResizeInternalBuffer(newSize, false);
 
-            if(memClear && newSize > oldCount)
+            if (memClear && newSize > oldCount)
             {
                 var typeSize = UnsafeUtility.SizeOf<T>();
                 UnsafeUtility.MemClear(((byte*)m_Data) + (oldCount * typeSize), (newSize - oldCount) * typeSize);
@@ -138,7 +137,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         [MethodImpl(256)]
         void ResizeInternalBuffer(long newCapacity, bool forceResize)
         {
-            if(newCapacity > m_Capacity || forceResize)
+            if (newCapacity > m_Capacity || forceResize)
             {
                 int elemSize = UnsafeUtility.SizeOf<T>();
                 void* newMem = UnsafeUtility.Malloc(newCapacity * elemSize, UnsafeUtility.AlignOf<T>(), m_Label);
@@ -153,7 +152,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 m_Capacity = newCapacity;
             }
         }
-        
+
         public void Push(T value)
         {
             Checks.CheckEquals(true, IsCreated);

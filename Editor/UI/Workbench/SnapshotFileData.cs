@@ -249,11 +249,9 @@ namespace Unity.MemoryProfiler.Editor
             {
                 yield return null;
                 var work = s_PendingTextureLoads.Dequeue();
-                var tex = new Texture2D(1, 1);
-                //tex.LoadImage(work.Data);
+                var tex = new Texture2D(1, 1, TextureFormat.RGB24, false);
                 var data = File.ReadAllBytes(work.Path);
-                tex.LoadImage(data);
-                tex.Apply(false, true);
+                tex.LoadImage(data, true);
                 tex.name = work.Name;
                 work.TextureAsset.SetTexture(tex, GUITexture2DAsset.SourceType.Image, work.Ticks);
 

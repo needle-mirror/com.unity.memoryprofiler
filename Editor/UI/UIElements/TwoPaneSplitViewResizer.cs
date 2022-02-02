@@ -28,6 +28,17 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
+        float fixedPaneMaxDimension
+        {
+            get
+            {
+                if (m_Orientation == TwoPaneSplitViewOrientation.Horizontal)
+                    return fixedPane.resolvedStyle.maxWidth.value;
+                else
+                    return fixedPane.resolvedStyle.maxHeight.value;
+            }
+        }
+
         float flexedPaneMinDimension
         {
             get
@@ -36,6 +47,17 @@ namespace Unity.MemoryProfiler.Editor
                     return flexedPane.resolvedStyle.minWidth.value;
                 else
                     return flexedPane.resolvedStyle.minHeight.value;
+            }
+        }
+
+        float flexedPaneMaxDimension
+        {
+            get
+            {
+                if (m_Orientation == TwoPaneSplitViewOrientation.Horizontal)
+                    return flexedPane.resolvedStyle.maxWidth.value;
+                else
+                    return flexedPane.resolvedStyle.maxHeight.value;
             }
         }
 
@@ -69,13 +91,16 @@ namespace Unity.MemoryProfiler.Editor
                 : fixedPane.resolvedStyle.height;
             float newDimension = oldDimension + delta;
 
-            if (newDimension < oldDimension && newDimension < fixedPaneMinDimension)
-                newDimension = fixedPaneMinDimension;
-
-            float maxDimension = m_Orientation == TwoPaneSplitViewOrientation.Horizontal
+            var totalDimension = m_Orientation == TwoPaneSplitViewOrientation.Horizontal
                 ? m_SplitView.resolvedStyle.width
                 : m_SplitView.resolvedStyle.height;
-            maxDimension -= flexedPaneMinDimension;
+
+            float minDimension = Mathf.Min(fixedPaneMinDimension, totalDimension - flexedPaneMaxDimension);
+            if (newDimension < oldDimension && newDimension < minDimension)
+                newDimension = minDimension;
+
+
+            float maxDimension = totalDimension - flexedPaneMinDimension;
             if (newDimension > oldDimension && newDimension > maxDimension)
                 newDimension = maxDimension;
 

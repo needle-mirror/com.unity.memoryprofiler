@@ -58,7 +58,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public abstract UI.HistoryEvent GetCurrentHistoryEvent();
+        public abstract UI.ViewOpenHistoryEvent GetOpenHistoryEvent();
+        public UI.ViewStateChangedHistoryEvent GetCloseHistoryEvent()
+        {
+            var closedEvent = GetViewStateFilteringChangesSinceLastSelectionOrViewClose();
+            closedEvent.ChangeType = ViewStateChangedHistoryEvent.StateChangeType.ViewClosed;
+            return closedEvent;
+        }
+
+        // store dirty state after selection or closing state
+        public abstract bool ViewStateFilteringChangedSinceLastSelectionOrViewClose { get; }
+        public abstract UI.ViewStateChangedHistoryEvent GetViewStateFilteringChangesSinceLastSelectionOrViewClose();
+        public abstract void SetSelectionFromHistoryEvent(SelectionEvent selectionEvent);
+        // Override if the view pane can't just apply an selection directly after opening
+        public virtual void ApplyActiveSelectionAfterOpening(SelectionEvent selectionEvent)
+        {
+            SetSelectionFromHistoryEvent(selectionEvent);
+        }
 
         static ProfilerMarker s_OnGui = new ProfilerMarker("ViewPane.OnGUI");
 
@@ -82,12 +98,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public virtual void OnGUI(Rect r) { }
+        public virtual void OnGUI(Rect r) {}
         void UI.IViewEventListener.OnRepaint()
         {
             m_EventListener.OnRepaint();
         }
 
         public abstract void OnClose();
+
+        public abstract void OnSelectionChanged(MemorySampleSelection selection);
     }
 }

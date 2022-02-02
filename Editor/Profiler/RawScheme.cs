@@ -68,8 +68,10 @@ namespace Unity.MemoryProfiler.Editor
             CreateTable_RootReferences(tables);
             CreateTable_NativeAllocations(tables);
             CreateTable_NativeAllocationDetails(tables);
-            CreateTable_NativeAllocationSites(tables);
-            CreateTable_NativeCallstackSymbols(tables);
+            if (m_Snapshot.NativeAllocationSites.Count > 0)
+                CreateTable_NativeAllocationSites(tables);
+            if (m_Snapshot.NativeCallstackSymbols.Count > 0)
+                CreateTable_NativeCallstackSymbols(tables);
             CreateTable_NativeMemoryLabels(tables);
             CreateTable_NativeMemoryRegions(tables);
             CreateTable_NativeAndManagedMemoryRegions(tables);
@@ -177,6 +179,35 @@ namespace Unity.MemoryProfiler.Editor
             return true;
         }
 
+        private bool TryGetParam(ParameterSet param, string name, out long value)
+        {
+            if (param == null)
+            {
+                value = default(long);
+                return false;
+            }
+            Expression expObj;
+            param.TryGet(ObjectTable.ObjParamName, out expObj);
+            if (expObj == null)
+            {
+                value = 0;
+                return false;
+            }
+            if (expObj is TypedExpression<ulong>)
+            {
+                TypedExpression<long> e = (TypedExpression<long>)expObj;
+                value = e.GetValue(0);
+            }
+            else
+            {
+                if (!long.TryParse(expObj.GetValueString(0, DefaultDataFormatter.Instance), out value))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private bool TryGetParam(ParameterSet param, string name, out int value)
         {
             if (param == null)
@@ -227,7 +258,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             else if (name == ObjectReferenceTable.kObjectReferenceTableName)
             {
-                int objUnifiedIndex;
+                long objUnifiedIndex;
                 if (!TryGetParam(param, ObjectTable.ObjParamName, out objUnifiedIndex))
                 {
                     return null;
@@ -636,12 +667,10 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     if (id > 0)
                     {
-                        for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)
+                        long index;
+                        if (m_Snapshot.NativeRootReferences.IdToIndex.TryGetValue(id, out index))
                         {
-                            if (m_Snapshot.NativeRootReferences.Id[i] == id)
-                            {
-                                return m_Snapshot.NativeRootReferences.AreaName[i];
-                            }
+                            return m_Snapshot.NativeRootReferences.AreaName[index];
                         }
                     }
                     return "No Root Area";
@@ -664,12 +693,10 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     if (id > 0)
                     {
-                        for (int i = 0; i < m_Snapshot.NativeRootReferences.Count; i++)
+                        long index;
+                        if (m_Snapshot.NativeRootReferences.IdToIndex.TryGetValue(id, out index))
                         {
-                            if (m_Snapshot.NativeRootReferences.Id[i] == id)
-                            {
-                                return m_Snapshot.NativeRootReferences.ObjectName[i];
-                            }
+                            return m_Snapshot.NativeRootReferences.ObjectName[index];
                         }
                     }
                     return "No Root";
@@ -776,6 +803,11 @@ namespace Unity.MemoryProfiler.Editor
                 new MetaColumn("size", "Size", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate
                     , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
                 , DataArray.MakeColumnUnmanaged(m_Snapshot.TypeDescriptions.Size, false)
+            );
+            table.AddColumn(
+                new MetaColumn("staticSize", "Static Field Size", new MetaType(typeof(int), DataMatchMethod.AsNumber), true, Grouping.groupByDuplicate
+                    , Grouping.GetMergeAlgo(Grouping.MergeAlgo.sum, typeof(int)), "size")
+                , DataArray.MakeColumn_ManagedTransform(m_Snapshot.TypeDescriptions.StaticFieldBytes, (a) => a.Length, (ref byte[] o, int v) => o = new byte[v])
             );
             table.AddColumn(
                 new MetaColumn("typeInfoAddress", "Type Info Address", new MetaType(typeof(ulong), DataMatchMethod.AsString), true, Grouping.groupByDuplicate, null)

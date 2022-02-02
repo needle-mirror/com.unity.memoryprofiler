@@ -50,7 +50,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return k_RowHeight;
         }
 
-        protected override void DrawRow(long row, Rect r, long index, bool selected, ref GUIPipelineState pipe)
+        protected override void DrawRow(long row, Rect r, long index, bool selected, bool latentSelected, ref GUIPipelineState pipe)
         {
             if (Event.current.type == EventType.Layout)
                 GUILayout.Space(r.height);
@@ -61,13 +61,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 bool focused = EditorWindow.focusedWindow is MemoryProfilerWindow;
 #if UNITY_2019_3_OR_NEWER
                 if (selected)
-                    Styles.General.EntrySelected.Draw(r, false, false, true, focused);
+                {
+                    Styles.General.EntrySelected.Draw(r, latentSelected, false, !latentSelected, focused);
+                }
                 else if (index % 2 == 0)
                     Styles.General.EntryEven.Draw(r, GUIContent.none, false, false, false, focused);
 
 #else
                 var background = (index % 2 == 0 ? Styles.General.EntryEven : Styles.General.EntryOdd);
-                background.Draw(r, GUIContent.none, false, false, selected, focused);
+                background.Draw(r, GUIContent.none, selected && latentSelected, false, selected && !latentSelected, focused);
 #endif
             }
         }

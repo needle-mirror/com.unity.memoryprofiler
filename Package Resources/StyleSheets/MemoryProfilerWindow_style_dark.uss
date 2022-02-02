@@ -82,6 +82,14 @@ Label.snapshot--in-view {
     background-image: resource('d_Import.png');
 }
 
+.icon-button__details-icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/MemoryProfiler_RightPanel_DarkTheme.png');
+}
+
+.icon-button__snapshot-icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/MemoryProfiler_LeftPanel_DarkTheme.png');
+}
+
 .icon-button__help-icon {
     background-image: resource('d__Help.png');
 }
@@ -124,4 +132,25 @@ Label.snapshot--in-view {
 
 .info-box__error-icon {
     background-image: resource('d_console.erroricon.png');
+}
+
+.data-type-icon__native {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_CPlusPlusIcon.png');
+}
+
+.data-type-icon__managed {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_CSharpIcon.png');
+}
+
+.data-type-icon__unified {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_UnityObjectIcon.png');
+}
+
+.data-type-icon__leaked-shell {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_UnityObjectIcon.png');
+    -unity-background-image-tint-color: rgba(255, 0, 0, 255);
+}
+
+.no-icon__icon {
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_NoIconIcon.png');
 }

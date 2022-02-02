@@ -196,6 +196,10 @@ namespace Unity.MemoryProfiler.Editor
         public event Action<SnapshotCollectionEnumerator> collectionRefresh = delegate {};
         public event Action<SessionInfo> sessionDeleted = delegate {};
         public event Action<uint, string> SessionNameChanged = delegate {};
+        public event Action SnapshotCountIncreased = delegate {};
+        public event Action<SnapshotFileData> SnapshotTakenAndAdded = delegate {};
+
+        public int SnapshotCount { get; private set; }
 
         public string Name { get { return m_Info.Name; } }
 
@@ -228,6 +232,8 @@ namespace Unity.MemoryProfiler.Editor
             m_Sessions.Clear();
             m_SessionsDictionary.Clear();
             var fileEnumerator = info.GetFiles('*' + FileExtensionContent.SnapshotFileExtension, SearchOption.AllDirectories);
+            var oldSnapshotCount = SnapshotCount;
+            SnapshotCount = 0;
             for (int i = 0; i < fileEnumerator.Length; ++i)
             {
                 FileInfo fInfo = fileEnumerator[i];
@@ -237,6 +243,7 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         var fileData = new SnapshotFileData(fInfo);
                         AddSnapshotToSessionsList(fileData);
+                        ++SnapshotCount;
                     }
                     catch (IOException e)
                     {
@@ -244,6 +251,8 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
+            if (SnapshotCount > oldSnapshotCount)
+                SnapshotCountIncreased();
 
             m_Sessions.Sort();
 
@@ -440,6 +449,8 @@ namespace Unity.MemoryProfiler.Editor
             var snapFileData = new SnapshotFileData(file);
 
             AddSnapshotToSessionsList(snapFileData);
+            ++SnapshotCount;
+            SnapshotCountIncreased();
             var sessionId = snapFileData.GuiData.SessionId;
 
             m_Info.Refresh();
@@ -452,6 +463,7 @@ namespace Unity.MemoryProfiler.Editor
                     collectionRefresh(it);
             }
 
+            SnapshotTakenAndAdded(snapFileData);
             return snapFileData;
         }
 

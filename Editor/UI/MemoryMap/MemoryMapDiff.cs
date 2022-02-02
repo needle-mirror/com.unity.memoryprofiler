@@ -26,7 +26,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             Both = First | Second
         }
 
-        public struct ViewState
+        public struct ViewState : IEquatable<ViewState>
         {
             public ulong BytesInRow;
             public ulong HighlightedAddrMin;
@@ -34,8 +34,17 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             public int DisplayElements;
             public ColorScheme ColorScheme;
             public Vector2 ScrollArea;
-        };
 
+            public bool Equals(ViewState other)
+            {
+                return BytesInRow == other.BytesInRow &&
+                    HighlightedAddrMin == other.HighlightedAddrMin &&
+                    HighlightedAddrMax == other.HighlightedAddrMax &&
+                    DisplayElements == other.DisplayElements &&
+                    ColorScheme == other.ColorScheme &&
+                    ScrollArea.Equals(other.ScrollArea);
+            }
+        }
         public ViewState CurrentViewState
         {
             get

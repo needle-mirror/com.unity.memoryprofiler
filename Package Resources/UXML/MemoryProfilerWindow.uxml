@@ -1,16 +1,17 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
-    <ui:Template name="OpenSnapshotItem" src="SubElements/SnapshotWindow/OpenSnapshotItem.uxml" />
-    <ui:Template name="SessionList" src="SubElements/SnapshotWindow/SessionList.uxml" />
-    <ui:Template name="AnalysisWindow" src="SubElements/AnalysisWindow/AnalysisWindow.uxml" />
+    <ui:Template name="OpenSnapshotItem" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/SnapshotWindow/OpenSnapshotItem.uxml?fileID=11400000&amp;guid=a2199c077ddabbc44b884f96f0e43ada&amp;type=3#OpenSnapshotItem" />
+    <ui:Template name="SessionList" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/SnapshotWindow/SessionList.uxml?fileID=11400000&amp;guid=223f7b0757946014b8aa1e126a3edf98&amp;type=3#SessionList" />
+    <ui:Template name="AnalysisWindow" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/AnalysisWindow/AnalysisWindow.uxml?fileID=11400000&amp;guid=e2166a7c8cb283c4c95d82b6dc2904e4&amp;type=3#AnalysisWindow" />
+    <ui:Template name="DetailsPanel" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/DetailsPanel/DetailsPanel.uxml?fileID=9197481963319205126&amp;guid=fcd8f09b33c6c014ba90c7df5a872f8f&amp;type=3#DetailsPanel" />
     <ui:VisualElement name="proxy-root" class="proxy-root">
-        <Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
+        <Style src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/StyleSheets/MemoryProfilerWindow_style.uss?fileID=11400000&amp;guid=bcf6df7306fa822409032b052e1854c0&amp;type=3#MemoryProfilerWindow_style" />
         <uie:Toolbar class="memory-profiler__toolbar">
             <ui:VisualElement name="toolbar__left-side" class="memory-profiler__toolbar__left-side">
-                <uie:ToolbarToggle focusable="false" label="Snapshot Panel" name="toolbar__snaphsot-window-toggle" value="true" />
+                <uie:ToolbarToggle focusable="false" name="toolbar__snaphsot-window-toggle" value="true" text="Snapshot Panel" />
                 <Unity.MemoryProfiler.Editor.UI.ToolbarDropDownButton tooltip="Target Selection drop-down. Choose which target to connect to. " button-text="Editor" name="snapshot-control-area__target-selection-drop-down-button" class="unity-toolbar-menu" />
                 <uie:ToolbarButton display-tooltip-when-elided="true" name="snapshot-control-area__capture-button" class="drop-down-toggle">
-                    <ui:Label text="Capture" tooltip="Take a new snapshot from the target specified in the drop-down to the left of this button." />
                     <ui:Image tooltip="Take a new snapshot from the target specified in the drop-down to the left of this button." class="icon-button icon-button__camera-icon square-button-icon" />
+                    <ui:Label text="Capture" tooltip="Take a new snapshot from the target specified in the drop-down to the left of this button." />
                     <uie:ToolbarButton display-tooltip-when-elided="true" name="snapshot-control-area__capture-dropdown" tooltip="Choose Capture Flags" class="drop-down-toggle__drop-down-part">
                         <ui:VisualElement class="drop-down-toggle__drop-down-part__arrow-icon">
                             <ui:VisualElement class="unity-base-popup-field__arrow" />
@@ -40,6 +41,7 @@
                 <uie:ToolbarButton name="toolbar__import-button" tooltip="Import old snapshot formats or just copy them into this project&apos;s Memory Snapshot folder." class="square-icon-button">
                     <ui:Image class="icon-button icon-button__import-icon square-button-icon" />
                 </uie:ToolbarButton>
+                <uie:ToolbarToggle focusable="false" name="toolbar__details-toggle" value="true" text="Details Panel" tooltip="Show/Hide the details panel" />
                 <uie:ToolbarButton name="toolbar__help-button" tooltip="Open manual" class="square-icon-button">
                     <ui:Image class="icon-button icon-button__help-icon square-button-icon" />
                 </uie:ToolbarButton>
@@ -48,30 +50,35 @@
                 </uie:ToolbarButton>
             </ui:VisualElement>
         </uie:Toolbar>
-        <Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-initial-dimension="300" name="snapshot-window__splitter">
-            <ui:VisualElement name="snapshot-window" style="flex-grow: 1; min-width: 270px;">
-                <Unity.MemoryProfiler.Editor.UI.Ribbon name="snapshot-window__ribbon__container" show-help-button="true" show-menu-button="false">
-                    <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Single Snapshot" />
-                    <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Compare Snapshots" />
-                </Unity.MemoryProfiler.Editor.UI.Ribbon>
-                <ui:VisualElement name="open-snapshot-item-a" class="open-snapshot-item">
-                    <ui:Instance template="OpenSnapshotItem" name="OpenSnapshotItemA" class="open-snapshot-item" />
+        <ui:VisualElement name="container" style="flex-grow: 1; flex-direction: row;">
+            <Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="300" name="snapshot-window__splitter">
+                <ui:VisualElement name="snapshot-window" style="flex-grow: 1; min-width: 270px;">
+                    <Unity.MemoryProfiler.Editor.UI.Ribbon name="snapshot-window__ribbon__container" show-help-button="true" show-menu-button="false">
+                        <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Single Snapshot" />
+                        <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Compare Snapshots" />
+                    </Unity.MemoryProfiler.Editor.UI.Ribbon>
+                    <ui:VisualElement name="open-snapshot-item-a" class="open-snapshot-item">
+                        <ui:Instance template="OpenSnapshotItem" name="OpenSnapshotItemA" class="open-snapshot-item" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="open-snapshot-view__separator" class="open-snapshot-view__separator" />
+                    <ui:VisualElement name="open-snapshot-item-b" class="open-snapshot-item">
+                        <ui:Instance template="OpenSnapshotItem" name="OpenSnapshotItemB" class="open-snapshot-item" style="overflow: visible;" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="open-snapshot-view__separator-2" class="open-snapshot-view__separator" />
+                    <ui:VisualElement name="swap-snapshot-buttons-holder" class="swap-snapshot-buttons-holder">
+                        <ui:Button name="swap-snapshots-button" style="flex-shrink: 1;">
+                            <ui:Image tooltip="Swap A and B." class="icon-button icon-button__swap-icon square-button-icon" />
+                        </ui:Button>
+                    </ui:VisualElement>
+                    <ui:Instance template="SessionList" name="SessionList" style="flex-grow: 1;" />
                 </ui:VisualElement>
-                <ui:VisualElement name="open-snapshot-view__separator" class="open-snapshot-view__separator" />
-                <ui:VisualElement name="open-snapshot-item-b" class="open-snapshot-item">
-                    <ui:Instance template="OpenSnapshotItem" name="OpenSnapshotItemB" class="open-snapshot-item" style="overflow: visible;" />
-                </ui:VisualElement>
-                <ui:VisualElement name="open-snapshot-view__separator-2" class="open-snapshot-view__separator" />
-                <ui:VisualElement name="swap-snapshot-buttons-holder" class="swap-snapshot-buttons-holder">
-                    <ui:Button name="swap-snapshots-button" style="flex-shrink: 1;">
-                        <ui:Image tooltip="Swap A and B." class="icon-button icon-button__swap-icon square-button-icon" />
-                    </ui:Button>
-                </ui:VisualElement>
-                <ui:Instance template="SessionList" name="SessionList" style="flex-grow: 1;" />
-            </ui:VisualElement>
-            <ui:VisualElement name="analysis-window" style="flex-grow: 1;">
-                <ui:Instance template="AnalysisWindow" name="AnalysisWindow" style="flex-grow: 1;" />
-            </ui:VisualElement>
-        </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
+                <Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="1" fixed-pane-initial-dimension="500" orientation="Horizontal" name="details-panel__splitter" style="min-width: 700px;">
+                    <ui:VisualElement name="analysis-window" style="flex-grow: 1; min-width: 360px;">
+                        <ui:Instance template="AnalysisWindow" name="AnalysisWindow" style="flex-grow: 1;" />
+                    </ui:VisualElement>
+                    <ui:Instance template="DetailsPanel" name="details-panel" style="width: auto; max-width: none; min-width: 500px;" />
+                </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
+            </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>
