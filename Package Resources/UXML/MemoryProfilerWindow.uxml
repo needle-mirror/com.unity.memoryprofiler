@@ -4,10 +4,10 @@
     <ui:Template name="AnalysisWindow" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/AnalysisWindow/AnalysisWindow.uxml?fileID=11400000&amp;guid=e2166a7c8cb283c4c95d82b6dc2904e4&amp;type=3#AnalysisWindow" />
     <ui:Template name="DetailsPanel" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/DetailsPanel/DetailsPanel.uxml?fileID=9197481963319205126&amp;guid=fcd8f09b33c6c014ba90c7df5a872f8f&amp;type=3#DetailsPanel" />
     <ui:VisualElement name="proxy-root" class="proxy-root">
-        <Style src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/StyleSheets/MemoryProfilerWindow_style.uss?fileID=11400000&amp;guid=bcf6df7306fa822409032b052e1854c0&amp;type=3#MemoryProfilerWindow_style" />
+    <Style src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/StyleSheets/MemoryProfilerWindow_style.uss?fileID=11400000&amp;guid=bcf6df7306fa822409032b052e1854c0&amp;type=3#MemoryProfilerWindow_style" />
         <uie:Toolbar class="memory-profiler__toolbar">
             <ui:VisualElement name="toolbar__left-side" class="memory-profiler__toolbar__left-side">
-                <uie:ToolbarToggle focusable="false" name="toolbar__snaphsot-window-toggle" value="true" text="Snapshot Panel" />
+                <uie:ToolbarToggle focusable="false" name="toolbar__snaphsot-window-toggle" value="true" />
                 <Unity.MemoryProfiler.Editor.UI.ToolbarDropDownButton tooltip="Target Selection drop-down. Choose which target to connect to. " button-text="Editor" name="snapshot-control-area__target-selection-drop-down-button" class="unity-toolbar-menu" />
                 <uie:ToolbarButton display-tooltip-when-elided="true" name="snapshot-control-area__capture-button" class="drop-down-toggle">
                     <ui:Image tooltip="Take a new snapshot from the target specified in the drop-down to the left of this button." class="icon-button icon-button__camera-icon square-button-icon" />
@@ -25,7 +25,9 @@
                         <ui:VisualElement class="unity-base-popup-field__arrow toolbar__drop-down__arrow" />
                     </uie:ToolbarButton>
                 </ui:VisualElement>
-                <uie:ToolbarSpacer />
+                <uie:ToolbarButton name="toolbar__import-button" tooltip="Import old snapshot formats or just copy them into this project&apos;s Memory Snapshot folder." class="square-icon-button">
+                    <ui:Image class="icon-button icon-button__import-icon square-button-icon" />
+                </uie:ToolbarButton>
                 <uie:ToolbarButton name="history-button__back" tooltip="Previous view" class="square-button-icon history-button">
                     <ui:Image name="history-button__back" class="icon-button history-button__icon" />
                 </uie:ToolbarButton>
@@ -38,10 +40,7 @@
                     <ui:Image class="icon-button icon-button__export-icon square-button-icon" />
                     <ui:VisualElement class="unity-base-popup-field__arrow toolbar__drop-down__arrow" />
                 </uie:ToolbarButton>
-                <uie:ToolbarButton name="toolbar__import-button" tooltip="Import old snapshot formats or just copy them into this project&apos;s Memory Snapshot folder." class="square-icon-button">
-                    <ui:Image class="icon-button icon-button__import-icon square-button-icon" />
-                </uie:ToolbarButton>
-                <uie:ToolbarToggle focusable="false" name="toolbar__details-toggle" value="true" text="Details Panel" tooltip="Show/Hide the details panel" />
+                <uie:ToolbarToggle focusable="false" name="toolbar__details-toggle" value="true" tooltip="Show/Hide the details panel" />
                 <uie:ToolbarButton name="toolbar__help-button" tooltip="Open manual" class="square-icon-button">
                     <ui:Image class="icon-button icon-button__help-icon square-button-icon" />
                 </uie:ToolbarButton>

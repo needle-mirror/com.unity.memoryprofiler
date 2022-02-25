@@ -33,6 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public bool IsSceneObjectType => IsComponentType || IsGameObjectType || IsTransformType;
         public bool IsAssetObjectType => IsValid && !IsSceneObjectType;
 
+#if !UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
         public string GetFullyQualifiedManagedTypeName(CachedSnapshot snapshot)
         {
             if (!HasManagedType)
@@ -40,7 +41,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             return System.Reflection.Assembly.CreateQualifiedName(snapshot.TypeDescriptions.Assembly[ManagedTypeIndex], ManagedTypeName);
         }
 
-#if !UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
         public Type GetManagedSystemType(CachedSnapshot snapshot)
         {
             if (!HasManagedType)

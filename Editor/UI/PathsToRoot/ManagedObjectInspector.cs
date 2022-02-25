@@ -208,7 +208,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 childItem.depth = root.depth + 1;
 
                 bool invalidIntPtr = false;
-
+                const string k_NativeArrayTypePrefix = "Unity.Collections.NativeArray<";
                 if (isUnityObject && fieldByIndex.fieldIndex == cs.TypeDescriptions.IFieldUnityObjectMCachedPtr)
                 {
                     ulong nativeObjectPointer;
@@ -228,12 +228,34 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     invalidIntPtr = ProcessIntPtr(cs, fieldByIndex, childItem, v, root);
                 }
-                else if (cs.TypeDescriptions.TypeDescriptionName[typeIdx].StartsWith("Unity.Collections.NativeArray<"))
+                else if (typename.StartsWith(k_NativeArrayTypePrefix))
                 {
-                    ulong pointerToMBufferData;
-                    if (fieldByIndex.managedObjectData.TryReadPointer(out pointerToMBufferData) == BytesAndOffset.PtrReadError.Success)
+                    var countOfGenericOpen = 1;
+                    var countOfGenericClose = 0;
+                    unsafe
                     {
-                        FindNativeAllocationOrRegion(cs, pointerToMBufferData, childItem, v, "m_Buffer", "void*");
+                        fixed(char* c = typename)
+                        {
+                            char* it = c + k_NativeArrayTypePrefix.Length;
+                            for (int charPos = k_NativeArrayTypePrefix.Length; charPos < typename.Length; charPos++)
+                            {
+                                if (*it == '<')
+                                    ++countOfGenericOpen;
+                                else if (*it == '>')
+                                    ++countOfGenericClose;
+                                ++it;
+                            }
+                        }
+                    }
+                    if (countOfGenericOpen == countOfGenericClose && typename.EndsWith(">"))
+                    {
+                        // only parse types named "NativeArrays" that that end on the generic bracke they opened for the Native Array.
+                        // E.g. Avoid parsing Unity.Collections.NativeArray<System.Int32>[] or a speculative Unity.Collections.NativeArray<System.Int32>.Something<T>
+                        ulong pointerToMBufferData;
+                        if (fieldByIndex.managedObjectData.TryReadPointer(out pointerToMBufferData) == BytesAndOffset.PtrReadError.Success)
+                        {
+                            FindNativeAllocationOrRegion(cs, pointerToMBufferData, childItem, v, "m_Buffer", "void*");
+                        }
                     }
                 }
 

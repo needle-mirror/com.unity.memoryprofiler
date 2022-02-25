@@ -1,9 +1,5 @@
 using UnityEngine;
-#if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-#endif
 using UnityEditor;
 using System;
 using System.Collections.Generic;
@@ -81,6 +77,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                             break;
                         case MemorySampleSelectionType.ManagedType:
                             groupName = pane.m_UIState.snapshotMode.snapshot.TypeDescriptions.TypeDescriptionName[selectionEvent.Selection.ItemIndex];
+                            break;
+                        case MemorySampleSelectionType.HighlevelBreakdownElement:
                             break;
                         case MemorySampleSelectionType.UnifiedObject:
                         case MemorySampleSelectionType.Allocation:
@@ -400,7 +398,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                         if (rowIndex >= 0)
                         {
-                            m_Spreadsheet.Goto(new Database.CellPosition(rowIndex, 0), onlyScrollIfNeeded: true);
+                            m_Spreadsheet.Goto(new Database.CellPosition(rowIndex, 0), onlyScrollIfNeeded: true, true, true);
                             return true;
                         }
                     }
@@ -420,7 +418,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                         if (rowIndex >= 0)
                         {
-                            m_Spreadsheet.Goto(new Database.CellPosition(rowIndex, 0), onlyScrollIfNeeded: true);
+                            m_Spreadsheet.Goto(new Database.CellPosition(rowIndex, 0), onlyScrollIfNeeded: true, true, true);
                             return true;
                         }
                     }
@@ -635,7 +633,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                             dataType = ObjectData.FromManagedObjectIndex(m_UIState.snapshotMode.snapshot, (int)selectionEvent.Selection.ItemIndex).dataType;
                         else
                             dataType = ObjectDataType.NativeObject;
-                        SetTypeFilter(typeName, dataType);
                         m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
                         m_Spreadsheet.ViewStateIsCleaned();
                     }
@@ -780,8 +777,16 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public Action<long> OnItemClicked;
 
+        void InitializeIfNeeded()
+        {
+            if (Styles.General == null)
+                Styles.Initialize();
+        }
+
         public override void OnGUI(Rect r)
         {
+            InitializeIfNeeded();
+
             if (m_UIState.HotKey.m_CameraFocus.IsTriggered())
             {
                 if (m_TreeMap.SelectedItem != null)
@@ -841,8 +846,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override void OnSelectionChanged(MemorySampleSelection selection)
         {
+            if (m_Spreadsheet == null)
+                return; // Domain Reload or Serialization/Deserialization related untimely event fired. Ignore it, this view is closed for business.
+
             if (selection.Rank == MemorySampleSelectionRank.SecondarySelection)
-                m_Spreadsheet.SetSelectionAsLatent(true);
+                m_Spreadsheet.SetSelectionAsLatent(true, selection.Table != "Path To Root"); // dont update the filters if the selection is from the paths to root view
             switch (selection.Type)
             {
                 case MemorySampleSelectionType.NativeObject:

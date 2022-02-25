@@ -4,16 +4,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using Unity.MemoryProfiler.Editor.UI;
-#if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-using UnityEngine.Experimental.UIElements.StyleEnums;
-using UnityEditor.Experimental.UIElements;
-#endif
-using System.Runtime.CompilerServices;
-//[assembly: InternalsVisibleTo("Unity.GarbageFree.EditorTests1")]
 [assembly: UxmlNamespacePrefix("Unity.MemoryProfiler.Editor", "MemoryProfiler")]
 namespace Unity.MemoryProfiler.Editor
 {
@@ -22,11 +14,11 @@ namespace Unity.MemoryProfiler.Editor
         public VisualElement LeftPane { get; private set; }
         public VisualElement RightPane { get; private set; }
 
-        public event Action<float> LeftPaneWidthChanged = delegate { };
+        public event Action<float> LeftPaneWidthChanged = delegate {};
 
         VisualElement m_DragLine;
 
-        public new class UxmlFactory : UxmlFactory<WorkbenchSplitter, UxmlTraits> { }
+        public new class UxmlFactory : UxmlFactory<WorkbenchSplitter, UxmlTraits> {}
 
         public float workbenchWidth { get { return LeftPane.style.width.value.value; } set { LeftPane.style.width = value; } }
 
@@ -44,7 +36,7 @@ namespace Unity.MemoryProfiler.Editor
                 var children = Children().GetEnumerator();
                 children.MoveNext();
                 leftChild = children.Current;
-                if(children.MoveNext())
+                if (children.MoveNext())
                     rightChild = children.Current;
                 children.Dispose();
             }

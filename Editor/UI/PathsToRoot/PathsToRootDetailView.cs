@@ -23,6 +23,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             public static readonly Texture2D CPlusPlusIcon = Icons.LoadIcon(Icons.IconFolder + "CPlusPlusIcon.png", true);
             public static readonly GUIContent CSharpIconContent = new GUIContent(CSharpIcon, "C# Object");
             public static readonly GUIContent CPlusPlusIconContent = new GUIContent(CPlusPlusIcon, "C++ Object");
+            public static readonly string NoObjectSelected = L10n.Tr("No Object Selected");
+            public static readonly string SelectionHasNoReferences = L10n.Tr("Selection has no references");
+            public static readonly string NoInspectableObjectSelected = L10n.Tr("No inspectable object selected.");
         }
 
         const int k_CurrentSelectionTreeViewItemId = Int32.MaxValue;
@@ -54,6 +57,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         PathsToRootDetailTreeViewItem m_RootDetail;
         PathsToRootDetailTreeViewItem m_BackingData;
         EditorCoroutine m_EditorCoroutine;
+        RibbonButton m_RawConnectionButton;
 
         long m_CurrentSelection;
 
@@ -68,7 +72,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         BackGroundThreadState m_BackgroundThreadState;
 
-        public PathsToRootDetailView(IUIStateHolder uiStateHolder, TreeViewState state, MultiColumnHeaderWithTruncateTypeName multiColumnHeaderWithTruncateTypeName)
+        public PathsToRootDetailView(IUIStateHolder uiStateHolder, TreeViewState state, MultiColumnHeaderWithTruncateTypeName multiColumnHeaderWithTruncateTypeName, RibbonButton rawConnectionButton)
             : base(state, multiColumnHeaderWithTruncateTypeName)
         {
             m_UIStateHolder = uiStateHolder;
@@ -81,6 +85,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             multiColumnHeaderWithTruncateTypeName.ResizeToFit();
             MemoryProfilerSettings.TruncateStateChanged += OnTruncateStateChanged;
             Reload();
+            m_RawConnectionButton = rawConnectionButton;
+            m_RawConnectionButton.text = $"Referenced By ({m_RootDetail.children.Count})";
         }
 
         void OnTruncateStateChanged()
@@ -103,7 +109,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             {
                 id = 0,
                 displayName = "Root",
-                depth = -1
+                depth = -1,
+                children = new List<TreeViewItem>(),
             };
         }
 
@@ -111,19 +118,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         {
             public ObjectData objectData;
             public CachedSnapshot CachedSnapshot;
-        }
-
-
-        PathsToRootDetailTreeViewItem NewSelection(ObjectData od, CachedSnapshot cs)
-        {
-            CurrentSelection = new Selection
-            {
-                objectData = od,
-                CachedSnapshot = cs
-            };
-            m_BackingData = CreateRootItem();
-            m_BackingData.AddChild(new PathsToRootDetailTreeViewItem(od, cs));
-            return (PathsToRootDetailTreeViewItem)m_BackingData.children[0];
         }
 
         public void UpdateRootObjects(MemorySampleSelection selection)
@@ -184,7 +178,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public void UpdateToAllocation(long item)
         {
             m_BackingData = CreateRootItem();
-            m_BackingData.AddChild(new PathsToRootDetailTreeViewItem(true));
             m_RootDetail = m_BackingData;
             SetupDepthsFromParentsAndChildren(m_RootDetail);
             Reload();
@@ -379,14 +372,14 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
 
             var processingStack = new Stack<PathsToRootDetailTreeViewItem>();
-            var newSelection = NewSelection(itemObjectData, m_CachedSnapshot);
+            m_BackingData.children.Clear();
 
             foreach (var objectData in objectsConnectingTo)
             {
-                newSelection.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot));
+                m_BackingData.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot));
             }
 
-            foreach (var treeViewItem in newSelection.children)
+            foreach (var treeViewItem in m_BackingData.children)
             {
                 var objectTreeChild = (PathsToRootDetailTreeViewItem)treeViewItem;
                 processingStack.Push(objectTreeChild);
@@ -548,19 +541,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         void NoReferenceObject(ObjectData od, CachedSnapshot cs)
         {
             m_BackingData = CreateRootItem();
-            m_BackingData.AddChild(new PathsToRootDetailTreeViewItem(od, cs));
-            m_BackingData.children[0].displayName += " has no references";
         }
 
         void NoObject(CachedSnapshot cs)
         {
             CurrentSelection = default;
             m_BackingData = CreateRootItem();
-            m_BackingData.AddChild(new PathsToRootDetailTreeViewItem(false));
-            m_BackingData.children[0].displayName += "No Object Selected";
             m_RootDetail = CreateRootItem();
-            m_RootDetail.AddChild(new PathsToRootDetailTreeViewItem(false));
-            m_RootDetail.children[0].displayName += "No Object Selected";
         }
 
         protected override TreeViewItem BuildRoot()
@@ -577,6 +564,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             {
                 GenerateIcons(child as PathsToRootDetailTreeViewItem);
             }
+
+            m_RawConnectionButton.text = $"Referenced By ({m_RootDetail.children.Count})";
             return m_RootDetail;
         }
 
@@ -790,9 +779,60 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
         }
 
+        static readonly char[] k_GenericBracesChars = { '<', '>' };
+        // if we hit something that doesnt truncate properly then use it as a test case in
+        // TypeNameTruncationTests and fix it up
         public static string TruncateTypeName(string name)
         {
-            return name.Contains(".") ? name.Substring(name.LastIndexOf(".") + 1) : name;
+            if (string.IsNullOrEmpty(name))
+                return name;
+            if (name.Contains('.'))
+            {
+                if (name.Contains('<'))
+                {
+                    var pos = 0;
+                    while (pos < name.Length && name.IndexOf('<', pos + 1) != -1)
+                    {
+                        pos = name.IndexOf('<', pos + 1);
+                        var next = name.IndexOfAny(k_GenericBracesChars, pos + 1);
+                        var replacee = name.Substring(pos + 1, next - (pos + 1));
+                        if (replacee.Contains(','))
+                        {
+                            var split = replacee.Split(',');
+                            foreach (var s in split)
+                            {
+                                var truncated = TruncateTypeName(s);
+                                pos += truncated.Length;
+                                name = name.Replace(s, truncated);
+                            }
+
+                            continue;
+                        }
+
+                        if (!string.IsNullOrEmpty(replacee))
+                        {
+                            var truncatedReplacee = TruncateTypeName(replacee);
+                            pos += truncatedReplacee.Length;
+                            name = name.Replace(replacee, truncatedReplacee);
+                        }
+                    }
+                }
+
+
+                var nameSplt = name.Split('.');
+                int offset = 1;
+                while (string.IsNullOrEmpty(nameSplt[nameSplt.Length - offset]) || nameSplt[nameSplt.Length - offset].StartsWith("<", StringComparison.Ordinal))
+                    offset++;
+                for (int i = 0; i < nameSplt.Length - offset; i++)
+                {
+                    if (nameSplt[i].IndexOfAny(k_GenericBracesChars, 0) == -1)
+                    {
+                        name = name.Replace($"{nameSplt[i]}.", "");
+                    }
+                }
+            }
+
+            return name.Replace(" ", "");
         }
 
         protected override void SelectionChanged(IList<int> selectedIds)
@@ -835,6 +875,12 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public void OnDisable()
         {
             MemoryProfilerSettings.TruncateStateChanged -= OnTruncateStateChanged;
+        }
+
+        public void ClearSelection()
+        {
+            SetSelection(new List<int>());
+            SelectionChangedEvt(new MemorySampleSelection(m_UIStateHolder.UIState, m_CurrentSelection, -1, m_CachedSnapshot));
         }
     }
 }

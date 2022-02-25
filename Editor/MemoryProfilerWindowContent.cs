@@ -1,45 +1,6 @@
 using UnityEngine;
 using UnityEditor;
-
-using System.Collections.Generic;
-using System;
-using System.Text;
-using System.Collections;
-using System.Runtime.CompilerServices;
-using System.IO;
-using UnityEditor.Compilation;
-using UnityEditor.SceneManagement;
-using UnityEngine.SceneManagement;
-using UnityEngine.Profiling.Memory.Experimental;
-using UnityEditorInternal;
-#if UNITY_2019_1_OR_NEWER
-using UnityEngine.UIElements;
-using UnityEditor.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-using UnityEditor.Experimental.UIElements;
-#endif
-#if UNITY_2019_3_OR_NEWER
-using UnityEngine.Profiling.Experimental;
-#endif
-
-#if UNITY_2020_1_OR_NEWER
-using UnityEditor.Networking.PlayerConnection;
-using UnityEngine.Networking.PlayerConnection;
-#else
-using ConnectionUtility = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUIUtility;
-using ConnectionGUI = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUI;
-using UnityEngine.Experimental.Networking.PlayerConnection;
-#endif
-
-
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using Unity.EditorCoroutines.Editor;
 using Unity.MemoryProfiler.Editor.UI;
-using Unity.MemoryProfiler.Editor.Legacy;
-using Unity.MemoryProfiler.Editor.Legacy.LegacyFormats;
-using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 
 namespace Unity.MemoryProfiler.Editor.UIContentData
 {

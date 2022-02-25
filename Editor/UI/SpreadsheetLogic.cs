@@ -73,6 +73,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Listener = new WeakReference(listener);
         }
 
+        protected abstract void InitializeIfNeeded();
+
         protected abstract float GetRowHeight(long row);
 
         public struct DirtyRowRange
@@ -154,10 +156,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             UpdateDirtyRowRange(dirtyRange);
         }
 
-        public void Goto(Database.CellPosition pos, bool onlyScrollIfNeeded = true, bool selectRow = true)
+        public void Goto(Database.CellPosition pos, bool onlyScrollIfNeeded = true, bool selectRow = true, bool forceNonLatentSelection = false)
         {
             long rowIndex = 0;
             long nextRow = 0;
+            if (forceNonLatentSelection)
+                m_GUIState.SelectionIsLatent = false;
             var y = GetCumulativeHeight(0, pos.row, out nextRow, ref rowIndex);
             if (onlyScrollIfNeeded && m_GUIState.HasRectData)
             {
@@ -241,6 +245,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void OnGUI(float maxWidth, params GUILayoutOption[] opt)
         {
+            InitializeIfNeeded();
+
             GUIPipelineState pipe = new GUIPipelineState();
 
             if (m_TotalDataHeight == -1)
@@ -462,6 +468,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         if (row >= 0 && RowCount > 0)
                         {
                             m_GUIState.SelectedRow = row;
+                            m_GUIState.SelectionIsLatent = false;
                             RowSelectionChanged(row);
                             if (m_Listener != null && m_Listener.IsAlive)
                             {

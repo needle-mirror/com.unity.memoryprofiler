@@ -346,6 +346,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override void OnSelectionChanged(MemorySampleSelection selection)
         {
+            if (m_Spreadsheet == null)
+                return; // Domain Reload or Serialization/Deserialization related untimely event fired. Ignore it, this view is closed for business.
+
             if (selection.Rank == MemorySampleSelectionRank.SecondarySelection)
                 m_Spreadsheet.SetSelectionAsLatent(true);
             switch (selection.Type)
@@ -370,7 +373,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case MemorySampleSelectionType.HighlevelBreakdownElement:
                 default:
                     if (selection.Rank == MemorySampleSelectionRank.MainSelection)
-                        m_Spreadsheet?.ClearSelection();
+                        m_Spreadsheet.ClearSelection();
                     break;
             }
         }

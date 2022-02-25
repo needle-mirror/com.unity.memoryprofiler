@@ -68,6 +68,39 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (eventToOpen is SelectionEvent)
                     {
                         var selectionEvent = eventToOpen as SelectionEvent;
+                        // if we get a secondary selection make sure that there is no main selection
+                        // if there is no main selection we need to roll back
+                        // to the last event there was a main selection and reinstate it
+                        if (selectionEvent.Selection.Rank == MemorySampleSelectionRank.SecondarySelection)
+                        {
+                            for (int i = UIState.history.events.Count - 1; i > 0; i--)
+                            {
+                                bool found = false;
+                                if (UIState.history.events[i] == selectionEvent)
+                                {
+                                    var ii = i;
+                                    while (ii != 0)
+                                    {
+                                        if (UIState.history.events[ii] is SelectionEvent && ((SelectionEvent)UIState.history.events[ii]).Selection.Rank == MemorySampleSelectionRank.MainSelection)
+                                        {
+                                            // lets not mess around and assign it again if we already have the correct event in place for the main selection in the UIState
+                                            if (((SelectionEvent)UIState.history.events[ii]).Selection.Equals(UIState.MainSelection))
+                                            {
+                                                found = true;
+                                                break;
+                                            }
+                                            found = true;
+                                            mainSelectionEvent = UIState.history.events[ii] as SelectionEvent;
+                                            secondarySelectionEvent = selectionEvent;
+                                            break;
+                                        }
+                                        ii--;
+                                    }
+                                    if (found)
+                                        break;
+                                }
+                            }
+                        }
                         if (!goingForward && selectionEvent.Selection.Rank == MemorySampleSelectionRank.MainSelection
                             && UIState.history.presentEventIsFollowedByViewChange)
                         {
@@ -81,7 +114,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                         else
                         {
                             // just restore the selection, everything else is already handled
-                            OpenHistoryEvent(selectionEvent, false);
+                            if (mainSelectionEvent != null)
+                            {
+                                OpenHistoryEvent(mainSelectionEvent, false);
+                                OpenHistoryEvent(secondarySelectionEvent, false);
+                            }
+                            else
+                            {
+                                OpenHistoryEvent(selectionEvent, false);
+                            }
                             yield break;
                         }
                     }

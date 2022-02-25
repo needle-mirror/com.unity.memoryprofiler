@@ -33,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             TypeName = "";
             if (Allocation)
             {
-                displayName = "No inspectable object selected.";
+                displayName = PathsToRootDetailView.Styles.NoInspectableObjectSelected;
                 needsIcon = false;
             }
         }

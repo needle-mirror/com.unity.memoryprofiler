@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
@@ -300,6 +299,82 @@ namespace Unity.MemoryProfiler.Editor.UI
             ManagedTypeName = typeInfo.ManagedTypeName;
             NativeTypeName = string.Empty;
             NativeObjectName = string.Empty;
+        }
+
+        void ShowIcons(bool show)
+        {
+            UIElementsHelper.SetVisibility(m_DataTypeIcon, show);
+            UIElementsHelper.SetVisibility(m_TypeIcon, show);
+        }
+
+        public void SetToNoObjectSelected()
+        {
+            ManagedTypeName = "";
+            NativeObjectName = "";
+            NativeTypeName = PathsToRootDetailView.Styles.NoObjectSelected;
+            m_TypeIcon.image = PathsToRootUtils.NoIconContent.image;
+            UIElementsHelper.SetVisibility(m_DataTypeIcon, false);
+            UIElementsHelper.SetVisibility(m_TypeIcon, true);
+        }
+
+        public void SetLabelDataFromSelection(MemorySampleSelection mss, CachedSnapshot cs)
+        {
+            switch (mss.Type)
+            {
+                case MemorySampleSelectionType.ManagedObject:
+                {
+                    ObjectData od = ObjectData.FromManagedObjectIndex(cs, (int)mss.ItemIndex);
+                    ShowIcons(true);
+                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
+                }
+                break;
+                case MemorySampleSelectionType.UnifiedObject:
+                {
+                    ObjectData od = ObjectData.FromNativeObjectIndex(cs, (int)mss.ItemIndex);
+                    ShowIcons(true);
+                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
+                }
+                break;
+                case MemorySampleSelectionType.NativeObject:
+                {
+                    ObjectData od = ObjectData.FromNativeObjectIndex(cs, (int)mss.ItemIndex);
+                    ShowIcons(true);
+                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
+                }
+                break;
+                case MemorySampleSelectionType.NativeType:
+                {
+                    var currentSelectionIdx = mss.ItemIndex;
+                    var type = new UnifiedType(cs, (int)currentSelectionIdx);
+                    ShowIcons(true);
+                    SetLabelData(cs, type);
+                }
+                break;
+                case MemorySampleSelectionType.ManagedType:
+                {
+                    var currentSelectionIdx = mss.ItemIndex;
+                    var currentSelectionObjectData = ObjectData.FromManagedType(cs, (int)currentSelectionIdx);
+                    var type = new UnifiedType(cs, currentSelectionObjectData);
+                    ShowIcons(true);
+                    SetLabelData(cs, type);
+                }
+                break;
+                case MemorySampleSelectionType.None:
+                case MemorySampleSelectionType.Allocation:
+                case MemorySampleSelectionType.AllocationSite:
+                case MemorySampleSelectionType.AllocationCallstack:
+                case MemorySampleSelectionType.NativeRegion:
+                case MemorySampleSelectionType.ManagedRegion:
+                case MemorySampleSelectionType.Allocator:
+                case MemorySampleSelectionType.Label:
+                case MemorySampleSelectionType.Connection:
+                case MemorySampleSelectionType.HighlevelBreakdownElement:
+                case MemorySampleSelectionType.Symbol:
+                    SetToNoObjectSelected();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
 
         void Init()

@@ -10,12 +10,6 @@ using Unity.EditorCoroutines.Editor;
 using System.Collections;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.MemoryProfiler.Editor.UI;
-using static Unity.MemoryProfiler.Editor.UI.SnapshotListItem;
-#if UNITY_2019_1_OR_NEWER
-using UnityEngine.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-#endif
 using Unity.MemoryProfiler.Editor.Format;
 
 namespace Unity.MemoryProfiler.Editor
@@ -251,7 +245,11 @@ namespace Unity.MemoryProfiler.Editor
                 var work = s_PendingTextureLoads.Dequeue();
                 var tex = new Texture2D(1, 1, TextureFormat.RGB24, false);
                 var data = File.ReadAllBytes(work.Path);
-                tex.LoadImage(data, true);
+                tex.LoadImage(data, false);
+                // TODO: here or better still on receiving the screenshot, make sure the dimensions aren't total overkill and if they are, downscale, and save the smaller resolution
+                if (tex.width % 4 == 0 && tex.height % 4 == 0)
+                    tex.Compress(false);
+                tex.Apply(false, true);
                 tex.name = work.Name;
                 work.TextureAsset.SetTexture(tex, GUITexture2DAsset.SourceType.Image, work.Ticks);
 

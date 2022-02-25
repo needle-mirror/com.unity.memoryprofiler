@@ -62,22 +62,40 @@ namespace Unity.MemoryProfiler.Editor
 
         public EditorWindow Window => this;
 
+        ObjectOrTypeLabel m_ReferenceSelection; // TODO move this into a details panel to contain all the paths to root and selection work
+
         void Init()
         {
             m_WindowInitialized = true;
-            m_PathsToRootDetailView = new PathsToRootDetailView(this, new TreeViewState(),
-                new MultiColumnHeaderWithTruncateTypeName(PathsToRootDetailView.CreateDefaultMultiColumnHeaderState())
-                {
-                    canSort = false
-                });
-
+            Styles.Initialize();
             minSize = new Vector2(500, 500);
+
+            UIState?.Dispose();
+            UIStateChanged = null;
+            UIState = new UI.UIState();
 
             var root = this.rootVisualElement;
             VisualTreeAsset reworkedWindowTree;
             reworkedWindowTree = AssetDatabase.LoadAssetAtPath(ResourcePaths.WindowUxmlPathStyled, typeof(VisualTreeAsset)) as VisualTreeAsset;
 
             reworkedWindowTree.Clone(root);
+
+            m_PathsToRootDetailView?.OnDisable();
+            m_PathsToRootDetailView = new PathsToRootDetailView(this, new TreeViewState(),
+                new MultiColumnHeaderWithTruncateTypeName(PathsToRootDetailView.CreateDefaultMultiColumnHeaderState())
+                {
+                    canSort = false
+                }, root.Q("details-panel").Q<RibbonButton>("raw-connections"));
+
+            m_ReferenceSelection?.Dispose();
+            m_ReferenceSelection = root.Q("details-panel").Q<ObjectOrTypeLabel>("reference-item-details__unity-item-title");
+            m_ReferenceSelection.RemoveFromClassList("object-or-type-label");
+            m_ReferenceSelection.AddToClassList("object-or-type-label-selectable");
+            m_ReferenceSelection.RegisterCallback<MouseDownEvent>(evt =>
+            {
+                m_PathsToRootDetailView.ClearSelection();
+            });
+            m_ReferenceSelection.SetToNoObjectSelected();
 
             var detailsSplitter = root.Q("details-panel").Q<TwoPaneSplitView>("details-panel__splitter");
             var referencesFoldout = root.Q("details-panel").Q<Foldout>("details-panel__section-header__references");
@@ -126,14 +144,13 @@ namespace Unity.MemoryProfiler.Editor
                         detailsSplitter.CollapseChild(1, true);
                 }
             });
-
+            m_SelectedObjectDetailsPanel?.OnDisable();
             m_SelectedObjectDetailsPanel = new SelectedItemDetailsPanel(this, root.Q("details-panel").Q("selected-item-details"));
 
-
-            UIState = new UI.UIState();
             new SelectedItemDetailsForTypesAndObjects(this);
             UIState.SelectionChanged += m_SelectedObjectDetailsPanel.NewDetailItem;
-            Styles.Initialize();
+            UIState.SelectionChanged += UpdatePathsToRootSelectionDetails;
+
             EditorCoroutineUtility.StartCoroutine(UpdateTitle(), this);
             MemoryProfilerAnalytics.EnableAnalytics();
             m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
@@ -150,7 +167,6 @@ namespace Unity.MemoryProfiler.Editor
             var menuButton = root.Q<ToolbarButton>("toolbar__menu-button");
             menuButton.clickable.clicked += () => OpenFurtherOptions(menuButton.GetRect());
 
-            UIStateChanged -= m_SnapshotWindow.RegisterUIState;
             UIStateChanged += m_SnapshotWindow.RegisterUIState;
             UIStateChanged(UIState);
 
@@ -161,6 +177,12 @@ namespace Unity.MemoryProfiler.Editor
             };
             EditorGUICompatibilityHelper.hyperLinkClicked -= EditorGUI_HyperLinkClicked;
             EditorGUICompatibilityHelper.hyperLinkClicked += EditorGUI_HyperLinkClicked;
+        }
+
+        void UpdatePathsToRootSelectionDetails(MemorySampleSelection memorySampleSelection)
+        {
+            if (memorySampleSelection.Rank == MemorySampleSelectionRank.SecondarySelection) return;
+            m_ReferenceSelection.SetLabelDataFromSelection(memorySampleSelection, memorySampleSelection.GetSnapshotItemIsPresentIn(UIState));
         }
 
         static void EditorGUI_HyperLinkClicked(MemoryProfilerHyperLinkClickedEventArgs args)
@@ -218,15 +240,25 @@ namespace Unity.MemoryProfiler.Editor
             Styles.Cleanup();
             ProgressBarDisplay.ClearBar();
             UIStateChanged = delegate {};
+
+            m_SnapshotWindow.OnDisable();
+            m_PathsToRootDetailView?.OnDisable();
+            m_PathsToRootDetailView = null;
+            m_SelectedObjectDetailsPanel?.OnDisable();
+            m_SelectedObjectDetailsPanel = null;
+            m_ReferenceSelection?.Dispose();
+            m_ReferenceSelection = null;
+
             if (UIState != null)
-                UIState.Clear();
+            {
+                UIState.SelectionChanged -= UpdatePathsToRootSelectionDetails;
+                UIState.Dispose();
+                UIState = null;
+            }
             EditorApplication.update -= PollForApplicationFocus;
             EditorSceneManager.activeSceneChangedInEditMode -= OnSceneChanged;
 
             EditorGUICompatibilityHelper.hyperLinkClicked -= EditorGUI_HyperLinkClicked;
-            m_SnapshotWindow.OnDisable();
-            m_PathsToRootDetailView.OnDisable();
-            m_SelectedObjectDetailsPanel.OnDisable();
         }
 
         void OpenFurtherOptions(Rect furtherOptionsRect)

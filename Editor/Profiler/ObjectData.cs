@@ -577,14 +577,14 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Array:
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
+                {
+                    int idx;
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
                     {
-                        int idx;
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
-                        {
-                            return snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
-                        }
-                        break;
+                        return snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
                     }
+                    break;
+                }
                 case ObjectDataType.NativeObject:
                     return snapshot.NativeObjectIndexToUnifiedObjectIndex(m_data.native.index);
             }
@@ -599,28 +599,28 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Array:
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
+                {
+                    int idx;
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
                     {
-                        int idx;
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
-                        {
-                            return snapshot.CrawledData.ManagedObjects[idx];
-                        }
-                        throw new Exception("Invalid object pointer used to query object list.");
+                        return snapshot.CrawledData.ManagedObjects[idx];
                     }
+                    throw new Exception("Invalid object pointer used to query object list.");
+                }
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
-                    {
-                        int idx;
-                        ulong refPtr = GetReferencePointer();
-                        if (refPtr == 0)
-                            return default(ManagedObjectInfo);
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(GetReferencePointer(), out idx))
-                        {
-                            return snapshot.CrawledData.ManagedObjects[idx];
-                        }
-                        //do not throw, if the ref pointer is not valid the object might have been null-ed
+                {
+                    int idx;
+                    ulong refPtr = GetReferencePointer();
+                    if (refPtr == 0)
                         return default(ManagedObjectInfo);
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(GetReferencePointer(), out idx))
+                    {
+                        return snapshot.CrawledData.ManagedObjects[idx];
                     }
+                    //do not throw, if the ref pointer is not valid the object might have been null-ed
+                    return default(ManagedObjectInfo);
+                }
                 default:
                     throw new Exception("GetManagedObjectSize was called on a instance of ObjectData which does not contain an managed object.");
             }
@@ -633,16 +633,16 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Array:
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
+                {
+                    int idx;
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
                     {
-                        int idx;
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
-                        {
-                            return idx;
-                        }
-
-
-                        break;
+                        return idx;
                     }
+
+
+                    break;
+                }
             }
 
             return -1;
@@ -764,27 +764,27 @@ namespace Unity.MemoryProfiler.Editor
                     return displayObject.managedTypeIndex < 0 ? "<unknown type>" : cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex];
 
                 case ObjectDataType.ReferenceObject:
+                {
+                    var ptr = displayObject.GetReferencePointer();
+                    if (ptr != 0)
                     {
-                        var ptr = displayObject.GetReferencePointer();
-                        if (ptr != 0)
+                        var obj = ObjectData.FromManagedPointer(cachedSnapshot, ptr);
+                        if (obj.IsValid && obj.managedTypeIndex != displayObject.managedTypeIndex)
                         {
-                            var obj = ObjectData.FromManagedPointer(cachedSnapshot, ptr);
-                            if (obj.IsValid && obj.managedTypeIndex != displayObject.managedTypeIndex)
-                            {
-                                return $"({cachedSnapshot.TypeDescriptions.TypeDescriptionName[obj.managedTypeIndex]}) {cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex]}";
-                            }
+                            return $"({cachedSnapshot.TypeDescriptions.TypeDescriptionName[obj.managedTypeIndex]}) {cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex]}";
                         }
-
-                        return cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex];
                     }
+
+                    return cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex];
+                }
 
                 case ObjectDataType.Type:
                     return "Type";
                 case ObjectDataType.NativeObject:
-                    {
-                        int iType = cachedSnapshot.NativeObjects.NativeTypeArrayIndex[displayObject.nativeObjectIndex];
-                        return cachedSnapshot.NativeTypes.TypeName[iType];
-                    }
+                {
+                    int iType = cachedSnapshot.NativeObjects.NativeTypeArrayIndex[displayObject.nativeObjectIndex];
+                    return cachedSnapshot.NativeTypes.TypeName[iType];
+                }
                 case ObjectDataType.Unknown:
                 default:
                     return "<unintialized type>";
@@ -992,61 +992,64 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Array:
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Object:
+                {
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out var idx))
                     {
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out var idx))
+                        objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
+                        if (!snapshot.CrawledData.ConnectionsMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIndicies))
+                            break;
+
+                        //add crawled connections
+                        foreach (var i in connectionIndicies)
                         {
-                            objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
-                            if (!snapshot.CrawledData.ConnectionsMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIndicies))
-                                break;
-
-                            //add crawled connections
-                            foreach (var i in connectionIndicies)
+                            var c = snapshot.CrawledData.Connections[i];
+                            switch (c.connectionType)
                             {
-                                var c = snapshot.CrawledData.Connections[i];
-                                switch (c.connectionType)
-                                {
-                                    case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
+                                case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
 
-                                        var objParent = ObjectData.FromManagedObjectIndex(snapshot, c.fromManagedObjectIndex);
-                                        if (c.fieldFrom >= 0)
-                                        {
-                                            referencingObjects.Add(objParent.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
-                                        }
-                                        else if (c.arrayIndexFrom >= 0)
-                                        {
-                                            referencingObjects.Add(objParent.GetArrayElement(snapshot, c.arrayIndexFrom, false));
-                                        }
-                                        else
-                                        {
-                                            referencingObjects.Add(objParent);
-                                        }
+                                    var objParent = ObjectData.FromManagedObjectIndex(snapshot, c.fromManagedObjectIndex);
+                                    if (c.fieldFrom >= 0)
+                                    {
+                                        referencingObjects.Add(objParent.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
+                                    }
+                                    else if (c.arrayIndexFrom >= 0)
+                                    {
+                                        referencingObjects.Add(objParent.GetArrayElement(snapshot, c.arrayIndexFrom, false));
+                                    }
+                                    else
+                                    {
+                                        referencingObjects.Add(objParent);
+                                    }
 
-                                        break;
-                                    case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
+                                    break;
+                                case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
 
-                                        var objType = ObjectData.FromManagedType(snapshot, c.fromManagedType);
-                                        if (c.fieldFrom >= 0)
-                                        {
-                                            referencingObjects.Add(objType.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
-                                        }
-                                        else if (c.arrayIndexFrom >= 0)
-                                        {
-                                            referencingObjects.Add(objType.GetArrayElement(snapshot, c.arrayIndexFrom, false));
-                                        }
-                                        else
-                                        {
-                                            referencingObjects.Add(objType);
-                                        }
+                                    var objType = ObjectData.FromManagedType(snapshot, c.fromManagedType);
+                                    if (c.fieldFrom >= 0)
+                                    {
+                                        referencingObjects.Add(objType.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
+                                    }
+                                    else if (c.arrayIndexFrom >= 0)
+                                    {
+                                        referencingObjects.Add(objType.GetArrayElement(snapshot, c.arrayIndexFrom, false));
+                                    }
+                                    else
+                                    {
+                                        referencingObjects.Add(objType);
+                                    }
 
-                                        break;
-                                    case ManagedConnection.ConnectionType.UnityEngineObject:
-                                        referencingObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
-                                        break;
-                                }
+                                    break;
+                                case ManagedConnection.ConnectionType.UnityEngineObject:
+                                    // these get at added in the loop at the end of the function
+                                    // tried using a hash set to prevent duplicates but the lookup during add locks up the window
+                                    // if there are more than about 50k references
+                                    //referencingObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
+                                    break;
                             }
                         }
-                        break;
                     }
+                    break;
+                }
                 case ObjectDataType.NativeObject:
                     objIndex = snapshot.NativeObjectIndexToUnifiedObjectIndex(obj.nativeObjectIndex);
                     if (!snapshot.CrawledData.ConnectionsMappedToNativeIndex.TryGetValue(obj.nativeObjectIndex, out var connectionIndices))
@@ -1078,7 +1081,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            return referencingObjects.ToArray();;
+            return referencingObjects.ToArray();
         }
 
         public static ObjectData[] GetAllReferencedObjects(CachedSnapshot snapshot, ObjectData obj)
@@ -1091,80 +1094,21 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Array:
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Object:
+                {
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out var idx))
                     {
-                        if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out var idx))
-                        {
-                            objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
+                        objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
 
-                            if (!snapshot.CrawledData.ConnectionsMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIdxs))
-                                break;
-
-                            //add crawled connections
-                            foreach (var i in connectionIdxs)
-                            {
-                                var c = snapshot.CrawledData.Connections[i];
-                                switch (c.connectionType)
-                                {
-                                    case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
-                                        if (c.fieldFrom >= 0)
-                                        {
-                                            referencedObjects.Add(obj.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
-                                        }
-                                        else if (c.arrayIndexFrom >= 0)
-                                        {
-                                            referencedObjects.Add(obj.GetArrayElement(snapshot, c.arrayIndexFrom, false));
-                                        }
-                                        else
-                                        {
-                                            var referencedObject = ObjectData.FromManagedObjectIndex(snapshot, c.toManagedObjectIndex);
-                                            referencedObjects.Add(referencedObject);
-                                        }
-                                        break;
-                                    case ManagedConnection.ConnectionType.UnityEngineObject:
-                                        referencedObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
-                                        break;
-                                }
-                            }
-                        }
-                        break;
-                    }
-                case ObjectDataType.NativeObject:
-                    {
-                        objIndex = snapshot.NativeObjectIndexToUnifiedObjectIndex(obj.nativeObjectIndex);
-                        if (!snapshot.CrawledData.ConnectionsMappedToNativeIndex.TryGetValue(obj.nativeObjectIndex, out var connectionIdxs))
+                        if (!snapshot.CrawledData.ConnectionsMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIdxs))
                             break;
 
-                        //add crawled connection
+                        //add crawled connections
                         foreach (var i in connectionIdxs)
                         {
-                            switch (snapshot.CrawledData.Connections[i].connectionType)
+                            var c = snapshot.CrawledData.Connections[i];
+                            switch (c.connectionType)
                             {
                                 case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
-                                case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
-                                    break;
-                                case ManagedConnection.ConnectionType.UnityEngineObject:
-                                    // A ManagedConnection.ConnectionType.UnityEngineObject comes about because a Managed field's m_CachedPtr points at a Native Object
-                                    // while that connection is technically correct and correctly bidirectional, the Native -> Managed side of the connection
-                                    // should already be tracked via snapshot.Connections, aka GCHandles reported in the snapshot.
-                                    // To avoid double reporting this connection, track these in the hashmap to de-dup the list when adding connections based on GCHandle reporting
-                                    var managedIndex = snapshot.CrawledData.Connections[i].UnityEngineManagedObjectIndex;
-                                    foundUnifiedIndices.Add(snapshot.ManagedObjectIndexToUnifiedObjectIndex(managedIndex));
-                                    referencedObjects.Add(ObjectData.FromManagedObjectIndex(snapshot, managedIndex));
-                                    break;
-                            }
-                        }
-                        break;
-                    }
-                case ObjectDataType.Type:
-                    { //TODO this will need to be changed at some point to use the mapped searches
-                        if (snapshot.TypeDescriptions.TypeIndexToArrayIndex.TryGetValue(obj.managedTypeIndex, out var idx))
-                        {
-                            //add crawled connections
-                            for (int i = 0; i != snapshot.CrawledData.Connections.Count; ++i)
-                            {
-                                var c = snapshot.CrawledData.Connections[i];
-                                if (c.connectionType == ManagedConnection.ConnectionType.ManagedType_To_ManagedObject && c.fromManagedType == idx)
-                                {
                                     if (c.fieldFrom >= 0)
                                     {
                                         referencedObjects.Add(obj.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
@@ -1178,11 +1122,73 @@ namespace Unity.MemoryProfiler.Editor
                                         var referencedObject = ObjectData.FromManagedObjectIndex(snapshot, c.toManagedObjectIndex);
                                         referencedObjects.Add(referencedObject);
                                     }
+                                    break;
+                                case ManagedConnection.ConnectionType.UnityEngineObject:
+                                    // these get at added in the loop at the end of the function
+                                    // tried using a hash set to prevent duplicates but the lookup during add locks up the window
+                                    // if there are more than about 50k references
+                                    //referencedObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
+                                    break;
+                            }
+                        }
+                    }
+                    break;
+                }
+                case ObjectDataType.NativeObject:
+                {
+                    objIndex = snapshot.NativeObjectIndexToUnifiedObjectIndex(obj.nativeObjectIndex);
+                    if (!snapshot.CrawledData.ConnectionsMappedToNativeIndex.TryGetValue(obj.nativeObjectIndex, out var connectionIdxs))
+                        break;
+
+                    //add crawled connection
+                    foreach (var i in connectionIdxs)
+                    {
+                        switch (snapshot.CrawledData.Connections[i].connectionType)
+                        {
+                            case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
+                            case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
+                                break;
+                            case ManagedConnection.ConnectionType.UnityEngineObject:
+                                // A ManagedConnection.ConnectionType.UnityEngineObject comes about because a Managed field's m_CachedPtr points at a Native Object
+                                // while that connection is technically correct and correctly bidirectional, the Native -> Managed side of the connection
+                                // should already be tracked via snapshot.Connections, aka GCHandles reported in the snapshot.
+                                // To avoid double reporting this connection, track these in the hashmap to de-dup the list when adding connections based on GCHandle reporting
+                                var managedIndex = snapshot.CrawledData.Connections[i].UnityEngineManagedObjectIndex;
+                                foundUnifiedIndices.Add(snapshot.ManagedObjectIndexToUnifiedObjectIndex(managedIndex));
+                                referencedObjects.Add(ObjectData.FromManagedObjectIndex(snapshot, managedIndex));
+                                break;
+                        }
+                    }
+                    break;
+                }
+                case ObjectDataType.Type:
+                {     //TODO this will need to be changed at some point to use the mapped searches
+                    if (snapshot.TypeDescriptions.TypeIndexToArrayIndex.TryGetValue(obj.managedTypeIndex, out var idx))
+                    {
+                        //add crawled connections
+                        for (int i = 0; i != snapshot.CrawledData.Connections.Count; ++i)
+                        {
+                            var c = snapshot.CrawledData.Connections[i];
+                            if (c.connectionType == ManagedConnection.ConnectionType.ManagedType_To_ManagedObject && c.fromManagedType == idx)
+                            {
+                                if (c.fieldFrom >= 0)
+                                {
+                                    referencedObjects.Add(obj.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
+                                }
+                                else if (c.arrayIndexFrom >= 0)
+                                {
+                                    referencedObjects.Add(obj.GetArrayElement(snapshot, c.arrayIndexFrom, false));
+                                }
+                                else
+                                {
+                                    var referencedObject = ObjectData.FromManagedObjectIndex(snapshot, c.toManagedObjectIndex);
+                                    referencedObjects.Add(referencedObject);
                                 }
                             }
                         }
-                        break;
                     }
+                    break;
+                }
                 default:
                     return null;
             }

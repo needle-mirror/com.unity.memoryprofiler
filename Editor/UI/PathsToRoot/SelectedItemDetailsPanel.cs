@@ -200,7 +200,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (m_SelectedUnityObject.IsValid)
             {
-                EditorAssetFinderUtility.SearchForObject(m_CachedSnapshot, m_SelectedUnityObject);
+                EditorAssetFinderUtility.SetEditorSearchFilterForObject(m_CachedSnapshot, m_SelectedUnityObject);
             }
         }
 
@@ -436,7 +436,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         void Clear()
         {
             m_SelectedUnityObject = default;
-            m_ManagedObjectInspectors[0].Clear();
+            if (m_ManagedObjectInspectors != null)
+            {
+                foreach (var inspector in m_ManagedObjectInspectors)
+                {
+                    inspector?.Clear();
+                }
+            }
             UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainors[0], false);
             m_DynamicElements.Clear();
             m_FoundObjectInEditor = null;

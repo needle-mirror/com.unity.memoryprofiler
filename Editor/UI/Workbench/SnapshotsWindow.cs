@@ -8,15 +8,9 @@ using Unity.MemoryProfiler.Editor.UI;
 using Unity.EditorCoroutines.Editor;
 using UnityEngine.SceneManagement;
 using System.IO;
-using Unity.MemoryProfiler.Editor.Legacy.LegacyFormats;
 using Unity.MemoryProfiler.Editor.Format;
-#if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-using UnityEditor.Experimental.UIElements;
-#endif
 using TwoPaneSplitView = Unity.MemoryProfiler.Editor.TwoPaneSplitView;
 
 namespace Unity.MemoryProfiler.Editor

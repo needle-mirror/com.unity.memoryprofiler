@@ -2,8 +2,11 @@
 	<Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="300" name="details-panel__splitter" orientation="Vertical">
         <ui:VisualElement name="reference-trees" class="details-panel__section">
             <ui:Foldout text="References" name="details-panel__section-header__references" display-tooltip-when-elided="true" class="details-panel__section-header">
+            <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="reference-item-details__unity-item-title" style="-unity-font-style: bold;"/>
 				<Unity.MemoryProfiler.Editor.UI.Ribbon name="references__ribbon__container" show-help-button="false" alignment="FlexStart" style="align-items: stretch;">
-					<Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Referenced By (Raw)" toggled="true" name="raw-connections" style="flex-grow: 1;" />
+					<Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Referenced By (Raw)"  toggled="true" name="raw-connections" style="flex-grow: 1;max-width: 200px; ">
+                        <ui:Image tooltip="Displays a list of other entities that reference the selected object." class="icon-button icon-button__help-icon square-button-icon" style="margin-left: auto;"/>
+                    </Unity.MemoryProfiler.Editor.UI.RibbonButton>
 				</Unity.MemoryProfiler.Editor.UI.Ribbon>
 				<ui:IMGUIContainer name="references-imguicontainer" style="flex-grow: 1; margin-top: 0;" />
 			</ui:Foldout>

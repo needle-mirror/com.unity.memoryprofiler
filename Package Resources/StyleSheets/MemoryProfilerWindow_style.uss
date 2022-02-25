@@ -1095,6 +1095,16 @@ Image.selected-item-details__preview {
     text-overflow: ellipsis;
 }
 
+.object-or-type-label-selectable {
+    flex-direction: row;
+    flex-shrink: 0;
+    text-overflow: ellipsis;
+}
+
+.object-or-type-label-selectable:hover {
+    background-color: rgb(85, 85, 85);
+}
+
 .object-or-type-label__icon-space {
     flex-direction: row;
     flex-shrink: 0;

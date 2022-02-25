@@ -4,6 +4,35 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.5.1-preview.1] - 2022-02-25
+
+### Added
+ - Added tooltip to the Referenced By section to explain what it means. "Displays a list of other entities that reference the selected object."
+
+### Fixed
+ - Fixed Managed Type truncation for generic types to only truncate the type that holds the generic type arguments.
+ - Removed "Examples/SearchService/Providers" Menu item.
+ - Fixed issue where filters would be added to the spreadsheet tables and could not be removed.
+ - Fixed issue where selecting something in the references tree view would cause the spreadsheet to repaint and lose latent selection.
+ - Fixed Duplicate entries appearing in searches in the reference view.
+ - Fixed NotImplementedException being thrown when traversing history from the fragmentation panel to a highlevel element breakdown selection.
+ - Fixed the main selection not being recreated in the references view when navigating back in history from other views to the details panel.
+ - Fixed issue where removing filters would leave the wrong selection in the table view.
+ - Fixed refernces view selection causing table expansion state to reset.
+ - Fixed Errors and Exceptions breaking the Memory Profiler Window when minimizing, maximizing or docking and undocking it.
+ - Improved "Select in Editor" search accuracy for Assets and Scene Objects in 2021.1 or newer editors.
+ - Improved "Open in Quick Search" search string when searching for Scene Objects in 2021.1 or newer editors.
+
+### Changed
+ - Changed Snapshot preview screen-shot textures to get compressed in memory to reduce memory overhead.
+ - Changed Typename truncation so that all typnames are truncated not just the initial typename.
+ - Changed the Referenced By treeview to not contain the selected object. 
+   - The selected object that the references are calculated for are now displayed above the tree view.
+   - The Referenced By button now show the number of direct connections in its label.
+ - The import buttons has been moved to left side of the memory profiler window toolber.
+ - The snapshots panel toggle text has been removed.
+ - The details panel toggle text has been removed and the icon has been changed to use the inspector icon.
+
 ## [0.5.0-preview.1] - 2022-02-02
 
 ### Added
@@ -32,7 +61,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
    - Recursive reference chains are caught and truncated so that it is safe to use Alt/Option + LMB click to expand the tree all the way. Though right now, to keep processing times low, it only searches 3 levels deep at a time.
  - Added toggle to truncate type names in the details panel. It can be accessed through the kebab menu icon and the context menu of both the managed object inspector and referenced by tree views.
 
- ### Fixed
+### Fixed
  - Fixed Fragmentation page to show an Allocations table with root object and area names when comparing snapshots.
 
 ### Changed

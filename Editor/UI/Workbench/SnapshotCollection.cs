@@ -10,12 +10,7 @@ using System.Text;
 using Unity.MemoryProfiler.Editor.Extensions.String;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.MemoryProfiler.Editor.Diagnostics;
-#if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-#endif
-using UnityEditorInternal;
 
 namespace Unity.MemoryProfiler.Editor
 {

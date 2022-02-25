@@ -23,13 +23,8 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.EditorCoroutines.Editor;
 using UnityEngine.Profiling.Memory.Experimental;
-#if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-using UnityEditor.Experimental.UIElements;
-#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -100,7 +95,7 @@ namespace Unity.MemoryProfiler.Editor
             m_DetailsToggle.RegisterValueChangedCallback(ToggleDetailsVisibility);
 
             //we have to do this to get the image on the left as it cant be added another way.
-            m_DetailsToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] {"icon_button", "square-button-icon", "icon-button__details-icon"}));
+            m_DetailsToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] {"icon_button", "square-button-icon", "icon-button__inspector-icon"}));
 
             var exportButton = root.Q<Button>("toolbar__export-button");
             exportButton.clicked += () => OpenExportMenu(exportButton.GetRect());

@@ -98,6 +98,10 @@ Label.snapshot--in-view{
     background-image: resource('_Help.png');
 }
 
+.icon-button__inspector-icon {
+    background-image: resource('UnityEditor.InspectorWindow.png');
+}
+
 .icon-button__menu-icon {
     background-image: resource('_Menu.png');
 }

@@ -94,6 +94,10 @@ Label.snapshot--in-view {
     background-image: resource('d__Help.png');
 }
 
+.icon-button__inspector-icon {
+    background-image: resource('d_UnityEditor.InspectorWindow.png');
+}
+
 .icon-button__menu-icon {
     background-image: resource('d__Menu.png');
 }

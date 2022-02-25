@@ -1,9 +1,6 @@
 using UnityEngine;
 using System;
 using Unity.MemoryProfiler.Editor.UI;
-using UnityEditor.Profiling.Memory.Experimental;
-using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor

@@ -1,10 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
-#if UNITY_2019_1_OR_NEWER
 using UnityEngine.UIElements;
-#else
-using UnityEngine.Experimental.UIElements;
-#endif
 using UnityEditor;
 using Unity.MemoryProfiler.Editor.Database.Operation;
 using System;
@@ -463,8 +459,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_EventListener.OnRepaint();
         }
 
+        void InitializeIfNeeded()
+        {
+            if (Styles.General == null)
+                Styles.Initialize();
+        }
+
         public override void OnGUI(Rect r)
         {
+            InitializeIfNeeded();
+
             if (m_Spreadsheet == null)
                 OnSelectRegions(0, 0);
 
@@ -603,6 +607,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override void OnSelectionChanged(MemorySampleSelection selection)
         {
+            if (m_Spreadsheet == null)
+                return; // Domain Reload or Serialization/Deserialization related untimely event fired. Ignore it, this view is closed for business.
+
             if (selection.Rank == MemorySampleSelectionRank.SecondarySelection)
                 m_Spreadsheet.SetSelectionAsLatent(true);
             switch (selection.Type)

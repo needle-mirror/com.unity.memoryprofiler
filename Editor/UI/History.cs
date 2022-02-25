@@ -39,7 +39,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// Keeps a time-line of events that may be revisited on demand.
     /// Useful for navigation and undo mechanisms
     /// </summary>
-    internal class History
+    internal class History : IDisposable
     {
         public System.Collections.Generic.List<HistoryEvent> events = new System.Collections.Generic.List<HistoryEvent>();
         public int backCount = 0;
@@ -238,6 +238,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             AddEvent(historySelectionEvent);
             if (m_FirstSelectionEventIndex == -1)
                 m_FirstSelectionEventIndex = GetCurrent();
+        }
+
+        public void Dispose()
+        {
+            historyChanged = null;
+            lastSelectionEventCleared = null;
         }
     }
 }

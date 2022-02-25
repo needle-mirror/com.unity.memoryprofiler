@@ -5,7 +5,6 @@ using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.Profiling;
-using UnityEditor.Profiling.Memory.Experimental;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -47,7 +46,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     ///     current display options
     ///     history of passed actions
     /// </summary>
-    internal class UIState
+    internal class UIState : IDisposable
     {
         internal abstract class BaseMode
         {
@@ -380,7 +379,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public History history = new History();
+        [NonSerialized]
+        public History history = null;
 
         public SelectionDetailsFactory CustomSelectionDetailsFactory = new SelectionDetailsFactory();
 
@@ -463,6 +463,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             noMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, default(FileReader));
 
             // When History is cleared, the selection is cleared as well as it is stored in the History
+            history = new History();
             history.lastSelectionEventCleared += SendSelectionClearedEvent;
         }
 
@@ -570,7 +571,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             FirstSnapshotAge = SnapshotAge.None;
         }
 
-        public void Clear()
+        public void Dispose()
         {
             ClearAllOpenModes();
             SelectionChanged = delegate {};

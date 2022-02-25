@@ -4,13 +4,10 @@ using System.Reflection;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
-using UnityEditor.Experimental.GraphView;
 #if UNITY_2021_1_OR_NEWER
 using UnityEditor.Search;
-using System.Linq;
 #endif
 using UnityEngine;
-using UnityEngine.Internal;
 using Object = UnityEngine.Object;
 
 namespace Unity.MemoryProfiler.Editor
@@ -74,6 +71,13 @@ namespace Unity.MemoryProfiler.Editor
                         break;
                 }
             }
+
+
+#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
+            // Initialize quick search
+            using var context = SearchService.CreateContext(providerIds: new[] { k_SearchProviderIdScene, k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
+            using var search = SearchService.Request(context, SearchFlags.Synchronous);
+#endif
         }
 
         static void SetProjectSearch(string searchString)
@@ -180,6 +184,7 @@ namespace Unity.MemoryProfiler.Editor
             var searchString = ConstructSearchString(unifiedUnityObjectInfo);
 
             var failReason = SearchFailReason.NotFound;
+            Object foundObject = null;
             //maybe eventually join the contexts and filter later.
             SearchItem searchItem = null;
             SearchContext succesfulContext = null;
@@ -188,9 +193,50 @@ namespace Unity.MemoryProfiler.Editor
             {
                 if (search.Count == 1)
                 {
-                    failReason = SearchFailReason.Found;
                     succesfulContext = assetContext;
                     searchItem = search[0];
+                    if (searchItem != null)
+                    {
+                        foundObject = searchItem.ToObject();
+                        if (!CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
+                        {
+                            failReason = SearchFailReason.Found;
+                        }
+                    }
+                }
+                else if (search.Count < 5)
+                {
+                    // Asset database search for e.g. "Guard t:Mesh" also finds "Guard" Mesh and "Guard.fbx" Mesh, so, try trimming it down if its only a small set of results
+                    searchItem = null;
+                    int likelyCandidateCount = 0;
+                    foreach (var item in search)
+                    {
+                        if (item != null)
+                        {
+                            var obj = item.ToObject();
+                            if (obj != null && obj.name == unifiedUnityObjectInfo.NativeObjectName && !CheckTypeMismatch(obj, unifiedUnityObjectInfo, snapshot))
+                            {
+                                if (foundObject == null && foundObject != obj)
+                                    ++likelyCandidateCount;
+                                foundObject = obj;
+                                searchItem = item;
+                            }
+                        }
+                    }
+                    if (searchItem != null && foundObject != null && likelyCandidateCount == 1)
+                    {
+                        succesfulContext = assetContext;
+                        failReason = SearchFailReason.Found;
+                    }
+                    else
+                    {
+                        if (likelyCandidateCount > 0)
+                            failReason = SearchFailReason.FoundTooMany;
+                        else if (likelyCandidateCount == 0)
+                            failReason = SearchFailReason.NotFound;
+                        searchItem = null;
+                        foundObject = null;
+                    }
                 }
                 else
                 {
@@ -200,43 +246,49 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            var adbContext = SearchService.CreateContext(providerId: k_SearchProviderIdAssetDatabase, searchText: searchString);
-            using (var search = SearchService.Request(adbContext, SearchFlags.Synchronous))
+            if (failReason != SearchFailReason.Found)
             {
-                if (search.Count == 1)
+                var adbContext = SearchService.CreateContext(providerId: k_SearchProviderIdAssetDatabase, searchText: searchString);
+                using (var search = SearchService.Request(adbContext, SearchFlags.Synchronous))
                 {
-                    failReason = SearchFailReason.Found;
-                    if (succesfulContext != null)
-                        succesfulContext.Dispose();
-                    succesfulContext = adbContext;
-                    searchItem = search[0];
-                }
-                else
-                {
-                    adbContext.Dispose();
-                    if (search.Count > 1)
-                        failReason = SearchFailReason.FoundTooMany;
+                    if (search.Count == 1)
+                    {
+                        if (succesfulContext != null)
+                            succesfulContext.Dispose();
+                        succesfulContext = adbContext;
+                        searchItem = search[0];
+                        if (searchItem != null)
+                        {
+                            foundObject = searchItem.ToObject();
+                            if (!CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
+                            {
+                                failReason = SearchFailReason.Found;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        adbContext.Dispose();
+                        if (search.Count > 1)
+                            failReason = SearchFailReason.FoundTooMany;
+                    }
                 }
             }
 
-            if (failReason == SearchFailReason.Found && searchItem != null && succesfulContext != null)
+            if (failReason == SearchFailReason.Found && foundObject != null && succesfulContext != null)
             {
-                var foundObject = searchItem.ToObject();
-                if (foundObject != null && !CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
+                bool previewImageNeedsCleanup;
+                var previewImage = TryObtainingPreview(foundObject, out previewImageNeedsCleanup);
+                if (previewImage == null)
                 {
-                    bool previewImageNeedsCleanup;
-                    var previewImage = TryObtainingPreview(foundObject, out previewImageNeedsCleanup);
-                    if (previewImage == null)
-                    {
-                        previewImage = searchItem.GetPreview(succesfulContext, new Vector2(500, 500), FetchPreviewOptions.Large);
-                        previewImageNeedsCleanup = previewImage == null || !previewImage.hideFlags.HasFlag(HideFlags.NotEditable);
-                    }
-                    succesfulContext.Dispose();
-                    return new Findings() {
-                        FoundObject = foundObject, DegreeOfCertainty = 80,
-                        PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup
-                    };
+                    previewImage = searchItem.GetPreview(succesfulContext, new Vector2(500, 500), FetchPreviewOptions.Large);
+                    previewImageNeedsCleanup = previewImage == null || !previewImage.hideFlags.HasFlag(HideFlags.NotEditable);
                 }
+                succesfulContext.Dispose();
+                return new Findings() {
+                    FoundObject = foundObject, DegreeOfCertainty = 80,
+                    PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup
+                };
             }
             return new Findings() { FailReason = failReason };
         }
@@ -274,7 +326,7 @@ namespace Unity.MemoryProfiler.Editor
                 // TODO: with captured Scene Roots changes, double check the open scene names
                 // if they mismatch, return;
             }
-            using (var context = SearchService.CreateContext(providerId: k_SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo)))
+            using (var context = SearchService.CreateContext(providerId: k_SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo, true)))
             {
                 using (var search = SearchService.Request(context, SearchFlags.Synchronous))
                 {
@@ -286,7 +338,10 @@ namespace Unity.MemoryProfiler.Editor
                         if (foundObject is GameObject && !unifiedUnityObjectInfo.IsGameObject)
                         {
                             var go = foundObject as GameObject;
+                            // Managed Type Name is more specific instead of e.g. MonoBehaviou, but it may fail
                             foundObject = go.GetComponent(unifiedUnityObjectInfo.ManagedTypeName);
+                            if (foundObject == null) // try native type name in that case
+                                foundObject = go.GetComponent(unifiedUnityObjectInfo.NativeTypeName);
                         }
                         if (foundObject != null && !CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
                         {
@@ -406,7 +461,7 @@ namespace Unity.MemoryProfiler.Editor
             return typeMismatch;
         }
 
-        static string ConstructSearchString(UnifiedUnityObjectInfo unifiedUnityObjectInfo)
+        static string ConstructSearchString(UnifiedUnityObjectInfo unifiedUnityObjectInfo, bool quickSearchSceneObjectSearch = false)
         {
             var searchString = unifiedUnityObjectInfo.NativeObjectName;
 
@@ -414,8 +469,12 @@ namespace Unity.MemoryProfiler.Editor
             var lastNameSeparator = searchString.LastIndexOf('/');
             if (lastNameSeparator++ > 0)
                 searchString = searchString.Substring(lastNameSeparator, searchString.Length - lastNameSeparator);
-
-            if (unifiedUnityObjectInfo.Type.HasManagedType)
+            if (quickSearchSceneObjectSearch)
+            {
+                // Quick Search can't search for components directly
+                searchString += " t:GameObject";
+            }
+            else if (unifiedUnityObjectInfo.Type.HasManagedType)
             {
                 var managedTypeName = unifiedUnityObjectInfo.Type.ManagedTypeName;
                 var lastSeparator = managedTypeName.LastIndexOf('.');
@@ -428,16 +487,6 @@ namespace Unity.MemoryProfiler.Editor
             return searchString;
         }
 
-#if UNITY_2021_1_OR_NEWER
-        [MenuItem("Examples/SearchService/Providers")]
-        public static void RunProviders()
-        {
-            // Print special search providers
-            foreach (var provider in SearchService.Providers /*.Where(p => p.isExplicitProvider)*/)
-                Debug.Log($"Special Search Provider {provider.name} ({provider.id})");
-        }
-
-#endif
         public static void SelectObject(Object obj)
         {
             Selection.activeObject = obj;
@@ -459,14 +508,14 @@ namespace Unity.MemoryProfiler.Editor
             }
             if (selectedUnityObject.IsAsset)
                 return TextContent.SearchInProjectButton;
-#if UNITY_2021_1_OR_NEWER
+#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
             return new GUIContent("Search in Editor");
 #else
             return null;
 #endif
         }
 
-        public static void SearchForObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
+        public static void SetEditorSearchFilterForObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
         {
             if (selectedUnityObject.IsSceneObject)
             {
@@ -481,9 +530,15 @@ namespace Unity.MemoryProfiler.Editor
 
         public static void OpenQuickSearch(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
         {
-#if UNITY_2021_1_OR_NEWER
-            var context = SearchService.CreateContext(searchText: ConstructSearchString(selectedUnityObject));
-            SearchService.ShowWindow(context);
+#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
+            // possible fall-back if Case 1400665 is never backported to 2021.1, or if we need something like this in earlier Unity versions with the package.
+            //var providerIds = selectedUnityObject.IsSceneObject? new[]{ k_SearchProviderIdScene } : new[]{ k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase };
+
+            var context = SearchService.CreateContext(/*providerIds: providerIds,*/ searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.IsSceneObject));
+            var state = new SearchViewState(context);
+            // Will only work once Case 1400665 is resolved and this trunk change-set landed: 25685e01ef1d
+            state.group = selectedUnityObject.IsSceneObject ? "scene" : "asset";
+            SearchService.ShowWindow(state);
 #endif
         }
     }

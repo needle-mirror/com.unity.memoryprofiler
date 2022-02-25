@@ -32,6 +32,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         long m_CurrentAccumulativeSizeNew = 0;
         long m_CurrentAccumulativeSizeDeleted = 0;
 
+        [NonSerialized]
+        bool m_Initialized = false;
+
         bool m_WasDirty = false;
         EditorCoroutine m_DelayedOnGUICall = null;
         public bool ViewStateFilteringChangedSinceLastSelectionOrViewClose { get; private set; }
@@ -92,7 +95,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void RestoreSelectedRow(long rowIndex)
         {
             m_GUIState.SelectedRow = rowIndex;
-            m_GUIState.SelectionIsLatent = false;
             if (rowIndex >= 0)
                 Goto(GetLinkToCurrentSelection(), onlyScrollIfNeeded: true);
         }
@@ -195,7 +197,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TableDisplay = table;
             m_FormattingOptions = formattingOptions;
 
-            InitSplitter();
+            InitializeIfNeeded();
             CurrentState = state;
         }
 
@@ -206,8 +208,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TableDisplay = table;
             m_FormattingOptions = formattingOptions;
 
-            InitSplitter();
+            InitializeIfNeeded();
             InitDefaultTableFilter();
+        }
+
+        protected override void InitializeIfNeeded()
+        {
+            if (!m_Initialized)
+            {
+                InitSplitter();
+                Styles.Initialize();
+            }
+            m_Initialized = true;
         }
 
         private void InitSplitter()
@@ -514,6 +526,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void UpdateTable()
         {
+            if (!m_Initialized)
+            {
+                InitSplitter();
+                m_Initialized = true;
+            }
+
             var updater = m_TableDisplay.BeginUpdate();
             if (updater != null)
             {
@@ -576,14 +594,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             //ResetGUIState();
         }
 
-        public void UpdateDisplayTable(List<Database.CellPosition> expandedCells = null)
+        public void UpdateDisplayTable(List<Database.CellPosition> expandedCells = null, bool resetState = true)
         {
             UpdateColumnState();
-            m_TableDisplay = m_Filters.CreateFilter(m_TableSource);
+            if (resetState)
+                m_TableDisplay = m_Filters.CreateFilter(m_TableSource);
 
             UpdateExpandedState(expandedCells);
             UpdateDataState();
-            ResetGUIState();
+            if (resetState)
+            {
+                // we want to preserve if the selection state was latent and thats it
+                var ls = m_GUIState.SelectionIsLatent;
+                ResetGUIState();
+                m_GUIState.SelectionIsLatent = ls;
+            }
+
             m_CurrentRowCount = m_TableDisplay.GetRowCount();
             var col = m_TableDisplay.GetColumnByName("Size");
             if (col == null)
@@ -1052,10 +1078,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Filters.OnGui(m_TableDisplay, ref matching);
             if (matching != dirty)
             {
-                m_DelayedOnGUICall = EditorCoroutineUtility.StartCoroutine(DelayedOnGUICall(), (((IViewEventListener)m_Listener.Target) as ViewPane).m_UIStateHolder as EditorWindow);
+                SetSelectionAfterFilterChange(matching);
             }
             dirty = matching;
 
+            // hack to prevent the filters from being restored
+            // when the last filter is removed it sets dirtyto true and spawns the delayed gui call which updates the filters
+            // iff the selected object is a group of one i.e. AudioManager it will restore all the filters
+            bool preRemoval = dirty;
             m_AllLevelSortFilter.OnGui(m_TableDisplay, ref dirty);
             EditorGUILayout.EndVertical();
 
@@ -1064,7 +1094,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_WasDirty = true;
                 ViewStateFilteringChangedSinceLastSelectionOrViewClose = true;
                 if (m_DelayedOnGUICall == null)
-                    m_DelayedOnGUICall = EditorCoroutineUtility.StartCoroutine(DelayedOnGUICall(0), (((IViewEventListener)m_Listener.Target) as ViewPane).m_UIStateHolder as EditorWindow);
+                    SetSelectionAfterFilterChange(preRemoval == dirty ? preRemoval : dirty);
             }
             UpdateMatchFilterState();
             GUILayout.FlexibleSpace();
@@ -1082,7 +1112,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        IEnumerator DelayedOnGUICall(float delay = 0.3f)
+        IEnumerator DelayedOnGUICall(float delay = 0.3f, bool updateFilters = true)
         {
             if (m_Listener == null || !m_Listener.IsAlive)
             {
@@ -1151,26 +1181,32 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_DelayedOnGUICall = null;
                     yield break;
                 }
-
-                UpdateDisplayTable();
+                UpdateDisplayTable(null, updateFilters);
                 ReportFilterChanges();
 
                 if (m_Listener != null && m_Listener.IsAlive)
                 {
                     ((IViewEventListener)m_Listener.Target).OnRepaint();
                 }
-                UserChangedFilters();
+                if (updateFilters)
+                    UserChangedFilters();
             }
             m_DelayedOnGUICall = null;
         }
 
-        public void SetSelectionAsLatent(bool latent)
+        public void SetSelectionAfterFilterChange(bool updateFilters = true)
+        {
+            m_WasDirty = true;
+            m_DelayedOnGUICall = EditorCoroutineUtility.StartCoroutine(DelayedOnGUICall(0.3f, updateFilters), (((IViewEventListener)m_Listener.Target) as ViewPane).m_UIStateHolder as EditorWindow);
+        }
+
+        public void SetSelectionAsLatent(bool latent, bool updateFilters = true)
         {
             if (m_GUIState.SelectedRow >= 0 && m_GUIState.SelectionIsLatent != latent)
             {
                 m_GUIState.SelectionIsLatent = latent;
                 m_WasDirty = true;
-                EditorCoroutineUtility.StartCoroutine(DelayedOnGUICall(), (((IViewEventListener)m_Listener.Target) as ViewPane).m_UIStateHolder as EditorWindow);
+                m_DelayedOnGUICall = EditorCoroutineUtility.StartCoroutine(DelayedOnGUICall(0.3f, updateFilters), (((IViewEventListener)m_Listener.Target) as ViewPane).m_UIStateHolder as EditorWindow);
             }
         }
 
