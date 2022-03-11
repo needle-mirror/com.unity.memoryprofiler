@@ -1,0 +1,174 @@
+.unity-objects-breakdown-view__dark:root
+{
+  --unity-objects-breakdown-view__total__bar__background-color: #5A5A5A;
+  --unity-objects-breakdown-view__total__bar-fill__background-color: #C4C4C4;
+  --unity-objects-breakdown-view__tree-view__background-color: #3E3E3E;
+  --unity-objects-breakdown-view__tree-view__border-color: #232323;
+  --unity-objects-breakdown-view__loading-overlay__background-color: rgba(0, 0, 0, 0.3);
+}
+
+.unity-objects-breakdown-view__light:root
+{
+  --unity-objects-breakdown-view__total__bar__background-color: #CBCBCB;
+  --unity-objects-breakdown-view__total__bar-fill__background-color: white;
+  --unity-objects-breakdown-view__tree-view__background-color: #C8C8C8;
+  --unity-objects-breakdown-view__tree-view__border-color: #999999;
+  --unity-objects-breakdown-view__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
+}
+
+#unity-objects-breakdown-view
+{
+    flex-grow: 1;
+    margin: 16px;
+}
+
+#unity-objects-breakdown-view__search-field-container
+{
+    flex-direction: row;
+    flex-shrink: 0;
+}
+
+#unity-objects-breakdown-view__search-field
+{
+    flex-grow: 1;
+    height: 28px;
+    margin: 0px;
+    padding: 4px;
+}
+
+#unity-objects-breakdown-view__search-field TextField
+{
+    padding-left: 4px;
+}
+
+#unity-objects-breakdown-view__search-field TextElement
+{
+    font-size: 12px;
+}
+
+#unity-objects-breakdown-view__total
+{
+    flex-shrink: 0;
+    margin: 20px 0px 0px;
+}
+
+#unity-objects-breakdown-view__total__bar
+{
+    background-color: var(--unity-objects-breakdown-view__total__bar__background-color);
+    height: 14px;
+}
+
+#unity-objects-breakdown-view__total__bar *
+{
+    background-color: var(--unity-objects-breakdown-view__total__bar-fill__background-color);
+    min-width: 1px;
+    /* Uncomment when we drop support for <= 2020.
+    transition-duration: 0.23s;
+    transition-property: width;
+    transition-timing-function: ease-out;*/
+}
+
+#unity-objects-breakdown-view__total-footer
+{
+    flex-direction: row;
+    margin: 8px 0px;
+}
+
+#unity-objects-breakdown-view__total-footer__table-label
+{
+    flex-grow: 1;
+}
+
+#unity-objects-breakdown-view__tree-view__main-container
+{
+    flex-grow: 1;
+}
+
+#unity-objects-breakdown-view__tree-view
+{
+    background-color: var(--unity-objects-breakdown-view__tree-view__background-color);
+    border-color: var(--unity-objects-breakdown-view__tree-view__border-color);
+    border-top-width: 1px;
+    flex-grow: 1;
+}
+
+#unity-objects-breakdown-view__tree-view
+{
+    flex-grow: 1;
+}
+
+#unity-objects-breakdown-view__tree-view .unity-multi-column-header
+{
+    margin: 2px 8px;
+}
+
+#unity-objects-breakdown-view__tree-view #unity-content-viewport
+{
+    margin: 0px 8px;
+}
+
+#unity-objects-breakdown-view__footer-toolbar
+{
+    border-top-width: 1px;
+    height: 32px;
+}
+
+#unity-objects-breakdown-view__toolbar__flatten-toggle
+{
+    padding: 0px 12px;
+}
+
+#unity-objects-breakdown-view__toolbar__flatten-toggle .unity-toggle__text
+{
+    padding-left: 4px;
+}
+
+#unity-objects-breakdown-view__loading-overlay
+{
+    align-items: center;
+    background-color: var(--unity-objects-breakdown-view__loading-overlay__background-color);
+    bottom: 0px;
+    justify-content: center;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    /* Uncomment when we drop support for <= 2020.
+    transition-duration: 0.23s;
+    transition-property: opacity;
+    transition-timing-function: ease-out;*/
+}
+
+#unity-objects-breakdown-view__loading-overlay:enabled
+{
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+}
+
+#unity-objects-breakdown-view__loading-overlay:disabled
+{
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+}
+
+#unity-objects-breakdown-view__loading-overlay ActivityIndicator
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Loading.png');
+    height: 16px;
+    width: 16px;
+}
+
+#unity-objects-breakdown-view__error-label
+{
+    -unity-text-align: middle-center;
+    background-color: var(--unity-objects-breakdown-view__loading-overlay__background-color);
+    bottom: 0px;
+    display: none;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    visibility: hidden;
+}

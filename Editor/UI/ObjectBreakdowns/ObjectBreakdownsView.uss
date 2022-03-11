@@ -1,0 +1,46 @@
+:root
+{
+  --object-breakdowns-view__select-breakdown__button__background-color: rgba(255, 255, 255, 0.1);
+}
+
+#object-breakdowns-view
+{
+    flex-grow: 1;
+}
+
+#object-breakdowns-view__select-breakdown
+{
+    flex-direction: row;
+    margin: 16px 16px 4px;
+}
+
+#object-breakdowns-view__select-breakdown__button
+{
+    flex-direction: row;
+}
+
+#object-breakdowns-view__select-breakdown__button:hover
+{
+    background-color: var(--object-breakdowns-view__select-breakdown__button__background-color);
+}
+
+#object-breakdowns-view__select-breakdown__button__label
+{
+    font-size: 21px;
+}
+
+#object-breakdowns-view__select-breakdown__button__icon
+{
+    margin-left: 2px;
+}
+
+#object-breakdowns-view__breakdown-description-label
+{
+    margin: 0px 16px;
+    white-space: normal;
+}
+
+#object-breakdowns-view__breakdown-container
+{
+    flex-grow: 1;
+}

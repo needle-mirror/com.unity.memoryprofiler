@@ -108,6 +108,11 @@ namespace Unity.MemoryProfiler.Editor
             get { return m_SnapshotVersion >= FormatVersion.SceneRootsAndAssetBundlesVersion; }
         }
 
+        public bool HasGfxResourceReferencesAndAllocators
+        {
+            get { return m_SnapshotVersion >= FormatVersion.GfxResourceReferencesAndAllocatorsVersion; }
+        }
+
         public ManagedData CrawledData { internal set; get; }
 
         public class NativeAllocationSiteEntriesCache : IDisposable
@@ -480,16 +485,69 @@ namespace Unity.MemoryProfiler.Editor
 
         public unsafe class SceneRootEntriesCache : IDisposable
         {
+            // the number of scenes
             public long Count;
+            // the asset paths for the scenes
             public string[] AssetPath;
+            // the scene names
             public string[] Name;
+            //the paths to the scenes in the project
             public string[] Path;
+            // the scene build index
             public DynamicArray<int> BuildIndex = default;
+            //the number of roots in each of the scenes
             public DynamicArray<int> RootCounts = default;
+            // each scenes offset into the main roots list
             public DynamicArray<int> RootOffsets = default;
-            public int[][] SceneIndexedRootIds;
-            public DynamicArray<int> AllRootIds = default;
-            public HashSet<int> RootIdHashSet = default;
+            // first index is for the scene then the second is the array of ids for that scene
+            public int[][] SceneIndexedRootTransformInstanceIds;
+            public int[][] SceneIndexedRootGameObjectInstanceIds;
+            // all of the root transform instance ids
+            public DynamicArray<int> AllRootTransformInstanceIds = default;
+            // all of the root gameobject instance ids
+            public DynamicArray<int> AllRootGameObjectInstanceIds = default;
+            // hash set of the ids to avoid duplication ( not sure we really need this)
+            public HashSet<int> RootTransformInstanceIdHashSet = default;
+            public HashSet<int> RootGameObjectInstanceIdHashSet = default;
+            // tree structures for each scene of the transforms and gameobjects so that we can lookup the structure easily
+            public TransformTree[] SceneHierarchies;
+
+            public class TransformTree
+            {
+                public static int kInvalidInstanceID = 0;
+                public int InstanceID { get; private set; } = kInvalidInstanceID;
+                public int GameObjectID { get; set; } = kInvalidInstanceID;
+                public TransformTree Parent = null;
+                public List<TransformTree> Children = new List<TransformTree>();
+                public bool IsScene { get; private set; } = false;
+
+                public TransformTree(bool isScene)
+                {
+                    IsScene = isScene;
+                }
+
+                public TransformTree(int instanceId)
+                {
+                    InstanceID = instanceId;
+                }
+                public void AddChild(int instanceId)
+                {
+                    var child = new TransformTree(instanceId);
+                    child.Parent = this;
+                    Children.Add(child);
+                }
+
+                public void AddChildren(int[] instanceIds)
+                {
+                    foreach (var instanceId in instanceIds)
+                    {
+                        if(instanceId == Parent.InstanceID) continue;
+                        var child = new TransformTree(instanceId);
+                        child.Parent = this;
+                        Children.Add(child);
+                    }
+                }
+            }
 
 
             public SceneRootEntriesCache(ref IFileReader reader)
@@ -529,23 +587,33 @@ namespace Unity.MemoryProfiler.Editor
                     ConvertDynamicArrayByteBufferToManagedArray(tmp, ref AssetPath);
                 }
 
-                SceneIndexedRootIds = new int[Count][];
+                SceneIndexedRootTransformInstanceIds = new int[Count][];
                 var rootCount = reader.GetEntryCount(EntryType.SceneObjects_RootIds);
                 RootCounts = reader.Read(EntryType.SceneObjects_RootIdCounts, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
                 RootOffsets = reader.Read(EntryType.SceneObjects_RootIdOffsets, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
 
-                AllRootIds = reader.Read(EntryType.SceneObjects_RootIds, 0, rootCount, Allocator.Persistent).Result.Reinterpret<int>();
-                RootIdHashSet = new HashSet<int>();
-                for (int i = 0; i < AllRootIds.Count; i++)
+                AllRootTransformInstanceIds = reader.Read(EntryType.SceneObjects_RootIds, 0, rootCount, Allocator.Persistent).Result.Reinterpret<int>();
+                RootTransformInstanceIdHashSet = new HashSet<int>();
+                for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
                 {
-                    RootIdHashSet.Add(AllRootIds[i]);
+                    RootTransformInstanceIdHashSet.Add(AllRootTransformInstanceIds[i]);
                 }
                 for (int i = 0; i < Count; i++)
                 {
-                    SceneIndexedRootIds[i] = new int[RootCounts[i]];
+                    SceneIndexedRootTransformInstanceIds[i] = new int[RootCounts[i]];
                     for (int ii = 0; ii < RootCounts[i]; ii++)
                     {
-                        SceneIndexedRootIds[i][ii] = AllRootIds[ii + RootOffsets[i]];
+                        SceneIndexedRootTransformInstanceIds[i][ii] = AllRootTransformInstanceIds[ii + RootOffsets[i]];
+                    }
+                }
+
+                SceneHierarchies = new TransformTree[Name.Length];
+                for (int i = 0; i < Name.Length; i++)
+                {
+                    SceneHierarchies[i] = new TransformTree(TransformTree.kInvalidInstanceID);
+                    foreach (var ii in SceneIndexedRootTransformInstanceIds[i])
+                    {
+                        SceneHierarchies[i].AddChild(ii);
                     }
                 }
             }
@@ -558,15 +626,202 @@ namespace Unity.MemoryProfiler.Editor
                 BuildIndex.Dispose();
                 RootCounts.Dispose();
                 RootOffsets.Dispose();
-                if (SceneIndexedRootIds != null)
+                if (SceneIndexedRootTransformInstanceIds != null)
                 {
-                    for (int i = 0; i < SceneIndexedRootIds.Length; i++)
-                        SceneIndexedRootIds[i] = null;
+                    for (int i = 0; i < SceneIndexedRootTransformInstanceIds.Length; i++)
+                        SceneIndexedRootTransformInstanceIds[i] = null;
                 }
 
-                SceneIndexedRootIds = null;
-                AllRootIds.Dispose();
-                RootIdHashSet = null;
+                SceneIndexedRootTransformInstanceIds = null;
+                AllRootTransformInstanceIds.Dispose();
+                RootTransformInstanceIdHashSet = null;
+                SceneHierarchies = null;
+                AllRootGameObjectInstanceIds.Dispose();
+                RootGameObjectInstanceIdHashSet = null;
+                SceneIndexedRootGameObjectInstanceIds = null;
+            }
+
+            public void GenerateGameObjectData(CachedSnapshot snapshot)
+            {
+                AllRootGameObjectInstanceIds = new DynamicArray<int>(AllRootTransformInstanceIds.Count,Allocator.Persistent);
+                for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
+                {
+                    AllRootGameObjectInstanceIds[i] = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, AllRootTransformInstanceIds[i]);
+                }
+
+                RootGameObjectInstanceIdHashSet = new HashSet<int>();
+                for (int i = 0; i < AllRootGameObjectInstanceIds.Count; i++)
+                {
+                    RootGameObjectInstanceIdHashSet.Add(AllRootGameObjectInstanceIds[i]);
+                }
+
+                SceneIndexedRootGameObjectInstanceIds = new int[Count][];
+                for (int i = 0; i < Count; i++)
+                {
+                    SceneIndexedRootGameObjectInstanceIds[i] = new int[RootCounts[i]];
+                    for (int ii = 0; ii < RootCounts[i]; ii++)
+                    {
+                        SceneIndexedRootGameObjectInstanceIds[i][ii] = AllRootGameObjectInstanceIds[ii + RootOffsets[i]];
+                    }
+                }
+            }
+
+            public void CreateTransformTrees(CachedSnapshot snapshot)
+            {
+                if (!snapshot.HasSceneRootsAndAssetbundles) return;
+                foreach (var hierarchy in SceneHierarchies)
+                {
+                    foreach (var child in hierarchy.Children)
+                    {
+                        AddTransforms(child, snapshot);
+                    }
+                }
+            }
+
+            void AddTransforms(TransformTree id, CachedSnapshot snapshot)
+            {
+                id.GameObjectID = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, id.InstanceID);
+                id.AddChildren(ObjectConnection.GetConnectedTransformInstanceIdsFromTransformInstanceId(snapshot, id.InstanceID));
+                foreach (var child in id.Children)
+                {
+                    AddTransforms(child, snapshot);
+                }
+            }
+        }
+
+        /// <summary>
+        /// A list of gfx resources and their connections to native root id.
+        /// </summary>
+        public class NativeGfxResourcReferenceEntriesCache : IDisposable
+        {
+            /// <summary>
+            /// Count of active gfx resources.
+            /// </summary>
+            public long Count;
+            /// <summary>
+            /// Gfx resource identifiers.
+            /// </summary>
+            public DynamicArray<ulong> GfxResourceId = default;
+            /// <summary>
+            /// Size of the gfx resource in bytes.
+            /// </summary>
+            public DynamicArray<ulong> GfxSize = default;
+            /// <summary>
+            /// Related native rootId.
+            /// Native roots information is present in NativeRootReferenceEntriesCache table.
+            /// NativeRootReferenceEntriesCache.idToIndex allows to map RootId to the index in the NativeRootReferenceEntriesCache table and retrive
+            /// all available information about the root such as name, ram usage, etc.
+            /// The relation is Many-to-one - Multiple entires in NativeGfxResourcReferenceEntriesCache can point to the same native root.
+            /// </summary>
+            public DynamicArray<long> RootId = default;
+
+            /// <summary>
+            /// Use to retrieve related gfx allocations size for the specific RootId.
+            /// This is a derived acceleration structure built on top of the table data above.
+            /// </summary>
+            public Dictionary<long, ulong> RootIdToGfxSize;
+
+            public NativeGfxResourcReferenceEntriesCache(ref IFileReader reader)
+            {
+                Count = reader.GetEntryCount(EntryType.NativeGfxResourceReferences_Id);
+                RootIdToGfxSize = new Dictionary<long, ulong>((int)Count);
+                if (Count == 0)
+                    return;
+
+                GfxResourceId = reader.Read(EntryType.NativeGfxResourceReferences_Id, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                GfxSize = reader.Read(EntryType.NativeGfxResourceReferences_Size, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                RootId = reader.Read(EntryType.NativeGfxResourceReferences_RootId, 0, Count, Allocator.Persistent).Result.Reinterpret<long>();
+
+                for (int i = 0; i < Count; ++i)
+                {
+                    var id = RootId[i];
+                    var gfxSize = GfxSize[i];
+
+                    if (RootIdToGfxSize.TryGetValue(id, out var size))
+                        RootIdToGfxSize[id] = size + gfxSize;
+                    else
+                        RootIdToGfxSize.Add(id, gfxSize);
+                }
+            }
+
+            public void Dispose()
+            {
+                Count = 0;
+                GfxResourceId.Dispose();
+                GfxSize.Dispose();
+                RootId.Dispose();
+                RootIdToGfxSize = null;
+            }
+        }
+
+        /// <summary>
+        /// A table of all allocators which Unity uses to manage memory allocations in native code.
+        /// All size values are in bytes.
+        /// </summary>
+        public class NativeAllocatorEntriesCache : IDisposable
+        {
+            /// <summary>
+            /// Count of allocators.
+            /// </summary>
+            public long Count;
+            /// <summary>
+            /// Name of allocator.
+            /// </summary>
+            public string[] AllocatorName;
+            /// <summary>
+            /// Memory which was requested by Unity native systems from the allocator and is being used to store data.
+            /// </summary>
+            public DynamicArray<ulong> UsedSize = default;
+            /// <summary>
+            /// Total memory that was requested by allocator from System.
+            /// May be larger than UsedSize to utilize pooling approach.
+            /// </summary>
+            public DynamicArray<ulong> ReservedSize = default;
+            /// <summary>
+            /// Total size of memory dedicated to allocations tracking.
+            /// </summary>
+            public DynamicArray<ulong> OverheadSize = default;
+            /// <summary>
+            /// Maximum amount of memory allocated with this allocator since app start.
+            /// </summary>
+            public DynamicArray<ulong> PeakUsedSize = default;
+            /// <summary>
+            /// Allocations count made via the specific allocator.
+            /// </summary>
+            public DynamicArray<ulong> AllocationCount = default;
+
+            public NativeAllocatorEntriesCache(ref IFileReader reader)
+            {
+                Count = reader.GetEntryCount(EntryType.NativeAllocatorInfo_AllocatorName);
+                AllocatorName = new string[Count];
+
+                if (Count == 0)
+                    return;
+
+                UsedSize = reader.Read(EntryType.NativeAllocatorInfo_UsedSize, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                ReservedSize = reader.Read(EntryType.NativeAllocatorInfo_ReservedSize, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                OverheadSize = reader.Read(EntryType.NativeAllocatorInfo_OverheadSize, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                PeakUsedSize = reader.Read(EntryType.NativeAllocatorInfo_PeakUsedSize, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                AllocationCount = reader.Read(EntryType.NativeAllocatorInfo_AllocationCount, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+
+                using (DynamicArray<byte> tmp = new DynamicArray<byte>(0, Allocator.TempJob))
+                {
+                    var tmpSize = reader.GetSizeForEntryRange(EntryType.NativeAllocatorInfo_AllocatorName, 0, Count);
+                    tmp.Resize(tmpSize, false);
+                    reader.Read(EntryType.NativeAllocatorInfo_AllocatorName, tmp, 0, Count);
+                    ConvertDynamicArrayByteBufferToManagedArray(tmp, ref AllocatorName);
+                }
+            }
+
+            public void Dispose()
+            {
+                Count = 0;
+                AllocatorName = null;
+                UsedSize.Dispose();
+                ReservedSize.Dispose();
+                OverheadSize.Dispose();
+                PeakUsedSize.Dispose();
+                AllocationCount.Dispose();
             }
         }
 
@@ -588,6 +843,7 @@ namespace Unity.MemoryProfiler.Editor
             //scondary data
             public DynamicArray<int> refcount = default;
             public Dictionary<ulong, int> nativeObjectAddressToInstanceId { private set; get; }
+            public Dictionary<long, int> rootReferenceIdToIndex { private set; get; }
             public SortedDictionary<int, int> instanceId2Index;
 
             public readonly ulong TotalSizes = 0ul;
@@ -596,6 +852,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 Count = reader.GetEntryCount(EntryType.NativeObjects_InstanceId);
                 nativeObjectAddressToInstanceId = new Dictionary<ulong, int>((int)Count);
+                rootReferenceIdToIndex = new Dictionary<long, int>((int)Count);
                 instanceId2Index = new SortedDictionary<int, int>();
                 ObjectName = new string[Count];
 
@@ -624,6 +881,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     var id = InstanceId[i];
                     nativeObjectAddressToInstanceId.Add(NativeObjectAddress[i], id);
+                    rootReferenceIdToIndex.Add(RootReferenceId[i], (int)i);
                     instanceId2Index[id] = (int)i;
                     TotalSizes += Size[i];
                 }
@@ -1400,6 +1658,8 @@ namespace Unity.MemoryProfiler.Editor
         public SortedNativeObjectsCache SortedNativeObjects;
 
         public SceneRootEntriesCache SceneRoots;
+        public NativeAllocatorEntriesCache NativeAllocators;
+        public NativeGfxResourcReferenceEntriesCache NativeGfxResourceReferences;
 
         public CachedSnapshot(IFileReader reader)
         {
@@ -1438,6 +1698,8 @@ namespace Unity.MemoryProfiler.Editor
                 GcHandles = new GCHandleEntriesCache(ref reader);
                 Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.Count, HasConnectionOverhaul);
                 SceneRoots = new SceneRootEntriesCache(ref reader);
+                NativeGfxResourceReferences = new NativeGfxResourcReferenceEntriesCache(ref reader);
+                NativeAllocators = new NativeAllocatorEntriesCache(ref reader);
 
                 if (GcHandles.Count > 0)
                     CaptureFlags |= CaptureFlags.ManagedObjects;
@@ -1459,6 +1721,8 @@ namespace Unity.MemoryProfiler.Editor
                 SortedNativeObjects = new SortedNativeObjectsCache(this);
 
                 CrawledData = new ManagedData(GcHandles.Count, Connections.Count);
+                SceneRoots.CreateTransformTrees(this);
+                SceneRoots.GenerateGameObjectData(this);
             }
         }
 
@@ -1516,6 +1780,8 @@ namespace Unity.MemoryProfiler.Editor
                 FieldDescriptions.Dispose();
                 Connections.Dispose();
                 SceneRoots.Dispose();
+                NativeGfxResourceReferences.Dispose();
+                NativeAllocations.Dispose();
             }
         }
 

@@ -14,6 +14,7 @@
         <ui:VisualElement name="analysis-window--data-loaded" class="analysis-window__background">
             <Unity.MemoryProfiler.Editor.UI.Ribbon name="snapshot-window__ribbon__container" show-help-button="true" alignment="FlexStart">
                 <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Summary" toggled="true" name="summary" />
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton text="Memory Breakdowns" name="snapshot-window__ribbon__breakdowns-button"/>
                 <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Objects and Allocations" toggled="true" name="objects-and-allocations" />
                 <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Fragmentation" toggled="true" name="fragmentation" />
             </Unity.MemoryProfiler.Editor.UI.Ribbon>

@@ -71,6 +71,20 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         SceneObjects_RootIdCounts,
         SceneObjects_RootIdOffsets,
         SceneObjects_RootIds,
+        // GfxResourceReferencesAndAllocatorsVersion = 14
+        // Added gfx resource to root mapping and allocators information (including extra allocator information to memory labels)
+        NativeMemoryLabels_AllocatorIdentifier,
+        NativeGfxResourceReferences_Id,
+        NativeGfxResourceReferences_Size,
+        NativeGfxResourceReferences_RootId,
+        NativeAllocatorInfo_AllocatorName,
+        NativeAllocatorInfo_Identifier,
+        NativeAllocatorInfo_UsedSize,
+        NativeAllocatorInfo_ReservedSize,
+        NativeAllocatorInfo_OverheadSize,
+        NativeAllocatorInfo_PeakUsedSize,
+        NativeAllocatorInfo_AllocationCount,
+        NativeAllocatorInfo_Flags,
         Count, //used to keep track of entry count, only add c++ matching entries above this one
     }
 }

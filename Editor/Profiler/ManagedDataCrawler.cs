@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
-using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine;
@@ -222,7 +221,8 @@ namespace Unity.MemoryProfiler.Editor
         public ulong ActiveHeapMemoryEmptySpace { private set; get; }
         public ulong AbandonedManagedObjectActiveHeapMemoryUsage { private set; get; }
         // ConnectionsMappedToUnifiedIndex and ConnectionsMappedToNativeIndex are derived structure used in accelerating searches in the details view
-        public Dictionary<long, List<int>> ConnectionsMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
+        public Dictionary<long, List<int>> ConnectionsToMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
+        public Dictionary<long, List<int>> ConnectionsFromMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
         public Dictionary<long, List<int>> ConnectionsMappedToNativeIndex { private set; get; } = new Dictionary<long, List<int>>();
 
 
@@ -279,10 +279,19 @@ namespace Unity.MemoryProfiler.Editor
             for (var i = 0; i < Connections.Count; i++)
             {
                 var key = Connections[i].GetUnifiedIndexTo(cs);
-                if (ConnectionsMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
+                if (ConnectionsToMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
                     unifiedIndexList.Add(i);
                 else
-                    ConnectionsMappedToUnifiedIndex[key] = new List<int> { i };
+                    ConnectionsToMappedToUnifiedIndex[key] = new List<int> { i };
+            }
+
+            for (var i = 0; i < Connections.Count; i++)
+            {
+                var key = Connections[i].GetUnifiedIndexFrom(cs);
+                if (ConnectionsFromMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
+                    unifiedIndexList.Add(i);
+                else
+                    ConnectionsFromMappedToUnifiedIndex[key] = new List<int> { i };
             }
 
             for (var i = 0; i < Connections.Count; i++)

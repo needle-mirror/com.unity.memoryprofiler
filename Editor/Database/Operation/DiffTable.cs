@@ -380,6 +380,23 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         {
             snapshotAIsOlder = !snapshotAIsOlder;
         }
+
+        public bool TablesAreValid()
+        {
+            bool valid = true;
+
+            foreach (var table in sourceTables)
+            {
+                var allTable = table as ObjectAllTable;
+                if (allTable != null)
+                {
+                    if (!allTable.Snapshot.Valid)
+                        return false;
+                }
+            }
+
+            return valid;
+        }
     }
 
 

@@ -6,16 +6,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 {
     internal static class TextContent
     {
-        static GUIContent s_Title = new GUIContent("Memory Profiler");
-        public static GUIContent Title
-        {
-            get
-            {
-                s_Title.image = Icons.MemoryProfilerWindowTabIcon;
-                return s_Title;
-            }
-        }
-
         public static readonly GUIContent NoneView = new GUIContent("None", "");
         public static readonly GUIContent SummaryView = new GUIContent("Summary", "");
         public static readonly GUIContent MemoryMapView = new GUIContent("Memory Map", "Show Snapshot as Memory Map");

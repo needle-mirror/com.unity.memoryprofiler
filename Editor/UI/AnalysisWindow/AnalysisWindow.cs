@@ -19,8 +19,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         internal enum AnalysisPage
         {
             Summary = 0,
+            Breakdowns,
             ObjectsAndAllocations,
-            Fragmentation
+            Fragmentation,
         }
 
         AnalysisPage m_CurrentPage;
@@ -35,6 +36,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         Ribbon m_Ribbon;
 
         MemoryUsageSummary m_MemoryUsageSummary;
+        VisualElement m_MemoryUsageSummaryRoot;
         TopIssues m_TopIssues;
 
         SummaryPane m_SummaryPane;
@@ -47,6 +49,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_ViewSelectionUI;
 
         ViewPane m_ActiveViewPane;
+
+        ViewController m_ObjectBreakdownsViewController;
 
         public AnalysisWindow(IUIStateHolder memoryProfilerWindow, VisualElement root, SnapshotsWindow snapshotsWindow, PathsToRootDetailView pathsToRootDetailView)
         {
@@ -101,8 +105,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             memoryProfilerWindow.UIStateChanged += m_OldHistoryLogic.OnUIStateChanged;
 
-            var memoryUsageSummaryRoot = m_AnalysisWindow.Q("MemoryUsageSummary");
-            m_MemoryUsageSummary = new MemoryUsageSummary(memoryUsageSummaryRoot, memoryProfilerWindow);
+            m_MemoryUsageSummaryRoot = m_AnalysisWindow.Q("MemoryUsageSummary");
+            m_MemoryUsageSummary = new MemoryUsageSummary(m_MemoryUsageSummaryRoot, memoryProfilerWindow);
             memoryProfilerWindow.UIState.SelectionChanged += m_MemoryUsageSummary.OnSelectionChanged;
             m_MemoryUsageSummary.SelectionChangedEvt += memoryProfilerWindow.UIState.RegisterSelectionChangeEvent;
 
@@ -136,9 +140,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case AnalysisPage.Summary:
                     SwitchToSummaryView();
                     break;
+
+                case AnalysisPage.Breakdowns:
+                    SwitchToObjectsView();
+                    break;
+
                 case AnalysisPage.ObjectsAndAllocations:
                     SwitchToObjectsAndAllocationsView();
                     break;
+
                 case AnalysisPage.Fragmentation:
                 default:
                     SwitchToFragmentationView();
@@ -175,6 +185,41 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        // Hacking in an entry point for the Object-Breakdowns view controller architecture in the existing structure, until we can address wider architecture problems.
+        void SwitchToObjectsView()
+        {
+            // Check tab is not already selected.
+            if (m_ObjectBreakdownsViewController != null)
+                return;
+
+            // Hide the summary view.
+            UIElementsHelper.SetVisibility(m_MemoryUsageSummaryRoot, false);
+
+            // Hide the legacy view pane.
+            UIElementsHelper.SetVisibility(m_ViewPane, false);
+
+            // Hide the top issues.
+            m_TopIssues.SetVisibility(false);
+
+#if UNITY_2022_1_OR_NEWER
+            var snapshot = m_UIStateHolder.UIState.snapshotMode?.snapshot;
+            if (snapshot != null)
+            {
+                // Instantiate the object-breakdowns model and view controller using the selected snapshot.
+                var objectBreakdownsModel = ObjectBreakdownsModel.CreateDefault(snapshot);
+                m_ObjectBreakdownsViewController = new ObjectBreakdownsViewController(objectBreakdownsModel);
+            }
+            else
+            {
+                m_ObjectBreakdownsViewController = new FeatureUnavailableViewController($"This feature is not available when comparing snapshots. Please select a single snapshot in the Snapshot inspector.");
+            }
+#else
+            m_ObjectBreakdownsViewController = new FeatureUnavailableViewController($"This feature is not available in Unity {Application.unityVersion}. Please use Unity 2022.1 or newer.");
+#endif
+            // Add the view controller's view to the hierarchy.
+            m_DataLoaded.Add(m_ObjectBreakdownsViewController.View);
+        }
+
         void OnViewPaneChanged(ViewPane viewPane)
         {
             if (viewPane == null && m_UIStateHolder.UIState.CurrentMode != null)
@@ -186,6 +231,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void Recrate(ViewPane viewPane)
         {
+            // Hacking in an exit point for the Object-Breakdowns view controller architecture in the existing structure, until we can address wider architecture problems.
+            {
+                // Show the legacy view pane.
+                UIElementsHelper.SetVisibility(m_ViewPane, true);
+
+                // Show the summary view.
+                UIElementsHelper.SetVisibility(m_MemoryUsageSummaryRoot, true);
+
+                // Destroy the objects view controller if it has been loaded.
+                if (m_ObjectBreakdownsViewController != null)
+                {
+                    m_ObjectBreakdownsViewController.Dispose();
+                    m_ObjectBreakdownsViewController = null;
+                }
+            }
+
             m_ActiveViewPane = viewPane;
             if (viewPane == null)
             {
@@ -229,7 +290,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         secondRoot.Add(firstRoot);
                         m_ViewPane.Add(secondRoot);
                     }
-                    m_Ribbon.CurrentOption = 2;
+                    m_Ribbon.CurrentOption = (int)AnalysisPage.Fragmentation;
                 }
                 else
                 {
@@ -240,17 +301,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                         {
                             m_ViewPane.Add(m_ViewSelectionUI);
                             if (m_CurrentPage == AnalysisPage.Summary)
-                                m_Ribbon.CurrentOption = 0;
+                                m_Ribbon.CurrentOption = (int)AnalysisPage.Summary;
                             else
-                                m_Ribbon.CurrentOption = 1;
+                                m_Ribbon.CurrentOption = (int)AnalysisPage.ObjectsAndAllocations;
                         }
                         else
-                            m_Ribbon.CurrentOption = 0;
+                            m_Ribbon.CurrentOption = (int)AnalysisPage.Summary;
                     }
                     else
                     {
                         m_ViewPane.Add(m_ViewSelectionUI);
-                        m_Ribbon.CurrentOption = 1;
+                        m_Ribbon.CurrentOption = (int)AnalysisPage.ObjectsAndAllocations;
                     }
                 }
                 m_CurrentPage = (AnalysisPage)m_Ribbon.CurrentOption;

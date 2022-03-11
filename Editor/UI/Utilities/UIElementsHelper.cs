@@ -43,8 +43,16 @@ namespace Unity.MemoryProfiler.Editor
 
         public static void SetVisibility(VisualElement element, bool visible)
         {
-            element.visible = visible;
-            element.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            SetElementDisplay(element, visible);
+        }
+
+        public static void SetElementDisplay(VisualElement element, bool value)
+        {
+            if (element == null)
+                return;
+
+            element.style.display = value ? DisplayStyle.Flex : DisplayStyle.None;
+            element.style.visibility = value ? Visibility.Visible : Visibility.Hidden;
         }
 
         public static void SetBarWidthInPercent(this IStyle style, float percentage)

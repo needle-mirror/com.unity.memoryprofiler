@@ -597,7 +597,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void UpdateDisplayTable(List<Database.CellPosition> expandedCells = null, bool resetState = true)
         {
             UpdateColumnState();
-            if (resetState)
+            var valid = m_TableSource is DiffTable ? ((DiffTable)m_TableSource).TablesAreValid() : true;
+            if (resetState && valid)
                 m_TableDisplay = m_Filters.CreateFilter(m_TableSource);
 
             UpdateExpandedState(expandedCells);

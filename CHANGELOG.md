@@ -4,6 +4,19 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.6.0-preview.1] - 2022-03-11
+
+### Added
+- Added the 'Unity Objects' view to show a breakdown of memory contributing to all Unity Objects. This enables you to more easily understand the total memory impact of the assets and objects in your project by showing you their total, native, and managed sizes in one place. Unity Objects are grouped by their types, such as Texture2D, Material, and Mesh. Use the 'Search By Name' functionality to filter the view to specific objects. Use the 'Flatten Hierarchy' functionality to remove the Type groupings.
+- Added the 'Potential Duplicates' view to show a breakdown of all potential duplicate Unity Objects. Potential duplicates, which are Unity Objects of the same type, name, and size, might represent the same asset loaded multiple times in memory.
+- Added the 'All Tracked Memory' view to show a breakdown of all tracked memory that Unity knows about.
+- Added References To functionality. A list of the objects that the current selection has "references to" will now be displayed in the References To tabbed section of the details panel.
+
+### Fixed
+- Removed two instances of Reflection for loading icons.
+
+### Changed
+
 ## [0.5.1-preview.1] - 2022-02-25
 
 ### Added

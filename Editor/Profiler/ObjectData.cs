@@ -955,9 +955,27 @@ namespace Unity.MemoryProfiler.Editor
             return false;
         }
 
-        public bool IsRoot(CachedSnapshot cs)
+        public bool IsRootTransform(CachedSnapshot cs)
         {
-            return cs.SceneRoots.RootIdHashSet.Contains(nativeObjectIndex);
+            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootTransformInstanceIdHashSet.Contains(GetInstanceID(cs));
+        }
+
+        public bool IsRootGameObject(CachedSnapshot cs)
+        {
+            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootGameObjectInstanceIdHashSet.Contains(GetInstanceID(cs));
+        }
+
+        public string GetAssetPath(CachedSnapshot cs)
+        {
+            for (int i = 0; i < cs.SceneRoots.SceneIndexedRootTransformInstanceIds.Length; i++)
+            {
+                for (int ii = 0; ii < cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i].Length; ii++)
+                {
+                    if (cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i][ii].Equals(GetInstanceID(cs)))
+                        return cs.SceneRoots.Path[i];
+                }
+            }
+            return String.Empty;
         }
 
         public ObjectData[] GetAllReferencingObjects(CachedSnapshot cs)
@@ -996,7 +1014,7 @@ namespace Unity.MemoryProfiler.Editor
                     if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out var idx))
                     {
                         objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
-                        if (!snapshot.CrawledData.ConnectionsMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIndicies))
+                        if (!snapshot.CrawledData.ConnectionsToMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIndicies))
                             break;
 
                         //add crawled connections
@@ -1084,6 +1102,152 @@ namespace Unity.MemoryProfiler.Editor
             return referencingObjects.ToArray();
         }
 
+        public static int[] GetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, int instanceID)
+        {
+            HashSet<int> found = new HashSet<int>();
+            var objectData = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[instanceID]);
+            if (snapshot.Connections.FromToMappedConnection.ContainsKey((int)objectData.GetUnifiedObjectIndex(snapshot)))
+            {
+                var list = snapshot.Connections.FromToMappedConnection[(int)objectData.GetUnifiedObjectIndex(snapshot)];
+                foreach (var connection in list)
+                {
+                    objectData = ObjectData.FromUnifiedObjectIndex(snapshot, connection);
+                    if (objectData.isNative && snapshot.NativeTypes.TransformIdx == snapshot.NativeObjects.NativeTypeArrayIndex[objectData.nativeObjectIndex])
+                        found.Add(snapshot.NativeObjects.InstanceId[objectData.nativeObjectIndex]);
+                }
+            }
+
+            int[] returnedObjectData = new int[found.Count];
+            found.CopyTo(returnedObjectData);
+            return returnedObjectData;
+        }
+
+        public static int GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, int instanceID)
+        {
+            var objectData = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[instanceID]);
+            if (snapshot.Connections.FromToMappedConnection.ContainsKey((int)objectData.GetUnifiedObjectIndex(snapshot)))
+            {
+                var list = snapshot.Connections.FromToMappedConnection[(int)objectData.GetUnifiedObjectIndex(snapshot)];
+                foreach (var connection in list)
+                {
+                    objectData = ObjectData.FromUnifiedObjectIndex(snapshot, connection);
+                    if (objectData.isNative && objectData.IsGameObject(snapshot) && snapshot.NativeObjects.ObjectName[objectData.nativeObjectIndex] == snapshot.NativeObjects.ObjectName[ObjectData.FromUnifiedObjectIndex(snapshot, connection).nativeObjectIndex])
+                        return snapshot.NativeObjects.InstanceId[objectData.nativeObjectIndex];
+                }
+            }
+            return -1;
+        }
+
+        public static ObjectData[] GenerateReferencesTo(CachedSnapshot snapshot, ObjectData obj)
+        {
+            var referencedObjects = new List<ObjectData>();
+            long objIndex = -1;
+            HashSet<long> foundUnifiedIndices = new HashSet<long>();
+            switch (obj.dataType)
+            {
+                case ObjectDataType.Array:
+                case ObjectDataType.BoxedValue:
+                case ObjectDataType.Object:
+                {
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out var idx))
+                    {
+                        objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
+
+                        if (!snapshot.CrawledData.ConnectionsFromMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIdxs))
+                            break;
+
+                        //add crawled connections
+                        foreach (var i in connectionIdxs)
+                        {
+                            var c = snapshot.CrawledData.Connections[i];
+                            switch (c.connectionType)
+                            {
+                                case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
+                                    referencedObjects.Add(ObjectData.FromUnifiedObjectIndex(snapshot, c.GetUnifiedIndexTo(snapshot)));
+                                    break;
+                                case ManagedConnection.ConnectionType.UnityEngineObject:
+                                    // these get at added in the loop at the end of the function
+                                    // tried using a hash set to prevent duplicates but the lookup during add locks up the window
+                                    // if there are more than about 50k references
+                                    referencedObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
+                                    break;
+                            }
+                        }
+                    }
+                    break;
+                }
+                case ObjectDataType.NativeObject:
+                {
+                    objIndex = snapshot.NativeObjectIndexToUnifiedObjectIndex(obj.nativeObjectIndex);
+                    if (!snapshot.CrawledData.ConnectionsMappedToNativeIndex.TryGetValue(obj.nativeObjectIndex, out var connectionIdxs))
+                        break;
+
+                    //add crawled connection
+                    foreach (var i in connectionIdxs)
+                    {
+                        switch (snapshot.CrawledData.Connections[i].connectionType)
+                        {
+                            case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
+                            case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
+                                break;
+                            case ManagedConnection.ConnectionType.UnityEngineObject:
+                                var managedIndex = snapshot.CrawledData.Connections[i].UnityEngineManagedObjectIndex;
+                                foundUnifiedIndices.Add(snapshot.ManagedObjectIndexToUnifiedObjectIndex(managedIndex));
+                                referencedObjects.Add(ObjectData.FromManagedObjectIndex(snapshot, managedIndex));
+                                break;
+                        }
+                    }
+                    break;
+                }
+                case ObjectDataType.Type:
+                {     //TODO this will need to be changed at some point to use the mapped searches
+                    if (snapshot.TypeDescriptions.TypeIndexToArrayIndex.TryGetValue(obj.managedTypeIndex, out var idx))
+                    {
+                        //add crawled connections
+                        for (int i = 0; i != snapshot.CrawledData.Connections.Count; ++i)
+                        {
+                            var c = snapshot.CrawledData.Connections[i];
+                            if (c.connectionType == ManagedConnection.ConnectionType.ManagedType_To_ManagedObject && c.fromManagedType == idx)
+                            {
+                                if (c.fieldFrom >= 0)
+                                {
+                                    referencedObjects.Add(obj.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
+                                }
+                                else if (c.arrayIndexFrom >= 0)
+                                {
+                                    referencedObjects.Add(obj.GetArrayElement(snapshot, c.arrayIndexFrom, false));
+                                }
+                                else
+                                {
+                                    var referencedObject = ObjectData.FromManagedObjectIndex(snapshot, c.toManagedObjectIndex);
+                                    referencedObjects.Add(referencedObject);
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+                default:
+                    return null;
+            }
+
+            //add connections from the raw snapshot
+            if (objIndex >= 0 && snapshot.Connections.FromToMappedConnection.ContainsKey((int)objIndex))
+            {
+                var cns = snapshot.Connections.FromToMappedConnection[(int)objIndex];
+                foreach (var i in cns)
+                {
+                    // Don't count Native -> Managed Connections again if they have been added based on m_CachedPtr entries
+                    if (!foundUnifiedIndices.Contains(i))
+                    {
+                        foundUnifiedIndices.Add(i);
+                        referencedObjects.Add(ObjectData.FromUnifiedObjectIndex(snapshot, i));
+                    }
+                }
+            }
+            return referencedObjects.ToArray();
+        }
+
         public static ObjectData[] GetAllReferencedObjects(CachedSnapshot snapshot, ObjectData obj)
         {
             var referencedObjects = new List<ObjectData>();
@@ -1099,7 +1263,7 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
 
-                        if (!snapshot.CrawledData.ConnectionsMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIdxs))
+                        if (!snapshot.CrawledData.ConnectionsFromMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIdxs))
                             break;
 
                         //add crawled connections
@@ -1127,7 +1291,7 @@ namespace Unity.MemoryProfiler.Editor
                                     // these get at added in the loop at the end of the function
                                     // tried using a hash set to prevent duplicates but the lookup during add locks up the window
                                     // if there are more than about 50k references
-                                    //referencedObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
+                                    referencedObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
                                     break;
                             }
                         }

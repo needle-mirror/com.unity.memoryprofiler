@@ -330,7 +330,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 break;
                 case MemorySampleSelectionType.UnifiedObject:
                 {
-                    ObjectData od = ObjectData.FromNativeObjectIndex(cs, (int)mss.ItemIndex);
+                    ObjectData od = ObjectData.FromUnifiedObjectIndex(cs, (int)mss.ItemIndex);
                     ShowIcons(true);
                     SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
                 }

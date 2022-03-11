@@ -45,9 +45,10 @@ namespace Unity.MemoryProfiler.Editor
         bool m_WindowInitialized = false;
 
         [MenuItem("Window/Analysis/Memory Profiler", false, 4)]
-        public static void ShowWindow()
+        static void ShowWindow()
         {
-            GetWindow<MemoryProfilerWindow>(TextContent.Title.text);
+            var window = GetWindow<MemoryProfilerWindow>();
+            window.Show();
         }
 
         AnalysisWindow m_MainViewPanel;
@@ -63,6 +64,12 @@ namespace Unity.MemoryProfiler.Editor
         public EditorWindow Window => this;
 
         ObjectOrTypeLabel m_ReferenceSelection; // TODO move this into a details panel to contain all the paths to root and selection work
+
+        void OnEnable()
+        {
+            var icon = Icons.MemoryProfilerWindowTabIcon;
+            titleContent = new GUIContent("Memory Profiler", icon);
+        }
 
         void Init()
         {
@@ -85,7 +92,7 @@ namespace Unity.MemoryProfiler.Editor
                 new MultiColumnHeaderWithTruncateTypeName(PathsToRootDetailView.CreateDefaultMultiColumnHeaderState())
                 {
                     canSort = false
-                }, root.Q("details-panel").Q<RibbonButton>("raw-connections"));
+                }, root.Q("details-panel").Q<Ribbon>("references__ribbon__container"));
 
             m_ReferenceSelection?.Dispose();
             m_ReferenceSelection = root.Q("details-panel").Q<ObjectOrTypeLabel>("reference-item-details__unity-item-title");
@@ -151,7 +158,6 @@ namespace Unity.MemoryProfiler.Editor
             UIState.SelectionChanged += m_SelectedObjectDetailsPanel.NewDetailItem;
             UIState.SelectionChanged += UpdatePathsToRootSelectionDetails;
 
-            EditorCoroutineUtility.StartCoroutine(UpdateTitle(), this);
             MemoryProfilerAnalytics.EnableAnalytics();
             m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
             EditorApplication.update += PollForApplicationFocus;
@@ -205,12 +211,6 @@ namespace Unity.MemoryProfiler.Editor
                 return;
 
             Init();
-        }
-
-        IEnumerator UpdateTitle()
-        {
-            yield return null;
-            titleContent = TextContent.Title;
         }
 
         IEnumerator FlipDetailsFoldoutsDelayed(TwoPaneSplitView detailsSplitter, int index, Foldout foldout)

@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
-using Unity.MemoryProfiler.Editor.Format;
-using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
@@ -14,23 +11,33 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public int CircularRefId { get; private set; } = -1;
         public ObjectData Data { get; }
         public string TypeName { get; }
+        public string TruncatedTypeName { get; }
 
         static int s_IdGenerator;
         public GUIContent TypeIcon { get; private set; }
         public GUIContent ObjectFlags { get; private set; }
 
-        public string FlagsInfo = "";
+        public bool IsRoot(CachedSnapshot cs)
+        {
+            return Data.IsRootGameObject(cs);
+        }
+
+        public string AssetPath(CachedSnapshot cs)
+        {
+            return IsRoot(cs) ? Data.GetAssetPath(cs) : String.Empty;
+        }
+
+    public string FlagsInfo = "";
         public string ToolTipMsg;
         public bool HasCircularReference;
-        static readonly MethodInfo s_HasIcon = typeof(EditorGUIUtility).GetMethod("InnerLoadGeneratedIconOrNormalIcon",
-            BindingFlags.Static | BindingFlags.NonPublic);
         bool needsIcon = true;
 
         public PathsToRootDetailTreeViewItem(bool Allocation = false)
         {
             depth = -1;
             children = new List<TreeViewItem>();
-            TypeName = "";
+            TypeName = TruncatedTypeName ="";
+            id = s_IdGenerator++;
             if (Allocation)
             {
                 displayName = PathsToRootDetailView.Styles.NoInspectableObjectSelected;
@@ -45,6 +52,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             depth = other.depth;
             Data = other.Data;
             TypeName = other.TypeName;
+            TruncatedTypeName = other.TruncatedTypeName;
             displayName = other.displayName;
             children = other.children != null ? new List<TreeViewItem>(other.children) : null;
             TypeIcon = other.TypeIcon;
@@ -71,12 +79,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             if (cachedSnapshot != null)
             {
                 TypeName = data.GenerateTypeName(cachedSnapshot);
+                TruncatedTypeName = PathsToRootDetailView.TruncateTypeName(TypeName);
                 displayName = GetDisplayName(data, cachedSnapshot);
                 SetObjectFlagsDataAndToolTip(data, cachedSnapshot);
             }
             else
             {
-                TypeName = "";
+                TypeName = TruncatedTypeName ="";
                 displayName = "";
                 ObjectFlags = null;
                 ToolTipMsg = "";
@@ -250,6 +259,10 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         public static GUIContent GetIcon(ObjectData data, string typeName, CachedSnapshot cs)
         {
+            if (typeName == "AssetBundle")
+            {
+                return PathsToRootUtils.NoIconContent;
+            }
             if (PathsToRootUtils.iconContent.TryGetValue(typeName, out var content))
             {
                 return content;
@@ -260,7 +273,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 n = n.Replace("UnityEngine.", "");
                 n = n.Replace("UnityEditor.", "");
 
-                var tex = s_HasIcon.Invoke(null, new object[] {(EditorGUIUtility.isProSkin ? "d_" : "") + n + " Icon"});
+                var tex = IconUtility.LoadBuiltInIconWithName(n + " Icon");
                 if (tex != null)
                 {
                     PathsToRootUtils.iconContent.Add(typeName, new GUIContent((Texture)tex));

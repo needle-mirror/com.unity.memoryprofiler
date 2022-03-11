@@ -157,7 +157,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             Checks.CheckEquals(true, IsCreated);
             if (Count + 1 >= m_Capacity)
-                ResizeInternalBuffer(m_Capacity * 2, false);
+                ResizeInternalBuffer(Math.Max(m_Capacity, 1) * 2, false);
             this[++Count - 1] = value;
         }
 

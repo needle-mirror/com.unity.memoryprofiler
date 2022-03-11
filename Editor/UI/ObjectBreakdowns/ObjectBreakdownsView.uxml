@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="object-breakdowns-view">
+        <Style src="ObjectBreakdownsView.uss"/>
+        <engine:VisualElement name="object-breakdowns-view__select-breakdown">
+            <engine:VisualElement name="object-breakdowns-view__select-breakdown__button">
+                <engine:Label name="object-breakdowns-view__select-breakdown__button__label"/>
+                <engine:Image name="object-breakdowns-view__select-breakdown__button__icon" class="unity-base-popup-field__arrow"/>
+            </engine:VisualElement>
+        </engine:VisualElement>
+        <engine:Label name="object-breakdowns-view__breakdown-description-label"/>
+        <engine:VisualElement name="object-breakdowns-view__breakdown-container"/>
+    </engine:VisualElement>
+
+</engine:UXML>

@@ -7,7 +7,9 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 using UnityEngine.Assertions;
+using UnityEngine.UIElements;
 using Debug = UnityEngine.Debug;
+using TreeView = UnityEditor.IMGUI.Controls.TreeView;
 
 namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 {
@@ -19,8 +21,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 "|This is a circular reference, click to highlight original");
             //public static readonly Texture2D CSharpIcon = Icons.LoadIcon(Icons.IconFolder + "CSharpIcon@3x.png", false);
             //public static readonly Texture2D CPlusPlusIcon = Icons.LoadIcon(Icons.IconFolder + "CPlusPlusIcon@3x.png", false);
-            public static readonly Texture2D CSharpIcon = Icons.LoadIcon(Icons.IconFolder + "CSharpIcon.png", true);
-            public static readonly Texture2D CPlusPlusIcon = Icons.LoadIcon(Icons.IconFolder + "CPlusPlusIcon.png", true);
+            public static readonly Texture2D CSharpIcon = IconUtility.LoadIconAtPath(Icons.IconFolder + "CSharpIcon.png", true);
+            public static readonly Texture2D CPlusPlusIcon = IconUtility.LoadIconAtPath(Icons.IconFolder + "CPlusPlusIcon.png", true);
+            public static readonly GUIContent SceneIcon = EditorGUIUtility.IconContent("SceneAsset Icon");
             public static readonly GUIContent CSharpIconContent = new GUIContent(CSharpIcon, "C# Object");
             public static readonly GUIContent CPlusPlusIconContent = new GUIContent(CPlusPlusIcon, "C++ Object");
             public static readonly string NoObjectSelected = L10n.Tr("No Object Selected");
@@ -50,14 +53,23 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             SearchComplete
         }
 
+        private enum ActiveTree
+        {
+            RawReferences,
+            ReferencesTo
+        }
+
         PathsToRootViewGUIState m_GUIState;
         IUIStateHolder m_UIStateHolder;
 
         CachedSnapshot m_CachedSnapshot;
-        PathsToRootDetailTreeViewItem m_RootDetail;
-        PathsToRootDetailTreeViewItem m_BackingData;
+        ActiveTree m_ActiveTree;
+        PathsToRootDetailTreeViewItem m_RawReferenceTree;
+        PathsToRootDetailTreeViewItem m_ReferencesToTree;
         EditorCoroutine m_EditorCoroutine;
         RibbonButton m_RawConnectionButton;
+        RibbonButton m_ReferencesToButton;
+        Ribbon m_Ribobn;
 
         long m_CurrentSelection;
 
@@ -72,7 +84,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         BackGroundThreadState m_BackgroundThreadState;
 
-        public PathsToRootDetailView(IUIStateHolder uiStateHolder, TreeViewState state, MultiColumnHeaderWithTruncateTypeName multiColumnHeaderWithTruncateTypeName, RibbonButton rawConnectionButton)
+        public PathsToRootDetailView(IUIStateHolder uiStateHolder, TreeViewState state, MultiColumnHeaderWithTruncateTypeName multiColumnHeaderWithTruncateTypeName, Ribbon ribbon)
             : base(state, multiColumnHeaderWithTruncateTypeName)
         {
             m_UIStateHolder = uiStateHolder;
@@ -84,9 +96,28 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             rowHeight = 20f;
             multiColumnHeaderWithTruncateTypeName.ResizeToFit();
             MemoryProfilerSettings.TruncateStateChanged += OnTruncateStateChanged;
+
+            m_RawReferenceTree = new PathsToRootDetailTreeViewItem();
+            SetupDepthsFromParentsAndChildren(m_RawReferenceTree);
+
+            m_ReferencesToTree = new PathsToRootDetailTreeViewItem();
+            SetupDepthsFromParentsAndChildren(m_ReferencesToTree);
+
+            m_Ribobn = ribbon;
+            m_RawConnectionButton = m_Ribobn.Q<RibbonButton>("raw-connections");
+            m_ReferencesToButton = m_Ribobn.Q<RibbonButton>("referencing-to");
+            m_RawConnectionButton.text = $"Referenced By ({m_RawReferenceTree.children.Count})";
+            m_Ribobn.Clicked += RibbonClicked;
+            m_ReferencesToButton.text = $"References To ()";
+            m_ActiveTree = ActiveTree.RawReferences;
+
             Reload();
-            m_RawConnectionButton = rawConnectionButton;
-            m_RawConnectionButton.text = $"Referenced By ({m_RootDetail.children.Count})";
+        }
+
+        void RibbonClicked(int idx)
+        {
+            m_ActiveTree = (ActiveTree)idx;
+            Reload();
         }
 
         void OnTruncateStateChanged()
@@ -177,9 +208,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         public void UpdateToAllocation(long item)
         {
-            m_BackingData = CreateRootItem();
-            m_RootDetail = m_BackingData;
-            SetupDepthsFromParentsAndChildren(m_RootDetail);
+            m_RawReferenceTree = CreateRootItem();
+            SetupDepthsFromParentsAndChildren(m_RawReferenceTree);
             Reload();
         }
 
@@ -208,7 +238,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
             else
             {
-                NoObject(m_CachedSnapshot);
+                NoObject(m_CachedSnapshot, ref m_RawReferenceTree);
+                NoObject(m_CachedSnapshot, ref m_ReferencesToTree);
                 Reload();
             }
         }
@@ -246,15 +277,17 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                         break;
                     case BackGroundThreadState.Analyze:
                         SearchForRootObjects(item);
-                        m_RootDetail = GenerateTreeWithoutCircularRefs(m_BackingData);
+                        m_RawReferenceTree = GenerateTreeWithoutCircularRefs(m_RawReferenceTree);
                         // m_RootDetail = InvertPathsToRoot(m_RootDetail);
-                        SetupDepthsFromParentsAndChildren(m_RootDetail);
+                        SetupDepthsFromParentsAndChildren(m_RawReferenceTree);
                         if (CurrentSelection.CachedSnapshot != null && !CurrentSelection.CachedSnapshot.Valid)
                         {
                             Debug.Log("Aborting threaded Path To Roots calculation because the snapshot was unloaded");
                             return;
                         }
                         // m_RootDetail.children.Insert(0, new PathsToRootDetailTreeViewItem(CurrentSelection.objectData, CurrentSelection.CachedSnapshot) { id = k_CurrentSelectionTreeViewItemId });
+
+                        GatherReferencesTo(item);
 
                         m_BackgroundThreadState = BackGroundThreadState.AnalyzeDone;
                         break;
@@ -270,7 +303,72 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
         }
 
-        /* fun method that can be used to recreate the scen hierarchy when the snapshot has the scene roots data
+        void GatherReferencesTo(long item)
+        {
+            if (m_CachedSnapshot == null)
+            {
+                Debug.Log(" no snapshot set");
+                return;
+            }
+
+            var itemObjectData = ObjectData.FromUnifiedObjectIndex(m_CachedSnapshot, item);
+
+            m_ReferencesToTree = CreateRootItem();
+
+            if (!itemObjectData.IsValid) m_ReferencesToTree = DefaultItem();
+
+            var objectsConnectingTo =
+                ObjectConnection.GenerateReferencesTo(m_CachedSnapshot, itemObjectData);
+
+            foreach (var data in objectsConnectingTo)
+            {
+                m_ReferencesToTree.AddChild(new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot));
+            }
+        }
+
+        #region DebugHelpers
+        /* we can use this to verify if the scene hierarchy is correctly being rebuilt from the snapshot data
+        void SceneHierachyFromSceneRootsTransformTree()
+        {
+            if (m_CachedSnapshot == null)`
+            {
+                Debug.Log(" no snapshot set");
+                return;
+            }
+            m_ObjectsProcessed = 0;
+            m_ProcessingStackSize = 0;
+            m_GUIState = PathsToRootViewGUIState.Searching;
+
+            m_BackingData = CreateRootItem();
+
+            for(int i = 0 ; i < m_CachedSnapshot.SceneRoots.SceneHierarchies.Length; i++)
+            {
+                var sceneRoot = new PathsToRootDetailTreeViewItem();
+                sceneRoot.displayName = m_CachedSnapshot.SceneRoots.Name[i];
+                m_BackingData.AddChild(sceneRoot);
+
+                foreach (var child in m_CachedSnapshot.SceneRoots.SceneHierarchies[i].Children)
+                {
+                    var item = new PathsToRootDetailTreeViewItem(ObjectData.FromNativeObjectIndex(m_CachedSnapshot, m_CachedSnapshot.NativeObjects.instanceId2Index[child.GameObjectID]), m_CachedSnapshot);
+                    sceneRoot.AddChild(item);
+                    AddTransforms(child, item);
+                }
+            }
+
+            m_GUIState = PathsToRootViewGUIState.SearchComplete;
+        }
+
+        void AddTransforms(CachedSnapshot.SceneRootEntriesCache.TransformTree transformTree, PathsToRootDetailTreeViewItem item)
+        {
+            foreach (var child in transformTree.Children)
+            {
+                var newChild = new PathsToRootDetailTreeViewItem(ObjectData.FromNativeObjectIndex(m_CachedSnapshot, m_CachedSnapshot.NativeObjects.instanceId2Index[child.GameObjectID]), m_CachedSnapshot);
+                item.AddChild(newChild);
+                AddTransforms(child, newChild);
+            }
+        }*/
+
+        /*fun method that can be used to recreate the scene hierarchy when the snapshot has the scene roots data
         void ReconstructScene()
         {
             if (m_CachedSnapshot == null)
@@ -284,19 +382,26 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             var processingStack = new Stack<PathsToRootDetailTreeViewItem>();
 
             m_BackingData = CreateRootItem();
-            //find transform id
 
-            for (int i = 0; i < m_CachedSnapshot.SceneRoots.AllRootIds.Count; i++)
+            for (int i = 0; i < m_CachedSnapshot.SceneRoots.AllRootTransformInstanceIds.Count; i++)
             {
-                var rootId = m_CachedSnapshot.SceneRoots.AllRootIds[i];
+                var rootId = m_CachedSnapshot.SceneRoots.AllRootTransformInstanceIds[i];
                 var current = new PathsToRootDetailTreeViewItem(ObjectData.FromNativeObjectIndex(m_CachedSnapshot, m_CachedSnapshot.NativeObjects.instanceId2Index[rootId]), m_CachedSnapshot);
 
-                var allObjectConnectingTo = ObjectConnection.GetAllObjectConnectingTo(m_CachedSnapshot, current.Data);
-
+                var allObjectConnectingTo = ObjectConnection.GetAllReferencedObjects(m_CachedSnapshot, current.Data);
                 if (allObjectConnectingTo == null) continue;
 
-                m_BackingData.AddChild(current);
-                processingStack.Push(current);
+                foreach (var objectData in allObjectConnectingTo)
+                {
+                    if (objectData.IsGameObject(m_CachedSnapshot) &&
+                        objectData.isNative &&
+                        m_CachedSnapshot.NativeObjects.ObjectName[objectData.nativeObjectIndex] == m_CachedSnapshot.NativeObjects.ObjectName[m_CachedSnapshot.NativeObjects.instanceId2Index[rootId]])
+                    {
+                        var go = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot);
+                        m_BackingData.AddChild(go);
+                        processingStack.Push(go);
+                    }
+                }
             }
 
             while (processingStack.Count > 0)
@@ -304,18 +409,16 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 var current = processingStack.Pop();
                 m_ObjectsProcessed++;
 
-
-                var objData = ObjectConnection.GetAllObjectConnectingTo(m_CachedSnapshot, current.Data);
+                var objData = ObjectConnection.GetAllReferencedObjects(m_CachedSnapshot, current.Data);
                 if (objData == null) continue;
 
-
                 //filter on transforms
-                if (m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[current.Data.nativeObjectIndex] == m_CachedSnapshot.NativeTypes.TransformIdx)
+                if (m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[current.Data.nativeObjectIndex] == m_CachedSnapshot.NativeTypes.GameObjectIdx)
                 {
                     var tmp = new List<ObjectData>();
                     for (int i = 0; i < objData.Length; i++)
                     {
-                        if (m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[objData[i].nativeObjectIndex] == m_CachedSnapshot.NativeTypes.TransformIdx)
+                        if (m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[objData[i].nativeObjectIndex] == m_CachedSnapshot.NativeTypes.GameObjectIdx)
                         {
                             tmp.Add(objData[i]);
                         }
@@ -324,18 +427,15 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     objData = tmp.ToArray();
                 }
 
-
                 foreach (var objectData in objData)
                 {
-                    if (objectData.IsManagedGlobal() || objectData.dataType == ObjectDataType.Unknown) continue;
+                    if (objectData.dataType == ObjectDataType.Unknown) continue;
 
-                    var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot);
-                    child.hasCircularReference = HasCircularReference(current, objectData, out child.circularRefID);
-
+                    var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, current);
                     current.AddChild(child);
 
                     //global is root so dont push it
-                    if (objectData.dataType != ObjectDataType.Global && !child.hasCircularReference)
+                    if (!child.HasCircularReference)
                     {
                         processingStack.Push(child);
                         m_ProcessingStackSize++;
@@ -343,8 +443,10 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 }
             }
             m_GUIState = PathsToRootViewGUIState.SearchComplete;
-        }
-*/
+        }*/
+
+
+        #endregion
 
         void SearchForRootObjects(long item)
         {
@@ -354,32 +456,33 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 return;
             }
 
+            m_RawReferenceTree = CreateRootItem();
             m_ObjectsProcessed = 0;
             m_ProcessingStackSize = 0;
             m_GUIState = PathsToRootViewGUIState.Searching;
             var itemObjectData = ObjectData.FromUnifiedObjectIndex(m_CachedSnapshot, item);
 
-            if (!itemObjectData.IsValid) m_BackingData = DefaultItem();
+            if (!itemObjectData.IsValid) m_RawReferenceTree = DefaultItem();
 
             var objectsConnectingTo =
                 ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, itemObjectData);
 
             if (objectsConnectingTo.Length == 0)
             {
-                NoReferenceObject(itemObjectData, m_CachedSnapshot);
+                NoReferenceObject(m_RawReferenceTree);
                 m_GUIState = PathsToRootViewGUIState.SearchComplete;
                 return;
             }
 
             var processingStack = new Stack<PathsToRootDetailTreeViewItem>();
-            m_BackingData.children.Clear();
+            m_RawReferenceTree.children.Clear();
 
             foreach (var objectData in objectsConnectingTo)
             {
-                m_BackingData.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot));
+                m_RawReferenceTree.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot));
             }
 
-            foreach (var treeViewItem in m_BackingData.children)
+            foreach (var treeViewItem in m_RawReferenceTree.children)
             {
                 var objectTreeChild = (PathsToRootDetailTreeViewItem)treeViewItem;
                 processingStack.Push(objectTreeChild);
@@ -482,7 +585,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, current);
                     current.AddChild(child);
 
-                    if (child.Data.IsRoot(m_CachedSnapshot))
+                    if (child.Data.IsRootTransform(m_CachedSnapshot))
                     {
                         var o = ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, child.Data);
                         foreach (var data in o)
@@ -538,35 +641,45 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             return tmp.ToArray();
         }
 
-        void NoReferenceObject(ObjectData od, CachedSnapshot cs)
+        void NoReferenceObject(PathsToRootDetailTreeViewItem item)
         {
-            m_BackingData = CreateRootItem();
+            item = CreateRootItem();
         }
 
-        void NoObject(CachedSnapshot cs)
+        void NoObject(CachedSnapshot cs, ref PathsToRootDetailTreeViewItem tree)
         {
             CurrentSelection = default;
-            m_BackingData = CreateRootItem();
-            m_RootDetail = CreateRootItem();
+            tree = CreateRootItem();
         }
 
         protected override TreeViewItem BuildRoot()
         {
-            if (m_BackingData == null)
+            if (m_RawReferenceTree == null)
             {
-                m_BackingData = new PathsToRootDetailTreeViewItem();
-                m_RootDetail = new PathsToRootDetailTreeViewItem(m_BackingData);
-                SetupDepthsFromParentsAndChildren(m_RootDetail);
-                return m_RootDetail;
+                m_RawReferenceTree = new PathsToRootDetailTreeViewItem();
+                SetupDepthsFromParentsAndChildren(m_RawReferenceTree);
             }
 
-            foreach (var child in m_RootDetail.children)
+            if (m_ReferencesToTree == null)
             {
-                GenerateIcons(child as PathsToRootDetailTreeViewItem);
+                m_ReferencesToTree = new PathsToRootDetailTreeViewItem();
+                SetupDepthsFromParentsAndChildren(m_ReferencesToTree);
             }
 
-            m_RawConnectionButton.text = $"Referenced By ({m_RootDetail.children.Count})";
-            return m_RootDetail;
+            GenerateIcons(m_RawReferenceTree);
+            GenerateIcons(m_ReferencesToTree);
+
+            m_RawConnectionButton.text = $"Referenced By ({m_RawReferenceTree.children.Count})";
+            m_ReferencesToButton.text = $"References To ({m_ReferencesToTree.children.Count})";
+            switch (m_ActiveTree)
+            {
+                case ActiveTree.RawReferences:
+                    return m_RawReferenceTree;
+                case ActiveTree.ReferencesTo:
+                    return m_ReferencesToTree;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
 
         static PathsToRootDetailTreeViewItem InvertPathsToRoot(PathsToRootDetailTreeViewItem rootDetail)
@@ -745,7 +858,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     if (pathsToRootDetailTreeViewItem.icon != null)
                         GUI.Label(new Rect(cellRect.x, cellRect.y, 20, 20), pathsToRootDetailTreeViewItem.TypeIcon);
                     var typeNameRect = new Rect(cellRect.x + 20, cellRect.y, cellRect.width - 20, cellRect.height);
-                    var text = $"{(truncateTypeNames ? TruncateTypeName(pathsToRootDetailTreeViewItem.TypeName) :pathsToRootDetailTreeViewItem.TypeName)} \"{pathsToRootDetailTreeViewItem.displayName}\"";
+                    var text = $"{(truncateTypeNames ? pathsToRootDetailTreeViewItem.TruncatedTypeName :pathsToRootDetailTreeViewItem.TypeName)} \"{pathsToRootDetailTreeViewItem.displayName}\"";
+                    if (pathsToRootDetailTreeViewItem.IsRoot(m_CachedSnapshot))
+                        text = $"SceneRoot {text}";
                     var isMainSelection = item.id == k_CurrentSelectionTreeViewItemId;
                     if (isMainSelection)
                     {
@@ -753,6 +868,12 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     }
                     else
                         GUI.Label(typeNameRect, text);
+
+                    if (pathsToRootDetailTreeViewItem.IsRoot(m_CachedSnapshot))
+                    {
+                        var size = GUI.skin.label.CalcSize(new GUIContent(text));
+                        GUI.DrawTexture(new Rect(typeNameRect.x + size.x, typeNameRect.y, 20,20), Styles.SceneIcon.image);
+                    }
                 }
                 break;
                 case PathsToRootViewColumns.Flags:
@@ -843,28 +964,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             if (objIdx == -1)
                 return;
             SelectionChangedEvt(new MemorySampleSelection(m_UIStateHolder.UIState, objIdx, item[0].id, m_CachedSnapshot));
-        }
-
-        long GetItemFromId(int first)
-        {
-            if (m_RootDetail.children[0].id == first)
-            {
-                return ((PathsToRootDetailTreeViewItem)m_RootDetail.children[0]).Data.GetUnifiedObjectIndex(m_CachedSnapshot);
-            }
-            var findIndex = m_RootDetail.children[0].children.FindIndex(x => x.id == first);
-            if (findIndex != -1)
-            {
-                if (m_RootDetail.children[0].children[findIndex] is PathsToRootDetailTreeViewItem)
-                {
-                    if (m_RootDetail.children[0].children[findIndex] is PathsToRootDetailTreeViewItem ret)
-                    {
-                        var id = ret.Data.displayObject.GetUnifiedObjectIndex(m_CachedSnapshot);
-                        return id;
-                    }
-                }
-            }
-
-            return -1;
         }
 
         protected override bool CanMultiSelect(TreeViewItem item)

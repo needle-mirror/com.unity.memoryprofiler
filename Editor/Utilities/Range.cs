@@ -52,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor
         private Range(long first, long last)
         {
             this.First = first;
-            this.Last = last;
+            this.Last = Math.Max(first, last);
         }
 
         public Range Union(long value)

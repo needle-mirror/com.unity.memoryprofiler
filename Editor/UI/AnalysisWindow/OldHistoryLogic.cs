@@ -124,6 +124,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                                 OpenHistoryEvent(selectionEvent, false);
                             }
                             yield break;
+
                         }
                     }
                     else

@@ -721,6 +721,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public override long GetRowValue(long row)
         {
+            if (!m_Table.Snapshot.Valid) return 0;
             if (m_Table.GetObjectStatic(row)) return 0;
             var obj = m_Table.GetObjectData(row).displayObject;
             switch (obj.dataType)

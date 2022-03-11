@@ -1,0 +1,9 @@
+#feature-unavailable-view
+{
+    flex-grow: 1;
+}
+
+#feature-unavailable-view__description-label
+{
+    margin: 16px;
+}

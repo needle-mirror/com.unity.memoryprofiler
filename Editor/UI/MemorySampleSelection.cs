@@ -422,6 +422,38 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        MemorySampleSelection(MemorySampleSelectionType type, long itemIndex) : this()
+        {
+            Type = type;
+            Rank = MemorySampleSelectionRank.MainSelection;
+            ItemIndex = itemIndex;
+        }
+
+        public static MemorySampleSelection FromUnifiedObjectIndex(long unifiedObjectIndex)
+        {
+            return new MemorySampleSelection(MemorySampleSelectionType.UnifiedObject, unifiedObjectIndex);
+        }
+
+        public static MemorySampleSelection FromNativeObjectIndex(long nativeObjectIndex)
+        {
+            return new MemorySampleSelection(MemorySampleSelectionType.NativeObject, nativeObjectIndex);
+        }
+
+        public static MemorySampleSelection FromNativeTypeIndex(long nativeTypeIndex)
+        {
+            return new MemorySampleSelection(MemorySampleSelectionType.NativeType, nativeTypeIndex);
+        }
+        
+        public static MemorySampleSelection FromManagedObjectIndex(long managedObjectIndex)
+        {
+            return new MemorySampleSelection(MemorySampleSelectionType.ManagedObject, managedObjectIndex);
+        }
+
+        public static MemorySampleSelection FromManagedTypeIndex(long managedTypeIndex)
+        {
+            return new MemorySampleSelection(MemorySampleSelectionType.ManagedType, managedTypeIndex);
+        }
+
         public long FindSelectionInTable(UIState uiState, Table displayTable)
         {
             var snapshot = GetSnapshotItemIsPresentIn(uiState);
