@@ -45,7 +45,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         }
 
         MemoryProfilerModuleOverride m_OverrideMemoryProfilerModule;
-        
+
         // all UI Element and similar references should be grouped into this class.
         // Since the things this reference get recreated every time the module is selected, these references shouldn't linger beyond the Dispose()
         UIState m_UIState = null;
@@ -141,7 +141,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
                 var frameIndex = ProfilerWindow.selectedFrameIndex;
                 var dataAvailable = CheckMemoryStatsAvailablity(frameIndex);
                 m_UIState.DetailedMenuLabel.text = "Simple";
-                
+
                 if (dataAvailable)
                 {
                     m_UIState.ViewArea.Add(m_UIState.SimpleView);

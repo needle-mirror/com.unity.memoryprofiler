@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="all-tracked-memory-breakdown-view">
+        <Style src="AllTrackedMemoryBreakdownView.uss"/>
+        <engine:VisualElement name="all-tracked-memory-breakdown-view__search-field-container">
+            <engine:Label name="all-tracked-memory-breakdown-view__description-label"/>
+            <editor:ToolbarSearchField name="all-tracked-memory-breakdown-view__search-field"/>
+        </engine:VisualElement>
+        <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="all-tracked-memory-breakdown-view__table-size-bar"/>
+        <engine:VisualElement name="all-tracked-memory-breakdown-view__tree-view__main-container">
+            <engine:MultiColumnTreeView name="all-tracked-memory-breakdown-view__tree-view" sorting-enabled="true">
+                <engine:Columns reorderable="false">
+                    <engine:Column name="all-tracked-memory-breakdown-view__tree-view__column__description" resizable="true" stretchable="true" optional="false"/>
+                    <engine:Column name="all-tracked-memory-breakdown-view__tree-view__column__size" resizable="true" stretchable="true"/>
+                    <engine:Column name="all-tracked-memory-breakdown-view__tree-view__column__size-bar" resizable="true" stretchable="true"/>
+                </engine:Columns>
+                <engine:SortColumnDescriptions>
+                    <engine:SortColumnDescription column-name="all-tracked-memory-breakdown-view__tree-view__column__size" direction="descending"/>
+                </engine:SortColumnDescriptions>
+            </engine:MultiColumnTreeView>
+            <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="all-tracked-memory-breakdown-view__loading-overlay"/>
+            <engine:Label name="all-tracked-memory-breakdown-view__error-label"/>
+        </engine:VisualElement>
+    </engine:VisualElement>
+
+</engine:UXML>

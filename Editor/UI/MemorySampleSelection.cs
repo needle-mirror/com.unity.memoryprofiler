@@ -428,36 +428,65 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        MemorySampleSelection(MemorySampleSelectionType type, long itemIndex) : this()
+        MemorySampleSelection(
+            MemorySampleSelectionType type,
+            long itemIndex,
+            SnapshotAge snapshotAge = SnapshotAge.None) : this()
         {
             Type = type;
             Rank = MemorySampleSelectionRank.MainSelection;
             ItemIndex = itemIndex;
+            m_SnapshotAge = snapshotAge;
         }
 
-        public static MemorySampleSelection FromUnifiedObjectIndex(long unifiedObjectIndex)
+        public static MemorySampleSelection FromUnifiedObjectIndex(
+            long unifiedObjectIndex,
+            SnapshotAge snapshotAge = SnapshotAge.None)
         {
-            return new MemorySampleSelection(MemorySampleSelectionType.UnifiedObject, unifiedObjectIndex);
+            return new MemorySampleSelection(
+                MemorySampleSelectionType.UnifiedObject,
+                unifiedObjectIndex,
+                snapshotAge);
         }
 
-        public static MemorySampleSelection FromNativeObjectIndex(long nativeObjectIndex)
+        public static MemorySampleSelection FromNativeObjectIndex(
+            long nativeObjectIndex,
+            SnapshotAge snapshotAge = SnapshotAge.None)
         {
-            return new MemorySampleSelection(MemorySampleSelectionType.NativeObject, nativeObjectIndex);
+            return new MemorySampleSelection(
+                MemorySampleSelectionType.NativeObject,
+                nativeObjectIndex,
+                snapshotAge);
         }
 
-        public static MemorySampleSelection FromNativeTypeIndex(long nativeTypeIndex)
+        public static MemorySampleSelection FromNativeTypeIndex(
+            long nativeTypeIndex,
+            SnapshotAge snapshotAge = SnapshotAge.None)
         {
-            return new MemorySampleSelection(MemorySampleSelectionType.NativeType, nativeTypeIndex);
+            return new MemorySampleSelection(
+                MemorySampleSelectionType.NativeType,
+                nativeTypeIndex,
+                snapshotAge);
         }
 
-        public static MemorySampleSelection FromManagedObjectIndex(long managedObjectIndex)
+        public static MemorySampleSelection FromManagedObjectIndex(
+            long managedObjectIndex,
+            SnapshotAge snapshotAge = SnapshotAge.None)
         {
-            return new MemorySampleSelection(MemorySampleSelectionType.ManagedObject, managedObjectIndex);
+            return new MemorySampleSelection(
+                MemorySampleSelectionType.ManagedObject,
+                managedObjectIndex,
+                snapshotAge);
         }
 
-        public static MemorySampleSelection FromManagedTypeIndex(long managedTypeIndex)
+        public static MemorySampleSelection FromManagedTypeIndex(
+            long managedTypeIndex,
+            SnapshotAge snapshotAge = SnapshotAge.None)
         {
-            return new MemorySampleSelection(MemorySampleSelectionType.ManagedType, managedTypeIndex);
+            return new MemorySampleSelection(
+                MemorySampleSelectionType.ManagedType,
+                managedTypeIndex,
+                snapshotAge);
         }
 
         public string GetTypeStringForAnalytics(CachedSnapshot snapshot)

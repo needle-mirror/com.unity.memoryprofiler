@@ -41,7 +41,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_MemoryUsageSummary = root;
             }
-            memoryProfilerWindow.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.HighlevelBreakdownElement, this);
 
             m_Foldout = root.Q<Foldout>(className: "memory-usage-summary-section__top-header__title");
 

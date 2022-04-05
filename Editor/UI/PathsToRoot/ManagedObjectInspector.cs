@@ -555,6 +555,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (address == 0)
                 return;
+            if (!cs.NativeObjects.nativeObjectAddressToInstanceId.ContainsKey(address)) return;
             var instanceId = cs.NativeObjects.nativeObjectAddressToInstanceId[address];
             if (instanceId == 0)
                 return;

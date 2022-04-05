@@ -23,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
             set { s_CreateDetailsViewControllerMemberInfo.SetValue(null, value); }
         }
-        
+
         static MemoryProfilerModuleBridge()
         {
             var profilerWindowType = typeof(ProfilerWindow);
@@ -31,6 +31,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             var type = assembly.GetType("UnityEditorInternal.Profiling.MemoryProfilerOverrides");
             s_CreateDetailsViewControllerMemberInfo = type.GetField("CreateDetailsViewController");
         }
+
 #endif // MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY
     }
 }

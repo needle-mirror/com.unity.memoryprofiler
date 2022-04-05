@@ -306,7 +306,7 @@ namespace Unity.MemoryProfiler.Editor
             m_ImportButton.MarkDirtyRepaint();
         }
 
-        void TakeCapture()
+        public void TakeCapture()
         {
             if (EditorApplication.isCompiling)
             {

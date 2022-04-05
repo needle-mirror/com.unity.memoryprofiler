@@ -7,7 +7,7 @@ using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
-    public enum EntryFormat : ushort
+    enum EntryFormat : ushort
     {
         Undefined = 0,
         SingleElement,

@@ -10,7 +10,7 @@ using Unity.MemoryProfiler.Editor.Containers;
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
-    public struct ScheduleResult
+    struct ScheduleResult
     {
         public ReadHandle handle;
         public ReadError error;
@@ -69,7 +69,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
     //
     // Legend:
     //  <Chapter> - EntryType eg: NativeObjectName
-    public struct FileReader : IFileReader
+    struct FileReader : IFileReader
     {
         [StructLayout(LayoutKind.Explicit, Size = 16, Pack = 4)]
         struct Blob16Byte{}

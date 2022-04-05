@@ -2,11 +2,11 @@
 
 The Memory Profiler is a tool you can use to identify areas in your Unity Project, and the Unity Editor, where you can reduce memory usage. You can use it to capture, inspect, and compare memory snapshots. A memory snapshot is a record of how the memory in your application is organized at the point in a frame when the snapshot was taken.
 
-When you record some data with the Memory Profiler, you can access the data through the [Memory Profiler window](memory-profiler-window) in the Unity Editor. This window provides an overview of native and managed memory allocations. Use this data to profile your application and to detect memory leaks and fragmentation.
+When you record some data with the Memory Profiler, you can access the data through the [Memory Profiler window](memory-profiler-window.md) in the Unity Editor. This window provides an overview of native and managed memory allocations. Use this data to profile your application and to detect memory leaks and fragmentation.
 
-This package is separate to the built-in [Memory Profiler module](https://docs.unity3d.com/Manual/ProfilerMemory.html), and you can use both tools to profile your application. The Memory Profiler package is designed to provide more detailed information about your application's memory allocations.
+This package is separate to the built-in [Memory Profiler module](https://docs.unity3d.com/Manual/ProfilerMemory.html), and each is useful for different purposes. The Memory Profiler package is designed to provide more detailed information about your application's memory allocations.
 
-Unity recommends that you become familiar with the built-in Profiler before you use this package. For more information, see [Profiler overview](https://docs.unity3d.com/Manual/Profiler.html).
+You should become familiar with the built-in Profiler before you use this package. For more information, see [Profiler overview](https://docs.unity3d.com/Manual/Profiler.html).
 
 ## Preview package
 
@@ -29,7 +29,8 @@ This version of the Memory Profiler is compatible with the following versions of
 
 | Unity Version | Package Version | Minimum Unity Version | Recommended Unity Version |
 |----------------|---------|------------|---------------------|
-| 2021.2 or newer| 0.6.x   | 2021.1.0a1 | 2020.2.0a12 or newer|
+| 2022.2 or newer| 1.0.x   | 2022.1.0a1 | 2022.2.0b1  or newer|
+| 2021.2         | 0.6.x   | 2021.1.0a1 | 2020.2.0a12 or newer|
 | 2020.x         | 0.6.x   | 2020.1.0a1 | 2020.3.12f1 or newer|
 | 2019.x         | 0.6.x   | 2019.3.0f1 | 2019.4.29f1 or newer|
 | 2018.x         | 0.2.x   | 2018.3.3f1 | 2018.4.14f1 or newer|

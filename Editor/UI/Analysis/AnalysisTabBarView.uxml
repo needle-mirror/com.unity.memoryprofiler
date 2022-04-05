@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="analysis-tab-bar-view">
+        <Style src="AnalysisTabBarView.uss"/>
+        <engine:VisualElement name="analysis-tab-bar-view__tab-bar">
+            <engine:VisualElement name="analysis-tab-bar-view__tab-bar__items"/>
+            <engine:Button name="analysis-tab-bar-view__tab-bar__help-button" class="icon-button">
+                <engine:Image name="analysis-tab-bar-view__tab-bar__help-button-icon"/>
+            </engine:Button>
+        </engine:VisualElement>
+        <engine:VisualElement name="analysis-tab-bar-view__content-view"/>
+    </engine:VisualElement>
+
+</engine:UXML>

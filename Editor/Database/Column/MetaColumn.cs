@@ -2,7 +2,7 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.Database
 {
-    public enum DataMatchMethod
+    internal enum DataMatchMethod
     {
         AsString, //default
         AsNumber,

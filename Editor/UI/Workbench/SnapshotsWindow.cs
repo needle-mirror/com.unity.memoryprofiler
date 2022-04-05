@@ -1,17 +1,15 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
+using Unity.EditorCoroutines.Editor;
+using Unity.MemoryProfiler.Editor.Format;
+using Unity.MemoryProfiler.Editor.UI;
+using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
-using Unity.MemoryProfiler.Editor.UI;
-using Unity.EditorCoroutines.Editor;
-using UnityEngine.SceneManagement;
-using System.IO;
-using Unity.MemoryProfiler.Editor.Format;
-using UnityEngine.UIElements;
 using UnityEditor.UIElements;
-using TwoPaneSplitView = Unity.MemoryProfiler.Editor.TwoPaneSplitView;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -36,8 +34,6 @@ namespace Unity.MemoryProfiler.Editor
         Stack<VisualElement> m_SessionListItemPool = new Stack<VisualElement>();
 
         public event Action SwappedSnapshots = delegate {};
-
-        static Dictionary<BuildTarget, string> s_PlatformIconClasses = new Dictionary<BuildTarget, string>();
 
         IUIStateHolder m_ParentWindow;
 
@@ -86,6 +82,12 @@ namespace Unity.MemoryProfiler.Editor
         public void RegisterAdditionalCaptureButton(Button captureButton)
         {
             m_CaptureControlUI.RegisterAdditionalCaptureButton(captureButton);
+        }
+
+        // Technical debt to continue using existing snapshots window structure and be able to trigger snapshots from elsewhere. SnapshotsWindow will be refactored in the future and this should be addressed then.
+        public void TakeSnapshot()
+        {
+            m_CaptureControlUI.TakeCapture();
         }
 
         void ToggleSnapshotWindowVisibility(ChangeEvent<bool> evt)
@@ -221,29 +223,61 @@ namespace Unity.MemoryProfiler.Editor
             Image editorIcon = snapshotItem.Q<Image>(GeneralStyles.EditorIconName, GeneralStyles.PlatformIconClassName);
             platformIcon.ClearClassList();
             platformIcon.AddToClassList(GeneralStyles.PlatformIconClassName);
-            var platformIconClass = GetPlatformIconClass(snapshotGUIData.RuntimePlatform);
-            if (!string.IsNullOrEmpty(platformIconClass))
-                platformIcon.AddToClassList(platformIconClass);
+            platformIcon.image = GetPlatformIcon(snapshotGUIData.RuntimePlatform);
             if (snapshotGUIData.MetaPlatform.Contains(GeneralStyles.PlatformIconEditorClassName))
-            {
                 UIElementsHelper.SetVisibility(editorIcon, true);
-                platformIcon.AddToClassList(GeneralStyles.PlatformIconEditorClassName);
-            }
             else
                 UIElementsHelper.SetVisibility(editorIcon, false);
         }
 
-        static string GetPlatformIconClass(RuntimePlatform platform)
+        static string GetPlatformIconName(RuntimePlatform platform)
         {
-            BuildTarget buildTarget = platform.GetBuildTarget();
-            if (buildTarget == BuildTarget.NoTarget)
-                return null;
-
-            if (!s_PlatformIconClasses.ContainsKey(buildTarget))
+            string name;
+            switch (platform)
             {
-                s_PlatformIconClasses[buildTarget] = buildTarget.ToString();
+#if UNITY_2021_2_OR_NEWER
+                case RuntimePlatform.LinuxServer:
+                case RuntimePlatform.OSXServer:
+                case RuntimePlatform.WindowsServer:
+                    name = "DedicatedServer";
+                    break;
+#endif
+                default:
+                {
+                    var buildTargetGroup = BuildPipeline.GetBuildTargetGroup(platform.GetBuildTarget());
+                    if (buildTargetGroup == BuildTargetGroup.Unknown)
+                        return null;
+
+                    switch (buildTargetGroup)
+                    {
+                        case BuildTargetGroup.WSA:
+                            name = "Metro";
+                            break;
+                        default:
+                            name = buildTargetGroup.ToString();
+                            break;
+                    }
+                }
+                break;
             }
-            return s_PlatformIconClasses[buildTarget];
+
+            return "BuildSettings." + name + " On.png";
+        }
+
+        internal static Texture GetPlatformIcon(RuntimePlatform platform)
+        {
+            Texture icon = null;
+
+            // Try to use builtin Editor icon.
+            var builtinIconName = GetPlatformIconName(platform);
+            if (builtinIconName != null)
+                icon = IconUtility.LoadBuiltInIconWithName(builtinIconName);
+
+            // Fallback to NoIcon.
+            if (icon == null)
+                icon = PathsToRootUtils.NoIcon;
+
+            return icon;
         }
 
         void DeleteCapture(SnapshotFileData snapshot)

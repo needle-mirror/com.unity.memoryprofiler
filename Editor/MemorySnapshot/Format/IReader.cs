@@ -1,6 +1,6 @@
 namespace Unity.MemoryProfiler.Editor.Format
 {
-    public enum FormatVersion : uint
+    enum FormatVersion : uint
     {
         SnapshotMinSupportedFormatVersion = 8, //Added metadata to file, min supported version for capture
         NativeConnectionsAsInstanceIdsVersion = 10, //native object collection reworked, added new gchandleIndex array to native objects for fast managed object access (2019.3 or newer?)

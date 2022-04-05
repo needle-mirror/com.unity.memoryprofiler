@@ -83,7 +83,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static readonly string CopyButtonDropdownOptionNativeTypeName = "Native Type Name";
 
         public static string TrackedMemoryDescription => "This stat represents the total amount of memory that is tracked by Unity, split into the amount that is actively used by allocations and memory that is reserved for further allocations.\n\n" + k_TrackingGaps + k_TrackedMemoryDescriptionEnd;
-        static string k_TrackedMemoryDescriptionEnd = "\n\nEverything else can be analyzed with this Memory Profiler. The Memory Usage Overview provides a rough indication of which area may be of interest for further analysis. The 'Reserved' but unused part can be examined on the Fragmentation page.";
+        static string k_TrackedMemoryDescriptionEnd = "\n\nEverything else can be analyzed with this Memory Profiler. The Memory Usage Overview provides a rough indication of which area may be of interest for further analysis.";
         public static string UntrackedMemoryDescription => "This stat is calculated as the difference between the results of a query of the Operating System's API's yielded as the amount of memory used by the application according to the OS (The result from this query is also known as the 'Total System Used Memory' counter) and the amount of memory that Unity's systems are tracking as 'used' or 'reserved'." +
         "If this stat shows an 'unknown' amount, the captured Unity Player version might not yet have had an implementation of the 'Total System Used Memory' counter, or the tracked categories add up to more than what that counter reveals as in use." +
         "The later can happen when some memory that Unity systems reserved or used are not, or not fully, counted as used by the Application, e.g. because the Executable and DLL memory is shared with other Applications or because some of the memory isn't 'dirty' (i.e. modified after being reserved/loaded from a file/allocated but not initialized).\n\n" + k_TrackingGaps + k_UntrackedMemoryDescriptionEnd;
@@ -124,8 +124,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "\n\nThe snapshot data does not yet contain information how much memory an object is occupying on the GPU vs on the CPU so there is no way to filter for just the content of this category, yet. This will change once that data is added to the memory snapshot data.";
         public static string AudioDescription => "Memory used for Unity's Audio system, including AudioClips and playback buffers.";
         public static string OtherNativeDescription => "Other Native Memory that does not fit into the categories of Graphics, Audio or Profiler. " +
-        "You can find this memory present (but mixed with Graphics and Audio memory) in the Tree Map and the All Objects Table below it, but that also includes All Managed Objects as well as Objects which have part or all of their memory counting towards Graphics and Audio Categories, while excluding Native Allocations that are not used by Objects. " +
-        "To exclude Managed memory, you can use the Objects and Allocations page and look at the All Native Objects and All Native Allocations tables (Which still contain Graphics and Audio memory and Profiler Allocations). The Fragmentation page also shows the Native memory that is Reserved but not yet Used by Allocations as dark green. " +
         "This category also includes the CPU side of Graphics Asset memory. Aside from that, this memory is used by Objects such as Scene Objects (Game Objects and their Components), Assets and Managers and Native Allocations including Native Arrays and other Native Containers." +
         //TODO: Update this once we have this data and make it version specific, hinting at which version within the current Editor or Snapshot major version stream the user would have to update to in order to get this data.
         "\n\nThe snapshot data does not yet contain information how much memory an object is occupying on the GPU vs on the CPU, so there is no way to filter for just the content of this category, yet. This will change once that data is added to the memory snapshot data.";
@@ -144,7 +142,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "\nFor some reason this memory can not yet be returned to the system. " +
         "This can be due to the fact that there are still active Managed Objects in it that do not occupy all of the space. " +
         "Heap Sections can only be allocated from the system or released back to the system in Pages (4KB on most platforms) and any partially occupied page is therefore impossible to release, until it is no longer used. " +
-        "You can investigate how fragmented your managed heap is on the Fragmentation page. All medium dark blue space is empty. This space may still be occupied for new allocations, if they fit into the empty spaces." +
         k_SharedEmptyHeapDescription;
 
         const string k_SharedEmptyHeapDescription =

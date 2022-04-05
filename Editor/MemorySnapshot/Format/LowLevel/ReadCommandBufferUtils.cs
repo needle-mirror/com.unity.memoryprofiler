@@ -7,7 +7,7 @@ using Unity.IO.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Format.LowLevel.IO
 {
-    public static class ReadCommandBufferUtils
+    static class ReadCommandBufferUtils
     {
         [MethodImpl(256)] //256 is the value of MethodImplOptions.AggresiveInlining
         public unsafe static ReadCommand GetCommand(void* buffer, long readSize, long offset)

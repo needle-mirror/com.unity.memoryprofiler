@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="no-data-view">
+        <Style src="NoDataView.uss"/>
+        <engine:Label name="no-data-view__label"/>
+        <engine:Button name="no-data-view__button">
+            <engine:Image name="no-data-view__button-icon"/>
+        </engine:Button>
+    </engine:VisualElement>
+
+</engine:UXML>

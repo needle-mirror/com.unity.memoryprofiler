@@ -52,6 +52,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             instance.m_IsComplete = 0;
             instance.m_Title = title;
 
+            // progress bar info cannot be null or empty on osx
+            // force the the info to be the same as the title if 
+            if (string.IsNullOrEmpty(instance.m_CurrentStepInfo))
+                instance.m_CurrentStepInfo = instance.m_Title;
+
             UpdateProgress(0.0f);
         }
 

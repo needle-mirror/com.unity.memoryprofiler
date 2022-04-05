@@ -1,7 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
     <ui:Template name="OpenSnapshotItem" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/SnapshotWindow/OpenSnapshotItem.uxml?fileID=11400000&amp;guid=a2199c077ddabbc44b884f96f0e43ada&amp;type=3#OpenSnapshotItem" />
     <ui:Template name="SessionList" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/SnapshotWindow/SessionList.uxml?fileID=11400000&amp;guid=223f7b0757946014b8aa1e126a3edf98&amp;type=3#SessionList" />
-    <ui:Template name="AnalysisWindow" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/AnalysisWindow/AnalysisWindow.uxml?fileID=11400000&amp;guid=e2166a7c8cb283c4c95d82b6dc2904e4&amp;type=3#AnalysisWindow" />
     <ui:Template name="DetailsPanel" src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/UXML/SubElements/DetailsPanel/DetailsPanel.uxml?fileID=9197481963319205126&amp;guid=fcd8f09b33c6c014ba90c7df5a872f8f&amp;type=3#DetailsPanel" />
     <ui:VisualElement name="proxy-root" class="proxy-root">
     <Style src="project://database/Packages/com.unity.memoryprofiler/Package%20Resources/StyleSheets/MemoryProfilerWindow_style.uss?fileID=11400000&amp;guid=bcf6df7306fa822409032b052e1854c0&amp;type=3#MemoryProfilerWindow_style" />
@@ -27,12 +26,6 @@
                 </ui:VisualElement>
                 <uie:ToolbarButton name="toolbar__import-button" tooltip="Import old snapshot formats or just copy them into this project&apos;s Memory Snapshot folder." class="square-icon-button">
                     <ui:Image class="icon-button icon-button__import-icon square-button-icon" />
-                </uie:ToolbarButton>
-                <uie:ToolbarButton name="history-button__back" tooltip="Previous view" class="square-button-icon history-button">
-                    <ui:Image name="history-button__back" class="icon-button history-button__icon" />
-                </uie:ToolbarButton>
-                <uie:ToolbarButton name="history-button__forwards" tooltip="Next view" class="square-button-icon history-button">
-                    <ui:Image name="history-button__forwards" class="icon-button history-button__icon" />
                 </uie:ToolbarButton>
             </ui:VisualElement>
             <ui:VisualElement name="toolbar__right-side" class="memory-profiler__toolbar__right-side">
@@ -71,11 +64,9 @@
                     </ui:VisualElement>
                     <ui:Instance template="SessionList" name="SessionList" style="flex-grow: 1;" />
                 </ui:VisualElement>
-                <Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="1" fixed-pane-initial-dimension="500" orientation="Horizontal" name="details-panel__splitter" style="min-width: 700px;">
-                    <ui:VisualElement name="analysis-window" style="flex-grow: 1; min-width: 360px;">
-                        <ui:Instance template="AnalysisWindow" name="AnalysisWindow" style="flex-grow: 1;" />
-                    </ui:VisualElement>
-                    <ui:Instance template="DetailsPanel" name="details-panel" style="width: auto; max-width: none; min-width: 500px;" />
+                <Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="1" fixed-pane-initial-dimension="350" orientation="Horizontal" name="details-panel__splitter" style="min-width: 700px;">
+                    <ui:VisualElement name="memory-profiler-window__analysis-view-container"/>
+                    <ui:Instance template="DetailsPanel" name="details-panel" style="width: auto; max-width: none; min-width: 350px;" />
                 </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
             </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
         </ui:VisualElement>

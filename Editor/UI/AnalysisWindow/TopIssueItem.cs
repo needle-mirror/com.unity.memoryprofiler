@@ -7,7 +7,7 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    public enum IssueLevel
+    internal enum IssueLevel
     {
         Info,
         Warning,

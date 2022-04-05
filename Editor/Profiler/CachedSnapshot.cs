@@ -428,19 +428,19 @@ namespace Unity.MemoryProfiler.Editor
             public string[] TypeName;
             public DynamicArray<int> NativeBaseTypeArrayIndex = default;
             const string k_Transform = "Transform";
-            public int TransformIdx { get; private set; }
+            public int TransformIdx { get; private set; } = -1;
 
             const string k_GameObject = "GameObject";
-            public int GameObjectIdx { get; private set; }
+            public int GameObjectIdx { get; private set; } = -1;
 
             const string k_MonoBehaviour = "MonoBehaviour";
-            public int MonoBehaviourIdx { get; private set; }
+            public int MonoBehaviourIdx { get; private set; } = -1;
 
             const string k_Component = "Component";
-            public int ComponentIdx { get; private set; }
+            public int ComponentIdx { get; private set; } = -1;
 
             const string k_ScriptableObject = "ScriptableObject";
-            public int ScriptableObjectIdx { get; private set; }
+            public int ScriptableObjectIdx { get; private set; } = -1;
 
             public NativeTypeEntriesCache(ref IFileReader reader)
             {
@@ -669,7 +669,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public void CreateTransformTrees(CachedSnapshot snapshot)
             {
-                if (!snapshot.HasSceneRootsAndAssetbundles) return;
+                if (!snapshot.HasSceneRootsAndAssetbundles || SceneHierarchies == null) return;
                 foreach (var hierarchy in SceneHierarchies)
                 {
                     foreach (var child in hierarchy.Children)

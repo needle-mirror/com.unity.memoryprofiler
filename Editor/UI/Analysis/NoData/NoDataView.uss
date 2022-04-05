@@ -1,0 +1,38 @@
+#no-data-view
+{
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-width: 240px;
+    padding: 16px;
+}
+
+#no-data-view__label
+{
+    -unity-text-align: middle-center;
+    margin-bottom: 8px;
+    white-space: normal;
+}
+
+#no-data-view__button
+{
+    align-items: flex-end;
+    width: 220px;
+}
+
+#no-data-view__button-icon
+{
+    height: 16px;
+    margin: 2px;
+    width: 16px;
+}
+
+.no-data-view__dark #no-data-view__button-icon
+{
+    --unity-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/d_CameraIcon.png");
+}
+
+.no-data-view__light #no-data-view__button-icon
+{
+    --unity-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/CameraIcon.png");
+}

@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 {
-    public class MultiColumnHeaderWithTruncateTypeName : MultiColumnHeader
+    class MultiColumnHeaderWithTruncateTypeName : MultiColumnHeader
     {
         /// <summary>
         /// only for analytics to track which table the change came from.

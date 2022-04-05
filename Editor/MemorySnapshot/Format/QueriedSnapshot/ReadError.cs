@@ -1,6 +1,6 @@
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
-    public enum ReadError : ushort
+    enum ReadError : ushort
     {
         None = 0,
         Success,

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <Unity.MemoryProfiler.Editor.UI:DeltaBarCell name="delta-bar-cell">
+        <Style src="DeltaBarCell.uss"/>
+        <Unity.MemoryProfiler.Editor.UI:ProgressBar name="delta-bar-cell__negative-bar"/>
+        <Unity.MemoryProfiler.Editor.UI:ProgressBar name="delta-bar-cell__positive-bar"/>
+    </Unity.MemoryProfiler.Editor.UI:DeltaBarCell>
+
+</engine:UXML>

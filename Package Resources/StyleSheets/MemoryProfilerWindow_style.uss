@@ -51,54 +51,6 @@ Image.optionButtonIcon {
     background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Editor.png');
 }
 
-.platform-icon.Android {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Android.png');
-}
-
-.platform-icon.StandaloneOSX {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneOSX.png');
-}
-
-.platform-icon.StandaloneWindows {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneWindows.png');
-}
-
-.platform-icon.iOS {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/iOS.png');
-}
-
-.platform-icon.StandaloneLinux64 {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/StandaloneLinux64.png');
-}
-
-.platform-icon.WebGL {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/WebGL.png');
-}
-
-.platform-icon.WSAPlayer {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/WSAPlayer.png');
-}
-
-.platform-icon.PS4 {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/PS4.png');
-}
-
-.platform-icon.XboxOne {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/XboxOne.png');
-}
-
-.platform-icon.tvOS {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/tvOS.png');
-}
-
-.platform-icon.Switch {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Switch.png');
-}
-
-.platform-icon.Lumin {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Lumin.png');
-}
-
 #tree-map {
     margin-left: 2px;
     padding-right: 2px;
@@ -148,8 +100,11 @@ Image.optionButtonIcon {
     flex-grow: 0;
 }
 
-#analysis-window__ribbon__container {
-    padding-bottom: 16px;
+#memory-profiler-window__analysis-view-container
+{
+    flex-grow: 1;
+    min-width: 240px;
+    overflow: hidden;
 }
 
 .project-or-session-name-text {

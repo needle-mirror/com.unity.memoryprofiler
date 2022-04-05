@@ -1,0 +1,19 @@
+#count-delta-cell
+{
+    flex-direction: row;
+    flex-grow: 1;
+}
+
+#count-delta-cell__label
+{
+    -unity-text-align: middle-left;
+    margin-left: 4px;
+}
+
+#count-delta-cell__increase-icon
+{
+    -unity-background-scale-mode: scale-to-fit;
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/CountIncrease.png');
+    flex-shrink: 0;
+    width: 16px;
+}

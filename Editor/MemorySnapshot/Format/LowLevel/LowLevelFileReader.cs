@@ -6,13 +6,13 @@ using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.Format.LowLevel.IO
 {
-    public enum ReadMode
+    enum ReadMode
     {
         Async,
         Blocking
     }
 
-    public unsafe struct LowLevelFileReader : IDisposable
+    unsafe struct LowLevelFileReader : IDisposable
     {
         GCHandle m_FilePath;
         public long FileLength { get; private set; }

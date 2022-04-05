@@ -316,7 +316,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
             catch (ThreadAbortException)
             {
-                Debug.Log("Current Search Cancelled");
             }
         }
 

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 {
-    public enum RegionType
+    internal enum RegionType
     {
         Native,
         VirtualMemory,

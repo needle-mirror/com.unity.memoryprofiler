@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <Unity.MemoryProfiler.Editor.UI:CountDeltaCell name="count-delta-cell">
+        <Style src="CountDeltaCell.uss"/>
+        <engine:Label name="count-delta-cell__label"/>
+        <engine:VisualElement name="count-delta-cell__increase-icon"/>
+    </Unity.MemoryProfiler.Editor.UI:CountDeltaCell>
+
+</engine:UXML>

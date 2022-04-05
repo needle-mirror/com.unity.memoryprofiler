@@ -62,6 +62,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     child.Dispose();
 
                 m_View?.RemoveFromHierarchy();
+                m_View = null;
             }
 
             IsDisposed = true;

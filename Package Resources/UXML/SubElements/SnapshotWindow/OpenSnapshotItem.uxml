@@ -8,7 +8,7 @@
 				<ui:VisualElement name="preview-image-holder" class="preview-image-holder">
                     <ui:Image name="preview-image-open-item" class="preview-image-open-item">
                         <ui:Image name="preview-image__editor-icon" class="platform-icon Editor" />
-                        <ui:Image name="preview-image__platform-icon" class="platform-icon StandaloneWindows" />
+                        <ui:Image name="preview-image__platform-icon" class="platform-icon" />
                     </ui:Image>
                 </ui:VisualElement>
                 <ui:VisualElement name="open-snapshot__meta-data__container" class="open-snapshot__meta-data__container">

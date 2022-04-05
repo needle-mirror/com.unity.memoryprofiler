@@ -4,6 +4,26 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-pre.1] - 2022-04-05
+
+### Added
+- Added Unity Objects comparison view when comparing two snapshots.
+
+### Removed 
+- Removed accidentally exposed as public internal API
+- Removed Fragmentation, Objects & Allocations, and Tree Map legacy tabs.
+
+### Changed
+- Changed minimal supported version to 2020.3.
+- Use Editor built-in platform icons in the Snapshot panel.
+- Moved Unity Objects and All Of Memory breakdowns to their own tabs.
+- Moved Potential Duplicates to an option within Unity Objects.
+
+### Fixed
+- Fixed an issue whereby tab bar text would overlap with details text on sufficiently small window sizes.
+- Fixed an exception occurring when loading an unsupported snapshot and opening the Unity Objects breakdown. 
+- Fixed an issue whereby a 'feature not available due to pre 2022.1' message can be shown incorrectly.
+
 ## [0.7.0-preview.2] - 2022-05-04
 
 ### Fixed

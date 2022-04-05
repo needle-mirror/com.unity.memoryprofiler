@@ -41,12 +41,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         [SerializeField]
         Vector2 m_ViewDropdownSize;
 
-        AnalysisWindow m_MainViewPanel;
-
-        public OldViewLogic(IUIStateHolder memoryProfilerWindow, AnalysisWindow mainViewPanel, VisualElement toolbarExtension, Button viewSelectionButton)
+        public OldViewLogic(IUIStateHolder memoryProfilerWindow, VisualElement toolbarExtension, Button viewSelectionButton)
         {
             m_ToolbarExtension = toolbarExtension;
-            m_MainViewPanel = mainViewPanel;
             m_UIStateHolder = memoryProfilerWindow;
             m_ViewSelectorMenuButton = viewSelectionButton;
             m_ViewSelectorMenuButton.clicked += () => OpenViewSelectionDropdown(m_ViewSelectorMenuButton.GetRect());

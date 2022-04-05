@@ -175,6 +175,8 @@ namespace Unity.MemoryProfiler.Editor
             TreeViewWasUnflattened,
             DuplicateFilterWasApplied,
             DuplicateFilterWasRemoved,
+            UnchangedFilterWasApplied,
+            UnchangedFilterWasRemoved,
         }
 
         [Serializable]
@@ -677,7 +679,7 @@ namespace Unity.MemoryProfiler.Editor
             EditorAnalytics.RegisterEventWithLimit(k_EventTopicName, k_MaxEventsPerHour, k_MaxEventItems, k_VendorKey);
             s_FlushAnalyticsBackgroundUpdate = EditorCoroutineUtility.StartCoroutine(FlushPendingEvents(), parentEditorWindow);
 
-            Application.quitting += OnApplicationQuitting;
+            EditorApplication.quitting += OnApplicationQuitting;
         }
 
         static void OnApplicationQuitting()
@@ -886,6 +888,21 @@ namespace Unity.MemoryProfiler.Editor
                     Debug.LogError($"Event of type {typeof(TEvent)} is not pending and therefore can't collect an interaction event of type {typeof(TEnum)} {eventType}");
 #endif
             }
+        }
+
+        public static string GetAnalyticsViewNameForOpenPage()
+        {
+            foreach (var pendingMetadataEvent in s_PendingEventsWithMetadataList)
+            {
+                if (pendingMetadataEvent is InteractionsInPage)
+                {
+                    return (pendingMetadataEvent as InteractionsInPage).viewName;
+                }
+            }
+#if DEBUG_VALIDATION
+            Debug.LogError("Memory Profiler Analytics: No Page is open!");
+#endif
+            return null;
         }
 
         public static void FiltersChanged(string tableName, List<Filter> filters)

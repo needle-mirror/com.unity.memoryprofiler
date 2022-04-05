@@ -1,6 +1,6 @@
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
-    public enum EntryType : ushort
+    enum EntryType : ushort
     {
         Metadata_Version = 0,
         Metadata_RecordDate,

@@ -1,0 +1,121 @@
+.unity-objects-table-view__dark:root
+{
+  --unity-objects-table-view__tree-view__background-color: #3E3E3E;
+  --unity-objects-table-view__tree-view__border-color: #232323;
+  --unity-objects-table-view__loading-overlay__background-color: rgba(35, 35, 35, 0.8);
+}
+
+.unity-objects-table-view__light:root
+{
+  --unity-objects-table-view__tree-view__background-color: #C8C8C8;
+  --unity-objects-table-view__tree-view__border-color: #999999;
+  --unity-objects-table-view__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
+}
+
+#unity-objects-table-view
+{
+    flex-grow: 1;
+}
+
+#unity-objects-table-view__tree-view__main-container
+{
+    flex-grow: 1;
+}
+
+#unity-objects-table-view__tree-view
+{
+    background-color: var(--unity-objects-table-view__tree-view__background-color);
+    border-color: var(--unity-objects-table-view__tree-view__border-color);
+    border-top-width: 1px;
+    flex-grow: 1;
+}
+
+#unity-objects-table-view__tree-view .unity-multi-column-header
+{
+    margin: 2px 8px;
+}
+
+#unity-objects-table-view__tree-view #unity-content-viewport
+{
+    margin: 0px 8px;
+}
+
+.size-bar-cell
+{
+    background-color: rgba(255, 255, 255, 0.1);
+    flex-grow: 1;
+    margin: 8px;
+}
+
+.size-bar-cell .progress-bar__fill
+{
+    background-color: white;
+    min-width: 1px;
+}
+
+#unity-objects-table-view__toolbar
+{
+    border-top-width: 1px;
+    height: 32px;
+    padding-right: 12px;
+    overflow: hidden;
+}
+
+#unity-objects-table-view__toolbar Toggle
+{
+    padding-left: 12px;
+}
+
+#unity-objects-table-view__toolbar Toggle .unity-toggle__text
+{
+    padding-left: 4px;
+}
+
+#unity-objects-table-view__loading-overlay
+{
+    align-items: center;
+    background-color: var(--unity-objects-table-view__loading-overlay__background-color);
+    bottom: 0px;
+    justify-content: center;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    transition-duration: 0.23s;
+    transition-property: opacity;
+    transition-timing-function: ease-out;
+}
+
+#unity-objects-table-view__loading-overlay:enabled
+{
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+}
+
+#unity-objects-table-view__loading-overlay:disabled
+{
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+}
+
+#unity-objects-table-view__loading-overlay ActivityIndicator
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Loading.png');
+    height: 16px;
+    width: 16px;
+}
+
+#unity-objects-table-view__error-label
+{
+    -unity-text-align: middle-center;
+    background-color: var(--unity-objects-table-view__loading-overlay__background-color);
+    bottom: 0px;
+    display: none;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    visibility: hidden;
+}

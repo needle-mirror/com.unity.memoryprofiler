@@ -1,0 +1,93 @@
+.analysis-tab-bar-view__dark:root
+{
+  --analysis-tab-bar-view__background-color: #313131;
+  --analysis-tab-bar-view__tab-bar__background-color: #383838;
+  --analysis-tab-bar-view__tab-bar-item__bottom-border-color--hover: #CCCCCC;
+  --analysis-tab-bar-view__tab-bar-item__color--hover: white;
+}
+
+.analysis-tab-bar-view__light:root
+{
+  --analysis-tab-bar-view__background-color: #BFBFBF;
+  --analysis-tab-bar-view__tab-bar__background-color: #C8C8C8;
+  --analysis-tab-bar-view__tab-bar-item__bottom-border-color--hover: #222222;
+  --analysis-tab-bar-view__tab-bar-item__color--hover: black;
+}
+
+#analysis-tab-bar-view
+{
+    background-color: var(--analysis-tab-bar-view__background-color);
+    min-width: 320px;
+}
+
+#analysis-tab-bar-view__tab-bar
+{
+    background-color: var(--analysis-tab-bar-view__tab-bar__background-color);
+    flex-direction: row;
+    height: 36px;
+}
+
+#analysis-tab-bar-view__tab-bar__items
+{
+    flex-direction: row;
+    flex-grow: 1;
+    flex-shrink: 0;
+    margin-left: 16px;
+    margin-top: 4px;
+}
+
+.analysis-tab-bar-view__tab-bar-item
+{
+    -unity-text-align: middle-center;
+    border-bottom-width: 2px;
+    margin-left: 8px;
+    padding: 0px 16px 0px;
+}
+
+.analysis-tab-bar-view__tab-bar-item:hover
+{
+    border-bottom-color: var(--analysis-tab-bar-view__tab-bar-item__bottom-border-color--hover);
+    color: var(--analysis-tab-bar-view__tab-bar-item__color--hover);
+}
+
+.tab-bar-controller__tab-bar-item--selected
+{
+    -unity-font-style: bold;
+    border-bottom-color: rgb(14, 129, 193);
+}
+
+.tab-bar-controller__tab-bar-item--selected:hover
+{
+    border-bottom-color: rgb(14, 129, 193);
+}
+
+#analysis-tab-bar-view__tab-bar__help-button
+{
+    align-self: center;
+    margin: 0px 8px;
+}
+
+#analysis-tab-bar-view__tab-bar__help-button #analysis-tab-bar-view__tab-bar__help-button-icon
+{
+    --unity-image-tint-color: white;
+}
+
+#analysis-tab-bar-view__tab-bar__help-button:hover #analysis-tab-bar-view__tab-bar__help-button-icon
+{
+    --unity-image-tint-color: #BEBEBE;
+}
+
+.analysis-tab-bar-view__dark #analysis-tab-bar-view__tab-bar__help-button-icon
+{
+    --unity-image: resource("d__Help.png");
+}
+
+.analysis-tab-bar-view__light #analysis-tab-bar-view__tab-bar__help-button-icon
+{
+    --unity-image: resource("_Help.png");
+}
+
+#analysis-tab-bar-view__content-view
+{
+    flex-grow: 1
+}

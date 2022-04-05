@@ -7,7 +7,7 @@ using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
-    public unsafe struct DynamicArray<T> : IDisposable where T : unmanaged
+    unsafe struct DynamicArray<T> : IDisposable where T : unmanaged
     {
         void* m_Data;
         long m_Capacity;

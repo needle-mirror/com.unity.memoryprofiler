@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public void* mem;
     }
 
-    public unsafe struct DynamicBlockArray<T> : IDisposable where T : struct
+    unsafe struct DynamicBlockArray<T> : IDisposable where T : struct
     {
         public const int k_InitialBlockSlots = 8;
         MemBlock* m_BlockList;

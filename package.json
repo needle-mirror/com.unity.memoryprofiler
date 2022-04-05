@@ -1,8 +1,8 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "0.7.0-preview.2",
-  "unity": "2019.4",
+  "version": "1.0.0-pre.1",
+  "unity": "2022.2",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
     "profiler",
@@ -16,17 +16,17 @@
     "com.unity.editorcoroutines": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n- Fixed the layout of entries in the Selected Item Details panel."
+    "changelog": "### Added\n- Added Unity Objects comparison view when comparing two snapshots.\n\n### Removed \n- Removed accidentally exposed as public internal API\n- Removed Fragmentation, Objects & Allocations, and Tree Map legacy tabs.\n\n### Changed\n- Changed minimal supported version to 2020.3.\n- Use Editor built-in platform icons in the Snapshot panel.\n- Moved Unity Objects and All Of Memory breakdowns to their own tabs.\n- Moved Potential Duplicates to an option within Unity Objects.\n\n### Fixed\n- Fixed an issue whereby tab bar text would overlap with details text on sufficiently small window sizes.\n- Fixed an exception occurring when loading an unsupported snapshot and opening the Unity Objects breakdown. \n- Fixed an issue whereby a 'feature not available due to pre 2022.1' message can be shown incorrectly."
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "0.7.0-preview.2"
+    "com.unity.memoryprofiler.tests": "1.0.0-pre.1"
   },
   "upmCi": {
-    "footprint": "23b13fd6225e326130575c1c1cd5b2684aedec8c"
+    "footprint": "67da5a4d926d15fe70f078d5e73d84dbd3666cc3"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "b33742afcd98f4c2a0c233fce5538f3b9f5d2787"
+    "revision": "4f7772a1d720510b796b11b7de4aa411772f5b5e"
   }
 }

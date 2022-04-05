@@ -6,7 +6,7 @@
 				<ui:VisualElement name="preview-image__holder" class="preview-image__holder">
                     <ui:Image name="preview-image" class="preview-image">
                         <ui:Image name="preview-image__editor-icon" class="platform-icon Editor" />
-                        <ui:Image name="preview-image__platform-icon" class="platform-icon StandaloneWindows" />
+                        <ui:Image name="preview-image__platform-icon" class="platform-icon" />
                     </ui:Image>
                 </ui:VisualElement>
                 <ui:VisualElement name="open-snapshot__meta-data__container" style="padding-left: 10px; flex-grow: 1;">

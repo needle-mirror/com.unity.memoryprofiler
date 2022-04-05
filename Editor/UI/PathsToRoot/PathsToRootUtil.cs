@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 {
-    public static class PathsToRootUtils
+    static class PathsToRootUtils
     {
         internal const string ObjectFlagsInfoHeader = "ObjectFlags: \n";
         internal const string IsDontDestroyOnLoadInfo = "IsDontDestroyOnLoad - Specifies that the object is marked as DontDestroyOnLoad.\n\n";

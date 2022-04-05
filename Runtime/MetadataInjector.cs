@@ -58,7 +58,28 @@ namespace Unity.MemoryProfiler
     public abstract class MetadataCollect : IDisposable
     {
         bool disposed = false;
-        public MetadataCollect()
+
+        /// <summary>
+        /// Default constructor of the `MetadataCollect`.
+        /// </summary>
+        /// <example>
+        /// <code>
+        /// public class MyMetadataCollect : MetadataCollect
+        /// {
+        ///     public MyMetadataCollect() : base()
+        ///     {
+        ///     }
+        ///
+        ///     public CollectMetadata(MetaData data)
+        ///     {
+        ///         // Metadata which is added by default.
+        ///         data.content = $"Project name: { Application.productName }";
+        ///         data.platform = string.Empty;
+        ///     }
+        /// }
+        /// </code>
+        /// </example>
+        protected MetadataCollect()
         {
             if (MetadataInjector.DefaultCollector != null
                 && MetadataInjector.DefaultCollector != this

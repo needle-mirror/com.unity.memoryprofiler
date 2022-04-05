@@ -155,7 +155,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         {
             byte* bufferPtr = (byte*)legacyDataBuffer.GetUnsafePtr();
             int contentLength = bufferPtr != null ? *(int*)bufferPtr : 0;
-            
+
             long offset = 0;
             offset += sizeof(int);
             if (contentLength == 0)

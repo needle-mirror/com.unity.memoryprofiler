@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="unity-objects-table-view">
+        <Style src="UnityObjectsTableView.uss"/>
+        <engine:VisualElement name="unity-objects-table-view__tree-view__main-container">
+            <engine:MultiColumnTreeView name="unity-objects-table-view__tree-view" sorting-enabled="true">
+                <engine:Columns reorderable="false">
+                    <engine:Column name="unity-objects-table-view__tree-view__column__description" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="unity-objects-table-view__tree-view__column__size" resizable="true" stretchable="true"/>
+                    <engine:Column name="unity-objects-table-view__tree-view__column__size-bar" resizable="true" stretchable="true"/>
+                    <engine:Column name="unity-objects-table-view__tree-view__column__native-size" resizable="true" stretchable="true"/>
+                    <engine:Column name="unity-objects-table-view__tree-view__column__managed-size" resizable="true" stretchable="true"/>
+                </engine:Columns>
+                <engine:SortColumnDescriptions>
+                    <engine:SortColumnDescription column-name="unity-objects-table-view__tree-view__column__size" direction="descending"/>
+                </engine:SortColumnDescriptions>
+            </engine:MultiColumnTreeView>
+            <editor:Toolbar name="unity-objects-table-view__toolbar">
+                <engine:Toggle name="unity-objects-table-view__toolbar__flatten-toggle"/>
+                <engine:Toggle name="unity-objects-table-view__toolbar__duplicates-toggle"/>
+            </editor:Toolbar>
+            <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="unity-objects-table-view__loading-overlay"/>
+        </engine:VisualElement>
+        <engine:Label name="unity-objects-table-view__error-label"/>
+    </engine:VisualElement>
+
+</engine:UXML>

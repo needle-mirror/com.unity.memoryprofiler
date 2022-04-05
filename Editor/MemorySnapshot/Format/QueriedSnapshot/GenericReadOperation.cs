@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
-    public unsafe class GenericReadOperation : CustomYieldInstruction
+    unsafe class GenericReadOperation : CustomYieldInstruction
     {
         ReadHandle m_Handle;
         ReadError m_Err;

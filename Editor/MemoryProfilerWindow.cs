@@ -44,15 +44,6 @@ namespace Unity.MemoryProfiler.Editor
         [NonSerialized]
         bool m_WindowInitialized = false;
 
-        [MenuItem("Window/Analysis/Memory Profiler", false, 4)]
-        static void ShowWindow()
-        {
-            var window = GetWindow<MemoryProfilerWindow>();
-            window.Show();
-        }
-
-        AnalysisWindow m_MainViewPanel;
-
         SnapshotsWindow m_SnapshotWindow = new SnapshotsWindow();
         PathsToRootDetailView m_PathsToRootDetailView;
         SelectedItemDetailsPanel m_SelectedObjectDetailsPanel;
@@ -65,17 +56,30 @@ namespace Unity.MemoryProfiler.Editor
 
         ObjectOrTypeLabel m_ReferenceSelection; // TODO move this into a details panel to contain all the paths to root and selection work
 
+        // Eventually the window will instantiate a single root view controller, once we have whole window migrated to view controller architecture. For now we manage the AnalysisViewController from the window.
+        const string k_UxmlIdentifier_AnalysisViewContainer = "memory-profiler-window__analysis-view-container";
+        VisualElement m_AnalysisViewContainer;
+        ViewController m_AnalysisViewController;
+
+        [MenuItem("Window/Analysis/Memory Profiler", false, 4)]
+        static void ShowWindow()
+        {
+            var window = GetWindow<MemoryProfilerWindow>();
+            window.Show();
+        }
+
         void OnEnable()
         {
             var icon = Icons.MemoryProfilerWindowTabIcon;
             titleContent = new GUIContent("Memory Profiler", icon);
+
+            minSize = new Vector2(500, 500);
         }
 
         void Init()
         {
             m_WindowInitialized = true;
             Styles.Initialize();
-            minSize = new Vector2(500, 500);
 
             UIState?.Dispose();
             UIStateChanged = null;
@@ -84,8 +88,12 @@ namespace Unity.MemoryProfiler.Editor
             var root = this.rootVisualElement;
             VisualTreeAsset reworkedWindowTree;
             reworkedWindowTree = AssetDatabase.LoadAssetAtPath(ResourcePaths.WindowUxmlPathStyled, typeof(VisualTreeAsset)) as VisualTreeAsset;
-
             reworkedWindowTree.Clone(root);
+
+            // Retrieve the analysis view container element.
+            m_AnalysisViewContainer = root.Q<VisualElement>(k_UxmlIdentifier_AnalysisViewContainer);
+            UIState.ModeChanged += OnSnapshotsModeChanged;
+            m_SnapshotWindow.SwappedSnapshots += OnSnapshotsSwapped;
 
             m_PathsToRootDetailView?.OnDisable();
             m_PathsToRootDetailView = new PathsToRootDetailView(this, new TreeViewState(),
@@ -93,6 +101,8 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     canSort = false
                 }, root.Q("details-panel").Q<Ribbon>("references__ribbon__container"));
+            UIState.SelectionChanged += m_PathsToRootDetailView.UpdateRootObjects;
+            m_PathsToRootDetailView.SelectionChangedEvt += UIState.RegisterSelectionChangeEvent;
 
             m_ReferenceSelection?.Dispose();
             m_ReferenceSelection = root.Q("details-panel").Q<ObjectOrTypeLabel>("reference-item-details__unity-item-title");
@@ -186,10 +196,7 @@ namespace Unity.MemoryProfiler.Editor
             EditorSceneManager.activeSceneChangedInEditMode += OnSceneChanged;
 
             m_SnapshotWindow.InitializeSnapshotsWindow(this, root, root.Q<VisualElement>("snapshot-window"), null);
-
-            m_MainViewPanel = new AnalysisWindow(this, root, m_SnapshotWindow, m_PathsToRootDetailView);
-
-            m_SnapshotWindow.RegisterAdditionalCaptureButton(m_MainViewPanel.NoSnapshotOpenedCaptureButton);
+            RebuildAnalysisView();
 
             root.Q<ToolbarButton>("toolbar__help-button").clickable.clicked += () => Application.OpenURL(DocumentationUrls.LatestPackageVersionUrl);
             var menuButton = root.Q<ToolbarButton>("toolbar__menu-button");
@@ -268,6 +275,11 @@ namespace Unity.MemoryProfiler.Editor
             ProgressBarDisplay.ClearBar();
             UIStateChanged = delegate {};
 
+            m_AnalysisViewController?.Dispose();
+            m_SnapshotWindow.SwappedSnapshots -= OnSnapshotsSwapped;
+            if (UIState != null)
+                UIState.ModeChanged -= OnSnapshotsModeChanged;
+
             m_SnapshotWindow.OnDisable();
             m_PathsToRootDetailView?.OnDisable();
             m_PathsToRootDetailView = null;
@@ -287,7 +299,6 @@ namespace Unity.MemoryProfiler.Editor
 
             EditorGUICompatibilityHelper.hyperLinkClicked -= EditorGUI_HyperLinkClicked;
 
-            m_MainViewPanel.OnDisable();
             MemoryProfilerAnalytics.DisableAnalytics();
         }
 
@@ -298,6 +309,75 @@ namespace Unity.MemoryProfiler.Editor
             menu.AddSeparator("");
             menu.AddItem(new GUIContent(TextContent.TruncateTypeName), MemoryProfilerSettings.MemorySnapshotTruncateTypes, MemoryProfilerSettings.ToggleTruncateTypes);
             menu.DropDown(furtherOptionsRect);
+        }
+
+        void RebuildAnalysisView()
+        {
+            // Dispose the existing analysis view controller.
+            m_AnalysisViewController?.Dispose();
+
+            // Try ending any interaction events
+            // Stop Collecting interaction events for the old page and send them off
+            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
+
+            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedPageEvent>();
+            // Build analysis tab bar model from loaded snapshots.
+            AnalysisTabBarModel model = null;
+            var viewName = "Summary(Default)";
+            bool updateAnalytics = true;
+            if (UIState.CurrentViewMode != UIState.ViewMode.ShowDiff)
+            {
+                // Instantiate the analysis-tab-bar model using the selected snapshot.
+                var snapshot = UIState.snapshotMode?.snapshot;
+                if (snapshot != null)
+                    model = AnalysisTabBarModel.CreateForSingleSnapshot(snapshot);
+                else
+                    updateAnalytics = false;
+            }
+            else
+            {
+                viewName = "Summary Comparison(Default)";
+                // Instantiate the analysis-tab-bar model using both selected snapshots.
+                var snapshotA = (UIState.FirstMode as UIState.SnapshotMode)?.snapshot;
+                var snapshotB = (UIState.SecondMode as UIState.SnapshotMode)?.snapshot;
+                model = AnalysisTabBarModel.CreateForComparisonBetweenSnapshots(snapshotA, snapshotB);
+            }
+
+            // Instantiate the analysis view controller and add its view to the hierarchy.
+            if (model != null)
+                m_AnalysisViewController = new AnalysisTabBarController(model);
+            else
+            {
+                var noDataViewController = new NoDataViewController();
+                noDataViewController.TakeSnapshotSelected += OnTakeSnapshotSelected;
+                m_AnalysisViewController = noDataViewController;
+            }
+
+            m_AnalysisViewContainer.Add(m_AnalysisViewController.View);
+
+            if (updateAnalytics)
+            {
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedPageEvent() { viewName = viewName });
+                // Stop Collecting interaction events for the old page and send them off
+                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
+                // Start collecting interaction events for this page
+                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInPage>(new MemoryProfilerAnalytics.InteractionsInPage() { viewName = viewName });
+            }
+        }
+
+        void OnSnapshotsModeChanged(UIState.BaseMode arg1, UIState.ViewMode arg2)
+        {
+            RebuildAnalysisView();
+        }
+
+        void OnSnapshotsSwapped()
+        {
+            RebuildAnalysisView();
+        }
+
+        void OnTakeSnapshotSelected()
+        {
+            m_SnapshotWindow.TakeSnapshot();
         }
     }
 }

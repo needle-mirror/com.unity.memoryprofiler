@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+    
+    <!--Legacy summary page. Replace with reworked view.-->
+    <!--2019.4 requires Templates to be defined at root level. Remove when we drop support for 2019.-->
+    <engine:Template name="MemoryUsageSummary" src="project:Packages/com.unity.memoryprofiler/Package Resources/UXML/SubElements/AnalysisWindow/MemoryUsageSummary.uxml"/>
+    <engine:Template name="TopTenIssuesList" src="project:Packages/com.unity.memoryprofiler/Package Resources/UXML/SubElements/AnalysisWindow/SummaryPane/TopTenIssuesList.uxml"/>
+    <!---->
+
+    <engine:VisualElement name="summary-view">
+        <Style src="SummaryView.uss"/>
+
+        <!--Legacy summary page. Replace with reworked view.-->
+        <engine:Instance template="MemoryUsageSummary" name="MemoryUsageSummary" style="flex-shrink: 0;" />
+        <engine:Instance template="TopTenIssuesList" name="TopTenIssuesList" class="top-ten-issues-section__template-container" />
+        <!---->
+
+    </engine:VisualElement>
+
+</engine:UXML>

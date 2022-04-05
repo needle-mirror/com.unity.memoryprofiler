@@ -1,0 +1,28 @@
+#delta-bar-cell
+{
+    flex-direction: row;
+    flex-grow: 1;
+}
+
+#delta-bar-cell__negative-bar
+{
+    align-items: flex-end;
+    width: 50%;
+}
+
+#delta-bar-cell__negative-bar .progress-bar__fill
+{
+    background-color: #1FC4E9;
+    min-width: 1px;
+}
+
+#delta-bar-cell__positive-bar
+{
+    width: 50%;
+}
+
+#delta-bar-cell__positive-bar .progress-bar__fill
+{
+    background-color: #E36129;
+    min-width: 1px;
+}
