@@ -1104,7 +1104,7 @@ ToolbarToggle {
     padding-left: 15px;
 }
 
-.selected-item-details__grouped-item__content {
+.selected-item-details__grouped-item__container {
     flex-direction: row;
     flex-grow: 1;
     -unity-font-style: normal;
@@ -1116,6 +1116,7 @@ ToolbarToggle {
 }
 
 .selected-item-details__grouped-item__content {
+    flex-direction: row;
     white-space: normal;
     flex-shrink: 1;
 }

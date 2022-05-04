@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "0.7.0-preview.1",
+  "version": "0.7.0-preview.2",
   "unity": "2019.4",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -16,17 +16,17 @@
     "com.unity.editorcoroutines": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n- Progress bar when opening the Tree Map for the first time.\n\n### Fixed\n- Fixed Displaying of strings longer than 8000 characters breaking the Selected Item Details UI by capping the maximum length of strings to 8000 before displaying them.\n- Fixed Compilation on Unity 2021.1.\n- Fixed a possible TempJob allocation leak when failing to reading a corrupt snapshot.\n- Fixed a NullReferenceException that was thrown upon trying to go back to having Untracked Memory selected while in Fragmentation tab using Memory Profiler (Case 1401201).\n- Fixed type name headers in Details panel running off-screen for long type names ([Case 1401535](https://issuetracker.unity3d.com/product/unity/issues/guid/1401535/)).\n- Fixed NullPointer exception when clicking on the selected item label in the References panel if no item is selected. \n\n### Changed\n- Sped up snapshot opening times.\n- Moved All Object Tree Map and Table to its own Page.\n  - The Memory Usage Summary on the Summary Page will now be always unfolded on switching to this page.\n  - For all other pages containing the Memory Usage Summary, it defaults to being folded up and will remember its state on each page for the current Session of the Editor. \n- Optimized Tree Map generation. This reduces time to open Tree Map by 25%.\n- Remove reflection usage for opening the Preferences window focused on the Memory Profiler's settings.\n- Renamed \"Top Issues\" to \"Potential Capture Issues\".\n- Adjusted the colors of the bar diagrams in the Memory Usage Overview foldout to improve their readability and clarity.\n- Adjusted Engine and Editor API usage to reflect Memory Profiler APIs moving out of Experimental namespaces in 2022.2.0a13.\n\n### Removed\n- Removed View History buttons from the toolbar. With the removal of links in tables in version 0.5.0-preview.1, these buttons had become largely redundant.\n- Removed sorting of the tables for the Memory Summary bars until pending rework on them is conducted."
+    "changelog": "### Fixed\n- Fixed the layout of entries in the Selected Item Details panel."
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "0.7.0-preview.1"
+    "com.unity.memoryprofiler.tests": "0.7.0-preview.2"
   },
   "upmCi": {
-    "footprint": "5953aeface0624d2f1fa454357989689b0449098"
+    "footprint": "23b13fd6225e326130575c1c1cd5b2684aedec8c"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "03b81324b0bb939425b5045c45ee701ba5ca3ab2"
+    "revision": "b33742afcd98f4c2a0c233fce5538f3b9f5d2787"
   }
 }
