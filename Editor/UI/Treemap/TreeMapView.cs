@@ -62,6 +62,8 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
         public void OnGUI(Rect r)
         {
+            if (m_ZoomArea == null)
+                return;
             if (r != m_ZoomArea.m_ViewSpace)
             {
                 m_ZoomArea.resizeView(r);

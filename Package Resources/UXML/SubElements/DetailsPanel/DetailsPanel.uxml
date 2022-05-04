@@ -4,12 +4,8 @@
             <ui:Foldout text="References" name="details-panel__section-header__references" display-tooltip-when-elided="true" class="details-panel__section-header">
             <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="reference-item-details__unity-item-title" style="-unity-font-style: bold;"/>
 				<Unity.MemoryProfiler.Editor.UI.Ribbon name="references__ribbon__container" show-help-button="false" alignment="FlexStart" style="align-items: stretch;">
-					<Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Referenced By (Raw)"  toggled="true" name="raw-connections" style="flex-grow: 1;max-width: 200px; ">
-                        <ui:Image tooltip="Displays a list of other entities that reference the selected object." class="icon-button icon-button__help-icon square-button-icon" style="margin-left: auto;"/>
-                    </Unity.MemoryProfiler.Editor.UI.RibbonButton>
-                    <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="References To" toggled="false" name="referencing-to" style="flex-grow: 1; display: flex;" >
-                        <ui:Image tooltip="Displays a list of the objects that the selection has references to." class="icon-button icon-button__help-icon square-button-icon" style="margin-left: auto;"/>
-                    </Unity.MemoryProfiler.Editor.UI.RibbonButton>
+					<Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Referenced By (Raw)"  toggled="true" name="raw-connections" style="flex-grow: 1;max-width: 200px; " tooltip="Displays a list of other entities that reference the selected object."/>
+                    <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="References To" toggled="false" name="referencing-to" style="flex-grow: 1; display: flex;" tooltip="Displays a list of the objects that the selection has references to." />
 				</Unity.MemoryProfiler.Editor.UI.Ribbon>
 				<ui:IMGUIContainer name="references-imguicontainer" style="flex-grow: 1; margin-top: 0;" />
 			</ui:Foldout>
@@ -25,8 +21,16 @@
 					</ui:VisualElement>
 					<ui:VisualElement name="selected-item-details__find-buttons__search-in-editor__holder" class="selected-item-details__find-buttons">
 						<ui:Button text="Search in Project" name="selected-item-details__find-buttons__search-in-editor" />
-						<ui:Button text="Open in Quick Search" name="selected-item-details__find-buttons__quick-search" />
+						<ui:Button text="Open in Search" name="selected-item-details__find-buttons__quick-search" />
 					</ui:VisualElement>
+					<ui:Button display-tooltip-when-elided="true" name="selected-item-details__find-buttons__copy" class="drop-down-button">
+						<ui:Label name="drop-down-button__label" text="Copy" tooltip="Copy To Clipboard" />
+						<ui:Button display-tooltip-when-elided="true" name="drop-down-button__drop-down-part"  class="drop-down-button__drop-down-part">
+							<ui:VisualElement class="drop-down-button__drop-down-part__arrow-icon">
+								<ui:VisualElement class="unity-base-popup-field__arrow" />
+							</ui:VisualElement>
+						</ui:Button>
+					</ui:Button>
 				</ui:VisualElement>
 
 				<ui:ScrollView name="selected-item-details__selection-details__scroll-area">

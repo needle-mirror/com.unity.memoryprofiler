@@ -248,26 +248,26 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             if (*counts > (int)EntryType.Count)
                 *counts = (int)EntryType.Count;
 
-            var entryTypeToChapterOffset = new NativeArray<long>(counts[0], Allocator.TempJob, NativeArrayOptions.ClearMemory);
-            var dataBlockOffsets = new NativeArray<long>(counts[1], Allocator.TempJob);
+            using (var entryTypeToChapterOffset = new NativeArray<long>(counts[0], Allocator.TempJob, NativeArrayOptions.ClearMemory))
+            {
+                using (var dataBlockOffsets = new NativeArray<long>(counts[1], Allocator.TempJob))
+                {
+                    //read entry offsets
+                    commands[0] = ReadCommandBufferUtils.GetCommand(entryTypeToChapterOffset.GetUnsafePtr(), sizeof(long) * counts[0], commands[0].Offset + sizeof(int));
+                    //read block offsets
+                    commands[1] = ReadCommandBufferUtils.GetCommand(dataBlockOffsets.GetUnsafePtr(), sizeof(long) * counts[1], commands[1].Offset + sizeof(uint));
 
-            //read entry offsets
-            commands[0] = ReadCommandBufferUtils.GetCommand(entryTypeToChapterOffset.GetUnsafePtr(), sizeof(long) * counts[0], commands[0].Offset + sizeof(int));
-            //read block offsets
-            commands[1] = ReadCommandBufferUtils.GetCommand(dataBlockOffsets.GetUnsafePtr(), sizeof(long) * counts[1], commands[1].Offset + sizeof(uint));
+                    if (m_FileReader.Read(commands, 2, ReadMode.Blocking).Status != ReadStatus.Complete)
+                        return ReadError.FileReadFailed;
 
-            if (m_FileReader.Read(commands, 2, ReadMode.Blocking).Status != ReadStatus.Complete)
-                return ReadError.FileReadFailed;
+                    error = BuildDataBlocks(m_FileReader, dataBlockOffsets, out m_Blocks);
+                }
 
-            error = BuildDataBlocks(m_FileReader, dataBlockOffsets, out m_Blocks);
-            dataBlockOffsets.Dispose(); //dispose of the block offsets as they are no longer needed
+                if (error != ReadError.Success)
+                    return error;
 
-            if (error != ReadError.Success)
-                return error;
-
-            error = BuildDataEntries(m_FileReader, entryTypeToChapterOffset, out m_Entries);
-            entryTypeToChapterOffset.Dispose();
-
+                error = BuildDataEntries(m_FileReader, entryTypeToChapterOffset, out m_Entries);
+            }
             if (error != ReadError.Success)
                 return error;
 

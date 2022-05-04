@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using System;
 using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Diagnostics;
@@ -88,6 +89,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (CurrentViewPane != newPane && CurrentViewPane != null)
                 {
+#if !REMOVE_VIEW_HISTORY
                     if (recordHistory)
                     {
                         // store view state changes if needed
@@ -95,12 +97,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                             CurrentViewPane.m_UIState.AddHistoryEvent(CurrentViewPane.GetViewStateFilteringChangesSinceLastSelectionOrViewClose());
                         CurrentViewPane.m_UIState.AddHistoryEvent(CurrentViewPane.GetCloseHistoryEvent());
                     }
+#endif
                     CurrentViewPane.OnClose();
                 }
                 CurrentViewPane = newPane;
                 ViewPaneChanged(newPane);
+#if !REMOVE_VIEW_HISTORY
                 if (recordHistory)
                     CurrentViewPane?.m_UIState.AddHistoryEvent(CurrentViewPane.GetOpenHistoryEvent());
+#endif
             }
 
             public abstract Database.Schema GetSchema();
@@ -137,7 +142,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             FileReader m_RawSnapshotReader;
             RawSchema m_RawSchema;
-
+            // temporary solution, to be removed with a new tree map
+            // recreating the Tree Map Pane is expensive, keep it until we rework /remove it
+            [NonSerialized]
+            public TreeMapPane CachedTreeMapPane;
 
             public Database.View.ViewSchema ViewSchema;
             public Database.Schema SchemaToDisplay;
@@ -214,6 +222,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return SchemaToDisplay.GetTableByIndex(index);
             }
 
+            public void CacheTreeMapPane(TreeMapPane treeMap)
+            {
+                CachedTreeMapPane = treeMap;
+            }
+
             public override void UpdateTableSelectionNames()
             {
                 if (m_RawSchema != null)
@@ -224,20 +237,18 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public override ViewPane GetDefaultView(IUIStateHolder uiStateHolder, IViewPaneEventListener viewPaneEventListener)
             {
-                //if (uiState.snapshotMode != null && uiState.snapshotMode.snapshot != null)
-                //{
-                //    return new SummaryPane(uiState, viewPaneEventListener);
-                //}
                 if (uiStateHolder.UIState.snapshotMode != null && uiStateHolder.UIState.snapshotMode.snapshot != null)
                 {
-                    return new TreeMapPane(uiStateHolder, viewPaneEventListener);
+                    return new SummaryPane(uiStateHolder, viewPaneEventListener);
                 }
-
                 return null;
             }
 
             public override void Clear()
             {
+                CachedTreeMapPane?.Dispose();
+                CachedTreeMapPane = null;
+
                 if (CurrentViewPane != null)
                     CurrentViewPane.OnClose();
                 SchemaToDisplay = null;
@@ -320,32 +331,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public override ViewPane GetDefaultView(IUIStateHolder uiStateHolder, IViewPaneEventListener viewPaneEventListener)
             {
-                //if (uiState.diffMode != null)
-                //{
-                //    return new SummaryPane(uiState, viewPaneEventListener);
-                //}
-                //return null;
-
-                //TODO: delete this method once the default for diff is treemap
-                Database.Table table = null;
-                for (int i = 1; i < uiStateHolder.UIState.CurrentMode.TableNames.Length; i++)
+                if (uiStateHolder.UIState.diffMode != null)
                 {
-                    if (uiStateHolder.UIState.CurrentMode.TableNames[i].Contains(k_DefaultDiffViewTable))
-                    {
-                        table = uiStateHolder.UIState.CurrentMode.GetTableByIndex(i - 1);
-                    }
+                    return new SummaryPane(uiStateHolder, viewPaneEventListener);
                 }
-                if (table == null)
-                    table = uiStateHolder.UIState.CurrentMode.GetTableByIndex(Mathf.Min(0, m_TableNames.Length - 1));
-
-                if (table.Update())
-                {
-                    UpdateTableSelectionNames();
-                }
-
-                var pane = new UI.SpreadsheetPane(uiStateHolder, viewPaneEventListener);
-                pane.OpenTable(new Database.TableReference(table.GetName()), table);
-                return pane;
+                return null;
             }
 
             public void OnSnapshotsSwapped()
@@ -463,6 +453,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             noMode = new SnapshotMode(FormattingOptions.ObjectDataFormatter, default(FileReader));
 
             // When History is cleared, the selection is cleared as well as it is stored in the History
+            history?.Dispose();
             history = new History();
             history.lastSelectionEventCleared += SendSelectionClearedEvent;
         }
@@ -480,15 +471,44 @@ namespace Unity.MemoryProfiler.Editor.UI
             var historySelectionEvent = new SelectionEvent(selection);
             if (selection.Rank == MemorySampleSelectionRank.MainSelection)
             {
+#if !REMOVE_VIEW_HISTORY
                 // if the view filtering has changed since the last selection was made in this view, we need to store the filter state first
                 // otherwise, when going backwards in history, we wouldn't know what list was shown and might apply a filter where the selected object is not present
                 if (CurrentMode.CurrentViewPane.ViewStateFilteringChangedSinceLastSelectionOrViewClose)
                     history.AddEvent(CurrentMode.CurrentViewPane.GetViewStateFilteringChangesSinceLastSelectionOrViewClose());
+#endif
                 MainSelection = selection;
                 SecondarySelection = MemorySampleSelection.InvalidSecondarySelection;
+
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                    MemoryProfilerAnalytics.PageInteractionType.SelectionInTableWasUsed);
             }
             else
+            {
+                if (!selection.Valid && !SecondarySelection.Valid)
+                    // Nothing Changed
+                    return;
+
                 SecondarySelection = selection;
+                if (!selection.Valid)
+                {
+                    // A valid selection was cleared
+                    if (MainSelection.Valid)
+                        // Reselect Main Selection
+                        historySelectionEvent = new SelectionEvent(MainSelection);
+                    else
+                        // Or clear entire selection
+                        historySelectionEvent = new SelectionEvent(MemorySampleSelection.InvalidMainSelection);
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
+                        MemoryProfilerAnalytics.ReferencePanelInteractionType.SelectionInTableWasCleared);
+                }
+                else
+                {
+                    // currently only the References panel allows for secondary selection
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
+                        MemoryProfilerAnalytics.ReferencePanelInteractionType.SelectionInTableWasUsed);
+                }
+            }
 
             history.SetCurrentSelectionEvent(historySelectionEvent);
             SelectionChanged(historySelectionEvent.Selection);
@@ -575,6 +595,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             ClearAllOpenModes();
             SelectionChanged = delegate {};
+            history?.Dispose();
         }
 
         public void ClearFirstMode()

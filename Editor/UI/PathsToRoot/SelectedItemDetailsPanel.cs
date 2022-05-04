@@ -66,6 +66,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Label m_Title;
         ObjectOrTypeLabel m_UnityObjectTitle;
+        bool m_NonObjectTitle = true;
+        bool NonObjectTitleShown
+        {
+            set
+            {
+                m_NonObjectTitle = value;
+                UIElementsHelper.SwitchVisibility(m_Title, m_UnityObjectTitle, m_NonObjectTitle);
+            }
+        }
 
         VisualElement m_FindButtonsHolder;
         VisualElement m_SelectInEditorButtonHolder;
@@ -74,6 +83,44 @@ namespace Unity.MemoryProfiler.Editor.UI
         UnityEngine.Object m_FoundObjectInEditor;
         Button m_SearchInEditorButton;
         Button m_QuickSearchButton;
+
+        // This button is hidden for the moment as
+        // - It may cause confusion that it would copy the entire details section
+        // - Will make it harder to discover new options added later, e.g. those to copy the entire details section
+        // - The menu content might change from single items to flags in the final version.
+        static readonly bool k_FeatureFlagCopyButtonActive = false;
+        Button m_CopyButton;
+        Button m_CopyButtonDropdown;
+        public enum CopyDetailsOption
+        {
+            FullTitle,
+            NativeObjectName,
+            ManagedTypeName,
+            NativeTypeName,
+            // To be implemented:
+            //ReferencesAsText,
+            //ReferencesAsCSV,
+            //SelectedItemDetailsAsText,
+            //SelectedItemDetailsAsCSV,
+            //FullDetailsAsText,
+            //FullDetailsAsCSV,
+        }
+
+        public static string[] CopyDetailsOptionText = new string[]
+        {
+            TextContent.CopyButtonDropdownOptionFullTitle,
+            TextContent.CopyButtonDropdownOptionObjectName,
+            TextContent.CopyButtonDropdownOptionManagedTypeName,
+            TextContent.CopyButtonDropdownOptionNativeTypeName,
+        };
+
+        public static GUIContent[] CopyDetailsOptionLabels = new GUIContent[]
+        {
+            new GUIContent(CopyDetailsOptionText[(int)CopyDetailsOption.FullTitle]),
+            new GUIContent(CopyDetailsOptionText[(int)CopyDetailsOption.NativeObjectName]),
+            new GUIContent(CopyDetailsOptionText[(int)CopyDetailsOption.ManagedTypeName]),
+            new GUIContent(CopyDetailsOptionText[(int)CopyDetailsOption.NativeTypeName]),
+        };
 
         TextField m_Description;
         Button m_DocumentationButton;
@@ -84,6 +131,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_GroupedElements;
         VisualTreeAsset m_SelectedItemDetailsGroupUxmlPathViewTree;
         VisualTreeAsset m_SelectedItemDetailsGroupedItemUxmlPathViewTree;
+        const string m_SelectedItemDetailsGroupedItemContainerElementName = "selected-item-details__grouped-item__container";
 
         VisualElement m_PreviewFoldoutheader;
         Image m_Preview;
@@ -121,15 +169,23 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ManagedObjectInspectors[0].DoGUI(detailsContainer.contentRect);
             };
             m_ManagedObjectInspectorContainors.Add(managedFieldInspectorFoldout);
+            managedFieldInspectorFoldout.RegisterValueChangedCallback((evt) =>
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                    evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectInspectorSectionWasRevealed :
+                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectInspectorSectionWasHidden));
 
             UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainors[0], false);
 
             m_Title = detailsPanelRoot.Q<Label>("selected-item-details__item-title");
+            m_Title.AddManipulator(new ContextualMenuManipulator(evt => ShowCopyMenu(evt, contextMenu: true)));
             m_UnityObjectTitle = detailsPanelRoot.Q<ObjectOrTypeLabel>("selected-item-details__unity-item-title");
+            m_UnityObjectTitle.ContextMenuOpening += evt => ShowCopyMenu(evt, contextMenu: true);
             NoItemSelected();
 
             m_Description = detailsPanelRoot.Q<TextField>("selected-item-details__item-description");
             m_Description.isReadOnly = true;
+            m_Description.RegisterCallback<FocusInEvent>((evt) => MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DetailsSelectableLabelWasSelected));
             UIElementsHelper.SetVisibility(m_Description, false);
 
             m_DocumentationButton = detailsPanelRoot.Q<Button>("selected-item-details__item-documentation-button");
@@ -146,16 +202,27 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SearchInEditorButton = detailsPanelRoot.Q<Button>("selected-item-details__find-buttons__search-in-editor");
             m_SearchInEditorButton.clicked += OnSearchEditor;
 
+            m_CopyButton = detailsPanelRoot.Q<Button>("selected-item-details__find-buttons__copy");
+            m_CopyButton.clickable.clicked += () => CopySelectedItemTitel(MemoryProfilerSettings.DefaultCopyDetailsOption, contextMenu: false, saveAsDefault: false);
+            m_CopyButtonDropdown = m_CopyButton.Q<Button>("drop-down-button__drop-down-part");
+            m_CopyButtonDropdown.clickable.clicked += () => ShowCopyMenu();
+
             m_QuickSearchButton = detailsPanelRoot.Q<Button>("selected-item-details__find-buttons__quick-search");
             m_QuickSearchButton.clicked += OnQuickSearch;
 
             UIElementsHelper.SetVisibility(m_SelectInEditorButton, false);
             UIElementsHelper.SetVisibility(m_SearchInEditorButton, false);
             UIElementsHelper.SetVisibility(m_QuickSearchButton, false);
+            UIElementsHelper.SetVisibility(m_CopyButton, false);
 
             m_PreviewFoldoutheader = detailsPanelRoot.Q("selected-item-details__preview-area");
             m_Preview = m_PreviewFoldoutheader.Q<Image>("selected-item-details__preview");
             UIElementsHelper.SetVisibility(m_PreviewFoldoutheader, false);
+
+            m_PreviewFoldoutheader.Q<Foldout>().RegisterValueChangedCallback((evt) =>
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                    evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasRevealed :
+                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasHidden));
 
             m_GroupedElements = detailsPanelRoot.Q("selected-item-details__grouped-elements");
             m_SelectedItemDetailsGroupUxmlPathViewTree = EditorGUIUtility.Load(ResourcePaths.SelectedItemDetailsGroupUxmlPath) as VisualTreeAsset;
@@ -164,6 +231,115 @@ namespace Unity.MemoryProfiler.Editor.UI
             CreateDetailsGroup(GroupNameAdvanced).Foldout.value = false;
             CreateDetailsGroup(GroupNameDebug).Foldout.value = false;
             m_SelectedItemDetailsGroupedItemUxmlPathViewTree = EditorGUIUtility.Load(ResourcePaths.SelectedItemDetailsGroupedItemUxmlPath) as VisualTreeAsset;
+        }
+
+        // UI TK version
+        public void ShowCopyMenu(ContextualMenuPopulateEvent evt, bool contextMenu = true)
+        {
+            if (m_NonObjectTitle)
+            {
+                AddCopyOption(evt.menu, CopyDetailsOption.FullTitle, contextMenu: contextMenu, saveAsDefault: false);
+                AddCopyOption(evt.menu, CopyDetailsOption.NativeObjectName, contextMenu: contextMenu, disabled: true);
+                AddCopyOption(evt.menu, CopyDetailsOption.ManagedTypeName, contextMenu: contextMenu, disabled: true);
+                AddCopyOption(evt.menu, CopyDetailsOption.NativeTypeName, contextMenu: contextMenu, disabled: true);
+            }
+            else
+            {
+                AddCopyOption(evt.menu, CopyDetailsOption.FullTitle, contextMenu: contextMenu);
+                AddCopyOption(evt.menu, CopyDetailsOption.NativeObjectName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.NativeObjectName), contextMenu: contextMenu);
+                AddCopyOption(evt.menu, CopyDetailsOption.ManagedTypeName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.ManagedTypeName), contextMenu: contextMenu);
+                AddCopyOption(evt.menu, CopyDetailsOption.NativeTypeName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.NativeTypeName), contextMenu: contextMenu);
+            }
+        }
+
+        void AddCopyOption(DropdownMenu menu, CopyDetailsOption option, bool contextMenu = false, bool saveAsDefault = true, bool disabled = false)
+        {
+            // the context menu ignores the default option
+            AddCopyOption(menu, option, contextMenu, saveAsDefault,
+                disabled, contextMenu || disabled ? false : MemoryProfilerSettings.DefaultCopyDetailsOption == option);
+        }
+
+        void AddCopyOption(DropdownMenu menu, CopyDetailsOption option, bool contextMenu, bool saveAsDefault, bool disabled, bool selected)
+        {
+            menu.AppendAction(
+                contextMenu ? string.Format(TextContent.CopyTitleToClipboardContextClickItem, CopyDetailsOptionText[(int)option])
+                : CopyDetailsOptionLabels[(int)option].text, (a) =>
+                {
+                    CopySelectedItemTitel(option, contextMenu, saveAsDefault);
+                }, disabled ? DropdownMenuAction.Status.Disabled : selected? DropdownMenuAction.Status.Checked: DropdownMenuAction.Status.Normal);
+        }
+
+        // IMGUI version
+        void ShowCopyMenu()
+        {
+            var rect = m_CopyButtonDropdown.GetRect();
+            var menu = new GenericMenu();
+            if (m_NonObjectTitle)
+            {
+                AddCopyOption(menu, CopyDetailsOption.FullTitle, saveAsDefault: false);
+                AddCopyOption(menu, CopyDetailsOption.NativeObjectName, disabled: true);
+                AddCopyOption(menu, CopyDetailsOption.ManagedTypeName, disabled: true);
+                AddCopyOption(menu, CopyDetailsOption.NativeTypeName, disabled: true);
+            }
+            else
+            {
+                AddCopyOption(menu, CopyDetailsOption.FullTitle);
+                AddCopyOption(menu, CopyDetailsOption.NativeObjectName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.NativeObjectName));
+                AddCopyOption(menu, CopyDetailsOption.ManagedTypeName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.ManagedTypeName));
+                AddCopyOption(menu, CopyDetailsOption.NativeTypeName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.NativeTypeName));
+            }
+            menu.DropDown(rect);
+        }
+
+        void AddCopyOption(GenericMenu menu, CopyDetailsOption option, bool contextMenu = false, bool saveAsDefault = true, bool disabled = false)
+        {
+            // the context menu ignores the default option
+            AddCopyOption(menu, option, contextMenu, saveAsDefault, disabled, contextMenu || disabled ? false : MemoryProfilerSettings.DefaultCopyDetailsOption == option);
+        }
+
+        void AddCopyOption(GenericMenu menu, CopyDetailsOption option, bool contextMenu, bool saveAsDefault, bool disabled, bool selected)
+        {
+            var content = contextMenu ? new GUIContent(string.Format(TextContent.CopyTitleToClipboardContextClickItem, CopyDetailsOptionText[(int)option]))
+                : CopyDetailsOptionLabels[(int)option];
+            if (disabled)
+                menu.AddDisabledItem(content, selected);
+            else
+                menu.AddItem(content, selected, () => CopySelectedItemTitel(option, contextMenu, saveAsDefault));
+        }
+
+        void CopySelectedItemTitel(CopyDetailsOption option, bool contextMenu, bool saveAsDefault)
+        {
+            // the context menu doesn't safe a Default
+            if (!contextMenu && saveAsDefault)
+                MemoryProfilerSettings.DefaultCopyDetailsOption = option;
+            if (m_NonObjectTitle)
+                option = CopyDetailsOption.FullTitle;
+            switch (option)
+            {
+                case CopyDetailsOption.FullTitle:
+                    EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer =
+                        m_NonObjectTitle ? m_Title.text : m_UnityObjectTitle.GetTitle(MemoryProfilerSettings.MemorySnapshotTruncateTypes);
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedFullTitleFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedFullTitleViaButton);
+                    break;
+                case CopyDetailsOption.NativeObjectName:
+                    EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer = m_UnityObjectTitle.NativeObjectName;
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeObjectNameFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeObjectNameViaButton);
+                    break;
+                case CopyDetailsOption.ManagedTypeName:
+                    EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer = m_UnityObjectTitle.ManagedTypeName;
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedManagedTypeNameFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedManagedTypeNameViaButton);
+                    break;
+                case CopyDetailsOption.NativeTypeName:
+                    EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer = m_UnityObjectTitle.NativeTypeName;
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeTypeNameFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeTypeNameViaButton);
+                    break;
+                default:
+                    break;
+            }
         }
 
         DetailsGroup CreateDetailsGroup(string name)
@@ -175,6 +351,34 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Foldout = item.Q<Foldout>("selected-item-details__group__header-foldout"),
                 Content = item.Q("selected-item-details__group__content"),
             };
+            groupData.Foldout.RegisterValueChangedCallback((evt) =>
+            {
+                switch (name)
+                {
+                    case GroupNameBasic:
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.BasicSectionWasRevealed :
+                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.BasicSectionWasHidden);
+                        break;
+                    case GroupNameHelp:
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.HelpSectionWasRevealed :
+                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.HelpSectionWasHidden);
+                        break;
+                    case GroupNameAdvanced:
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.AdvancedSectionWasRevealed :
+                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.AdvancedSectionWasHidden);
+                        break;
+                    case GroupNameDebug:
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DebugSectionWasRevealed :
+                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DebugSectionWasHidden);
+                        break;
+                    default:
+                        break;
+                }
+            });
             groupData.Foldout.text = name;
             m_DetailsGroups.Add(groupData);
             m_DetailsGroupsByGroupName.Add(name, groupData);
@@ -193,7 +397,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_FoundObjectInEditor != null)
             {
                 EditorAssetFinderUtility.SelectObject(m_FoundObjectInEditor);
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                    IsSceneObject(m_FoundObjectInEditor) ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectSceneObjectInEditorButtonClicked : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectAssetInEditorButtonClicked);
             }
+        }
+
+        bool IsSceneObject(UnityEngine.Object obj)
+        {
+            return obj is GameObject || obj is Component;
         }
 
         void OnSearchEditor()
@@ -201,6 +412,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_SelectedUnityObject.IsValid)
             {
                 EditorAssetFinderUtility.SetEditorSearchFilterForObject(m_CachedSnapshot, m_SelectedUnityObject);
+
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                    m_SelectedUnityObject.IsSceneObject ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SearchInSceneButtonClicked : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SearchInProjectButtonClicked);
             }
         }
 
@@ -209,12 +423,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_SelectedUnityObject.IsValid)
             {
                 EditorAssetFinderUtility.OpenQuickSearch(m_CachedSnapshot, m_SelectedUnityObject);
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                    m_SelectedUnityObject.IsSceneObject ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.QuickSearchForSceneObjectButtonClicked : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.QuickSearchForAssetButtonClicked);
             }
         }
 
         void NoItemSelected()
         {
-            UIElementsHelper.SwitchVisibility(m_Title, m_UnityObjectTitle, true);
+            UIElementsHelper.SetVisibility(m_CopyButton, false);
+            NonObjectTitleShown = true;
             m_Title.text = "No Item Selected";
         }
 
@@ -227,6 +444,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Clear();
                 if (preciousSelectionType != MemorySampleSelectionType.None)
                     m_UiStateHolder.UIState.CustomSelectionDetailsFactory.Clear(preciousSelectionType, this);
+                // End any pending Interaction Event
+                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>();
                 return;
             }
 
@@ -234,11 +453,20 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_CurrentMemorySampleSelection = MemorySampleSelection.InvalidMainSelection;
             Clear();
+            // End any pending Interaction Event
+            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>();
             if (preciousSelectionType != MemorySampleSelectionType.None)
                 m_UiStateHolder.UIState.CustomSelectionDetailsFactory.Clear(preciousSelectionType, this);
 
-            if (m_UiStateHolder.UIState.CustomSelectionDetailsFactory.Produce(memorySampleSelection, this))
+            if (m_UiStateHolder.UIState.CustomSelectionDetailsFactory.Produce(memorySampleSelection, this, out var summaryStatus))
             {
+                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>(
+                    new MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel()
+                    {
+                        selectedElementType = memorySampleSelection.GetTypeStringForAnalytics(m_CachedSnapshot),
+                        selectedElementStatus = summaryStatus
+                    });
+
                 m_CurrentMemorySampleSelection = memorySampleSelection;
                 return;
             }
@@ -270,6 +498,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ActiveDetailsGroupsByGroupName.Add(groupName, groupItem);
             }
             var groupedItem = m_SelectedItemDetailsGroupedItemUxmlPathViewTree.Clone();
+            groupedItem.Q("selected-item-details__grouped-item__container").AddToClassList($"selected-item-details__grouped-item__{title.ToLower()}");
             if (options.HasFlag(SelectedItemDynamicElementOptions.PlaceFirstInGroup))
                 groupItem.Content.Insert(0, groupedItem);
             else
@@ -277,6 +506,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             var titleLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__label");
             var contentLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__content");
             var selectableLabel = groupedItem.Q<TextField>("selected-item-details__grouped-item__content_selectable-label");
+            selectableLabel.RegisterCallback<FocusInEvent>((evt) => MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DetailsSelectableLabelWasSelected));
+
             UIElementsHelper.SwitchVisibility(selectableLabel, contentLabel, options.HasFlag(SelectedItemDynamicElementOptions.SelectableLabel));
             if (options.HasFlag(SelectedItemDynamicElementOptions.ShowTitle))
                 titleLabel.text = $"{title} :";
@@ -303,24 +535,28 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void SetItemName(string name)
         {
+            UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
+            NonObjectTitleShown = true;
             m_Title.text = name;
-            UIElementsHelper.SwitchVisibility(m_Title, m_UnityObjectTitle, true);
         }
 
         public void SetItemName(ObjectData pureCSharpObject, UnifiedType typeInfo)
         {
-            UIElementsHelper.SwitchVisibility(m_Title, m_UnityObjectTitle, false);
+            UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
+            NonObjectTitleShown = false;
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, pureCSharpObject, typeInfo);
         }
 
         public void SetItemName(UnifiedType typeInfo)
         {
+            UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
+            NonObjectTitleShown = false;
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, typeInfo);
-            UIElementsHelper.SwitchVisibility(m_Title, m_UnityObjectTitle, false);
         }
 
         public void SetItemName(UnifiedUnityObjectInfo unityObjectInfo)
         {
+            UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
             m_SelectedUnityObject = unityObjectInfo;
             var findings = EditorAssetFinderUtility.FindObject(m_CachedSnapshot, unityObjectInfo);
             m_FoundObjectInEditor = findings.FoundObject;
@@ -332,7 +568,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SearchInEditorButton.text = searchButtonLabel.text;
                 m_SearchInEditorButton.tooltip = searchButtonLabel.tooltip;
                 UIElementsHelper.SetVisibility(m_SearchInEditorButton, true);
-#if UNITY_2021_1_OR_NEWER || QUICK_SEARCH_AVAILABLE
+#if UNITY_2021_2_OR_NEWER || QUICK_SEARCH_AVAILABLE
                 UIElementsHelper.SetVisibility(m_QuickSearchButton, true);
                 m_SearchInEditorButton.SetEnabled(true);
 #endif
@@ -343,7 +579,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SearchInEditorButton.text = TextContent.SearchButtonCantSearch.text;
                 UIElementsHelper.SetVisibility(m_SearchInEditorButton, true);
                 m_SearchInEditorButton.SetEnabled(false);
-#if UNITY_2021_1_OR_NEWER || QUICK_SEARCH_AVAILABLE
+#if UNITY_2021_2_OR_NEWER || QUICK_SEARCH_AVAILABLE
                 UIElementsHelper.SetVisibility(m_QuickSearchButton, true);
                 m_SearchInEditorButton.SetEnabled(false);
 #endif
@@ -390,8 +626,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         break;
                 }
             }
+            NonObjectTitleShown = false;
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, unityObjectInfo);
-            UIElementsHelper.SwitchVisibility(m_Title, m_UnityObjectTitle, false);
         }
 
         public void SetDescription(string description)
@@ -453,6 +689,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_SelectInEditorButton, false);
             UIElementsHelper.SetVisibility(m_SearchInEditorButton, false);
             UIElementsHelper.SetVisibility(m_QuickSearchButton, false);
+            UIElementsHelper.SetVisibility(m_CopyButton, false);
             foreach (var item in m_GroupedElements.Children())
             {
                 UIElementsHelper.SetVisibility(item, false);

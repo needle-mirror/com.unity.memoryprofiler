@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using System.Collections;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UIContentData;
@@ -206,7 +207,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                             ProgressBarDisplay.UpdateProgress(0.75f, "Opening Table...");
                             OpenTable(new Database.TableReference(tab.GetName()), tab);
 
-                            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewEvent() { viewName = tab.GetDisplayName() });
+                            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewEvent() { viewName = tab.GetName() });
                             ProgressBarDisplay.UpdateProgress(1.0f, "");
                         }
                         finally
@@ -305,6 +306,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !REMOVE_VIEW_HISTORY
         public void StoreCurrentViewHistoryEventBeforeClosing()
         {
             if (currentViewPane != null)
@@ -312,6 +314,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UIState.AddHistoryEvent(currentViewPane.GetCloseHistoryEvent());
             }
         }
+
+#endif
 
         void OpenTable(Database.TableReference tableRef, Database.Table table)
         {
@@ -346,60 +350,91 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (UIState.CurrentMode.TableNames[i].Contains("All Objects"))
                 {
                     var table = UIState.CurrentMode.GetTableByIndex(i - 1); // skip "none" table
+                    table.Update();
                     OpenTable(new Database.TableReference(table.GetName()), table);
                 }
             }
         }
 
-        public void OpenTable(UI.HistoryEvent history, bool reopen = true, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
+        public void OpenTable(UI.HistoryEvent history, bool reopen = true,
+#if !REMOVE_VIEW_HISTORY
+            ViewStateChangedHistoryEvent viewStateToRestore = null,
+#endif
+            SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
         {
             var pane = (reopen || !(currentViewPane is SpreadsheetPane)) ? new UI.SpreadsheetPane(m_UIStateHolder, this)
                 // No need to reopen, just use the last one
                 : currentViewPane as SpreadsheetPane;
 
+#if !REMOVE_VIEW_HISTORY
             if (history != null)
-                pane.OpenHistoryEvent(history as SpreadsheetPane.History, reopen, viewStateToRestore, mainSelection, selectionIsLatent: secondarySelection != null);
-            else if (m_UIStateHolder.UIState.MainSelection.Valid)
+                pane.OpenHistoryEvent(history as SpreadsheetPane.History, reopen, viewStateToRestore, smainSelection, selectionIsLatent: secondarySelection != null);
+            else
+#endif
+            if (m_UIStateHolder.UIState.MainSelection.Valid)
                 // Not a history event but try to find the active selection anyways
                 pane.ApplyActiveSelectionAfterOpening(new SelectionEvent(m_UIStateHolder.UIState.MainSelection));
 
             TransitPane(pane, history == null);
         }
 
-        public void OpenMemoryMap(UI.HistoryEvent history, bool reopen = true, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
+        public void OpenMemoryMap(UI.HistoryEvent history, bool reopen = true,
+#if !REMOVE_VIEW_HISTORY
+            ViewStateChangedHistoryEvent viewStateToRestore = null,
+#endif
+            SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
         {
             var pane = (reopen || !(currentViewPane is MemoryMapPane)) ? new UI.MemoryMapPane(m_UIStateHolder, this, m_ToolbarExtension)
                 // No need to reopen, just use the last one
                 : currentViewPane as MemoryMapPane;
 
+#if !REMOVE_VIEW_HISTORY
             if (history != null)
                 pane.RestoreHistoryEvent(history, reopen, viewStateToRestore, mainSelection, selectionIsLatent: secondarySelection != null);
-            else if (m_UIStateHolder.UIState.MainSelection.Valid)
+            else
+#endif
+            if (m_UIStateHolder.UIState.MainSelection.Valid)
                 // Not a history event but try to find the active selection anyways
                 pane.ApplyActiveSelectionAfterOpening(new SelectionEvent(m_UIStateHolder.UIState.MainSelection));
 
             TransitPane(pane, history == null);
         }
 
-        public void OpenMemoryMapDiff(UI.HistoryEvent history, bool reopen = true, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
+        public void OpenMemoryMapDiff(UI.HistoryEvent history, bool reopen = true,
+#if !REMOVE_VIEW_HISTORY
+            ViewStateChangedHistoryEvent viewStateToRestore = null,
+#endif
+            SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
         {
             var pane = (reopen || !(currentViewPane is MemoryMapDiffPane)) ? new UI.MemoryMapDiffPane(m_UIStateHolder, this, m_ToolbarExtension)
                 // No need to reopen, just use the last one
                 : currentViewPane as MemoryMapDiffPane;
 
+#if !REMOVE_VIEW_HISTORY
             if (history != null)
                 pane.RestoreHistoryEvent(history, reopen, viewStateToRestore, mainSelection, selectionIsLatent: secondarySelection != null);
-            else if (m_UIStateHolder.UIState.MainSelection.Valid)
+            else
+#endif
+            if (m_UIStateHolder.UIState.MainSelection.Valid)
                 // Not a history event but try to find the active selection anyways
                 pane.ApplyActiveSelectionAfterOpening(new SelectionEvent(m_UIStateHolder.UIState.MainSelection));
 
             TransitPane(pane, history == null);
         }
 
-        public void OpenTreeMap(UI.HistoryEvent history, bool reopen = true, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
+        public void OpenTreeMap(UI.HistoryEvent history, bool reopen = true,
+#if !REMOVE_VIEW_HISTORY
+            iewStateChangedHistoryEvent viewStateToRestore = null,
+#endif
+            SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
         {
+#if !REMOVE_VIEW_HISTORY
             TreeMapPane.History evt = history as TreeMapPane.History;
+#else
+            object evt = null;
+#endif
 
+#if !REMOVE_VIEW_HISTORY
             // TreeMap takes so long to re create, it always reopens, if possible
             if (currentViewPane is UI.TreeMapPane)
             {
@@ -409,20 +444,38 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return;
                 }
             }
-            var pane = new UI.TreeMapPane(m_UIStateHolder, this);
+#endif
+            if (m_UIStateHolder.UIState.CurrentViewMode == UIState.ViewMode.ShowDiff || !(m_UIStateHolder.UIState.CurrentMode is UIState.SnapshotMode))
+                return;
+            var snapshotMode = m_UIStateHolder.UIState.CurrentMode as UIState.SnapshotMode;
+            if (snapshotMode.CachedTreeMapPane  == null)
+                snapshotMode.CachedTreeMapPane = new UI.TreeMapPane(m_UIStateHolder, this);
+            var pane = snapshotMode.CachedTreeMapPane;
+#if !REMOVE_VIEW_HISTORY
             if (evt != null)
                 pane.OpenHistoryEvent(evt, viewStateToRestore, mainSelection, selectionIsLatent: secondarySelection != null);
-            else if (m_UIStateHolder.UIState.MainSelection.Valid)
+            else
+#endif
+            if (m_UIStateHolder.UIState.MainSelection.Valid)
                 // Not a history event but try to find the active selection anyways
                 pane.ApplyActiveSelectionAfterOpening(new SelectionEvent(m_UIStateHolder.UIState.MainSelection));
 
             TransitPane(pane, evt == null);
         }
 
-        void OpenSummary(UI.HistoryEvent history, bool reopen, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
+        public void OpenSummary(UI.HistoryEvent history, bool reopen,
+#if !REMOVE_VIEW_HISTORY
+            ViewStateChangedHistoryEvent viewStateToRestore = null,
+#endif
+            SelectionEvent mainSelection = null, SelectionEvent secondarySelection = null)
         {
+#if !REMOVE_VIEW_HISTORY
             SummaryPane.History evt = history as SummaryPane.History;
+#else
+            object evt = null;
+#endif
 
+#if !REMOVE_VIEW_HISTORY
             if (currentViewPane is UI.SummaryPane)
             {
                 if (evt != null)
@@ -431,10 +484,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return;
                 }
             }
+#endif
             var pane = new UI.SummaryPane(m_UIStateHolder, this);
+#if !REMOVE_VIEW_HISTORY
             if (evt != null)
                 pane.OpenHistoryEvent(evt, reopen, viewStateToRestore, mainSelection, selectionIsLatent: secondarySelection != null);
-            else if (m_UIStateHolder.UIState.MainSelection.Valid)
+            else
+#endif
+            if (m_UIStateHolder.UIState.MainSelection.Valid)
                 // Not a history event but try to find the active selection anyways
                 pane.ApplyActiveSelectionAfterOpening(new SelectionEvent(m_UIStateHolder.UIState.MainSelection));
 

@@ -19,35 +19,54 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
         public ObjectMetricType MetricType { private set; get; }
         public int ObjectIndex { private set; get; }
         CachedSnapshot m_CachedSnapshot;
+        long cachedSize;
+        string cachedTypeName;
 
         public ObjectMetric(int objectIndex, CachedSnapshot cachedSnapshot, ObjectMetricType metricType)
         {
             MetricType = metricType;
             ObjectIndex = objectIndex;
             m_CachedSnapshot = cachedSnapshot;
+            cachedSize = -1;
+            switch (MetricType)
+            {
+                case ObjectMetricType.Managed:
+                    // cache size
+                    cachedSize = m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex].Size;
+                    // cache type name
+                    var ITypeDesc = m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex].ITypeDescription;
+                    if (ITypeDesc >= 0)
+                    {
+                        cachedTypeName = m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[ITypeDesc];
+                    }
+                    else
+                    {
+                        cachedTypeName = k_UnknownManagedType;
+                    }
+                    break;
+                case ObjectMetricType.Native:
+                    // cache size
+                    cachedSize = (long)m_CachedSnapshot.NativeObjects.Size[ObjectIndex];
+                    // cache type name
+                    var INatTypeDesc = m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[ObjectIndex];
+                    if (INatTypeDesc > 0)
+                    {
+                        cachedTypeName = m_CachedSnapshot.NativeTypes.TypeName[INatTypeDesc];
+                    }
+                    else
+                    {
+                        cachedTypeName = k_UnknownNativeType;
+                    }
+                    break;
+                default:
+                    cachedTypeName = null;
+                    break;
+            }
         }
 
         public string GetTypeName()
         {
-            switch (MetricType)
-            {
-                case ObjectMetricType.Managed:
-                    var ITypeDesc = m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex].ITypeDescription;
-                    if (ITypeDesc >= 0)
-                    {
-                        return m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[ITypeDesc];
-                    }
-                    return k_UnknownManagedType;
-                case ObjectMetricType.Native:
-                    var INatTypeDesc = m_CachedSnapshot.NativeObjects.NativeTypeArrayIndex[ObjectIndex];
-                    if (INatTypeDesc > 0)
-                    {
-                        return m_CachedSnapshot.NativeTypes.TypeName[INatTypeDesc];
-                    }
-                    return k_UnknownNativeType;
-                default:
-                    return null;
-            }
+            return cachedTypeName;
         }
 
         public int GetTypeIndex()
@@ -63,8 +82,11 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             }
         }
 
+        static System.Text.StringBuilder sharedBuilder = new System.Text.StringBuilder();
+
         public string GetName()
         {
+            sharedBuilder.Clear();
             switch (MetricType)
             {
                 case ObjectMetricType.Managed:
@@ -74,15 +96,29 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                         string objName = m_CachedSnapshot.NativeObjects.ObjectName[managedObj.NativeObjectIndex];
                         if (objName.Length > 0)
                         {
-                            return " \"" + objName + "\" <" + GetTypeName() + ">";
+                            sharedBuilder.Append(" \"");
+                            sharedBuilder.Append(objName);
+                            sharedBuilder.Append("\" <");
+                            sharedBuilder.Append(GetTypeName());
+                            sharedBuilder.Append('>');
+                            return sharedBuilder.ToString();
                         }
                     }
-                    return string.Format("[0x{0:x16}]", managedObj.PtrObject) + " < " + GetTypeName() + " > ";
+                    sharedBuilder.AppendFormat("[0x{0:x16}]", managedObj.PtrObject);
+                    sharedBuilder.Append(" < ");
+                    sharedBuilder.Append(GetTypeName());
+                    sharedBuilder.Append(" > ");
+                    return sharedBuilder.ToString();
                 case ObjectMetricType.Native:
                     string objectName = m_CachedSnapshot.NativeObjects.ObjectName[ObjectIndex];
                     if (objectName.Length > 0)
                     {
-                        return " \"" + objectName + "\" <" + GetTypeName() + ">";
+                        sharedBuilder.Append(" \"");
+                        sharedBuilder.Append(objectName);
+                        sharedBuilder.Append("\" <");
+                        sharedBuilder.Append(GetTypeName());
+                        sharedBuilder.Append('>');
+                        return sharedBuilder.ToString();
                     }
                     return GetTypeName();
                 default:
@@ -105,15 +141,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
         public long GetValue()
         {
-            switch (MetricType)
-            {
-                case ObjectMetricType.Managed:
-                    return m_CachedSnapshot.CrawledData.ManagedObjects[ObjectIndex].Size;
-                case ObjectMetricType.Native:
-                    return (long)m_CachedSnapshot.NativeObjects.Size[ObjectIndex];
-                default:
-                    return -1;
-            }
+            return cachedSize;
         }
 
         public bool Equals(ObjectMetric other)
@@ -129,6 +157,7 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
     internal class Item : IComparable<Item>
     {
+        static System.Text.StringBuilder builder = new System.Text.StringBuilder();
         public Group Group { private set; get; }
         public Rect Position;
         //public int _index;
@@ -141,9 +170,14 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
 
         public Item(ObjectMetric metric, Group group)
         {
+            builder.Clear();
             Metric = metric;
             Group = group;
-            Label = Metric.GetName() + "\n" + EditorUtility.FormatBytes(Value);
+            builder.Append(Metric.GetName());
+            builder.AppendLine();
+            builder.Append(EditorUtility.FormatBytes(Value));
+            Label = builder.ToString();
+            //Label = Metric.GetName() + "\n" + EditorUtility.FormatBytes(Value);
         }
 
         public int CompareTo(Item other)

@@ -193,18 +193,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void SetCenterAligned()
         {
-            m_Container.RemoveFromClassList(k_ContainerClassLeftAligned);
-            m_Container.AddToClassList(k_ContainerClassCenterAligned);
-            m_Content.RemoveFromClassList(k_ClassLeftAligned);
-            m_Content.AddToClassList(k_ClassCenterAligned);
+            m_Container.SwitchClasses(classToAdd: k_ContainerClassCenterAligned, classToRemove: k_ContainerClassLeftAligned);
+            m_Content.SwitchClasses(classToAdd: k_ClassCenterAligned, classToRemove: k_ClassLeftAligned);
         }
 
         void SetLeftAligned()
         {
-            m_Container.RemoveFromClassList(k_ContainerClassCenterAligned);
-            m_Container.AddToClassList(k_ContainerClassLeftAligned);
-            m_Content.RemoveFromClassList(k_ClassCenterAligned);
-            m_Content.AddToClassList(k_ClassLeftAligned);
+            m_Container.SwitchClasses(classToAdd: k_ContainerClassLeftAligned, classToRemove: k_ContainerClassCenterAligned);
+            m_Content.SwitchClasses(classToAdd: k_ClassLeftAligned, classToRemove: k_ClassCenterAligned);
         }
 
         /// <summary>

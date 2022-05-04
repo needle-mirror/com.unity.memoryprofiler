@@ -148,6 +148,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void UpdateDirtyRowRange(DirtyRowRange d)
         {
             m_TotalDataHeight += d.HeightOffset;
+            if (m_GUIState.SelectedRow >= d.Range.Abs.First)
+            {
+                if (d.Range.Length < 0 && d.Range.Abs.Last > m_GUIState.SelectedRow)
+                    m_GUIState.SelectedRow = d.Range.Abs.First - 1;
+                else
+                    m_GUIState.SelectedRow += d.Range.Length;
+            }
         }
 
         public void SetCellExpandedState(long row, long col, bool expanded)

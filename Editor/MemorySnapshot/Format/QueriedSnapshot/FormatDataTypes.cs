@@ -30,6 +30,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         public string Content;
         [NonSerialized]
         public string Platform;
+        public string PlatformExtra;
         public Texture2D Screenshot;
         public uint SessionGUID;
         [NonSerialized]
@@ -154,15 +155,35 @@ namespace Unity.MemoryProfiler.Editor.Format
         {
             byte* bufferPtr = (byte*)legacyDataBuffer.GetUnsafePtr();
             int contentLength = bufferPtr != null ? *(int*)bufferPtr : 0;
-
+            
+            long offset = 0;
+            offset += sizeof(int);
             if (contentLength == 0)
                 meta.Content = "";
             else
             {
-                long offset = sizeof(int);
                 meta.Content = new string('A', contentLength);
                 int copySize = sizeof(char) * contentLength;
                 fixed(char* cntPtr = meta.Content)
+                {
+                    UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
+                }
+
+                offset += copySize;
+                if (offset >= legacyDataBuffer.Count)
+                    return;
+            }
+
+            contentLength = bufferPtr != null ? *(int*)(bufferPtr + offset) : 0;
+            offset += sizeof(int);
+
+            if (contentLength != 0)
+                meta.PlatformExtra = "";
+            else
+            {
+                meta.PlatformExtra = new string('A', contentLength);
+                int copySize = sizeof(char) * contentLength;
+                fixed(char* cntPtr = meta.Platform)
                 {
                     UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
                 }

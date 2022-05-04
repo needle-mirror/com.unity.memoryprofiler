@@ -295,7 +295,10 @@ namespace Unity.MemoryProfiler.Editor
 
             m_OpenSnapshots.OpenSnapshot(snapshot);
             if (!isCloseEvent)
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.LoadedSnapshotEvent());
+            {
+                var snapshotDetails = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(snapshot);
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.LoadedSnapshotEvent() {success = snapshot.GuiData.ProductName == Application.productName, openSnapshotDetails = snapshotDetails, unityVersionOfSnapshot = snapshot.GuiData.UnityVersion, runtimePlatform = snapshot.GuiData.RuntimePlatform});
+            }
             //}
             //catch (Exception e)
             //{

@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using System;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -14,6 +15,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
+#if !REMOVE_VIEW_HISTORY
     // These events are only logged for saving the view state when a selection is made or before a new view is opened
     // They are used for restoring the view state when going backwards, they will no be shown in a history log (hidden) and:
     // History navigation will read them to restore the view state when going backwards but otherwise skip them
@@ -26,7 +28,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
         public StateChangeType ChangeType { get; set; }
     }
-
     // Stores everything needed to reopen the view to what it was after it was opened the first time,
     // before manually applying filters or manually selection items.
     internal abstract class ViewOpenHistoryEvent : HistoryEvent
@@ -34,6 +35,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public UIState.BaseMode Mode;
         public abstract ViewStateChangedHistoryEvent ViewStateChangeRestorePoint { get; }
     }
+#endif
 
     /// <summary>
     /// Keeps a time-line of events that may be revisited on demand.
@@ -92,6 +94,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !REMOVE_VIEW_HISTORY
         public bool presentEventIsFollowedByViewChange
         {
             get
@@ -100,6 +103,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     && stateChange.ChangeType == ViewStateChangedHistoryEvent.StateChangeType.FiltersChanged;
             }
         }
+#endif
 
         public void AddEvent(HistoryEvent e)
         {
@@ -158,6 +162,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return null;
         }
 
+#if !REMOVE_VIEW_HISTORY
         internal ViewStateChangedHistoryEvent GetLastViewStateChangeEvent()
         {
             for (int i = events.Count - (1 + backCount); i >= 0; i--)
@@ -218,11 +223,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             return null;
         }
 
+#endif
         protected int GetCurrent()
         {
             return events.Count - 1 - backCount;
         }
 
+#if !REMOVE_VIEW_HISTORY
         void PrintHistory()
         {
             string strOut = "";
@@ -232,6 +239,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             UnityEngine.Debug.Log(strOut);
         }
+
+#endif
 
         public void SetCurrentSelectionEvent(SelectionEvent historySelectionEvent)
         {

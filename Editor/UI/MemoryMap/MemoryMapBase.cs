@@ -121,12 +121,13 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     }
                 }
             }
+
             int m_Count;
             public int Count => m_Count;
             ulong[] m_Addresses;
             public ulong Address(int index) => m_Addresses[index];
 
-            public void Preload() { }
+            public void Preload() {}
 
             ulong[] m_Sizes;
             public ulong Size(int index) => m_Sizes[index];
@@ -247,7 +248,12 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             {
                 m_Material = new Material(Shader.Find(m_MaterialName));
                 m_Material.hideFlags = HideFlags.HideAndDontSave;
-#if UNITY_2021_1_OR_NEWER
+#if UNITY_2022_2_OR_NEWER
+                m_Material.SetFloat("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                m_Material.SetFloat("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                m_Material.SetFloat("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+                m_Material.SetFloat("_ZWrite", 0);
+#elif UNITY_2021_1_OR_NEWER
                 m_Material.SetInteger("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
                 m_Material.SetInteger("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
                 m_Material.SetInteger("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
@@ -394,7 +400,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             var lastRow = (long)(group.RowsOffset + rowInGroupMin + rowDelta);
 
             int texelBegin = (int)firstRow * m_Texture.width + texelX0;
-            int texelEnd = Math.Max( (int)lastRow * m_Texture.width + texelX1, texelBegin + 1); // min size of 1 pixel
+            int texelEnd = Math.Max((int)lastRow * m_Texture.width + texelX1, texelBegin + 1);  // min size of 1 pixel
 
             for (int x = texelBegin; x < texelEnd; x++)
             {
@@ -421,7 +427,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             var lastRow = (long)(group.RowsOffset + rowInGroupMin + rowDelta);
 
             int texelBegin = (int)firstRow * m_Texture.width + texelX0;
-            int texelEnd = Math.Max( (int)lastRow * m_Texture.width + texelX1, texelBegin + 1); // min size of 1 pixel
+            int texelEnd = Math.Max((int)lastRow * m_Texture.width + texelX1, texelBegin + 1);  // min size of 1 pixel
 
             for (int x = texelBegin; x < texelEnd; x++)
             {
@@ -623,6 +629,10 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             {
                 for (int i = 0; i < m_TextureSlots.Length; ++i)
                     UnityEngine.Object.DestroyImmediate(m_TextureSlots[i]);
+            }
+            if (m_Material != null)
+            {
+                UnityEngine.Object.DestroyImmediate(m_Material);
             }
         }
     }

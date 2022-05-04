@@ -4,7 +4,7 @@ using System.Reflection;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
-#if UNITY_2021_1_OR_NEWER
+#if UNITY_2021_2_OR_NEWER
 using UnityEditor.Search;
 #endif
 using UnityEngine;
@@ -73,7 +73,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
 
-#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
+#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
             // Initialize quick search
             using var context = SearchService.CreateContext(providerIds: new[] { k_SearchProviderIdScene, k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
             using var search = SearchService.Request(context, SearchFlags.Synchronous);
@@ -178,7 +178,7 @@ namespace Unity.MemoryProfiler.Editor
             return new Findings() { FailReason = SearchFailReason.NotFound };
         }
 
-#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE // conditionally depend on Quick search package
+#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE // conditionally depend on Quick search package
         static Findings FindAsset(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
             var searchString = ConstructSearchString(unifiedUnityObjectInfo);
@@ -318,7 +318,7 @@ namespace Unity.MemoryProfiler.Editor
 
 #endif
 
-#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
+#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
         static Findings FindSceneObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
             if (snapshot.HasSceneRootsAndAssetbundles)
@@ -508,7 +508,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             if (selectedUnityObject.IsAsset)
                 return TextContent.SearchInProjectButton;
-#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
+#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
             return new GUIContent("Search in Editor");
 #else
             return null;
@@ -530,7 +530,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static void OpenQuickSearch(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
         {
-#if UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
+#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
             // possible fall-back if Case 1400665 is never backported to 2021.1, or if we need something like this in earlier Unity versions with the package.
             //var providerIds = selectedUnityObject.IsSceneObject? new[]{ k_SearchProviderIdScene } : new[]{ k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase };
 

@@ -8,7 +8,8 @@ namespace Unity.MemoryProfiler.Editor.UI
     internal class RibbonButton : Button
     {
         bool m_Toggled;
-        public bool Toggled {
+        public bool Toggled
+        {
             get { return m_Toggled; }
             set
             {
@@ -20,22 +21,48 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        string m_CachedOriginalTooltip;
+
         public const string StyleClass = "ribbon__button";
         public const string StyleClassToggled = "ribbon__button--toggled";
         public RibbonButton()
         {
             AddToClassList(StyleClass);
+            Init();
+        }
+
+        /// <summary>
+        /// Sets the Buttons enabled state and if a disablingTooltipReason is passed, it is set as the tool-tip on disabling and will restore the old tooltip on re-enabling later.
+        /// </summary>
+        /// <param name="enabled"></param>
+        /// <param name="disablingTooltipReason">Provide a non-null, non-empty-string reason even when enabling to confirm that the tool-tip should be restored to what it was before toggling the enabled status off.</param>
+        public void SetButtonEnabled(bool enabled, string disablingTooltipReason = null)
+        {
+            if (!string.IsNullOrEmpty(disablingTooltipReason))
+            {
+                if (!enabled)
+                {
+                    m_CachedOriginalTooltip = tooltip;
+                    tooltip = disablingTooltipReason;
+                }
+                else if (!enabledSelf)
+                {
+                    tooltip = m_CachedOriginalTooltip;
+                }
+            }
+
+            SetEnabled(enabled);
         }
 
         void Init()
         {
-
+            m_CachedOriginalTooltip = tooltip;
         }
 
         /// <summary>
         /// Instantiates a <see cref="Ribbon"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<RibbonButton, UxmlTraits> { }
+        public new class UxmlFactory : UxmlFactory<RibbonButton, UxmlTraits> {}
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="RibbonButton"/>.

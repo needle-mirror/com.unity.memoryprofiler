@@ -114,6 +114,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ErrorCount.Label = m_Root.Q<Label>("top-ten-issues-section__header__message-bubbles__error-count");
             m_ErrorCount.Icon = m_Root.Q("top-ten-issues-section__header__message-bubbles__error-icon");
 
+            var foldout = m_Root.Q<Foldout>("top-ten-issues-section__header__foldout");
+
+            foldout.RegisterValueChangedCallback((evt) =>
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                    evt.newValue ? MemoryProfilerAnalytics.PageInteractionType.AllTopIssuesWasRevealed : MemoryProfilerAnalytics.PageInteractionType.AllTopIssuesWasHidden));
+
             ClearContent();
         }
 

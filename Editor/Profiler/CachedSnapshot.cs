@@ -530,6 +530,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     InstanceID = instanceId;
                 }
+
                 public void AddChild(int instanceId)
                 {
                     var child = new TransformTree(instanceId);
@@ -541,7 +542,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     foreach (var instanceId in instanceIds)
                     {
-                        if(instanceId == Parent.InstanceID) continue;
+                        if (instanceId == Parent.InstanceID) continue;
                         var child = new TransformTree(instanceId);
                         child.Parent = this;
                         Children.Add(child);
@@ -643,7 +644,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public void GenerateGameObjectData(CachedSnapshot snapshot)
             {
-                AllRootGameObjectInstanceIds = new DynamicArray<int>(AllRootTransformInstanceIds.Count,Allocator.Persistent);
+                AllRootGameObjectInstanceIds = new DynamicArray<int>(AllRootTransformInstanceIds.Count, Allocator.Persistent);
                 for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
                 {
                     AllRootGameObjectInstanceIds[i] = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, AllRootTransformInstanceIds[i]);
@@ -1173,7 +1174,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public string[] TypeDescriptionName;
             public string[] Assembly;
-#if !UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
+#if !UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
             public string[] UniqueCurrentlyAvailableUnityAssemblyNames;
 #endif
             public int[][] FieldIndices;
@@ -1353,7 +1354,7 @@ namespace Unity.MemoryProfiler.Editor
                         fieldIndicesOwnedStatic[i] = fieldProcessingBuffer.ToArray();
 
                         var typeIndex = typeDescriptionEntries.TypeIndex[i];
-                        if (DerivesFrom(typeIndex, ITypeUnityObject))
+                        if (DerivesFromUnityObject(typeIndex))
                             UnityObjectTypeIndexToNativeTypeIndex.Add(typeIndex, -1);
                         else
                             PureCSharpTypeIndices.Add(typeIndex);
@@ -1401,7 +1402,7 @@ namespace Unity.MemoryProfiler.Editor
                 ITypeUnityScriptableObject = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_UnityScriptableObjectTypeName)];
                 ITypeUnityComponent = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_UnityComponentObjectTypeName)];
 
-#if !UNITY_2021_1_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
+#if !UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
                 var uniqueCurrentlyAvailableUnityAssemblyNames = new List<string>();
                 var assemblyHashSet = new HashSet<string>();
                 foreach (var assembly in Assembly)
@@ -1427,10 +1428,23 @@ namespace Unity.MemoryProfiler.Editor
 #endif
             }
 
-            public bool DerivesFrom(int iTypeDescription, int potentialBase)
+            public bool DerivesFromUnityObject(int iTypeDescription)
+            {
+                while (iTypeDescription != ITypeUnityObject && iTypeDescription >= 0)
+                {
+                    if (HasFlag(iTypeDescription, TypeFlags.kArray))
+                        return false;
+                    iTypeDescription = BaseOrElementTypeIndex[iTypeDescription];
+                }
+                return iTypeDescription == ITypeUnityObject;
+            }
+
+            public bool DerivesFrom(int iTypeDescription, int potentialBase, bool excludeArrayElementBaseTypes)
             {
                 while (iTypeDescription != potentialBase && iTypeDescription >= 0)
                 {
+                    if (excludeArrayElementBaseTypes && HasFlag(iTypeDescription, TypeFlags.kArray))
+                        return false;
                     iTypeDescription = BaseOrElementTypeIndex[iTypeDescription];
                 }
 

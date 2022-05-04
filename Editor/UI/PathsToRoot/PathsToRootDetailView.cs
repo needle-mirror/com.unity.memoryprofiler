@@ -69,7 +69,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         EditorCoroutine m_EditorCoroutine;
         RibbonButton m_RawConnectionButton;
         RibbonButton m_ReferencesToButton;
-        Ribbon m_Ribobn;
+        Ribbon m_Ribbon;
 
         long m_CurrentSelection;
 
@@ -103,13 +103,17 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             m_ReferencesToTree = new PathsToRootDetailTreeViewItem();
             SetupDepthsFromParentsAndChildren(m_ReferencesToTree);
 
-            m_Ribobn = ribbon;
-            m_RawConnectionButton = m_Ribobn.Q<RibbonButton>("raw-connections");
-            m_ReferencesToButton = m_Ribobn.Q<RibbonButton>("referencing-to");
+            m_Ribbon = ribbon;
+            m_RawConnectionButton = m_Ribbon.Q<RibbonButton>("raw-connections");
+            m_ReferencesToButton = m_Ribbon.Q<RibbonButton>("referencing-to");
             m_RawConnectionButton.text = $"Referenced By ({m_RawReferenceTree.children.Count})";
-            m_Ribobn.Clicked += RibbonClicked;
+            m_Ribbon.Clicked += RibbonClicked;
             m_ReferencesToButton.text = $"References To ()";
             m_ActiveTree = ActiveTree.RawReferences;
+
+            multiColumnHeaderWithTruncateTypeName.TruncationChangedViaThisHeader += (truncate) =>
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
+                    truncate ? MemoryProfilerAnalytics.ReferencePanelInteractionType.TypeNameTruncationWasEnabled : MemoryProfilerAnalytics.ReferencePanelInteractionType.TypeNameTruncationWasDisabled);
 
             Reload();
         }
@@ -117,7 +121,17 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         void RibbonClicked(int idx)
         {
             m_ActiveTree = (ActiveTree)idx;
+            // end any pending Interaction event
+            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
+            var startAnalyitcs = m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowNone;
+            if (startAnalyitcs)
+            {
+                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInReferencesPanel>(new MemoryProfilerAnalytics.InteractionsInReferencesPanel() { viewName = m_ActiveTree.ToString() });
+                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
+            }
             Reload();
+            if (startAnalyitcs)
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = m_ActiveTree.ToString()});
         }
 
         void OnTruncateStateChanged()
@@ -227,6 +241,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
             if (m_CurrentSelection != -1)
             {
+                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
+                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInReferencesPanel>(new MemoryProfilerAnalytics.InteractionsInReferencesPanel() { viewName = m_ActiveTree.ToString() });
                 if (CurrentSelection.CachedSnapshot != null && !CurrentSelection.CachedSnapshot.Valid)
                 {
                     Debug.LogError($"a {nameof(PathsToRootDetailView)} was leaked");
@@ -238,6 +254,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
             else
             {
+                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
                 NoObject(m_CachedSnapshot, ref m_RawReferenceTree);
                 NoObject(m_CachedSnapshot, ref m_ReferencesToTree);
                 Reload();
@@ -872,7 +889,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     if (pathsToRootDetailTreeViewItem.IsRoot(m_CachedSnapshot))
                     {
                         var size = GUI.skin.label.CalcSize(new GUIContent(text));
-                        GUI.DrawTexture(new Rect(typeNameRect.x + size.x, typeNameRect.y, 20,20), Styles.SceneIcon.image);
+                        GUI.DrawTexture(new Rect(typeNameRect.x + size.x, typeNameRect.y, 20, 20), Styles.SceneIcon.image);
                     }
                 }
                 break;
@@ -964,6 +981,17 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             if (objIdx == -1)
                 return;
             SelectionChangedEvt(new MemorySampleSelection(m_UIStateHolder.UIState, objIdx, item[0].id, m_CachedSnapshot));
+
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
+                MemoryProfilerAnalytics.ReferencePanelInteractionType.SelectionInTableWasUsed);
+        }
+
+        protected override void ExpandedStateChanged()
+        {
+            base.ExpandedStateChanged();
+
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
+                MemoryProfilerAnalytics.ReferencePanelInteractionType.TreeViewElementWasExpanded);
         }
 
         protected override bool CanMultiSelect(TreeViewItem item)
@@ -973,13 +1001,14 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         public void OnDisable()
         {
+            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
             MemoryProfilerSettings.TruncateStateChanged -= OnTruncateStateChanged;
         }
 
-        public void ClearSelection()
+        public void ClearSecondarySelection()
         {
             SetSelection(new List<int>());
-            SelectionChangedEvt(new MemorySampleSelection(m_UIStateHolder.UIState, m_CurrentSelection, -1, m_CachedSnapshot));
+            SelectionChangedEvt(MemorySampleSelection.InvalidSecondarySelection);
         }
     }
 }

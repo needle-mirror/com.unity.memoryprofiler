@@ -73,6 +73,14 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string InvalidObjectPleaseReportABugMessage = PleaseReportABugMessage + " Please attach this snapshot, info on how to find this object in the snapshot, and a project to reproduce this with.";
 
         public static readonly string TruncateTypeName = "Truncate Managed Type Names";
+        public static readonly string TreeMapNotAvailableInDiffTooltip = "Tree Map is not available when Comparing Snapshots";
+
+        public static readonly string CopyToClipboardButtonTooltip = "Copy To Clipboard";
+        public static readonly string CopyTitleToClipboardContextClickItem = "Copy {0}";
+        public static readonly string CopyButtonDropdownOptionFullTitle = "Full Title";
+        public static readonly string CopyButtonDropdownOptionObjectName = "Object Name";
+        public static readonly string CopyButtonDropdownOptionManagedTypeName = "Managed Type Name";
+        public static readonly string CopyButtonDropdownOptionNativeTypeName = "Native Type Name";
 
         public static string TrackedMemoryDescription => "This stat represents the total amount of memory that is tracked by Unity, split into the amount that is actively used by allocations and memory that is reserved for further allocations.\n\n" + k_TrackingGaps + k_TrackedMemoryDescriptionEnd;
         static string k_TrackedMemoryDescriptionEnd = "\n\nEverything else can be analyzed with this Memory Profiler. The Memory Usage Overview provides a rough indication of which area may be of interest for further analysis. The 'Reserved' but unused part can be examined on the Fragmentation page.";
@@ -201,7 +209,13 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string IndexHelp = "manual/index.html";
         public const string OpenSnapshotsPane = LatestPackageVersionBaseUrl + WorkbenchHelp + k_AnchorChar + "open-snapshots-pane";
         public const string AnalysisWindowHelp = LatestPackageVersionBaseUrl + "manual/main-view.html";
+#if UNITY_2022_3_OR_NEWER || UNITY_2023_2_OR_NEWER
+        public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Unity.Profiling.Memory.CaptureFlags.html";
+#elif UNITY_2022_2_OR_NEWER || UNITY_2023_1_OR_NEWER
+        public const string CaptureFlagsHelp = "https://docs.unity3d.com/2022.2/Documentation/ScriptReference/Unity.Profiling.Memory.CaptureFlags.html";
+#else
         public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Profiling.Memory.Experimental.CaptureFlags.html";
+#endif
         public const string Requirements = LatestPackageVersionBaseUrl + IndexHelp + k_AnchorChar + "requirements";
 
         public const string UntrackedMemoryDocumentation = LatestPackageVersionBaseUrl + IndexHelp + k_AnchorChar + "known-limitations";

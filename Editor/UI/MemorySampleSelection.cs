@@ -83,6 +83,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (!Valid)
                 return null;
+            if (uiState.CurrentViewMode == UIState.ViewMode.ShowFirst)
+                return (uiState.FirstMode as UIState.SnapshotMode).snapshot;
+
             switch (uiState.FirstSnapshotAge)
             {
                 case SnapshotAge.None:
@@ -147,7 +150,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Table = "Path To Root";
             Rank = MemorySampleSelectionRank.SecondarySelection;
 
-            ItemIndex = snapshot.UnifiedObjectIndexToNativeObjectIndex(unifiedObjectIndexFromPathToRoots);
+            ItemIndex = snapshot?.UnifiedObjectIndexToNativeObjectIndex(unifiedObjectIndexFromPathToRoots) ?? -1;
             if (ItemIndex != -1)
             {
                 Type = MemorySampleSelectionType.NativeObject;
@@ -155,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else
             {
-                ItemIndex = snapshot.UnifiedObjectIndexToManagedObjectIndex(unifiedObjectIndexFromPathToRoots);
+                ItemIndex = snapshot?.UnifiedObjectIndexToManagedObjectIndex(unifiedObjectIndexFromPathToRoots) ?? -1;
                 if (ItemIndex != -1)
                 {
                     Type = MemorySampleSelectionType.ManagedObject;
@@ -234,8 +237,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 Type = MemorySampleSelectionType.NativeObject;
 
-                var instanceId = GetValue<int>(displayTable, rowIndex, "instanceId");
-                if (snapshot.NativeObjects.instanceId2Index.ContainsKey(instanceId))
+                var instanceId = GetValue<int>(displayTable, rowIndex, "instanceId", out var success);
+                if (success && snapshot.NativeObjects.instanceId2Index.ContainsKey(instanceId))
                     ItemIndex = snapshot.NativeObjects.instanceId2Index[instanceId];
                 else
                     ItemIndex = -1;
@@ -289,7 +292,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else if (Table.Contains("CallstackSymbol"))
             {
                 Type = MemorySampleSelectionType.Symbol;
-                var symbol = GetValue<ulong>(displayTable, rowIndex, "symbol");
+                var symbol = GetValue<ulong>(displayTable, rowIndex, "symbol", out _);
 
                 if (symbol == 0)
                     ItemIndex = -1;
@@ -327,7 +330,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else if (Table.Contains("RawRootReference"))
             {
                 Type = MemorySampleSelectionType.Allocation;
-                var id = GetValue<long>(displayTable, rowIndex, "id");
+                var id = GetValue<long>(displayTable, rowIndex, "id", out _);
 
                 if (id == 0)
                     ItemIndex = -1;
@@ -356,7 +359,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else if (Table.Contains("NativeTypeBase"))
             {
                 Type = MemorySampleSelectionType.NativeType;
-                ItemIndex = GetValue<int>(displayTable, rowIndex, "typeIndex");
+                ItemIndex = GetValue<int>(displayTable, rowIndex, "typeIndex", out var success);
                 // TODO: maybe needs special treatment for the selection? Currently not getting it assuming Type info will include base Type info.
             }
             else if (Table.Contains("NativeType"))
@@ -381,7 +384,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else if (Table.Contains("ManagedType"))
             {
                 Type = MemorySampleSelectionType.ManagedType;
-                ItemIndex = GetValue<int>(displayTable, rowIndex, "typeIndex");
+                ItemIndex = GetValue<int>(displayTable, rowIndex, "typeIndex", out var success);
                 //var typeName = GetName(displayTable, rowIndex);
 
                 //if (string.IsNullOrEmpty(typeName))
@@ -401,15 +404,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             else if (Table.Contains("NativeConnection"))
             {
                 Type = MemorySampleSelectionType.Connection;
-                var from = GetValue<int>(displayTable, rowIndex, "from");
-                var to = GetValue<int>(displayTable, rowIndex, "to");
-
-                for (long i = 0; i < snapshot.TypeDescriptions.Count; i++)
+                var from = GetValue<int>(displayTable, rowIndex, "from", out var success);
+                if (success)
                 {
-                    if (snapshot.Connections.From[i] == from && snapshot.Connections.To[i] == to)
+                    var to = GetValue<int>(displayTable, rowIndex, "to", out success);
+
+                    for (long i = 0; i < snapshot.TypeDescriptions.Count; i++)
                     {
-                        ItemIndex = i;
-                        break;
+                        if (snapshot.Connections.From[i] == from && snapshot.Connections.To[i] == to)
+                        {
+                            ItemIndex = i;
+                            break;
+                        }
                     }
                 }
             }
@@ -443,7 +449,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             return new MemorySampleSelection(MemorySampleSelectionType.NativeType, nativeTypeIndex);
         }
-        
+
         public static MemorySampleSelection FromManagedObjectIndex(long managedObjectIndex)
         {
             return new MemorySampleSelection(MemorySampleSelectionType.ManagedObject, managedObjectIndex);
@@ -452,6 +458,93 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static MemorySampleSelection FromManagedTypeIndex(long managedTypeIndex)
         {
             return new MemorySampleSelection(MemorySampleSelectionType.ManagedType, managedTypeIndex);
+        }
+
+        public string GetTypeStringForAnalytics(CachedSnapshot snapshot)
+        {
+            if (ItemIndex < 0)
+            {
+                return $"Invalid {Type}";
+            }
+            else
+            {
+                switch (Type)
+                {
+                    case MemorySampleSelectionType.NativeObject:
+                        return GetTypeStringForAnalyticsFromNativeObject(ItemIndex, snapshot);
+                    case MemorySampleSelectionType.ManagedObject:
+                        return GetTypeStringForAnalyticsFromManagedObject(ItemIndex, snapshot);
+
+                    case MemorySampleSelectionType.UnifiedObject:
+                        var managedObjectIndex = snapshot.UnifiedObjectIndexToManagedObjectIndex(ItemIndex);
+                        if (managedObjectIndex >= 0)
+                            return GetTypeStringForAnalyticsFromManagedObject(managedObjectIndex, snapshot);
+                        else
+                            return GetTypeStringForAnalyticsFromNativeObject(snapshot.UnifiedObjectIndexToNativeObjectIndex(ItemIndex), snapshot);
+
+                    case MemorySampleSelectionType.NativeType:
+                        return GetTypeStringForAnalyticsFromNativeType(ItemIndex, snapshot);
+                    case MemorySampleSelectionType.ManagedType:
+                        return GetTypeStringForAnalyticsFromManagedType(ItemIndex, snapshot);
+
+                    case MemorySampleSelectionType.None:
+                    case MemorySampleSelectionType.Allocation:
+                    case MemorySampleSelectionType.AllocationSite:
+                    case MemorySampleSelectionType.AllocationCallstack:
+                    case MemorySampleSelectionType.NativeRegion:
+                    case MemorySampleSelectionType.ManagedRegion:
+                    case MemorySampleSelectionType.Allocator:
+                    case MemorySampleSelectionType.Label:
+                    case MemorySampleSelectionType.Connection:
+                    case MemorySampleSelectionType.HighlevelBreakdownElement:
+                    case MemorySampleSelectionType.Symbol:
+                        return Type.ToString();
+                    default:
+                        // If you hit this, consider if the new selection type should send some more type info to Analytics.
+                        throw new NotImplementedException();
+                }
+            }
+        }
+
+        static string GetTypeStringForAnalyticsFromNativeObject(long nativeObjectIndex, CachedSnapshot snapshot)
+        {
+            var nativeTypeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex];
+            if (nativeTypeIndex >= 0)
+                return $"{nameof(MemorySampleSelectionType.NativeObject)} of Type: {snapshot.NativeTypes.TypeName[nativeTypeIndex]}";
+            else
+                return $"Invalid {nameof(MemorySampleSelectionType.NativeObject)} for NativeObject";
+        }
+
+        static string GetTypeStringForAnalyticsFromManagedObject(long managedObjectIndex, CachedSnapshot snapshot)
+        {
+            var managedType = snapshot.CrawledData.ManagedObjects[managedObjectIndex].ITypeDescription;
+            if (managedType >= 0)
+            {
+                int nativeTypeIndex;
+                if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue((int)managedType, out nativeTypeIndex))
+                {
+                    return $"{nameof(MemorySampleSelectionType.ManagedObject)} of Unity Type based on: {snapshot.NativeTypes.TypeName[nativeTypeIndex]}";
+                }
+                else
+                    return $"{nameof(MemorySampleSelectionType.ManagedObject)} of Non-Unity Type";
+            }
+            return $"Invalid {nameof(MemorySampleSelectionType.ManagedType)}  for {nameof(MemorySampleSelectionType.ManagedObject)} ";
+        }
+
+        static string GetTypeStringForAnalyticsFromNativeType(long nativeTypeIndex, CachedSnapshot snapshot)
+        {
+            return $"{nameof(MemorySampleSelectionType.NativeType)}: {snapshot.NativeTypes.TypeName[nativeTypeIndex]}";
+        }
+
+        static string GetTypeStringForAnalyticsFromManagedType(long managedTypeIndex, CachedSnapshot snapshot)
+        {
+            int nativeTypeIndex;
+            if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue((int)managedTypeIndex, out nativeTypeIndex))
+            {
+                return $"{nameof(MemorySampleSelectionType.ManagedType)} based on Unity Type: {snapshot.NativeTypes.TypeName[nativeTypeIndex]}";
+            }
+            else
+                return $"{nameof(MemorySampleSelectionType.ManagedType)} Non-Unity";
         }
 
         public long FindSelectionInTable(UIState uiState, Table displayTable)
@@ -486,8 +579,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         var instanceId2 = snapshot.NativeObjects.InstanceId[ItemIndex];
                         return FindValue<int>(displayTable, instanceId2, "instanceId", m_SnapshotAge);
                     }
-                    var instanceId = GetValue<int>(displayTable, RowIndex, "instanceId");
-                    if (snapshot.NativeObjects.instanceId2Index.ContainsKey(instanceId) &&
+                    var instanceId = GetValue<int>(displayTable, RowIndex, "instanceId, ", out var success);
+                    if (success && snapshot.NativeObjects.instanceId2Index.ContainsKey(instanceId) &&
                         ItemIndex == snapshot.NativeObjects.instanceId2Index[instanceId])
                         return RowIndex;
                     else if (ItemIndex >= 0 && snapshot.NativeObjects.Count > ItemIndex)
@@ -526,7 +619,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
 
                     var uid = snapshot.NativeObjectIndexToUnifiedObjectIndex(ItemIndex);
-                    if (GetValue<long>(displayTable, RowIndex, "Index") == uid)
+                    if (GetValue<long>(displayTable, RowIndex, "Index", out var success) == uid && success)
                         return RowIndex;
                     return FindValue<long>(displayTable, uid, "Index");
                 }
@@ -580,7 +673,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         return FindValue(displayTable, symbol, "symbol", m_SnapshotAge);
                     }
 
-                    if (GetValue<ulong>(displayTable, RowIndex, "symbol") == symbol)
+                    if (GetValue<ulong>(displayTable, RowIndex, "symbol", out var success) == symbol && success)
                         return RowIndex;
                     else
                         return FindValue(displayTable, symbol, "symbol");
@@ -614,7 +707,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         return FindValue(displayTable, id, "id", m_SnapshotAge);
                     }
 
-                    if (id == GetValue<long>(displayTable, RowIndex, "id"))
+                    if (id == GetValue<long>(displayTable, RowIndex, "id", out var success) && success)
                         return RowIndex;
                     else
                         return FindValue(displayTable, id, "id");
@@ -647,7 +740,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
 
                     // TODO: maybe needs special treatment for the selection? Currently not getting it assuming Type info will include base Type info.
-                    if (ItemIndex == GetValue<int>(displayTable, RowIndex, "typeIndex"))
+                    if (ItemIndex == GetValue<int>(displayTable, RowIndex, "typeIndex", out var success) && success)
                         return RowIndex;
                     else
                         return FindValue(displayTable, ItemIndex, "typeIndex");
@@ -682,10 +775,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                         return FindValue(displayTable, ItemIndex, "typeIndex", m_SnapshotAge);
                     }
 
-                    if (ItemIndex == GetValue<int>(displayTable, RowIndex, "typeIndex"))
+                    if (ItemIndex == GetValue<int>(displayTable, RowIndex, "typeIndex", out var success) && success)
                         return RowIndex;
                     // If the Type was e.g. selected in Tree Map, the RowIndex will be -1 but if one opens the correct Type table without filtering, it's RowIndex == TypeIndex
-                    if (ItemIndex == GetValue<int>(displayTable, ItemIndex, "typeIndex"))
+                    if (ItemIndex == GetValue<int>(displayTable, ItemIndex, "typeIndex", out success) && success)
                         return ItemIndex;
                     return FindValue(displayTable, ItemIndex, "typeIndex");
                 }
@@ -696,24 +789,27 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     var fromToFind = snapshot.Connections.From[ItemIndex];
                     var toToFind = snapshot.Connections.To[ItemIndex];
-                    var from = GetValue<int>(displayTable, RowIndex, "from");
-                    var to = GetValue<int>(displayTable, RowIndex, "to");
-                    if (from == fromToFind && to == toToFind)
-                        return RowIndex;
-                    var rowCount = displayTable.GetRowCount();
-
-                    for (long i = 0; i < rowCount; i++)
+                    var from = GetValue<int>(displayTable, RowIndex, "from", out var success);
+                    if (success)
                     {
-                        if (diffModeIsShown)
+                        var to = GetValue<int>(displayTable, RowIndex, "to", out success);
+                        if (from == fromToFind && to == toToFind && success)
+                            return RowIndex;
+                        var rowCount = displayTable.GetRowCount();
+
+                        for (long i = 0; i < rowCount; i++)
                         {
-                            var diffValue = GetValue<DiffTable.DiffResult>(displayTable, i, k_DiffColumnName);
-                            if (diffColumnValue != diffValue)
-                                continue;
+                            if (diffModeIsShown)
+                            {
+                                var diffValue = GetValue<DiffTable.DiffResult>(displayTable, i, k_DiffColumnName, out success);
+                                if (!success && diffColumnValue != diffValue)
+                                    continue;
+                            }
+                            from = GetValue<int>(displayTable, i, "from", out success);
+                            to = GetValue<int>(displayTable, i, "to", out var succesTo);
+                            if (success && succesTo && from == fromToFind && to == toToFind)
+                                return i;
                         }
-                        from = GetValue<int>(displayTable, i, "from");
-                        to = GetValue<int>(displayTable, i, "to");
-                        if (from == fromToFind && to == toToFind)
-                            return i;
                     }
                 }
             }
@@ -743,7 +839,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 // TODO: fix for Table diff, this is very brute force
 
-                var diff = GetValue<DiffTable.DiffResult>(displayTable, rowIndex, k_DiffColumnName);
+                var diff = GetValue<DiffTable.DiffResult>(displayTable, rowIndex, k_DiffColumnName, out var success);
+                if (!success)
+                    return null;
                 switch (diff)
                 {
                     case DiffTable.DiffResult.Deleted:
@@ -925,10 +1023,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             return rowIndex;
         }
 
-        static T GetValue<T>(Table displayTable, long rowIndex, string columnName) where T : unmanaged, IComparable
+        static T GetValue<T>(Table displayTable, long rowIndex, string columnName, out bool success) where T : unmanaged, IComparable
         {
             var col = displayTable.GetColumnByName(columnName);
             T value = default;
+            success = false;
+            if (rowIndex < 0)
+                return value;
             var typedCol = col as ColumnTyped<T>;
             if (displayTable.GetRowCount() > rowIndex)
             {
@@ -950,6 +1051,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     while (!TryParse<T>(rowText, ref value) && --rowIndex >= 0);
                 }
             }
+            success = rowIndex >= 0 && displayTable.GetRowCount() > rowIndex;
             return value;
         }
 

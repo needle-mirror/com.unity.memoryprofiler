@@ -135,6 +135,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             hierarchy.Add(m_Foldout);
             m_Foldout.Q("unity-content").AddToClassList(Styles.FoldoutContentClass);
             m_Foldout.value = false;
+            m_Foldout.RegisterValueChangedCallback((evt) =>
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                    evt.newValue ? MemoryProfilerAnalytics.PageInteractionType.ATopIssueWasRevealed : MemoryProfilerAnalytics.PageInteractionType.ATopIssueWasHidden));
+
             this.Q<Toggle>("", "unity-foldout__toggle").AddToClassList(Styles.FoldoutToggleClass);
 
             m_DetailsLabel = new Label();
@@ -157,12 +161,18 @@ namespace Unity.MemoryProfiler.Editor.UI
         void Investigate()
         {
             if (m_InvestigateAction != null)
+            {
                 m_InvestigateAction();
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                    MemoryProfilerAnalytics.PageInteractionType.ATopIssueInvestigateButtonWasClicked);
+            }
         }
 
         void OpenDocumentation()
         {
             Application.OpenURL(DocumentationLink);
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                MemoryProfilerAnalytics.PageInteractionType.ATopIssueDocumentationButtonWasClicked);
         }
 
         void Init(string messageText, string details = null, IssueLevel issueLevel = IssueLevel.Warning, float priority = 10f, string documentationLink = null, Action investigateAction = null)

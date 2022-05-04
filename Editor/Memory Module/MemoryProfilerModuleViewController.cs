@@ -45,9 +45,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         }
 
         MemoryProfilerModuleOverride m_OverrideMemoryProfilerModule;
-
-        /*MemoryProfilerModule*/
-        object m_MemoryModule;
+        
         // all UI Element and similar references should be grouped into this class.
         // Since the things this reference get recreated every time the module is selected, these references shouldn't linger beyond the Dispose()
         UIState m_UIState = null;
@@ -61,7 +59,6 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             public Label DetailedMenuLabel;
             public UnityEngine.UIElements.Button InstallPackageButton;
             public VisualElement EditorWarningLabel;
-            public VisualElement DetailedToolbarSection;
             public PackagedMemoryUsageBreakdown TopLevelBreakdown;
             public PackagedMemoryUsageBreakdown Breakdown;
             // if no memory counter data is available (i.e. the recording is from a pre 2020.2 Unity version) this whole section can't be populated with info
@@ -92,10 +89,9 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         IConnectionState m_ConnectionState;
 
-        public MemoryProfilerModuleViewController(ProfilerWindow profilerWindow, MemoryProfilerModuleOverride overrideModule, /*MemoryProfilerModule*/ object memoryModule) : base(profilerWindow)
+        public MemoryProfilerModuleViewController(ProfilerWindow profilerWindow, MemoryProfilerModuleOverride overrideModule) : base(profilerWindow)
         {
             profilerWindow.SelectedFrameIndexChanged += UpdateContent;
-            m_MemoryModule = memoryModule;
             m_OverrideMemoryProfilerModule = overrideModule;
 
             // MemoryUsageBreakdown APIs currently expect to work with 2 sets of data for snapshots diffing
@@ -145,8 +141,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
                 var frameIndex = ProfilerWindow.selectedFrameIndex;
                 var dataAvailable = CheckMemoryStatsAvailablity(frameIndex);
                 m_UIState.DetailedMenuLabel.text = "Simple";
-
-                UIElementsHelper.SetVisibility(m_UIState.DetailedToolbarSection, false);
+                
                 if (dataAvailable)
                 {
                     m_UIState.ViewArea.Add(m_UIState.SimpleView);
@@ -162,7 +157,6 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             else
             {
                 m_UIState.DetailedMenuLabel.text = "Detailed";
-                UIElementsHelper.SetVisibility(m_UIState.DetailedToolbarSection, true);
                 // Detailed View doesn't differentiate between there being frame data or not because
                 // 1. Clear doesn't clear out old snapshots so there totally could be data here
                 // 2. Take Snapshot also doesn't require there to be any frame data
@@ -278,18 +272,12 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
                         if (!m_UIState.CounterBasedUI.visible)
                             UIElementsHelper.SetVisibility(m_UIState.CounterBasedUI, true);
-
-                        var platformSpecifics = m_MemoryModule.GetPlatformSpecificText(data, ProfilerWindow);
-                        if (!string.IsNullOrEmpty(platformSpecifics))
-                        {
-                            m_SimplePaneStringBuilder.Append(platformSpecifics);
-                        }
                     }
                     else
                     {
                         if (m_UIState.CounterBasedUI.visible)
                             UIElementsHelper.SetVisibility(m_UIState.CounterBasedUI, false);
-                        m_SimplePaneStringBuilder.Append(m_MemoryModule.GetSimpleMemoryPaneText(data, ProfilerWindow, false));
+                        m_SimplePaneStringBuilder.Append($"Please disable the Memory Profiler UI override in Preferences to view legacy data ('{MemoryProfilerSettings.MemoryProfilerPackageOverridesMemoryModuleUI}').");
                     }
 
                     if (m_SimplePaneStringBuilder.Length > 0)
@@ -327,8 +315,6 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             m_UIState = new UIState();
 
             var toolbar = root.Q("memory-module__toolbar");
-            m_UIState.DetailedToolbarSection = toolbar.Q("memory-module__toolbar__detailed-controls");
-
             m_UIState.DetailedMenu = toolbar.Q<UnityEngine.UIElements.Button>("memory-module__toolbar__detail-view-menu");
             m_UIState.DetailedMenuLabel = m_UIState.DetailedMenu.Q<Label>("memory-module__toolbar__detail-view-menu__label");
             var menu = new GenericMenu();
@@ -338,13 +324,6 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             {
                 menu.DropDown(UIElementsHelper.GetRect(m_UIState.DetailedMenu));
             };
-
-            var takeCapture = toolbar.Q<UnityEngine.UIElements.Button>("memory-module__toolbar__take-sample-button");
-            takeCapture.clicked += () => m_MemoryModule.TakeCapture();
-
-            var gatherObjectReferencesToggle = toolbar.Q<Toggle>("memory-module__toolbar__gather-references-toggle");
-            gatherObjectReferencesToggle.RegisterValueChangedCallback((evt) => m_MemoryModule.SetGatherObjectReferences(evt.newValue));
-            gatherObjectReferencesToggle.SetValueWithoutNotify(m_MemoryModule.GetGatherObjectReferences());
 
             var installPackageButton = toolbar.Q<UnityEngine.UIElements.Button>("memory-module__toolbar__install-package-button");
 
@@ -393,8 +372,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
             m_UIState.Text = m_UIState.SimpleView.Q<TextField>("memory-module__simple-area__label");
 
-            var detailedView = m_UIState.ViewArea.Q<IMGUIContainer>("memory-module__detaile-snapshot-area");// new IMGUIContainer();
-            detailedView.onGUIHandler = () => m_MemoryModule.DrawDetailedMemoryPane();
+            var detailedView = m_UIState.ViewArea.Q<VisualElement>("memory-module__detailed-snapshot-area");
             m_UIState.DetailedView = detailedView;
 
             m_UIState.NoDataView = m_UIState.ViewArea.Q("memory-module__no-frame-data__area");

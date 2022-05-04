@@ -20,6 +20,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             Summary = 0,
             Breakdowns,
+            TreeMap,
             ObjectsAndAllocations,
             Fragmentation,
         }
@@ -36,6 +37,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         Ribbon m_Ribbon;
 
         MemoryUsageSummary m_MemoryUsageSummary;
+        bool[] m_MemorySummaryUnfoldingStatePerPage = new bool[(int)AnalysisPage.Fragmentation + 1];
         VisualElement m_MemoryUsageSummaryRoot;
         TopIssues m_TopIssues;
 
@@ -78,9 +80,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_DataLoaded = m_AnalysisWindow.Q("analysis-window--data-loaded");
 
-            m_Ribbon = m_AnalysisWindow.Q<Ribbon>("snapshot-window__ribbon__container");
-            m_Ribbon.Clicked += RibbonButtonClicked;
-            m_Ribbon.HelpClicked += () => Application.OpenURL(DocumentationUrls.AnalysisWindowHelp);
+            m_Ribbon = m_AnalysisWindow.Q<Ribbon>("analysis-window__ribbon__container");
+            m_Ribbon.Clicked += (i) => RibbonButtonClicked(i);
+            m_Ribbon.HelpClicked += () =>
+            {
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                    MemoryProfilerAnalytics.PageInteractionType.DocumentationOpened);
+                Application.OpenURL(DocumentationUrls.AnalysisWindowHelp);
+            };
 
             m_ToolbarExtension = new Toolbar();
 
@@ -105,10 +112,17 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             memoryProfilerWindow.UIStateChanged += m_OldHistoryLogic.OnUIStateChanged;
 
-            m_MemoryUsageSummaryRoot = m_AnalysisWindow.Q("MemoryUsageSummary");
+            m_MemoryUsageSummaryRoot = m_AnalysisWindow.Q("analysis-window__memory-usage-summary");
             m_MemoryUsageSummary = new MemoryUsageSummary(m_MemoryUsageSummaryRoot, memoryProfilerWindow);
             memoryProfilerWindow.UIState.SelectionChanged += m_MemoryUsageSummary.OnSelectionChanged;
             m_MemoryUsageSummary.SelectionChangedEvt += memoryProfilerWindow.UIState.RegisterSelectionChangeEvent;
+            m_MemorySummaryUnfoldingStatePerPage[0] = true;
+            for (int i = 0; i < m_MemorySummaryUnfoldingStatePerPage.Length; i++)
+            {
+                SessionState.SetBool($"Unity.MemoryProfiler.Editor.MemoryUsageSummaryFoldoutState.{(AnalysisPage)i}", m_MemoryUsageSummary.FoldoutState);
+            }
+
+            m_MemoryUsageSummary.Foldout.RegisterValueChangedCallback(OnMemoryUsageSummaryFoldoutStateChanged);
 
             m_TopIssues = new TopIssues(m_AnalysisWindow.Q("top-ten-issues-section"));
 
@@ -116,14 +130,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_ViewPane.Clear();
 
-            // TODO: Implement Summary Pane
+            m_SummaryPane = new SummaryPane(memoryProfilerWindow, m_OldViewLogic);
 
-            //m_SummaryPane = new SummaryPane(m_MemoryProfilerWindow.UIState, m_OldViewLogic);
-
-            //m_ViewPane.Add(m_SummaryPane.VisualElements[0]);
+            m_ViewPane.Add(m_SummaryPane.VisualElements[0]);
 
             memoryProfilerWindow.UIState.SelectionChanged += OnSelectionChanged;
-            RibbonButtonClicked(0);
+            RibbonButtonClicked(0, true);
+
+            memoryProfilerWindow.UIStateChanged += OnUIStateChanged;
+            OnUIStateChanged(memoryProfilerWindow.UIState);
+        }
+
+        void OnMemoryUsageSummaryFoldoutStateChanged(ChangeEvent<bool> evt)
+        {
+            // store Foldout state
+            m_MemorySummaryUnfoldingStatePerPage[(int)m_CurrentPage] = m_MemoryUsageSummary.FoldoutState;
+            SessionState.SetBool($"Unity.MemoryProfiler.Editor.MemoryUsageSummaryFoldoutState.{m_CurrentPage}", m_MemoryUsageSummary.FoldoutState);
         }
 
         void OnSelectionChanged(MemorySampleSelection selection)
@@ -132,17 +154,36 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ActiveViewPane.OnSelectionChanged(selection);
         }
 
-        void RibbonButtonClicked(int index)
+        void RibbonButtonClicked(int index, bool forceUpdate = false)
         {
-            m_CurrentPage = (AnalysisPage)index;
+            var newPage = (AnalysisPage)index;
+            if (!forceUpdate && m_CurrentPage == newPage)
+                return;
+            var updateViewAnalytics = m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowNone && (!forceUpdate || index == 0);
+            if (updateViewAnalytics)
+                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedPageEvent>();
+            var oldPage =   m_CurrentPage;
+            m_CurrentPage = newPage;
+            // restore foldout state
+            m_MemoryUsageSummary.FoldoutState = m_MemorySummaryUnfoldingStatePerPage[(int)m_CurrentPage];
             switch (m_CurrentPage)
             {
                 case AnalysisPage.Summary:
+                    // force foldout open for summary because it's empty otherwise
+                    m_MemoryUsageSummary.FoldoutState = true;
                     SwitchToSummaryView();
                     break;
 
                 case AnalysisPage.Breakdowns:
+                    if (oldPage == AnalysisPage.TreeMap)
+                        TearDownViewController();
                     SwitchToObjectsView();
+                    break;
+
+                case AnalysisPage.TreeMap:
+                    if (oldPage == AnalysisPage.Breakdowns)
+                        TearDownViewController();
+                    SwitchToTreeMapView();
                     break;
 
                 case AnalysisPage.ObjectsAndAllocations:
@@ -154,17 +195,29 @@ namespace Unity.MemoryProfiler.Editor.UI
                     SwitchToFragmentationView();
                     break;
             }
+
+            if (updateViewAnalytics)
+            {
+                var viewName = forceUpdate ? "Summary(Default)" : m_CurrentPage.ToString();
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedPageEvent() { viewName = viewName });
+                // Stop Collecting interaction events for the old page and send them off
+                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
+                // Start collecting interaction events for this page
+                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInPage>(new MemoryProfilerAnalytics.InteractionsInPage() { viewName = viewName });
+            }
+            else
+            {
+                // if no snpashot is open, try ending any interaction events
+                // Stop Collecting interaction events for the old page and send them off
+                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
+            }
         }
 
         void SwitchToSummaryView()
         {
             if (m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowNone)
             {
-                if (m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowDiff)
-                    m_OldViewLogic.OpenTreeMap(null);
-                else
-                    // Diff Tree Map not yet implemented
-                    m_OldViewLogic.OpenDefaultTable();
+                m_OldViewLogic.OpenSummary(null, false);
             }
         }
 
@@ -172,6 +225,23 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowNone)
                 m_OldViewLogic.OpenDefaultTable();
+        }
+
+        void SwitchToTreeMapView()
+        {
+            if (m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowNone)
+            {
+                if (m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowDiff)
+                    m_OldViewLogic.OpenTreeMap(null);
+                else
+                {
+                    if (m_ObjectBreakdownsViewController == null)
+                    {
+                        m_ObjectBreakdownsViewController = new FeatureUnavailableViewController("This feature is not available when comparing snapshots. Please switch from Compare mode to Single mode in the Snapshot Panel on the left.");
+                        SetupViewControllerView();
+                    }
+                }
+            }
         }
 
         void SwitchToFragmentationView()
@@ -192,15 +262,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_ObjectBreakdownsViewController != null)
                 return;
 
-            // Hide the summary view.
-            UIElementsHelper.SetVisibility(m_MemoryUsageSummaryRoot, false);
-
-            // Hide the legacy view pane.
-            UIElementsHelper.SetVisibility(m_ViewPane, false);
-
-            // Hide the top issues.
-            m_TopIssues.SetVisibility(false);
-
 #if UNITY_2022_1_OR_NEWER
             var snapshot = m_UIStateHolder.UIState.snapshotMode?.snapshot;
             if (snapshot != null)
@@ -216,6 +277,19 @@ namespace Unity.MemoryProfiler.Editor.UI
 #else
             m_ObjectBreakdownsViewController = new FeatureUnavailableViewController($"This feature is not available in Unity {Application.unityVersion}. Please use Unity 2022.1 or newer.");
 #endif
+            SetupViewControllerView();
+        }
+
+        void SetupViewControllerView()
+        {
+            // Hide the summary view.
+            UIElementsHelper.SetVisibility(m_MemoryUsageSummaryRoot, false);
+
+            // Hide the legacy view pane.
+            UIElementsHelper.SetVisibility(m_ViewPane, false);
+
+            // Hide the top issues.
+            m_TopIssues.SetVisibility(false);
             // Add the view controller's view to the hierarchy.
             m_DataLoaded.Add(m_ObjectBreakdownsViewController.View);
         }
@@ -229,23 +303,38 @@ namespace Unity.MemoryProfiler.Editor.UI
             Recrate(viewPane);
         }
 
+        void OnUIStateChanged(UIState newState)
+        {
+            newState.ModeChanged -= OnModeChanged;
+            newState.ModeChanged += OnModeChanged;
+            OnModeChanged(newState.CurrentMode, newState.CurrentViewMode);
+        }
+
+        void OnModeChanged(UIState.BaseMode newMode, UIState.ViewMode newViewMode)
+        {
+            RibbonButtonClicked((int)m_CurrentPage, true);
+        }
+
+        void TearDownViewController()
+        {
+            // Show the legacy view pane.
+            UIElementsHelper.SetVisibility(m_ViewPane, true);
+
+            // Show the summary view.
+            UIElementsHelper.SetVisibility(m_MemoryUsageSummaryRoot, true);
+
+            // Destroy the objects view controller if it has been loaded.
+            if (m_ObjectBreakdownsViewController != null)
+            {
+                m_ObjectBreakdownsViewController.Dispose();
+                m_ObjectBreakdownsViewController = null;
+            }
+        }
+
         void Recrate(ViewPane viewPane)
         {
             // Hacking in an exit point for the Object-Breakdowns view controller architecture in the existing structure, until we can address wider architecture problems.
-            {
-                // Show the legacy view pane.
-                UIElementsHelper.SetVisibility(m_ViewPane, true);
-
-                // Show the summary view.
-                UIElementsHelper.SetVisibility(m_MemoryUsageSummaryRoot, true);
-
-                // Destroy the objects view controller if it has been loaded.
-                if (m_ObjectBreakdownsViewController != null)
-                {
-                    m_ObjectBreakdownsViewController.Dispose();
-                    m_ObjectBreakdownsViewController = null;
-                }
-            }
+            TearDownViewController();
 
             m_ActiveViewPane = viewPane;
             if (viewPane == null)
@@ -292,21 +381,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
                     m_Ribbon.CurrentOption = (int)AnalysisPage.Fragmentation;
                 }
+                else if (viewPane is SummaryPane)
+                {
+                    m_Ribbon.CurrentOption = (int)AnalysisPage.Summary;
+                }
                 else
                 {
-                    var isFallbackSummaryPage = (m_UIStateHolder.UIState.diffMode != null && viewPane is SpreadsheetPane && (viewPane as SpreadsheetPane).ViewName == "Diff All Objects");
-                    if (viewPane is TreeMapPane || isFallbackSummaryPage)
+                    if (viewPane is TreeMapPane)
                     {
-                        if (isFallbackSummaryPage)
-                        {
-                            m_ViewPane.Add(m_ViewSelectionUI);
-                            if (m_CurrentPage == AnalysisPage.Summary)
-                                m_Ribbon.CurrentOption = (int)AnalysisPage.Summary;
-                            else
-                                m_Ribbon.CurrentOption = (int)AnalysisPage.ObjectsAndAllocations;
-                        }
-                        else
-                            m_Ribbon.CurrentOption = (int)AnalysisPage.Summary;
+                        m_Ribbon.CurrentOption = (int)AnalysisPage.TreeMap;
                     }
                     else
                     {
@@ -349,6 +432,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                         m_TopIssues.InitializeIssues(snapshotA, snapshotB);
                 }
             }
+        }
+
+        public void OnDisable()
+        {
+            m_MemoryUsageSummary.Foldout.UnregisterValueChangedCallback(OnMemoryUsageSummaryFoldoutStateChanged);
+            m_CurrentPage = AnalysisPage.Summary;
+            m_ViewPane.Clear();
         }
     }
 }

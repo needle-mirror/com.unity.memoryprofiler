@@ -2,6 +2,7 @@ using UnityEngine;
 using System;
 using Unity.MemoryProfiler.Editor.UI;
 using UnityEngine.UIElements;
+using Unity.MemoryProfiler.Editor.Format;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -223,21 +224,21 @@ namespace Unity.MemoryProfiler.Editor
             {
                 case UIState.ViewMode.ShowDiff:
                     if (First != null)
-                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, false);
+                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode);
                     if (Second != null)
-                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, false);
+                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode);
                     break;
                 case UIState.ViewMode.ShowFirst:
                     if (First != null)
-                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, true);
+                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode);
                     if (Second != null)
-                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, false);
+                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode);
                     break;
                 case UIState.ViewMode.ShowSecond:
                     if (First != null)
-                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, false);
+                        First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode);
                     if (Second != null)
-                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, true);
+                        Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode);
                     break;
                 default:
                     break;
@@ -284,7 +285,15 @@ namespace Unity.MemoryProfiler.Editor
 
                     m_UIState.DiffLastAndCurrentSnapshot(First.GuiData.UtcDateTime.CompareTo(Second.GuiData.UtcDateTime) < 0, First.GuiData.SessionName != UIContentData.TextContent.UnknownSession && First.GuiData.SessionId == Second.GuiData.SessionId);
 
-                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.DiffedSnapshotEvent());
+                    var crossSessionDiff = First.GuiData.SessionId == MetaData.InvalidSessionGUID || Second.GuiData.SessionId == First.GuiData.SessionId;
+                    var snapshotAInfo = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(First);
+                    var snapshotBInfo = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(Second);
+                    if (First.GuiData.RuntimePlatform == Second.GuiData.RuntimePlatform)
+                    {
+                        snapshotAInfo |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SamePlatformAsDiff;
+                        snapshotBInfo |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SamePlatformAsDiff;
+                    }
+                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.DiffedSnapshotEvent() { sameSessionDiff = !crossSessionDiff, captureInfoA = snapshotAInfo, captureInfoB = snapshotBInfo });
                 }
                 catch (Exception)
                 {
@@ -317,11 +326,11 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (First != null)
             {
-                First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode, true);
+                First.GuiData.SetCurrentState(true, true, m_OpenSnapshotsPane.CompareMode);
             }
             if (Second != null)
             {
-                Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode, false);
+                Second.GuiData.SetCurrentState(true, false, m_OpenSnapshotsPane.CompareMode);
             }
         }
 

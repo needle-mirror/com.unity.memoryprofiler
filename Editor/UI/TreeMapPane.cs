@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor;
@@ -6,10 +7,11 @@ using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Database.View;
 using Unity.MemoryProfiler.Editor.UI.Treemap;
 using Unity.MemoryProfiler.Editor.UIContentData;
+using System.Collections;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class TreeMapPane : ViewPane
+    internal class TreeMapPane : ViewPane, IDisposable
     {
         public override string ViewName { get { return TextContent.TreeMapView.text; } }
 
@@ -21,6 +23,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         CodeType m_CurrentCodeType = CodeType.Unknown;
 
+#if !REMOVE_VIEW_HISTORY
         internal class ViewStateHistory : ViewStateChangedHistoryEvent
         {
             public readonly DatabaseSpreadsheet.State SpreadsheetState;
@@ -144,6 +147,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     && (ViewStateChangeRestorePoint != null || ViewStateChangeRestorePoint.Equals(hEvt.ViewStateChangeRestorePoint));
             }
         }
+#endif
 
         public CodeType CurrentCodeType
         {
@@ -218,19 +222,35 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !REMOVE_VIEW_HISTORY
         public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose || m_Spreadsheet.ViewStateFilteringChangedSinceLastSelectionOrViewClose;
         bool m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+#endif
 
         public TreeMapPane(IUIStateHolder s, IViewPaneEventListener l)
             : base(s, l)
         {
-            m_TreeMap = new UI.Treemap.TreeMapView(s.UIState.snapshotMode.snapshot);
-            m_TreeMap.Setup();
-            m_TreeMap.OnClickItem = OnClickItem;
-            m_TreeMap.OnClickGroup = OnClickGroup;
-            m_TreeMap.OnOpenItem = OnOpenItem;
+            EditorCoroutines.Editor.EditorCoroutineUtility.StartCoroutine(GenerateTreeMap(s), s);
+        }
 
+        IEnumerator GenerateTreeMap(IUIStateHolder s)
+        {
+            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.GenerateViewEvent>();
+            ProgressBarDisplay.ShowBar("Generating Tree Map");
+            var treeMap = new UI.Treemap.TreeMapView(s.UIState.snapshotMode.snapshot);
+            ProgressBarDisplay.UpdateProgress(0.2f, "Setting up Tree Map");
+            yield return null;
+            treeMap.Setup();
+            treeMap.OnClickItem = OnClickItem;
+            treeMap.OnClickGroup = OnClickGroup;
+            treeMap.OnOpenItem = OnOpenItem;
+
+            ProgressBarDisplay.UpdateProgress(0.9f, "Finishing up Tree Map");
+            yield return null;
+            m_TreeMap = treeMap;
             ShowAllObjects(default(Treemap.ObjectMetric), false);
+            ProgressBarDisplay.ClearBar();
+            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.GenerateViewEvent() { viewName = "TreeMap" });
         }
 
         public void ShowAllObjects(Treemap.ObjectMetric itemCopyToSelect, bool focus, ObjectMetricType filter = ObjectMetricType.None)
@@ -306,6 +326,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !REMOVE_VIEW_HISTORY
         public override UI.ViewOpenHistoryEvent GetOpenHistoryEvent()
         {
             return new History(this);
@@ -319,6 +340,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             stateEvent.ChangeType = ViewStateChangedHistoryEvent.StateChangeType.FiltersChanged;
             return stateEvent;
         }
+
+#endif
 
         public void OnClickItem(Treemap.Item a, bool record)
         {
@@ -387,8 +410,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var metricTypeName = metric.GetTypeName();
                     ObjectDataType dataType = ObjectData.FromManagedObjectIndex(m_UIState.snapshotMode.snapshot, metric.ObjectIndex).dataType;
 
+#if !REMOVE_VIEW_HISTORY
                     m_ViewStateFilteringChangedSinceLastSelectionOrViewClose |= SetTypeFilter(metricTypeName, dataType);
-
+#endif
                     if (m_CurrentTableTypeFilter == metricTypeName)
                     {
                         var builder = new Database.View.Where.Builder("Index", Database.Operation.Operator.Equal, new Database.Operation.Expression.MetaExpression(metric.GetObjectUID().ToString(), true));
@@ -407,9 +431,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     metricTypeName = metric.GetTypeName();
                     var instanceId = m_UIState.snapshotMode.snapshot.NativeObjects.InstanceId[metric.ObjectIndex];
-
+#if !REMOVE_VIEW_HISTORY
                     m_ViewStateFilteringChangedSinceLastSelectionOrViewClose |= SetTypeFilter(metricTypeName, ObjectDataType.NativeObject);
-
+#endif
                     if (m_CurrentTableTypeFilter == metricTypeName)
                     {
                         var builder = new Database.View.Where.Builder("NativeInstanceId", Database.Operation.Operator.Equal, new Database.Operation.Expression.MetaExpression(instanceId.ToString(), true));
@@ -474,7 +498,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_Spreadsheet.SetDefaultSortFilter(sizeColumn, Database.Operation.SortOrder.Descending, true))
                 changed = true;
 
+#if !REMOVE_VIEW_HISTORY
             m_ViewStateFilteringChangedSinceLastSelectionOrViewClose |= changed;
+#endif
             return changed;
         }
 
@@ -583,7 +609,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (selectionEvent.Selection.ItemIndex <= 0)
                         return;
 
+#if !REMOVE_VIEW_HISTORY
                     var lastDirtyState = ViewStateFilteringChangedSinceLastSelectionOrViewClose;
+#endif
                     string typeName;
                     var cs = (m_UIState.CurrentMode as UIState.SnapshotMode).snapshot;
                     if (selectionEvent.Selection.Type == MemorySampleSelectionType.ManagedType)
@@ -605,6 +633,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         m_EventListener.OnRepaint();
                     }
 
+#if !REMOVE_VIEW_HISTORY
                     // The History event is not recorded but the view might think it's dirty afterwards,
                     // but these changes where part of the history already, so no need to restore them
                     if (!lastDirtyState && ViewStateFilteringChangedSinceLastSelectionOrViewClose)
@@ -612,6 +641,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
                         m_Spreadsheet.ViewStateIsCleaned();
                     }
+#endif
                     return;
                 }
                 else
@@ -633,7 +663,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                             dataType = ObjectData.FromManagedObjectIndex(m_UIState.snapshotMode.snapshot, (int)selectionEvent.Selection.ItemIndex).dataType;
                         else
                             dataType = ObjectDataType.NativeObject;
+#if !REMOVE_VIEW_HISTORY
                         m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+#endif
                         m_Spreadsheet.ViewStateIsCleaned();
                     }
                     m_Spreadsheet.RestoreSelectedRow(selectionEvent.Selection.FindSelectionInTable(m_UIState, m_Spreadsheet.DisplayTable));
@@ -727,6 +759,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_EventListener.OnRepaint();
         }
 
+#if !REMOVE_VIEW_HISTORY
         public void OpenHistoryEvent(History e, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
         {
             if (e == null) return;
@@ -738,6 +771,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
             m_EventListener.OnRepaint();
         }
+
+#endif
 
         void OnUserChangedSpreadsheetFilters()
         {
@@ -759,17 +794,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OpenHistoryEventImmediate(DelayedEventOpeningCache e)
         {
+#if !REMOVE_VIEW_HISTORY
             if (e.EventToOpen != null)
                 e.EventToOpen.Restore(this, e.ViewStateToRestore, e.SelectionEvent, e.SelectionIsLatent);
-            else if (e.SelectionEvent != null)
-                SetSelectionFromHistoryEvent(e.SelectionEvent);
+            else
+#endif
             m_EventToOpenNextDraw = null;
+            if (e.SelectionEvent != null)
+                SetSelectionFromHistoryEvent(e.SelectionEvent);
         }
 
         class DelayedEventOpeningCache
         {
             public History EventToOpen = null;
+#if !REMOVE_VIEW_HISTORY
             public ViewStateChangedHistoryEvent ViewStateToRestore = null;
+#endif
             public SelectionEvent SelectionEvent = null;
             public bool SelectionIsLatent;
         }
@@ -785,6 +825,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override void OnGUI(Rect r)
         {
+            if (m_TreeMap == null)
+                return;
             InitializeIfNeeded();
 
             if (m_UIState.HotKey.m_CameraFocus.IsTriggered())
@@ -811,6 +853,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OnGUISpreadsheet(Rect r)
         {
+            if (m_TreeMap == null)
+                return;
+
             if (m_Spreadsheet != null)
             {
                 GUILayout.BeginArea(r);
@@ -872,7 +917,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case MemorySampleSelectionType.Connection:
                 case MemorySampleSelectionType.HighlevelBreakdownElement:
                 default:
-                    if (selection.Rank == MemorySampleSelectionRank.MainSelection && m_TreeMap != null)
+                    if (selection.Rank == MemorySampleSelectionRank.MainSelection && m_TreeMap != null && (selection.Valid || m_UIStateHolder.UIState.CurrentMode != null))
                     {
                         m_TreeMap.ClearSelection();
                         m_Spreadsheet.ClearSelection();
@@ -884,6 +929,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override void OnClose()
         {
+        }
+
+        public void Dispose()
+        {
+            //Let this be cleaned up by GC later. reconstructing it is just too expensive
             m_TreeMap.CleanupMeshes();
             m_TreeMap = null;
             m_Spreadsheet = null;

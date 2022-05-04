@@ -14,6 +14,12 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "Unity",
+            "expression": "2022.2.0a13",
+            "define": "MEMORY_PROFILER_API_PUBLIC"
+        }
+    ],
     "noEngineReferences": false
 }

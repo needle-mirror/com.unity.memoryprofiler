@@ -5,15 +5,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     class FeatureUnavailableViewController : ViewController
     {
-        const string k_UxmlAssetGuid = "1944351f5c342df42b601336568b179f";
-        const string k_UssAssetGuid = "f04268068498c2c45bb35e7ed40b5254";
         const string k_UxmlIdentifier_DescriptionLabel = "feature-unavailable-view__description-label";
 
         // Data.
         readonly string m_Description;
 
         // View.
-        Label m_DescriptionLabel;
+        InfoBox m_InfoBox;
 
         public FeatureUnavailableViewController(string description)
         {
@@ -22,28 +20,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override VisualElement LoadView()
         {
-            var uxmlAssetPath = AssetDatabase.GUIDToAssetPath(k_UxmlAssetGuid);
-            var uxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlAssetPath);
-            var view = uxml.CloneTree();
-            view.style.flexGrow = 1;
+            var infobox = new InfoBox() { name = k_UxmlIdentifier_DescriptionLabel };
+            infobox.IssueLevel = IssueLevel.Info;
+            infobox.Message = m_Description;
 
-            // Unity 2019 does not support the <Style> element, so we must load the USS manually.
-            var ussAssetPath = AssetDatabase.GUIDToAssetPath(k_UssAssetGuid);
-            var uss = AssetDatabase.LoadAssetAtPath<StyleSheet>(ussAssetPath);
-            view.styleSheets.Add(uss);
-
-            return view;
+            return infobox;
         }
 
         protected override void ViewLoaded()
         {
             GatherViewReferences();
-            m_DescriptionLabel.text = m_Description;
+            m_InfoBox.Message = m_Description;
         }
 
         void GatherViewReferences()
         {
-            m_DescriptionLabel = View.Q<Label>(k_UxmlIdentifier_DescriptionLabel);
+            m_InfoBox = View.Q<InfoBox>(k_UxmlIdentifier_DescriptionLabel);
         }
     }
 }

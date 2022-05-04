@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -29,6 +30,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public static readonly  GUIContent ColorSchemeLabel = new GUIContent("Color scheme");
         }
 
+#if !REMOVE_VIEW_HISTORY
         internal class ViewStateHistory : ViewStateChangedHistoryEvent
         {
             public readonly MemoryMapPane.TableDisplayMode TableDisplay;
@@ -101,6 +103,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return ReferenceEquals(this, hEvt);
             }
         }
+#endif
         MemoryMap.MemoryMap m_MemoryMap;
 
         UI.DatabaseSpreadsheet m_Spreadsheet;
@@ -170,8 +173,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !REMOVE_VIEW_HISTORY
         public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose;
         bool m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+#endif
 
         GUIContent[] m_DisplayElementsList = null;
 
@@ -275,7 +280,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void OnSelectRegions(ulong minAddr, ulong maxAddr)
         {
+#if !REMOVE_VIEW_HISTORY
             if (minAddr != 0 && maxAddr != 0) m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = true;
+#endif
             var lr = new Database.LinkRequestTable();
             lr.LinkToOpen = new Database.TableLink();
 
@@ -315,6 +322,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !REMOVE_VIEW_HISTORY
         public override UI.ViewOpenHistoryEvent GetOpenHistoryEvent()
         {
             return new History(this);
@@ -332,6 +340,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             (history as History).Restore(this, reopen, viewStateToRestore, selectionEvent, selectionIsLatent);
         }
+
+#endif
 
         void OpenLinkRequest(Database.LinkRequestTable link, bool focus)
         {

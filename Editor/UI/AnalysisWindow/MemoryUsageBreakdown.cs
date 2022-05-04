@@ -42,16 +42,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     ascending[i] = controlGroups[i].Q<VisualElement>(ElementAndStyleNames.Ascending);
                     descending[i] = controlGroups[i].Q<VisualElement>(ElementAndStyleNames.Descending);
-                    var idx = i;
-                    controlGroups[i].RegisterCallback<MouseDownEvent>((x) =>
-                    {
-                        if (x.button == 0)
-                        {
-                            OnSorted.Invoke(idx, reverse);
-                            reverse = !reverse;
-                            SetElementState(idx, reverse);
-                        }
-                    });
+                    // TODO: Make visible again and re-add the sorting callback after redesign.
+                    UIElementsHelper.SetVisibility(ascending[i], false);
+                    UIElementsHelper.SetVisibility(descending[i], false);
+
+                    //var idx = i;
+                    //controlGroups[i].RegisterCallback<MouseDownEvent>((x) =>
+                    //{
+                    //    if (x.button == 0)
+                    //    {
+                    //        OnSorted.Invoke(idx, reverse);
+                    //        reverse = !reverse;
+                    //        SetElementState(idx, reverse);
+                    //    }
+                    //});
                 }
             }
 
@@ -59,10 +63,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 for (int i = 0; i < controlGroups.Length; i++)
                 {
-                    ascending[i].RemoveFromClassList(ElementAndStyleNames.AscendingEnabled);
-                    descending[i].RemoveFromClassList(ElementAndStyleNames.DecendingEnabled);
-                    ascending[i].AddToClassList(ElementAndStyleNames.AscendingDisabled);
-                    descending[i].AddToClassList(ElementAndStyleNames.DecendingDisabled);
+                    ascending[i].SwitchClasses(classToAdd: ElementAndStyleNames.AscendingDisabled, classToRemove: ElementAndStyleNames.AscendingEnabled);
+                    descending[i].SwitchClasses(classToAdd: ElementAndStyleNames.DecendingDisabled, classToRemove: ElementAndStyleNames.DecendingEnabled);
                 }
             }
 
@@ -71,13 +73,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ClearStates();
                 if (reverse)
                 {
-                    ascending[idx].RemoveFromClassList(ElementAndStyleNames.AscendingDisabled);
-                    ascending[idx].AddToClassList(ElementAndStyleNames.AscendingEnabled);
+                    ascending[idx].SwitchClasses(classToAdd: ElementAndStyleNames.AscendingEnabled, classToRemove: ElementAndStyleNames.AscendingDisabled);
                 }
                 else
                 {
-                    descending[idx].RemoveFromClassList(ElementAndStyleNames.DecendingDisabled);
-                    descending[idx].AddToClassList(ElementAndStyleNames.DecendingEnabled);
+                    descending[idx].SwitchClasses(classToAdd: ElementAndStyleNames.DecendingEnabled, classToRemove: ElementAndStyleNames.DecendingDisabled);
                 }
             }
         }
@@ -122,12 +122,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             public static readonly string MemorySummaryCategoryUnknown = "background-color__memory-summary-category__unknown";
             public static readonly string MemoryUsageBreakdownLegendNameAndColor = "memory-usage-breakdown__legend__name-and-color";
             public static readonly string BreakDownBars = "memory-usage-breakdown__Bars";
-            public const string ColumnAControls = "memory-usage-breakdown__legend__header-column-a-controls";
+            public const string ColumnAControls = "memory-usage-breakdown__legend-table-column-a-controls";
             public const string ColumnBControls = "memory-usage-breakdown__legend-table-column-b-controls";
             public const string DiffColumnControls = "memory-usage-breakdown__legend-table-diff-column-controls";
             public static readonly string ColorBoxUnused = "memory-usage-breakdown__legend__color-box__unused";
             public static readonly string LegendUsedReserved = "memory-usage-breakdown__legend__used-reserved";
             public static readonly string HeaderIcon = "memory-usage-breakdown__legend__head-icon";
+            public const string EmptySpaceHolder = "emptyspaceholder";
+            public const string EmptySpaceHolderDiffModeClass = "legend__table-empty-space-holder";
+            public const string EmptySpaceHolderNonDiffModeClass = "legend__table-empty-space-holder--non-diff";
+            public const string ColumnAHeaderNonDiffModeClass = "legend__table-column-controls--non-diff";
+            public const string ColumnAHeaderDiffModeClass = "legend__table-column-controls";
         }
 
         public string HeaderText { get; private set; }
@@ -183,6 +188,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_UnknownRoot;
         Label[] m_UnknownRowColumnSize = new Label[2];
         Label m_UnknownRowDiffColumnSize;
+        VisualElement m_EmptySpaceHolderCategoryNameHeader;
+        VisualElement m_EmptySpaceColumnAHeader;
 
         ulong[] m_UnknownSize = new ulong[2];
         private bool[] m_UnknownUnknown = new bool[2];
@@ -251,6 +258,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_HeaderName = header.Q<Label>(ElementAndStyleNames.HeaderTitle);
             m_HeaderSize[0] = header.Q<Label>(ElementAndStyleNames.HeaderSize);
 
+            m_EmptySpaceHolderCategoryNameHeader = m_Root.Q(ElementAndStyleNames.EmptySpaceHolder);
+            m_EmptySpaceColumnAHeader = m_Root.Q(ElementAndStyleNames.ColumnAControls);
+
             header = m_Root.Q<VisualElement>(ElementAndStyleNames.HeaderB);
             m_HeaderSize[1] = header.Q<Label>(ElementAndStyleNames.HeaderSize);
 
@@ -267,7 +277,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UnknownBar[1].RegisterClickEvent(OnSelectedUnkown);
             m_UnknownBar[1].RegisterCallback<MouseEnterEvent>(OnMouseEnterUnkown);
             m_UnknownBar[1].RegisterCallback<MouseLeaveEvent>(OnMouseLeaveUnkown);
-            m_SortControls = new SortControl(m_Root.Q(ElementAndStyleNames.ColumnAControls), m_Root.Q(ElementAndStyleNames.ColumnBControls), m_Root.Q(ElementAndStyleNames.DiffColumnControls), SortElements);
+            m_SortControls = new SortControl(m_EmptySpaceColumnAHeader, m_Root.Q(ElementAndStyleNames.ColumnBControls), m_Root.Q(ElementAndStyleNames.DiffColumnControls), SortElements);
             Setup();
 
             m_KnownParts[0] = m_Content.Q<VisualElement>(ElementAndStyleNames.MemoryUsageBarA).Q<VisualElement>(ElementAndStyleNames.MemoryUsageBarKnownParts);
@@ -327,6 +337,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void SetBAndDiffVisibility(bool visibility)
         {
+            m_EmptySpaceHolderCategoryNameHeader.SwitchClasses(
+                classA: ElementAndStyleNames.EmptySpaceHolderDiffModeClass,
+                classB: ElementAndStyleNames.EmptySpaceHolderNonDiffModeClass,
+                addARemoveB: visibility);
+            m_EmptySpaceColumnAHeader.SwitchClasses(
+                classA: ElementAndStyleNames.ColumnAHeaderDiffModeClass,
+                classB: ElementAndStyleNames.ColumnAHeaderNonDiffModeClass,
+                addARemoveB: visibility);
             UIElementsHelper.SetVisibility(m_Root.Q(ElementAndStyleNames.HeaderIcon), visibility);
             UIElementsHelper.SetVisibility(m_MemoryUsageTable.Q(ElementAndStyleNames.LegendTableSnapshotBColumn), visibility);
             UIElementsHelper.SetVisibility(m_MemoryUsageTable.Q(ElementAndStyleNames.LegendTableDiffColumn), visibility);
@@ -560,7 +578,15 @@ namespace Unity.MemoryProfiler.Editor.UI
         void SetupElements()
         {
             ClearColumns();
-
+            bool idsAreAlreadyInitalized = false;
+            if (m_Elements != null && m_Elements.Count > 1)
+            {
+                foreach (var item in m_Elements)
+                {
+                    if (item.Id != 0)
+                        idsAreAlreadyInitalized = true;
+                }
+            }
             for (int i = 0; i < m_Elements.Count; i++)
             {
                 var element = m_Elements[i];
@@ -570,7 +596,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var bColumnTree = AddToTree(ElementAndStyleNames.LegendTableSnapshotBColumn, m_Size, handleLastRow);
                 var diffColumnTree = AddToTree(ElementAndStyleNames.LegendTableDiffColumn, m_Size, handleLastRow);
 
-                element.Setup(this, i,
+                element.Setup(this, idsAreAlreadyInitalized ? element.Id : i,
                     nameAndColorTree.Q(ElementAndStyleNames.LegendColorBox),
                     nameAndColorTree.Q<Label>(ElementAndStyleNames.LegendName),
                     aColumnTree.Q<Label>(ElementAndStyleNames.LegendSizeColumn),

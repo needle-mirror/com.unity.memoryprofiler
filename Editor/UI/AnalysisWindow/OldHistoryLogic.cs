@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using System.Collections;
 using System;
 using Unity.EditorCoroutines.Editor;
@@ -7,26 +8,37 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    // This class is no longer needed, unless we decide to revive View History. For the moment (March 2022), it is left as mostly commented out
+    // If you see this in 2023, please feel free to delete it
     internal class OldHistoryLogic
     {
+#if !REMOVE_VIEW_HISTORY
         private UIState UIState { get { return m_UIStateHolder.UIState; } }
         OldViewLogic m_OldViewSelectionLogic;
         IUIStateHolder m_UIStateHolder;
+#endif
         Button m_BackwardsInHistoryButton;
         Button m_ForwardsInHistoryButton;
         public OldHistoryLogic(IUIStateHolder uiStateHolder, OldViewLogic oldViewSelectionLogic, VisualElement root)
         {
             m_BackwardsInHistoryButton = root.Q<ToolbarButton>("history-button__back");
             m_ForwardsInHistoryButton = root.Q<ToolbarButton>("history-button__forwards");
+#if !REMOVE_VIEW_HISTORY
             m_OldViewSelectionLogic = oldViewSelectionLogic;
             m_UIStateHolder = uiStateHolder;
-
+#endif
+            UIElementsHelper.SetVisibility(m_BackwardsInHistoryButton, false);
             m_BackwardsInHistoryButton.SetEnabled(false);
+            UIElementsHelper.SetVisibility(m_ForwardsInHistoryButton, false);
             m_ForwardsInHistoryButton.SetEnabled(false);
+
+#if !REMOVE_VIEW_HISTORY
             m_BackwardsInHistoryButton.clickable.clicked += StepBackwardsInHistory;
             m_ForwardsInHistoryButton.clickable.clicked += StepForwardsInHistory;
+#endif
         }
 
+#if !REMOVE_VIEW_HISTORY
         public void StepBackwardsInHistory()
         {
             var history = UIState.history;
@@ -124,7 +136,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                                 OpenHistoryEvent(selectionEvent, false);
                             }
                             yield break;
-
                         }
                     }
                     else
@@ -261,13 +272,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#endif
+
         internal void OnUIStateChanged(UIState newState)
         {
+#if !REMOVE_VIEW_HISTORY
             newState.ModeChanged += OnModeChanged;
             newState.history.historyChanged += HistoryChanged;
             OnModeChanged(newState.CurrentMode, newState.CurrentViewMode);
+#endif
         }
 
+#if !REMOVE_VIEW_HISTORY
         void OnModeChanged(UIState.BaseMode newMode, UIState.ViewMode newViewMode)
         {
             var oldSelection = UIState.history.GetLastSelectionEvent(MemorySampleSelectionRank.SecondarySelection);
@@ -336,5 +352,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
         }
+
+#endif
     }
 }

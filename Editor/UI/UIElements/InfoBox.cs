@@ -14,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public IssueLevel IssueLevel
         {
             get { return m_IssueLevel; }
-            private set
+            set
             {
                 m_IssueLevel = value;
                 m_Icon.ClearClassList();

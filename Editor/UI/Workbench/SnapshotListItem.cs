@@ -159,15 +159,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     break;
                 case TagState.A:
                     m_OpenSnapshotTagLabel.text = "A";
-                    m_OpenSnapshotTagLabel.RemoveFromClassList(GeneralStyles.ImageTintColorClassSnapshotB);
-                    m_OpenSnapshotTagLabel.AddToClassList(GeneralStyles.ImageTintColorClassSnapshotA);
+                    m_OpenSnapshotTagLabel.SwitchClasses(classToAdd: GeneralStyles.ImageTintColorClassSnapshotA, classToRemove: GeneralStyles.ImageTintColorClassSnapshotB);
                     UIElementsHelper.SetVisibility(m_OpenSnapshotTagLabel, true);
                     UIElementsHelper.SetVisibility(m_OpenSnapshotTagSpacer, true);
                     break;
                 case TagState.B:
                     m_OpenSnapshotTagLabel.text = "B";
-                    m_OpenSnapshotTagLabel.RemoveFromClassList(GeneralStyles.ImageTintColorClassSnapshotA);
-                    m_OpenSnapshotTagLabel.AddToClassList(GeneralStyles.ImageTintColorClassSnapshotB);
+                    m_OpenSnapshotTagLabel.SwitchClasses(classToAdd: GeneralStyles.ImageTintColorClassSnapshotB, classToRemove: GeneralStyles.ImageTintColorClassSnapshotA);
                     UIElementsHelper.SetVisibility(m_OpenSnapshotTagLabel, true);
                     UIElementsHelper.SetVisibility(m_OpenSnapshotTagSpacer, true);
                     break;
@@ -343,7 +341,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 snapshotFileData.GuiData.VisualElement = this;
 
                 screenshot.image = snapshotFileData.GuiData.MetaScreenshot != null ? snapshotFileData.GuiData.MetaScreenshot : Texture2D.blackTexture;
-                screenshot.tooltip = snapshotFileData.GuiData.MetaPlatform;
+                screenshot.tooltip = snapshotFileData.GuiData.MetaPlatform + " " + snapshotFileData.GuiData.MetaPlatformExtra;
 
                 SnapshotsWindow.SetPlatformIcons(Root, snapshotFileData.GuiData);
 

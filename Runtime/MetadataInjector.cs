@@ -1,13 +1,20 @@
 using System;
 using UnityEngine;
-using UnityEngine.Profiling.Memory.Experimental;
+
 using UnityEngine.Scripting;
 
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
+#if MEMORY_PROFILER_API_PUBLIC
+using UnityMemoryProfiler = Unity.Profiling.Memory.MemoryProfiler;
+using UnityMetaData = Unity.Profiling.Memory.MemorySnapshotMetadata;
+#else
+using UnityEngine.Profiling.Memory.Experimental;
 using UnityMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
+using UnityMetaData = UnityEngine.Profiling.Memory.Experimental.MetaData;
+#endif
 
 [assembly: Preserve]
 namespace Unity.MemoryProfiler
@@ -24,6 +31,7 @@ namespace Unity.MemoryProfiler
         {
             InitializeMetadataCollection();
         }
+
 #endif
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSplashScreen)]
@@ -56,11 +64,19 @@ namespace Unity.MemoryProfiler
                 && MetadataInjector.DefaultCollector != this
                 && MetadataInjector.DefaultCollectorInjected != 0)
             {
+#if MEMORY_PROFILER_API_PUBLIC
+                UnityMemoryProfiler.CreatingMetadata -= MetadataInjector.DefaultCollector.CollectMetadata;
+#else
                 UnityMemoryProfiler.createMetaData -= MetadataInjector.DefaultCollector.CollectMetadata;
+#endif
                 --MetadataInjector.CollectorCount;
                 MetadataInjector.DefaultCollectorInjected = 0;
             }
+#if MEMORY_PROFILER_API_PUBLIC
+            UnityMemoryProfiler.CreatingMetadata += CollectMetadata;
+#else
             UnityMemoryProfiler.createMetaData += CollectMetadata;
+#endif
             ++MetadataInjector.CollectorCount;
         }
 
@@ -68,21 +84,29 @@ namespace Unity.MemoryProfiler
         /// The Memory Profiler will invoke this method during the capture process, to populate the metadata of the capture.
         /// </summary>
         /// <param name="data"> The data payload that will get written to the snapshot file. </param>
-        public abstract void CollectMetadata(MetaData data);
+        public abstract void CollectMetadata(UnityMetaData data);
 
         public void Dispose()
         {
             if (!disposed)
             {
                 disposed = true;
+#if MEMORY_PROFILER_API_PUBLIC
+                UnityMemoryProfiler.CreatingMetadata -= CollectMetadata;
+#else
                 UnityMemoryProfiler.createMetaData -= CollectMetadata;
+#endif
                 --MetadataInjector.CollectorCount;
                 if (MetadataInjector.DefaultCollector != null
                     && MetadataInjector.CollectorCount < 1
                     && MetadataInjector.DefaultCollector != this)
                 {
                     MetadataInjector.DefaultCollectorInjected = 1;
+#if MEMORY_PROFILER_API_PUBLIC
+                    UnityMemoryProfiler.CreatingMetadata += MetadataInjector.DefaultCollector.CollectMetadata;
+#else
                     UnityMemoryProfiler.createMetaData += MetadataInjector.DefaultCollector.CollectMetadata;
+#endif
                     ++MetadataInjector.CollectorCount;
                 }
             }
@@ -96,10 +120,14 @@ namespace Unity.MemoryProfiler
             MetadataInjector.DefaultCollectorInjected = 1;
         }
 
-        public override void CollectMetadata(MetaData data)
+        public override void CollectMetadata(UnityMetaData data)
         {
+#if MEMORY_PROFILER_API_PUBLIC
+            data.Description = $"Project name: { Application.productName }";
+#else
             data.content = $"Project name: { Application.productName }";
             data.platform = string.Empty;
+#endif
         }
     }
 }

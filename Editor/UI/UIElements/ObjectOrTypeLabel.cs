@@ -98,19 +98,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             get
             {
-                if (m_ManagedTypeLabel != null)
-                {
-                    return m_ManagedTypeLabel.text;
-                }
                 return m_ManagedTypeName;
             }
             set
             {
                 m_ManagedTypeName = value;
-                if (m_ManagedTypeLabel != null)
-                {
-                    m_ManagedTypeLabel.text = MemoryProfilerSettings.MemorySnapshotTruncateTypes ? PathsToRootDetailView.TruncateTypeName(value) : value;
-                }
+                UpdateLabelContent();
             }
         }
 
@@ -120,22 +113,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             get
             {
-                if (m_NativeTypeLabel != null)
-                {
-                    return m_NativeTypeLabel.text;
-                }
                 return m_NativeTypeName;
             }
             set
             {
                 m_NativeTypeName = value;
-                if (m_NativeTypeLabel != null)
-                {
-                    if (value != m_ManagedTypeLabel.text)
-                        m_NativeTypeLabel.text = (string.IsNullOrEmpty(m_ManagedTypeName) || string.IsNullOrEmpty(value) ? string.Empty : " : ") + value;
-                    else
-                        m_NativeTypeLabel.text = string.Empty;
-                }
+                UpdateLabelContent();
             }
         }
 
@@ -145,24 +128,16 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             get
             {
-                if (m_NativeObjectNameLabel != null)
-                {
-                    return m_NativeObjectNameLabel.text;
-                }
                 return m_NativeObjectName;
             }
             set
             {
                 m_NativeObjectName = value;
-                if (m_NativeObjectNameLabel != null)
-                {
-                    if (string.IsNullOrEmpty(value))
-                        m_NativeObjectNameLabel.text = string.Empty;
-                    else
-                        m_NativeObjectNameLabel.text = $"\"{value}\"";
-                }
+                UpdateLabelContent();
             }
         }
+
+        public Action<ContextualMenuPopulateEvent> ContextMenuOpening = delegate {};
 
         // Idea for later: jump to documentation for native Unity Types, or Unity Objects with type names in Unity owned namespaces?
         //string m_DocumentationLink = null;
@@ -186,9 +161,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_Root;
         VisualElement m_DataTypeIcon;
         Image m_TypeIcon;
-        Label m_ManagedTypeLabel;
-        Label m_NativeTypeLabel;
-        Label m_NativeObjectNameLabel;
+        Label m_Label;
         Button m_DocumentationButton;
 
         bool m_NeedsDisposal;
@@ -217,16 +190,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             hierarchy.Add(m_Root);
 
-            this.AddManipulator(new ContextualMenuManipulator((binder) => PopulateOptionMenu(binder)));
-
+            this.AddManipulator(new ContextualMenuManipulator(PopulateOptionMenu));
             style.flexShrink = 0;
 
             m_DataTypeIcon = m_Root.Q("object-or-type-label__data-type-icon");
             m_TypeIcon = m_Root.Q<Image>("object-or-type-label__type-icon");
-            m_ManagedTypeLabel = m_Root.Q<Label>("object-or-type-label__managed-type-name");
-            m_NativeTypeLabel = m_Root.Q<Label>("object-or-type-label__native-type-name");
-            m_NativeObjectNameLabel = m_Root.Q<Label>("object-or-type-label__native-object-name");
+            m_Label = m_Root.Q<Label>("object-or-type-label__text");
             m_DocumentationButton = m_Root.Q<Button>("object-or-type-label__documentation-button");
+
             //m_DocumentationButton.tooltip = TextContent.OpenManualTooltip;
             //m_DocumentationButton.clickable.clicked += OpenDocumentation;
 
@@ -235,12 +206,35 @@ namespace Unity.MemoryProfiler.Editor.UI
             Setup();
         }
 
-        void PopulateOptionMenu(ContextualMenuPopulateEvent binder)
+        void PopulateOptionMenu(ContextualMenuPopulateEvent evt)
         {
-            binder.menu.AppendAction(TextContent.TruncateTypeName, (a) =>
+            if (NativeTypeName == PathsToRootDetailView.Styles.NoObjectSelected)
+                return;
+
+            evt.menu.AppendAction(TextContent.TruncateTypeName, (a) =>
             {
                 MemoryProfilerSettings.ToggleTruncateTypes();
             }, MemoryProfilerSettings.MemorySnapshotTruncateTypes ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            evt.menu.AppendSeparator();
+            ContextMenuOpening(evt);
+        }
+
+        public string GetTitle(bool truncateManagedType = false)
+        {
+            string text;
+            if (string.IsNullOrEmpty(m_NativeObjectName))
+                text = string.Empty;
+            else
+                text = $"\"{m_NativeObjectName}\" ";
+
+            var managedTypeName = truncateManagedType ? PathsToRootDetailView.TruncateTypeName(m_ManagedTypeName) : m_ManagedTypeName;
+            if (!string.IsNullOrEmpty(m_ManagedTypeName))
+                text += managedTypeName;
+
+            if (m_NativeTypeName != managedTypeName)
+                text += (string.IsNullOrEmpty(m_ManagedTypeName) || string.IsNullOrEmpty(m_NativeTypeName) ? string.Empty : " : ") + m_NativeTypeName;
+
+            return text;
         }
 
         public void SetLabelData(CachedSnapshot cs, UnifiedType typeInfo)
@@ -299,6 +293,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             ManagedTypeName = typeInfo.ManagedTypeName;
             NativeTypeName = string.Empty;
             NativeObjectName = string.Empty;
+        }
+
+        void UpdateLabelContent()
+        {
+            if (m_Label != null)
+            {
+                m_Label.text = GetTitle(MemoryProfilerSettings.MemorySnapshotTruncateTypes);
+                m_Label.tooltip = m_Label.text;
+            }
         }
 
         void ShowIcons(bool show)

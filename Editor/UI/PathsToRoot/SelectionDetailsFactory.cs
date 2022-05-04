@@ -11,6 +11,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     internal abstract class SelectionDetailsProducer
     {
+        internal virtual void OnShowDetailsForSelection(ISelectedItemDetailsUI detailsUI, MemorySampleSelection selection, out string summary)
+        {
+            summary = null;
+            OnShowDetailsForSelection(detailsUI, selection);
+        }
+
         public abstract void OnShowDetailsForSelection(ISelectedItemDetailsUI detailsUI, MemorySampleSelection selection);
 
         public virtual void OnClearSelectionDetails(ISelectedItemDetailsUI detailsUI) {}
@@ -33,15 +39,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_RegisteredProducers[selectionType].Remove(producer);
         }
 
-        internal bool Produce(MemorySampleSelection selection, ISelectedItemDetailsUI selectedItemDetailsUI)
+        internal bool Produce(MemorySampleSelection selection, ISelectedItemDetailsUI selectedItemDetailsUI, out string summary)
         {
             bool success = false;
+            summary = null;
             List<SelectionDetailsProducer> producers;
             if (m_RegisteredProducers.TryGetValue(selection.Type, out producers))
             {
                 foreach (var producer in producers)
                 {
-                    producer.OnShowDetailsForSelection(selectedItemDetailsUI, selection);
+                    producer.OnShowDetailsForSelection(selectedItemDetailsUI, selection, out summary);
                     success = true;
                 }
             }

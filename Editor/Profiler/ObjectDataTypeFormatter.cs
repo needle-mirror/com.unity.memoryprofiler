@@ -78,7 +78,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 od = od.GetBoxedValue(snapshot, true);
             }
-            return formatter.Format(od.managedObjectData.ReadString());
+            return formatter.Format(od.managedObjectData.ReadString(out _));
         }
     }
     internal class IntPtrTypeDisplay : IObjectDataTypeFormatter

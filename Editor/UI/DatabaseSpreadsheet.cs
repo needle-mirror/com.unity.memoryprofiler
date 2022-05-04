@@ -362,6 +362,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override DirtyRowRange SetCellExpanded(long row, long col, bool expanded)
         {
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                MemoryProfilerAnalytics.PageInteractionType.TreeViewElementWasExpanded);
+
             DirtyRowRange o;
             o.Range = m_TableDisplay.ExpandCell(row, (int)col, expanded);
             o.HeightOffset = k_RowHeight * o.Range.Length;
@@ -453,7 +456,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (splitter.CanHideColumns)
                 menu.AddItem(new GUIContent(strHide), false, () =>
                 {
+                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.ColumnVisibilityChangedEvent>();
                     splitter.HideColumn(col);
+
+                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ColumnVisibilityChangedEvent() { viewName = m_TableDisplay.GetName(), shownOrHidden = false, columnIndex = (int)col, columnName = m_TableDisplay.GetMetaData().GetColumnByIndex((int)col).Name});
+
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                        MemoryProfilerAnalytics.PageInteractionType.ColumnWasHidden);
                 });
             else
                 menu.AddDisabledItem(new GUIContent(strHide), false);
@@ -465,7 +474,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     menu.AddItem(new GUIContent(strShow + hiddenColumn.Name), false, () =>
                     {
+                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.ColumnVisibilityChangedEvent>();
                         splitter.ShowColumn(hiddenColumn.Index);
+
+                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ColumnVisibilityChangedEvent() { viewName = m_TableDisplay.GetName(), shownOrHidden = true, columnIndex = hiddenColumn.Index, columnName = hiddenColumn.Name });
+
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                            MemoryProfilerAnalytics.PageInteractionType.ColumnWasRevealed);
                     });
                 }
             }
@@ -487,7 +502,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (level == null)
                         continue;
                     string columnName = GetColumnName(level);
-                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() {column = columnName, filterName = "Sort", filterInput = level.Order.ToString() });
+                    if (level.Order != SortOrder.None)
+                    {
+                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.SortedColumnEvent>();
+                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.SortedColumnEvent() { viewName = m_TableDisplay.GetName(), Ascending = level.Order == SortOrder.Ascending, shown = GetColumnIndex(level), fileName = GetColumnName(level) });
+                    }
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                        MemoryProfilerAnalytics.PageInteractionType.TableSortingWasChanged);
+                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() {column = columnName, filterName = "Sort" });
                 }
                 else if (filter is Filter.DefaultSort)
                 {
@@ -500,7 +522,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (level == null)
                         continue;
                     string columnName = GetColumnName(level);
-                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = columnName, filterName = "Sort", filterInput = level != null ? level.Order.ToString() : null });
+                    if (level != null && level.Order != SortOrder.None)
+                    {
+                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.SortedColumnEvent>();
+                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.SortedColumnEvent() { viewName = m_TableDisplay.GetName(), Ascending = level.Order == SortOrder.Ascending, shown = GetColumnIndex(level), fileName = GetColumnName(level) });
+                    }
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                        MemoryProfilerAnalytics.PageInteractionType.TableSortingWasChanged);
+                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = columnName, filterName = "Sort" });
                 }
                 else if (filter is Filter.Group)
                 {
@@ -509,7 +538,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 else if (filter is Filter.Match)
                 {
                     var matchFilter = (filter as Filter.Match);
-                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = matchFilter.GetColumnName(m_TableDisplay), filterName = "Match", filterInput = matchFilter.MatchString });
+                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = matchFilter.GetColumnName(m_TableDisplay), filterName = "Match" });
                 }
             }
             MemoryProfilerAnalytics.FiltersChanged(m_TableDisplay.GetName(),  m_FilterBuffer);
@@ -517,11 +546,21 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         string GetColumnName(Filter.Sort.Level sortLevel)
         {
-            if (sortLevel is Filter.Sort.LevelByIndex)
+            var columnIndex = GetColumnIndex(sortLevel);
+            if (columnIndex >= 0)
             {
-                return m_TableDisplay.GetMetaData().GetColumnByIndex((sortLevel as Filter.Sort.LevelByIndex).ColumnIndex).Name;
+                return m_TableDisplay.GetMetaData().GetColumnByIndex(columnIndex).Name;
             }
             return "";
+        }
+
+        int GetColumnIndex(Filter.Sort.Level sortLevel)
+        {
+            if (sortLevel is Filter.Sort.LevelByIndex)
+            {
+                return (sortLevel as Filter.Sort.LevelByIndex).ColumnIndex;
+            }
+            return -1;
         }
 
         public void UpdateTable()
@@ -955,6 +994,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UpdateDisplayTable();
             }
             ReportFilterChanges();
+
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                MemoryProfilerAnalytics.PageInteractionType.SearchInPageWasUsed);
             return true;
         }
 

@@ -6,6 +6,7 @@ using System.IO;
 using System;
 using System.Text;
 using Unity.MemoryProfiler.Editor.UIContentData;
+using Unity.MemoryProfiler.Editor.UI;
 #if UNITY_2021_2_OR_NEWER
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.MemoryProfilerModule")]
@@ -22,6 +23,7 @@ namespace Unity.MemoryProfiler.Editor
         const string k_MemoryProfilerPackageOverridesMemoryModuleUIEditorPerf = "Unity.MemoryProfiler.Editor.MemoryProfilerPackageOverridesMemoryModuleUI";
         const string k_DefaultPath = "./MemoryCaptures";
         const string k_TruncateTypes = "Unity.MemoryProfiler.Editor.MemoryProfilerTruncateTypes";
+        const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
 
         public static event Action TruncateStateChanged = delegate {};
 
@@ -46,6 +48,19 @@ namespace Unity.MemoryProfiler.Editor
             private set
             {
                 EditorPrefs.SetBool(k_TruncateTypes, value);
+            }
+        }
+
+        public static SelectedItemDetailsPanel.CopyDetailsOption DefaultCopyDetailsOption
+        {
+            get
+            {
+                return (SelectedItemDetailsPanel.CopyDetailsOption)EditorPrefs.GetInt(k_DefaultCopyOptionKey,
+                    (int)SelectedItemDetailsPanel.CopyDetailsOption.FullTitle);
+            }
+            set
+            {
+                EditorPrefs.SetInt(k_DefaultCopyOptionKey, (int)value);
             }
         }
 

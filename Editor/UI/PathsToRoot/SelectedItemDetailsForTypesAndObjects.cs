@@ -30,7 +30,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             uiStateHolder.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.NativeType, this);
         }
 
+        /// <summary>
+        /// call <see cref="OnShowDetailsForSelection(ISelectedItemDetailsUI, MemorySampleSelection, out string)"/> instead
+        /// </summary>
+        /// <param name="ui"></param>
+        /// <param name="memorySampleSelection"></param>
         public override void OnShowDetailsForSelection(ISelectedItemDetailsUI ui, MemorySampleSelection memorySampleSelection)
+        {
+            throw new NotImplementedException();
+        }
+
+        internal override void OnShowDetailsForSelection(ISelectedItemDetailsUI ui, MemorySampleSelection memorySampleSelection, out string summary)
         {
             m_CachedSnapshot = memorySampleSelection.GetSnapshotItemIsPresentIn(m_uiStateHolder.UIState);
             m_UI = ui;
@@ -42,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     m_CurrentSelectionObjectData = ObjectData.FromUnifiedObjectIndex(m_CachedSnapshot, m_CurrentSelectionIdx);
                     type = new UnifiedType(m_CachedSnapshot, m_CurrentSelectionObjectData);
-                    HandleObjectDetails(m_CachedSnapshot, memorySampleSelection, type);
+                    HandleObjectDetails(m_CachedSnapshot, memorySampleSelection, type, out summary);
                     break;
                 case MemorySampleSelectionType.ManagedObject:
                     m_CurrentSelectionIdx = m_CachedSnapshot.ManagedObjectIndexToUnifiedObjectIndex(memorySampleSelection.ItemIndex);
@@ -50,29 +60,32 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_CurrentSelectionObjectData = ObjectData.FromUnifiedObjectIndex(m_CachedSnapshot, m_CurrentSelectionIdx);
                     type = new UnifiedType(m_CachedSnapshot, m_CurrentSelectionObjectData);
                     if (m_CurrentSelectionObjectData.IsValid)
-                        HandleObjectDetails(m_CachedSnapshot, memorySampleSelection, type);
+                        HandleObjectDetails(m_CachedSnapshot, memorySampleSelection, type, out summary);
                     else
-                        HandleInvalidObjectDetails(m_CachedSnapshot, memorySampleSelection, type);
+                        HandleInvalidObjectDetails(m_CachedSnapshot, memorySampleSelection, type, out summary);
                     break;
                 case MemorySampleSelectionType.UnifiedObject:
                     m_CurrentSelectionIdx = memorySampleSelection.ItemIndex;
 
                     m_CurrentSelectionObjectData = ObjectData.FromUnifiedObjectIndex(m_CachedSnapshot, m_CurrentSelectionIdx);
                     type = new UnifiedType(m_CachedSnapshot, m_CurrentSelectionObjectData);
-                    HandleObjectDetails(m_CachedSnapshot, memorySampleSelection, type);
+                    HandleObjectDetails(m_CachedSnapshot, memorySampleSelection, type, out summary);
                     break;
                 case MemorySampleSelectionType.ManagedType:
                     m_CurrentSelectionIdx = memorySampleSelection.ItemIndex;
 
                     m_CurrentSelectionObjectData = ObjectData.FromManagedType(m_CachedSnapshot, (int)m_CurrentSelectionIdx);
                     type = new UnifiedType(m_CachedSnapshot, m_CurrentSelectionObjectData);
-                    HandleTypeDetails(type);
+                    HandleTypeDetails(type, out summary);
                     break;
                 case MemorySampleSelectionType.NativeType:
                     m_CurrentSelectionIdx = memorySampleSelection.ItemIndex;
 
                     type = new UnifiedType(m_CachedSnapshot, (int)m_CurrentSelectionIdx);
-                    HandleTypeDetails(type);
+                    HandleTypeDetails(type, out summary);
+                    break;
+                default:
+                    summary = null;
                     break;
             }
         }
@@ -88,7 +101,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         const string k_TriggerAssetGCHint = "triggering 'Resources.UnloadUnusedAssets()', explicitly or e.g. via a non-additive Scene unload.";
 
-        internal void HandleTypeDetails(UnifiedType type)
+        internal void HandleTypeDetails(UnifiedType type, out string statusSummary)
         {
             if (type.IsValid)
             {
@@ -100,13 +113,32 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.SetDescription("The selected item is a Type.");
                 if (type.HasManagedType) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Managed Type", type.ManagedTypeName);
                 if (type.HasNativeType) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Native Type", type.NativeTypeName);
+                if (type.IsUnifiedtyType)
+                {
+                    statusSummary = "Unified Type";
+                }
+                else if (type.HasManagedType)
+                {
+                    statusSummary = "Managed Type";
+                }
+                else
+                {
+                    statusSummary = "Native Type";
+                }
+            }
+            else
+            {
+                statusSummary = "Invalid Type";
             }
         }
 
-        internal void HandleObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedType type)
+        internal void HandleObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedType type, out string statusSummary)
         {
             if (!m_CurrentSelectionObjectData.IsValid)
+            {
+                statusSummary = "Invalid Object";
                 return;
+            }
 
             var selectedUnityObject = new UnifiedUnityObjectInfo(m_CachedSnapshot, type, m_CurrentSelectionObjectData);
 
@@ -114,7 +146,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (m_CurrentSelectionObjectData.isManaged)
                 {
-                    HandlePureCSharpObjectDetails(snapshot, memorySampleSelection, type);
+                    HandlePureCSharpObjectDetails(snapshot, memorySampleSelection, type, out statusSummary);
                 }
                 else
                 {
@@ -124,22 +156,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else
             {
-                HandleUnityObjectDetails(snapshot, memorySampleSelection, selectedUnityObject);
+                HandleUnityObjectDetails(snapshot, memorySampleSelection, selectedUnityObject, out statusSummary);
             }
         }
 
-        internal void HandleInvalidObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedType type)
+        internal void HandleInvalidObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedType type, out string statusSummary)
         {
-            if (m_CurrentSelectionObjectData.IsValid)
-                return;
+            //if (m_CurrentSelectionObjectData.IsValid)
+            //    return;
 
-            var selectedUnityObject = new UnifiedUnityObjectInfo(m_CachedSnapshot, type, m_CurrentSelectionObjectData);
+            //var selectedUnityObject = new UnifiedUnityObjectInfo(m_CachedSnapshot, type, m_CurrentSelectionObjectData);
 
+            statusSummary = "Invalid Object";
             m_UI.SetItemName("Invalid Object");
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Bug!", "This is an invalid Managed Object, i.e. the Memory Profiler could not identify it's type and data. To help us in finding and fixing this issue, " + TextContent.InvalidObjectPleaseReportABugMessage);
         }
 
-        internal void HandlePureCSharpObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedType type)
+        internal void HandlePureCSharpObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedType type, out string statusSummary)
         {
             // Pure C# Type Objects
             m_UI.SetItemName(m_CurrentSelectionObjectData, type);
@@ -153,9 +186,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else if (type.ManagedTypeIndex == snapshot.TypeDescriptions.ITypeString)
             {
-                var str = StringTools.ReadString(managedObjectInfo.data, snapshot.VirtualMachineInformation);
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", str.Length.ToString());
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", $"\"{str}\"", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel | SelectedItemDynamicElementOptions.ShowTitle);
+                var str = StringTools.ReadString(managedObjectInfo.data, out var fullLength, snapshot.VirtualMachineInformation);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", fullLength.ToString());
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", $"{str}\"", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel | SelectedItemDynamicElementOptions.ShowTitle);
             }
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", managedObjectInfo.RefCount.ToString());
             m_UI.SetManagedObjectInspector(m_CurrentSelectionObjectData);
@@ -176,11 +209,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array && m_CurrentSelectionObjectData.GetArrayInfo(snapshot).length == 0 &&
                         snapshot.TypeDescriptions.TypeDescriptionName[m_CurrentSelectionObjectData.managedTypeIndex].StartsWith("Unity"))
                     {
+                        statusSummary = "Managed Object - UsedByNativeCode";
                         m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UsedByNativeCodeStatus, TextContent.UsedByNativeCodeHint);
                         m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UsedByNativeCodeHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
                     }
                     else
                     {
+                        statusSummary = "Managed Object - HeldByGCHandle";
                         m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.HeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
                         m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.HeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
                     }
@@ -192,13 +227,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // If we eventually attempt to read "empty" managed heap space, we may find Managed Objects
                     // with no references that are about to be collected (outside of a Free Block), or already collected (inside a Free Block).
                     // TODO: adjust this logic when that happens and make sure to mark or list these objects somehow/somewhere so we can exclude them here
+                    statusSummary = "Managed Object - Unknown Liveness";
                     m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnkownLivenessReasonStatus, TextContent.UnkownLivenessReasonHint);
                     m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnkownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
                 }
             }
+            else
+            {
+                statusSummary = "Managed Object - Referenced";
+            }
         }
 
-        internal void HandleUnityObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedUnityObjectInfo selectedUnityObject)
+        internal void HandleUnityObjectDetails(CachedSnapshot snapshot, MemorySampleSelection memorySampleSelection, UnifiedUnityObjectInfo selectedUnityObject, out string statusSummary)
         {
             m_UI.SetItemName(selectedUnityObject);
 
@@ -252,7 +292,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Native Index", $"U:{selectedUnityObject.NativeObjectData.GetUnifiedObjectIndex(snapshot)} N:{selectedUnityObject.NativeObjectData.nativeObjectIndex}");
             if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Managed Index", $"U:{selectedUnityObject.ManagedObjectData.GetUnifiedObjectIndex(snapshot)} M:{selectedUnityObject.ManagedObjectData.GetManagedObjectIndex(snapshot)}");
 
-            UpdateStatusAndHint(selectedUnityObject);
+            UpdateStatusAndHint(selectedUnityObject, out statusSummary);
 
             if (selectedUnityObject.IsFullUnityObjet)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, "Self References", "The Managed and Native parts of this UnityEngine.Object reference each other. This is normal."
@@ -264,38 +304,39 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        void UpdateStatusAndHint(UnifiedUnityObjectInfo m_SelectedUnityObject)
+        void UpdateStatusAndHint(UnifiedUnityObjectInfo m_SelectedUnityObject, out string statusSummary)
         {
             if (m_SelectedUnityObject.IsLeakedShell)
             {
-                UpdateStatusAndHintForLeakedShellObject(m_SelectedUnityObject);
+                UpdateStatusAndHintForLeakedShellObject(m_SelectedUnityObject, out statusSummary);
             }
             else if (m_SelectedUnityObject.IsAssetObject && !m_SelectedUnityObject.IsAsset)
             {
-                UpdateStatusAndHintForDynamicAssets(m_SelectedUnityObject);
+                UpdateStatusAndHintForDynamicAssets(m_SelectedUnityObject, out statusSummary);
             }
             else if (m_SelectedUnityObject.IsAsset)
             {
-                UpdateStatusAndHintForPersistentAssets(m_SelectedUnityObject);
+                UpdateStatusAndHintForPersistentAssets(m_SelectedUnityObject, out statusSummary);
             }
             else if (m_SelectedUnityObject.IsSceneObject)
             {
-                UpdateStatusAndHintForSceneObjects(m_SelectedUnityObject);
+                UpdateStatusAndHintForSceneObjects(m_SelectedUnityObject, out statusSummary);
             }
             else if (m_SelectedUnityObject.IsManager)
             {
-                UpdateStatusAndHintForManagers(m_SelectedUnityObject);
+                UpdateStatusAndHintForManagers(m_SelectedUnityObject, out statusSummary);
             }
             else
             {
+                statusSummary = null;
                 // well, what DO we have here?
                 // TODO: do something with the hideflags?
             }
         }
 
-        void UpdateStatusAndHintForLeakedShellObject(UnifiedUnityObjectInfo selectedUnityObject)
+        void UpdateStatusAndHintForLeakedShellObject(UnifiedUnityObjectInfo selectedUnityObject, out string statusSummary)
         {
-            var statusSummary = string.Empty;
+            statusSummary = string.Empty;
             var hint = string.Empty;
             if (selectedUnityObject.ManagedRefCount > 0)
             {
@@ -305,14 +346,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 statusSummary += "GC.Collect()-able ";
             }
-            statusSummary += "Leaked Managed Shell of a ";
+            statusSummary += "Leaked Managed Shell of ";
             if (selectedUnityObject.IsSceneObject)
             {
-                statusSummary += "Scene Object";
+                statusSummary += "a Scene Object";
             }
             else
             {
-                statusSummary += "Asset";
+                statusSummary += "an Asset";
             }
             hint = "This Unity Object is a Leaked Managed Shell. That means this object's type derives from UnityEngine.Object " +
                 "and the object therefore, normally, has a Native Object accompanying it. " +
@@ -330,9 +371,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
         }
 
-        void UpdateStatusAndHintForDynamicAssets(UnifiedUnityObjectInfo selectedUnityObject)
+        void UpdateStatusAndHintForDynamicAssets(UnifiedUnityObjectInfo selectedUnityObject, out string statusSummary)
         {
-            var statusSummary = string.Empty;
+            statusSummary = string.Empty;
             var hint = string.Empty;
             if (selectedUnityObject.TotalRefCount > 0)
             {
@@ -350,12 +391,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (selectedUnityObject.IsRuntimeCreated)
             {
-                statusSummary += "dynamically & run-time created ";
+                statusSummary += $"{(string.IsNullOrEmpty(statusSummary)?'D':'d')}ynamically & run-time created ";
             }
             else
             {
                 // e.g. Combined Scene Meshes
-                statusSummary += "dynamically & build-time created ";
+                statusSummary += $"{(string.IsNullOrEmpty(statusSummary)?'D':'d')}ynamically & build-time created ";
             }
 
             statusSummary += "Asset";
@@ -385,9 +426,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        void UpdateStatusAndHintForPersistentAssets(UnifiedUnityObjectInfo selectedUnityObject)
+        void UpdateStatusAndHintForPersistentAssets(UnifiedUnityObjectInfo selectedUnityObject, out string statusSummary)
         {
-            var statusSummary = string.Empty;
+            statusSummary = string.Empty;
             var hint = string.Empty;
             if (selectedUnityObject.TotalRefCount > 0)
             {
@@ -440,9 +481,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
         }
 
-        void UpdateStatusAndHintForSceneObjects(UnifiedUnityObjectInfo selectedUnityObject)
+        void UpdateStatusAndHintForSceneObjects(UnifiedUnityObjectInfo selectedUnityObject, out string statusSummary)
         {
-            var statusSummary = string.Empty;
+            statusSummary = string.Empty;
             var hint = string.Empty;
             if (selectedUnityObject.IsRuntimeCreated)
             {
@@ -472,13 +513,56 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
         }
 
-        void UpdateStatusAndHintForManagers(UnifiedUnityObjectInfo selectedUnityObject)
+        void UpdateStatusAndHintForManagers(UnifiedUnityObjectInfo selectedUnityObject, out string statusSummary)
         {
-            var statusSummary = "Native Manager";
+            statusSummary = "Native Manager";
             var hint = "This is Native Manager that is represents one of Unity's subsystems.";
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
         }
+
+        /***
+         * Current List of Statuses:
+         * - "Native Manager"
+         * - "Referenced Leaked Managed Shell of a Scene Object"
+         * - "Referenced Leaked Managed Shell of an Asset"
+         *
+         * - "Dynamically & run-time created Asset"
+         * - "Dynamically & build-time created Asset"
+         * - "Referenced dynamically & run-time created Asset"
+         * - "Referenced dynamically & build-time created Asset "
+         * - "Referenced DontDestroyOnLoad dynamically & run-time created Asset"
+         * - "Referenced DontDestroyOnLoad dynamically & build-time created Asset"
+         * - "Referenced Leaked dynamically & run-time created Asset"
+         * - "Referenced Leaked dynamically & build-time created Asset"
+         *
+         * - "Used Runtime Created Asset"
+         * - "Used Loaded Asset"
+         * - "Used DontDestroyOnLoad Runtime Created Asset"
+         * - "Used DontDestroyOnLoad Loaded Asset"
+         * - "Unused Runtime Created Loaded Asset"
+         * - "Unused Loaded Asset"
+         * - "Unused DontDestroyOnLoad Runtime Created Loaded Asset"
+         * - "Unused DontDestroyOnLoad Loaded Asset"
+         *
+         * - "Runtime Created Scene Object"
+         * - "Runtime Created DontDestroyOnLoad Scene Object"
+         * - "Loaded Scene Object"
+         * - "Loaded DontDestroyOnLoad Scene Object"
+         *
+         * - "Empty Array Required by Unity's subsystems"
+         *   - "This array's Type is marked with a [UsedByNativeCode] or [RequiredByNativeCode] Attribute in the Unity code-base and the array exists so that the Type is not compiled out on build. It is held in memory via a GCHandle. You can search the public C# reference repository for those attributes https://github.com/Unity-Technologies/UnityCsReference/."
+         * - "Held Alive By GCHandle"
+         *   - "This Object is pinned or otherwise held in memory because a GCHandle was allocated for it."
+         * - "Bug: Liveness Reason Unknown"
+         *   - "There is no reference pointing to this object and no GCHandle reported for it. This is a Bug, please report it using 'Help > Report a Bug' and attach the snapshot to the report."
+         *
+         *
+         * Theoretically possible in the future but not yet found by the memory profiler:
+         * - "GC.Collect()-able Leaked Managed Shell of a Scene Object"
+         * - "GC.Collect()-able Leaked Managed Shell of an Asset"
+         *
+         */
     }
 }

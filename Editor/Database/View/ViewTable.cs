@@ -485,7 +485,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                         {
                             //we must be building a view table when building the root.
                             Debug.LogError("Failed to build the root view table.");
-                            MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(8);
                         }
 
                         Database.MetaTable metaTable = new Database.MetaTable();
@@ -618,7 +617,6 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     if (data != null && data.type == Data.DataType.Select && vTable.dataSelectSet.IsManyToMany())
                     {
                         Debug.LogError("Cannot build a view using a many-to-many select statement. Specify a row value for your select statement where condition(s).");
-                        MemoryProfilerAnalytics.AddMetaDatatoEvent<MemoryProfilerAnalytics.LoadViewXMLEvent>(7);
                     }
 
                     return vTable;

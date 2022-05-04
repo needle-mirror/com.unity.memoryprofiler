@@ -19,6 +19,21 @@ namespace Unity.MemoryProfiler.Editor
 #endif
         }
 
+        public static void SwitchClasses(this VisualElement element, string classToAdd, string classToRemove)
+        {
+            if (!element.ClassListContains(classToAdd))
+                element.AddToClassList(classToAdd);
+            element.RemoveFromClassList(classToRemove);
+        }
+
+        public static void SwitchClasses(this VisualElement element, string classA, string classB, bool addARemoveB)
+        {
+            if (addARemoveB)
+                element.SwitchClasses(classToAdd: classA, classToRemove: classB);
+            else
+                element.SwitchClasses(classToAdd: classB, classToRemove: classA);
+        }
+
         public static void SwitchVisibility(VisualElement first, VisualElement second, bool showFirst = true)
         {
             SetVisibility(first, showFirst);

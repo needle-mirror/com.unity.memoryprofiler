@@ -14,8 +14,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public ToolbarDropDownButton() : base()
         {
             AddToClassList(k_StyleClass);
-            AddToClassList(k_ToolbarButtonStyleClass);
-            RemoveFromClassList(k_ButtonStyleClass);
+            this.SwitchClasses(classToAdd: k_ToolbarButtonStyleClass, classToRemove: k_ButtonStyleClass);
             Init();
         }
 

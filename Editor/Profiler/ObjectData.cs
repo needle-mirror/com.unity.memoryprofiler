@@ -721,7 +721,7 @@ namespace Unity.MemoryProfiler.Editor
                     return managedObjectData.ReadUInt64().ToString();
 
                 if (managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeString)
-                    return managedObjectData.ReadString();
+                    return managedObjectData.ReadString(out _);
             }
             return "";
         }
@@ -1087,8 +1087,6 @@ namespace Unity.MemoryProfiler.Editor
                         }
                     }
                     break;
-                default:
-                    return null;
             }
             //add connections from the raw snapshot
             if (objIndex >= 0 && snapshot.Connections.ToFromMappedConnection.ContainsKey((int)objIndex))
@@ -1227,8 +1225,6 @@ namespace Unity.MemoryProfiler.Editor
                     }
                     break;
                 }
-                default:
-                    return null;
             }
 
             //add connections from the raw snapshot
@@ -1353,8 +1349,6 @@ namespace Unity.MemoryProfiler.Editor
                     }
                     break;
                 }
-                default:
-                    return null;
             }
 
             //add connections from the raw snapshot

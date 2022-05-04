@@ -11,6 +11,9 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         public event Action<MemorySampleSelection> SelectionChangedEvt = delegate {};
 
+        public bool FoldoutState { get => m_Foldout.value; set => m_Foldout.value = value; }
+        public Foldout Foldout { get => m_Foldout; }
+
         VisualElement m_MemoryUsageSummary;
 
         InfoBox m_OldSnapshotInfo;
@@ -22,6 +25,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Label m_SelectionLabel;
         Toggle m_NormalizedToggle;
+
+        Foldout m_Foldout;
 
         public MemoryUsageSummary(VisualElement root, IUIStateHolder memoryProfilerWindow)
         {
@@ -37,6 +42,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_MemoryUsageSummary = root;
             }
             memoryProfilerWindow.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.HighlevelBreakdownElement, this);
+
+            m_Foldout = root.Q<Foldout>(className: "memory-usage-summary-section__top-header__title");
+
+            m_Foldout.RegisterValueChangedCallback((evt) =>
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                    evt.newValue ? MemoryProfilerAnalytics.PageInteractionType.MemoryUsageWasRevealed : MemoryProfilerAnalytics.PageInteractionType.MemoryUsageWasHidden));
 
             m_OldSnapshotInfo = m_MemoryUsageSummary.Q<InfoBox>("memory-usage-summary-section__old-snapshot-info-box");
             m_OldSnapshotInfo.DocumentationLink = DocumentationUrls.Requirements;
@@ -89,6 +100,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void ToggleNormalized(ChangeEvent<bool> evt)
         {
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                evt.newValue ? MemoryProfilerAnalytics.PageInteractionType.MemoryUsageBarNormalizeToggledOn : MemoryProfilerAnalytics.PageInteractionType.MemoryUsageBarNormalizeToggledOff);
             EditorPrefs.SetBool("com.unity.memoryprofiler:MemoryUsageSummary.Normalized", evt.newValue);
             SetNormalized(evt.newValue);
         }
@@ -480,32 +493,53 @@ namespace Unity.MemoryProfiler.Editor.UI
             return null;
         }
 
-        public override void OnShowDetailsForSelection(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        /// <summary>
+        /// call <see cref="OnShowDetailsForSelection(ISelectedItemDetailsUI, MemorySampleSelection, out string)"/> instead
+        /// </summary>
+        /// <param name="ui"></param>
+        /// <param name="memorySampleSelection"></param>
+        public override void OnShowDetailsForSelection(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItemout)
+        {
+            throw new NotImplementedException();
+        }
+
+        internal override void OnShowDetailsForSelection(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem, out string summary)
         {
             switch (selectedItem.SecondaryItemIndex)
             {
                 case 0:
-                    HighLevelBreakdownSelectionDetails(mainUI, selectedItem);
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                        MemoryProfilerAnalytics.PageInteractionType.SelectedTotalMemoryBarElement);
+                    HighLevelBreakdownSelectionDetails(mainUI, selectedItem, out summary);
                     break;
                 case 1:
-                    CommittedTrackingStatusBreakdownSelectionDetails(mainUI, selectedItem);
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                        MemoryProfilerAnalytics.PageInteractionType.SelectedTotalCommittedMemoryBarElement);
+                    CommittedTrackingStatusBreakdownSelectionDetails(mainUI, selectedItem, out summary);
                     break;
                 case 2:
-                    ManagedBreakdownSelectionDetails(mainUI, selectedItem);
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                        MemoryProfilerAnalytics.PageInteractionType.SelectedManagedMemoryBarElement);
+                    ManagedBreakdownSelectionDetails(mainUI, selectedItem, out summary);
                     break;
                 case 3:
-                    AllocationBreakdownSelectionDetails(mainUI, selectedItem);
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
+                        MemoryProfilerAnalytics.PageInteractionType.SelectedObjectVsAllocationMemoryBarElement);
+                    AllocationBreakdownSelectionDetails(mainUI, selectedItem, out summary);
                     break;
+                default:
+                    throw new NotImplementedException();
             }
         }
 
-        void HighLevelBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        void HighLevelBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem, out string summary)
         {
             if (selectedItem.ItemIndex == -1)
             {
                 mainUI.SetItemName($"{m_HighLevelBreakdown.HeaderText} : Untracked Memory");
                 mainUI.SetDescription(TextContent.UntrackedMemoryDescription);
                 mainUI.SetDocumentationURL(DocumentationUrls.UntrackedMemoryDocumentation);
+                summary = "Untracked";
                 return;
             }
             var item = (BreakdownOrder)selectedItem.ItemIndex;
@@ -536,24 +570,27 @@ namespace Unity.MemoryProfiler.Editor.UI
                 default:
                     break;
             }
+            summary = item.ToString();
         }
 
-        void CommittedTrackingStatusBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        void CommittedTrackingStatusBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem, out string summary)
         {
             if (selectedItem.ItemIndex == -1)
             {
                 mainUI.SetItemName($"{m_CommittedTrackingStatusBreakdown.HeaderText} : Untracked Memory");
                 mainUI.SetDescription(TextContent.UntrackedMemoryDescription);
                 mainUI.SetDocumentationURL(DocumentationUrls.UntrackedMemoryDocumentation);
+                summary = "Untracked";
                 return;
             }
             mainUI.SetItemName($"{m_CommittedTrackingStatusBreakdown.HeaderText} : Tracked Memory");
             mainUI.SetItemName(m_CommittedTrackingStatusBreakdown.HeaderText);
             mainUI.SetDescription(TextContent.TrackedMemoryDescription);
             mainUI.SetDocumentationURL(DocumentationUrls.UntrackedMemoryDocumentation);
+            summary = "Tracked";
         }
 
-        void ManagedBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        void ManagedBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem, out string summary)
         {
             mainUI.SetItemName($"{m_ManagedBreakdown.HeaderText} : {k_ManagedBreakdownOrderNames[selectedItem.ItemIndex]}");
             var item = (ManagedBreakdownOrder)selectedItem.ItemIndex;
@@ -576,12 +613,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 default:
                     break;
             }
+            summary = item.ToString();
         }
 
-        void AllocationBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        void AllocationBreakdownSelectionDetails(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem, out string summary)
         {
             mainUI.SetItemName(m_AllocationBreakdown.HeaderText);
             // TODO: Implement Once added to UI
+            summary = null;
         }
     }
 }

@@ -145,3 +145,8 @@
     flex-grow: 0;
     flex-shrink: 0;
 }
+
+#memory-module__detailed-label
+{
+    margin: 4px;
+}

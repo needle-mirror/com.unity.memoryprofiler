@@ -9,11 +9,6 @@
                 <ui:VisualElement class="unity-base-popup-field__arrow toolbar__drop-down__arrow" />
             </uie:ToolbarButton>
             <uie:ToolbarSpacer />
-            <ui:VisualElement name="memory-module__toolbar__detailed-controls" class="memory-module__toolbar__group">
-                <uie:ToolbarButton text="Take Sample" name="memory-module__toolbar__take-sample-button" class="memory-module__toolbar__button" />
-                <uie:ToolbarToggle focusable="false" text="Gather Object References" name="memory-module__toolbar__gather-references-toggle" />
-                <uie:ToolbarSpacer />
-            </ui:VisualElement>
             <uie:ToolbarButton text="Install Memory Profiler Package" name="memory-module__toolbar__install-package-button" class="memory-module__toolbar__install-package-button" />
             <ui:VisualElement name="memory-module__toolbar__editor-warning" class="memory-module__toolbar__group">
                 <ui:Image name="memory-module__toolbar__editor-warning__icon" class="memory-module__toolbar__editor-warning__icon" />
@@ -21,7 +16,9 @@
             </ui:VisualElement>
         </uie:Toolbar>
         <ui:VisualElement name="memory-module__view-area">
-            <ui:IMGUIContainer name="memory-module__detaile-snapshot-area" />
+            <ui:VisualElement name="memory-module__detailed-snapshot-area">
+                <ui:Label name="memory-module__detailed-label" text="Please use the Memory Profiler package to take detailed snapshots of memory."/>
+            </ui:VisualElement>
             <ui:VisualElement name="memory-module__no-frame-data__area" class="memory-module__no-frame-data__area">
                 <ui:Label name="memory-module__no-frame-data__label" text="30 B" class="memory-module__no-frame-data__label" />
             </ui:VisualElement>

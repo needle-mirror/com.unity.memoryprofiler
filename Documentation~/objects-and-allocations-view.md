@@ -1,14 +1,14 @@
-# Table view
+# Objects and Allocations
 
-The table view mode displays all crawled snapshot data in a table format. You can use this view to process the data with filters (sort, group, match) and extract relevant information. Use the dropdown __View__ menu at the top of the Main view to select from the following tables:
+The Objects and Allocations view  displays all crawled snapshot data in a table format. You can use this view to process the data with filters (sort, group, match) and extract relevant information. Use the **Select Table View** dropdown menu to select from the following tables:
 
 * __Raw Data__: Select from a list of raw data to view.
 * __All Managed Objects__: a collection of all managed objects (IL2CPP or Mono) in the memory snapshot.
 * __All Native Objects__: a collection of all native objects of types that inherit the `Unity.Object` in the memory snapshot.
 * __All Objects__: a collection of all objects (native and managed) in the snapshot.
-* __Alloc__: Select from a list of allocations to view.
+* __All oc__: Select from a list of allocations to view.
 
-![Table view in Memory Profiler](images/table-view-memory-profiler.png)<br/>*Table view, displaying All Managed Objects*
+![The Objects and Allocations view in the Memory Profiler](images/table-view-memory-profiler.png)<br/>*The Objects and Allocations view, displaying All Managed Objects*
 
 ## Table columns
 
@@ -51,4 +51,4 @@ To filter the data in the columns, select the header of the column you want to s
 
 When you add a filter to the table, it appears above the table. To remove a filter, select the __X__ button next to it. The filters apply in order from left to right (oldest to newest). Click on groups that have a group filter applied to expand the group.
 
-![Diff All Objects Table Filtered in Memory Profile window](images/filters-memory-profiler.png)<br/>*Filter options at the top of the table view*
+![Diff All Objects Table Filtered in Memory Profile window](images/filters-memory-profiler.png)<br/>*Filter options at the top of the Objects and Allocations view*

@@ -96,24 +96,29 @@ namespace Unity.MemoryProfiler.Editor
 
             m_ReferenceSelection?.Dispose();
             m_ReferenceSelection = root.Q("details-panel").Q<ObjectOrTypeLabel>("reference-item-details__unity-item-title");
-            m_ReferenceSelection.RemoveFromClassList("object-or-type-label");
-            m_ReferenceSelection.AddToClassList("object-or-type-label-selectable");
-            m_ReferenceSelection.RegisterCallback<MouseDownEvent>(evt =>
+            m_ReferenceSelection.SwitchClasses(classToAdd: "object-or-type-label-selectable", classToRemove: "object-or-type-label");
+            m_ReferenceSelection.AddManipulator(new Clickable(() =>
             {
-                m_PathsToRootDetailView.ClearSelection();
-            });
+                m_PathsToRootDetailView.ClearSecondarySelection();
+            }));
+            m_ReferenceSelection.ContextMenuOpening += ShowCopyMenuForReferencesTitle;
+
             m_ReferenceSelection.SetToNoObjectSelected();
 
             var detailsSplitter = root.Q("details-panel").Q<TwoPaneSplitView>("details-panel__splitter");
             var referencesFoldout = root.Q("details-panel").Q<Foldout>("details-panel__section-header__references");
             var selectionDetailsFolout = root.Q("details-panel").Q<Foldout>("details-panel__section-header__selection-details");
+            const string k_ReferencesLabelText = "References";
+            const string k_DetailsLabelText = "Selected Item Details";
             referencesFoldout.RegisterValueChangedCallback((evt) =>
             {
                 if (evt.target != referencesFoldout || evt.newValue == evt.previousValue)
                     return;
                 if (evt.newValue)
                 {
+                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
                     detailsSplitter.UnCollapse(0);
+                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_ReferencesLabelText});
                 }
                 else
                 {
@@ -123,10 +128,17 @@ namespace Unity.MemoryProfiler.Editor
                         // Also the UX behavior for that case is somewhat undefined
                         // Unfold the References section before collapsing the Selection Details Section,
                         // skipping a frame in-between so that the style changes can get applied and the UI gets re-layouted properly
+                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
                         EditorCoroutineUtility.StartCoroutine(FlipDetailsFoldoutsDelayed(detailsSplitter, 0, selectionDetailsFolout), this);
+                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_DetailsLabelText});
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(MemoryProfilerAnalytics.ReferencePanelInteractionType.ReferencePanelWasHidden);
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionDetailsPanelWasRevealed);
                     }
                     else
+                    {
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(MemoryProfilerAnalytics.ReferencePanelInteractionType.ReferencePanelWasHidden);
                         detailsSplitter.CollapseChild(0, true);
+                    }
                 }
             });
             selectionDetailsFolout.RegisterValueChangedCallback((evt) =>
@@ -135,7 +147,9 @@ namespace Unity.MemoryProfiler.Editor
                     return;
                 if (evt.newValue)
                 {
+                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
                     detailsSplitter.UnCollapse(1);
+                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_DetailsLabelText});
                 }
                 else
                 {
@@ -145,20 +159,28 @@ namespace Unity.MemoryProfiler.Editor
                         // Also the UX behavior for that case is somewhat undefined
                         // Unfold the Selection Details section before collapsing the References section,
                         // skipping a frame in-between so that the style changes can get applied and the UI gets re-layouted properly
+                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
                         EditorCoroutineUtility.StartCoroutine(FlipDetailsFoldoutsDelayed(detailsSplitter, 1, referencesFoldout), this);
+                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_ReferencesLabelText});
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionDetailsPanelWasHidden);
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(MemoryProfilerAnalytics.ReferencePanelInteractionType.ReferencePanelWasRevealed);
                     }
                     else
+                    {
+                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionDetailsPanelWasHidden);
                         detailsSplitter.CollapseChild(1, true);
+                    }
                 }
             });
             m_SelectedObjectDetailsPanel?.OnDisable();
             m_SelectedObjectDetailsPanel = new SelectedItemDetailsPanel(this, root.Q("details-panel").Q("selected-item-details"));
 
+
             new SelectedItemDetailsForTypesAndObjects(this);
             UIState.SelectionChanged += m_SelectedObjectDetailsPanel.NewDetailItem;
             UIState.SelectionChanged += UpdatePathsToRootSelectionDetails;
 
-            MemoryProfilerAnalytics.EnableAnalytics();
+            MemoryProfilerAnalytics.EnableAnalytics(this);
             m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
             EditorApplication.update += PollForApplicationFocus;
             EditorSceneManager.activeSceneChangedInEditMode += OnSceneChanged;
@@ -183,6 +205,11 @@ namespace Unity.MemoryProfiler.Editor
             };
             EditorGUICompatibilityHelper.hyperLinkClicked -= EditorGUI_HyperLinkClicked;
             EditorGUICompatibilityHelper.hyperLinkClicked += EditorGUI_HyperLinkClicked;
+        }
+
+        void ShowCopyMenuForReferencesTitle(ContextualMenuPopulateEvent evt)
+        {
+            m_SelectedObjectDetailsPanel?.ShowCopyMenu(evt, contextMenu: true);
         }
 
         void UpdatePathsToRootSelectionDetails(MemorySampleSelection memorySampleSelection)
@@ -259,12 +286,15 @@ namespace Unity.MemoryProfiler.Editor
             EditorSceneManager.activeSceneChangedInEditMode -= OnSceneChanged;
 
             EditorGUICompatibilityHelper.hyperLinkClicked -= EditorGUI_HyperLinkClicked;
+
+            m_MainViewPanel.OnDisable();
+            MemoryProfilerAnalytics.DisableAnalytics();
         }
 
         void OpenFurtherOptions(Rect furtherOptionsRect)
         {
             GenericMenu menu = new GenericMenu();
-            menu.AddItem(TextContent.OpenSettingsOption, false, () => PreferencesCompatibilityHelper.OpenProfilerPreferences());
+            menu.AddItem(TextContent.OpenSettingsOption, false, () => SettingsService.OpenUserPreferences(MemoryProfilerSettingsEditor.SettingsPath));
             menu.AddSeparator("");
             menu.AddItem(new GUIContent(TextContent.TruncateTypeName), MemoryProfilerSettings.MemorySnapshotTruncateTypes, MemoryProfilerSettings.ToggleTruncateTypes);
             menu.DropDown(furtherOptionsRect);

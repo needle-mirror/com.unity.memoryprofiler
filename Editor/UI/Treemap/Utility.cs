@@ -23,6 +23,8 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             bool vertical = targetRect.width > targetRect.height;
 
             var unfinishedRects = new List<Rect>();
+            var cachedResults = new List<Rect>();
+            var cachedAspectsResults = new List<Rect>();
 
             for (int index = 0; index < values.Length; index++)
             {
@@ -40,12 +42,18 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                 }
 
                 float currentOutputArea = currentInputValue * totalOutputArea / totalInputArea;
-                unfinishedRects = AddRect(unfinishedRects, currentOutputArea, targetRect, vertical);
+
+                AddRect(ref unfinishedRects, ref cachedResults, currentOutputArea, targetRect, vertical);
+                var temp = unfinishedRects;
+                unfinishedRects = cachedResults;
+                cachedResults = temp;
+
                 float currentAspect = GetAverageAspect(unfinishedRects);
 
                 float nextInputValue = lastItem ? 0f : values[index + 1];
                 float nextOutputArea = nextInputValue * totalOutputArea / totalInputArea;
-                float nextAspect = GetNextAspect(unfinishedRects, nextOutputArea, targetRect, vertical);
+
+                float nextAspect = GetNextAspect(unfinishedRects, cachedAspectsResults, nextOutputArea, targetRect, vertical);
 
                 if (Mathf.Abs(1f - currentAspect) < Mathf.Abs(1f - nextAspect) || lastItem)
                 {
@@ -77,9 +85,9 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             return result;
         }
 
-        private static List<Rect> AddRect(List<Rect> existing, float area, Rect space, bool vertical)
+        private static void AddRect(ref List<Rect> existing, ref List<Rect> result, float area, Rect space, bool vertical)
         {
-            List<Rect> result = new List<Rect>();
+            result.Clear();
             if (vertical)
             {
                 if (existing.Count == 0)
@@ -91,6 +99,8 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                     float totalSize = GetArea(existing) + area;
                     float width = space.height > 0 ? totalSize / space.height : 0;
                     float yPosition = space.yMin;
+                    if (result.Capacity < existing.Count + 1)
+                        result.Capacity = existing.Count + 1;
                     foreach (Rect old in existing)
                     {
                         float itemArea = GetArea(old);
@@ -111,16 +121,17 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
                     float totalSize = GetArea(existing) + area;
                     float height = space.width > 0 ? totalSize / space.width : 0;
                     float xPosition = space.xMin;
-                    foreach (Rect old in existing)
+                    if (result.Capacity < existing.Count + 1)
+                        result.Capacity = existing.Count + 1;
+                    for (int i = 0; i < existing.Count; i++)
                     {
-                        float itemArea = GetArea(old);
-                        result.Add(new Rect(xPosition, old.yMin, height > 0 ? itemArea / height : 0, height));
+                        float itemArea = GetArea(existing[i]);
+                        result.Add(new Rect(xPosition, existing[i].yMin, height > 0 ? itemArea / height : 0, height));
                         xPosition += itemArea / height;
                     }
                     result.Add(new Rect(xPosition, space.yMin, height > 0 ? area / height : 0, height));
                 }
             }
-            return result;
         }
 
         private static Rect GetNewTarget(List<Rect> unfinished, Rect oldTarget, bool vertical)
@@ -135,21 +146,22 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
             }
         }
 
-        private static float GetNextAspect(List<Rect> existing, float area, Rect space, bool vertical)
+        private static float GetNextAspect(List<Rect> existing, List<Rect> cachedAspectsResults, float area, Rect space, bool vertical)
         {
-            List<Rect> newExisting = AddRect(existing, area, space, vertical);
-            return newExisting[newExisting.Count - 1].height / newExisting[newExisting.Count - 1].width;
+            AddRect(ref existing, ref cachedAspectsResults, area, space, vertical);
+            return cachedAspectsResults[cachedAspectsResults.Count - 1].height / cachedAspectsResults[cachedAspectsResults.Count - 1].width;
         }
 
         private static float GetAverageAspect(List<Rect> rects)
         {
             float aspect = 0f;
             var count = rects.Count;
-            foreach (Rect r in rects)
+            for (int i = 0; i < rects.Count; i++)
             {
+                Rect r = rects[i];
                 if (r.height > 0f && r.width > 0f)
                 {
-                    aspect += r.height / r.width;
+                    aspect += rects[i].height / rects[i].width;
                 }
                 else
                 {
@@ -169,9 +181,9 @@ namespace Unity.MemoryProfiler.Editor.UI.Treemap
         private static float GetArea(List<Rect> rects)
         {
             float area = 0;
-            foreach (Rect r in rects)
+            for (int i = 0; i < rects.Count; i++)
             {
-                area += GetArea(r);
+                area += GetArea(rects[i]);
             }
             return area;
         }

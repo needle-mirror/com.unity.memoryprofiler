@@ -5,6 +5,7 @@
 .memory-usage-breakdown__header {
     flex-direction: row;
     justify-content: space-between;
+    padding-bottom: 8px;
 }
 
 .memory-usage-breakdown__header__title {
@@ -30,7 +31,6 @@
     border-bottom-right-radius: 2px;
 }
 
-
 .memory-usage-breakdown__memory-usage-bar__background {
     flex-grow: 1;
     border-top-left-radius: 2px;
@@ -55,7 +55,7 @@
     border-bottom-right-radius: 2px;
 }
 
-.memory-usage-breakdown__memory-usage-bar__background.memory-usage-breakdown__element--hovered{
+.memory-usage-breakdown__memory-usage-bar__background.memory-usage-breakdown__element--hovered {
     background-color: rgb(30, 30, 30);
     border-left-color: rgb(64, 64, 64);
     border-right-color: rgb(64, 64, 64);
@@ -71,7 +71,7 @@
     border-bottom-right-radius: 2px;
 }
 
-.memory-usage-breakdown__memory-usage-bar__background.memory-usage-breakdown__element--selected{
+.memory-usage-breakdown__memory-usage-bar__background.memory-usage-breakdown__element--selected {
     border-left-color: rgb(255, 255, 255);
     border-right-color: rgb(255, 255, 255);
     border-top-color: rgb(255, 255, 255);
@@ -116,7 +116,7 @@
     height: 100%;
 }
 
-.memory-usage-bar__element__unknown.memory-usage-breakdown__element--hovered{
+.memory-usage-bar__element__unknown.memory-usage-breakdown__element--hovered {
     background-color: rgb(30, 30, 30);
     border-left-color: rgb(64, 64, 64);
     border-right-color: rgb(64, 64, 64);
@@ -132,7 +132,7 @@
     border-bottom-right-radius: 2px;
 }
 
-.memory-usage-bar__element__unknown.memory-usage-breakdown__element--selected{
+.memory-usage-bar__element__unknown.memory-usage-breakdown__element--selected {
     border-left-color: rgb(255, 255, 255);
     border-right-color: rgb(255, 255, 255);
     border-top-color: rgb(255, 255, 255);
@@ -197,11 +197,11 @@
     background-color: rgb(30, 30, 30);
 }
 
-.legend__row.memory-usage-breakdown__element--hovered{
+.legend__row.memory-usage-breakdown__element--hovered {
     background-color: rgb(30, 30, 30);
 }
 
-.legend__row.memory-usage-breakdown__element--selected{
+.legend__row.memory-usage-breakdown__element--selected {
     background-color: rgb(14, 129, 193);
 }
 
@@ -321,23 +321,23 @@
 }
 
 .background-color__memory-summary-category__unity-other {
-    background-color: rgb(54, 160, 199);
+    background-color: #4D8E23;
 }
 
 .background-color__memory-summary-category__gfx {
-    background-color: rgb(99, 220, 195);
+    background-color: #8068C6;
 }
 
 .background-color__memory-summary-category__managed {
-    background-color: rgb(123, 158, 5);
+    background-color: #0D7CA5;
 }
 
 .background-color__memory-summary-category__audio {
-    background-color: rgb(202, 98, 98);
+    background-color: #A88AD5;
 }
 
-.background-color__memory-summary-category__video {
-    background-color: rgb(240, 208, 68);
+.background-color__memory-summary-category__executable-and-dlls {
+    background-color: #BD6865;
 }
 
 .background-color__memory-summary-category__profiler {
@@ -371,11 +371,11 @@
 }
 
 .background-color__memory-summary-category__managed__virtual-machine {
-    background-color: rgb(72, 105, 105);
+    background-color: #009292;
 }
 
 .background-color__memory-summary-category__managed__objects {
-    background-color: rgb(100, 144, 134);
+    background-color: #52CDF2;
 }
 
 .background-color__memory-summary-category__managed__free-in-active-heap-section {

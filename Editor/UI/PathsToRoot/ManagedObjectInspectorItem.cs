@@ -8,7 +8,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         public bool PendingProcessing => m_ReferencePendingProcessingWhenExpanding.ObjectData.IsValid;
         public bool IsDuplicate => m_ExistingTreeViewItemId != -1;
-        public bool IsRecursive => m_DuplicationType != DuplicationType.None && m_DuplicationType != DuplicationType.Duplicate;
+        public bool IsRecursive => m_DuplicationType == DuplicationType.Recursive || m_DuplicationType == DuplicationType.RecursiveToRoot;
         public int ExistingItemId => m_ExistingTreeViewItemId;
 
         const string HyperlinkManagedObjectInspectorIdTag = "ManagedObjectInspectorId";

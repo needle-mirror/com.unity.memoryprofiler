@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using UnityEngine;
 using UnityEngine.UIElements;
 using System;
@@ -54,6 +55,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !REMOVE_VIEW_HISTORY
         public abstract UI.ViewOpenHistoryEvent GetOpenHistoryEvent();
         public UI.ViewStateChangedHistoryEvent GetCloseHistoryEvent()
         {
@@ -65,6 +67,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         // store dirty state after selection or closing state
         public abstract bool ViewStateFilteringChangedSinceLastSelectionOrViewClose { get; }
         public abstract UI.ViewStateChangedHistoryEvent GetViewStateFilteringChangesSinceLastSelectionOrViewClose();
+#endif
         public abstract void SetSelectionFromHistoryEvent(SelectionEvent selectionEvent);
         // Override if the view pane can't just apply an selection directly after opening
         public virtual void ApplyActiveSelectionAfterOpening(SelectionEvent selectionEvent)

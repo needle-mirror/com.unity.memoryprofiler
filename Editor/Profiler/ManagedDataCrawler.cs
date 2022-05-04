@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
+using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine;
@@ -405,17 +406,18 @@ namespace Unity.MemoryProfiler.Editor
             return BitConverter.ToSingle(bytes, offset);
         }
 
-        public string ReadString()
+        public string ReadString(out int fullLength)
         {
-            int strLength = ReadInt32();
-            int additionalOffsetForObjectHeader = 0;
-            if (strLength < 0 || (long)offset + (long)sizeof(int) + ((long)strLength * (long)2) > bytes.Length)
+            var readLength = fullLength = ReadInt32();
+            var additionalOffsetForObjectHeader = 0;
+            if (fullLength < 0 || (long)offset + (long)sizeof(int) + ((long)fullLength * (long)2) > bytes.Length)
             {
                 // Why is the header not included for object data in the tables?
                 // this workaround here is flakey!
                 additionalOffsetForObjectHeader = 16;
-                strLength = ReadInt32(additionalOffsetForObjectHeader);
-                if (strLength < 0 || (long)offset + (long)sizeof(int) + ((long)strLength * (long)2) > bytes.Length)
+                readLength = fullLength = ReadInt32(additionalOffsetForObjectHeader);
+
+                if (fullLength < 0 || (long)offset + (long)sizeof(int) + ((long)fullLength * (long)2) > bytes.Length)
                 {
 #if DEBUG_VALIDATION
                     Debug.LogError("Attempted to read outside of binary buffer.");
@@ -427,14 +429,27 @@ namespace Unity.MemoryProfiler.Editor
                 Debug.LogError("String reading is broken.");
 #endif
             }
+            if (fullLength > StringTools.MaxStringLengthToRead)
+            {
+                readLength = StringTools.MaxStringLengthToRead;
+                readLength += StringTools.Elipsis.Length;
+            }
             unsafe
             {
                 fixed(byte* ptr = bytes)
                 {
                     string str = null;
                     char* begin = (char*)(ptr + (offset + additionalOffsetForObjectHeader + sizeof(int)));
-                    str = new string(begin, 0, strLength);
-
+                    str = new string(begin, 0, readLength);
+                    if (fullLength != readLength)
+                    {
+                        fixed(char* s = str, e = StringTools.Elipsis)
+                        {
+                            var c = s;
+                            c += readLength - StringTools.Elipsis.Length;
+                            UnsafeUtility.MemCpy(c, e, StringTools.Elipsis.Length);
+                        }
+                    }
                     return str;
                 }
             }
@@ -994,26 +1009,36 @@ namespace Unity.MemoryProfiler.Editor
 
     internal static class StringTools
     {
-        public static string ReadString(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
+        const int k_StringBuilderMaxCap = 8000; // After 8000 chars, StringBuilder will ring buffer the strings and our UI breaks. Also see https://referencesource.microsoft.com/#mscorlib/system/text/stringbuilder.cs,76
+        public const int MaxStringLengthToRead = k_StringBuilderMaxCap - 10 /*Buffer for ellipsis, quotes and spaces*/;
+        public const string Elipsis = " [...]";
+
+        public static string ReadString(this BytesAndOffset bo, out int fullLength, VirtualMachineInformation virtualMachineInformation)
         {
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
-            var length = lengthPointer.ReadInt32();
+            fullLength = lengthPointer.ReadInt32();
             var firstChar = lengthPointer.Add(sizeof(int));
 
-            if (length < 0 || (long)length * 2 > bo.bytes.Length - bo.offset - sizeof(int))
+            if (fullLength < 0 || (long)fullLength * 2 > bo.bytes.Length - bo.offset - sizeof(int))
             {
 #if DEBUG_VALIDATION
                 Debug.LogError("Found a String Object of impossible length.");
 #endif
-                length = 0;
+                fullLength = 0;
             }
 
-            return System.Text.Encoding.Unicode.GetString(firstChar.bytes, firstChar.offset, length * 2);
+            if (fullLength > MaxStringLengthToRead)
+            {
+                var cappedLength = MaxStringLengthToRead;
+                return $"{System.Text.Encoding.Unicode.GetString(firstChar.bytes, firstChar.offset, cappedLength * 2)}{Elipsis}";
+            }
+            else
+                return System.Text.Encoding.Unicode.GetString(firstChar.bytes, firstChar.offset, fullLength * 2);
         }
 
         public static string ReadFirstStringLine(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, bool addQuotes)
         {
-            var str = ReadString(bo, virtualMachineInformation);
+            var str = ReadString(bo, out _, virtualMachineInformation);
             var firstLineBreak = str.IndexOf('\n');
             const int maxCharsInLine = 30;
             if (firstLineBreak >= 0)
@@ -1024,7 +1049,7 @@ namespace Unity.MemoryProfiler.Editor
                     str = str.Substring(0, Math.Min(str.Length, maxCharsInLine));
                 }
                 str = str.Replace("\n", "\\n");
-                str += " {...}";
+                str += " [...]";
             }
             if (addQuotes)
             {

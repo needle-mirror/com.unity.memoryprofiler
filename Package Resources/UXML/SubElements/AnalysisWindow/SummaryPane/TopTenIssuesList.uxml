@@ -3,7 +3,7 @@
 		<Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
 		<ui:VisualElement name="top-ten-issues-section" class="top-ten-issues-section foldout-box__background">
 			<ui:VisualElement name="top-ten-issues-section__header" class="top-ten-issues-section__header">
-				<ui:Foldout name="top-ten-issues-section__header__foldout" text="Top Issues" class="top-ten-issues-section__header__foldout">
+				<ui:Foldout name="top-ten-issues-section__header__foldout" text="Potential Capture Issues" class="top-ten-issues-section__header__foldout">
 					<ui:VisualElement name="top-ten-issues-section__content" class="top-ten-issues-section__content">
 						<ui:VisualElement name="issue-list" class="top-ten-issues-section__list">
 							<Unity.MemoryProfiler.Editor.UI.TopIssueItem focusable="true" message="Editor capture! Get better insights by building and profiling a development build, as memory behaves quite differently in the Editor." />

@@ -44,7 +44,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         static ProfilerModuleViewController CreateDetailsViewController(ProfilerWindow profilerWindow)
         {
-            return new MemoryProfilerModuleViewController(profilerWindow, s_Instance, MemoryProfilerModuleBridge.GetMemoryProfilerModule(profilerWindow));
+            return new MemoryProfilerModuleViewController(profilerWindow, s_Instance);
         }
     }
 }

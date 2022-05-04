@@ -55,6 +55,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             rowHeight = 20f;
             MemoryProfilerSettings.TruncateStateChanged += OnTruncateStateChanged;
             Reload();
+
+            multiColumnHeader.TruncationChangedViaThisHeader += (truncate) =>
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                    truncate ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTypeNameTruncationWasEnabled : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTypeNameTruncationWasDisabled);
+
+            multiColumnHeader.sortingChanged += OnSortingChanged;
         }
 
         void OnTruncateStateChanged()
@@ -130,7 +136,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public void LinkWasClicked(int treeViewId)
+        public void LinkWasClicked(int treeViewId, bool recursiveSelection = false)
         {
             ReferencePendingProcessing pendingProcessing;
             if (m_ExpansionStopGapsByTreeViewItemId.TryGetValue(treeViewId, out pendingProcessing))
@@ -148,10 +154,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ReferencesPendingProcessing.Enqueue(pendingProcessing);
                 ProcessQueue(pendingProcessing.Root.depth + k_MaxDepthIncrement);
                 Reload();
+                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectShowMoreLinkWasClicked);
             }
             else
             {
                 SetSelection(new List<int> { treeViewId }, TreeViewSelectionOptions.RevealAndFrame);
+                if (recursiveSelection)
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                        MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectRecursiveInNotesWasClicked);
+                else
+                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                        MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectDuplicateInNotesWasClicked);
             }
         }
 
@@ -185,7 +199,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var isString = cs.TypeDescriptions.ITypeString == obj.managedTypeIndex;
             if (isString && obj.dataType != ObjectDataType.Type)
             {
-                root.Value = StringTools.ReadString(obj.managedObjectData, cs.VirtualMachineInformation);
+                root.Value = StringTools.ReadString(obj.managedObjectData, out _, cs.VirtualMachineInformation);
                 return;
             }
 
@@ -725,7 +739,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (detailsPanelItem.IsDuplicate)
                     {
                         if (EditorGUICompatibilityHelper.DrawLinkLabel(detailsPanelItem.Notes, cellRect))
-                            LinkWasClicked(detailsPanelItem.ExistingItemId);
+                            LinkWasClicked(detailsPanelItem.ExistingItemId, detailsPanelItem.IsRecursive);
                     }
                     else
                         GUI.Label(cellRect, detailsPanelItem.Notes);
@@ -813,6 +827,40 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             };
             return new MultiColumnHeaderState(columns);
+        }
+
+        protected override void SelectionChanged(IList<int> selectedIds)
+        {
+            base.SelectionChanged(selectedIds);
+
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionInManagedObjectTableWasUsed);
+        }
+
+        protected override void ExpandedStateChanged()
+        {
+            base.ExpandedStateChanged();
+
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTreeViewElementWasRevealed);
+        }
+
+        void OnSortingChanged(MultiColumnHeader multiColumnHeader)
+        {
+            // this table is currently unsortable. This is here in case we change our minds about that eventually.
+            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
+                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTableSortingWasChanged);
+
+            if (multiColumnHeader != null && multiColumnHeader.sortedColumnIndex != -1)
+            {
+                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.SortedColumnEvent>();
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.SortedColumnEvent() {
+                    viewName = "Managed Object Inspector",
+                    Ascending = multiColumnHeader.IsSortedAscending(multiColumnHeader.sortedColumnIndex),
+                    shown = multiColumnHeader.sortedColumnIndex,
+                    fileName = multiColumnHeader.GetColumn(multiColumnHeader.sortedColumnIndex).headerContent.text
+                });
+            }
         }
     }
 }

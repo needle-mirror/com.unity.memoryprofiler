@@ -148,6 +148,10 @@ Image.optionButtonIcon {
     flex-grow: 0;
 }
 
+#analysis-window__ribbon__container {
+    padding-bottom: 16px;
+}
+
 .project-or-session-name-text {
     color: rgb(134, 134, 134);
     -unity-font-style: italic;
@@ -156,6 +160,8 @@ Image.optionButtonIcon {
 .foldout-box__background {
     margin-left: 10px;
     margin-right: 10px;
+    padding: 8px;
+    flex-shrink: 0;
 }
 
 .memory-usage-summary-section {
@@ -163,9 +169,6 @@ Image.optionButtonIcon {
     border-bottom-left-radius: 3px;
     border-top-right-radius: 3px;
     border-bottom-right-radius: 3px;
-    padding-left: 2px;
-    padding-top: 2px;
-    padding-bottom: 2px;
     margin-top: 2px;
     margin-bottom: 2px;
 }
@@ -186,7 +189,8 @@ Image.optionButtonIcon {
     padding-right: 0;
     padding-top: 10px;
     padding-bottom: 10px;
-    flex-direction: row;
+    margin-right: 4px;
+    flex-direction: column;
     justify-content: space-between;
     overflow: hidden;
 }
@@ -199,6 +203,18 @@ Image.optionButtonIcon {
 .memory-usage-summary-section__memory-usage-breakdown {
     flex-grow: 1;
     flex-shrink: 0;
+}
+
+#memory-usage-summary-section__high-level-summary__top-level {
+    padding-top: 8px;
+}
+
+#memory-usage-summary-section__high-level-summary {
+    padding-top: 30px;
+}
+
+#memory-usage-summary-section__content__part-2 {
+    padding-top: 24px;
 }
 
 .memory-usage-breakdown {
@@ -221,10 +237,10 @@ Image.optionButtonIcon {
     border-bottom-width: 1px;
     border-right-width: 1px;
 
-    border-top-left-radius: 3;
-    border-bottom-left-radius: 3;
-    border-top-right-radius: 3;
-    border-bottom-right-radius: 3;
+    border-top-left-radius: 3px;
+    border-bottom-left-radius: 3px;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
     border-color: rgb(35, 35, 35);
     margin: 4px;
     padding: 4px;
@@ -466,9 +482,6 @@ Image.history-button__Icon {
     border-bottom-left-radius: 3px;
     border-top-right-radius: 3px;
     border-bottom-right-radius: 3px;
-    padding-left: 2px;
-    padding-top: 2px;
-    padding-bottom: 2px;
     margin-top: 2px;
     margin-bottom: 2px;
 }
@@ -600,6 +613,59 @@ ToolbarToggle {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.drop-down-button {
+    flex-direction: row;
+    flex-shrink: 0;
+    margin-right: 0;
+    padding-right: 0;
+}
+
+.drop-down-button__icon {
+    margin-right: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-left: 2px;
+    flex-shrink: 0;
+}
+
+.drop-down-button__text {
+    flex-shrink: 0;
+}
+
+.drop-down-button__drop-down-part {
+    background-color: rgba(0, 0, 0, 0);
+    margin-left: 3px;
+    margin-right: -1px;
+    margin-top: -1px;
+    margin-bottom: -1px;
+    width: 18px;
+    font-size: 12px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-right: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 0;
+    flex-shrink: 0;
+}
+
+.drop-down-button__drop-down-part__arrow-icon {
+    margin-left: 3px;
+    margin-right: 5px;
+    padding-left: 3px;
+    border-left-width: 1px;
+}
+
 
 .drop-down-toggle {
     flex-direction: row;
@@ -810,6 +876,11 @@ ToolbarToggle {
     height: 20px;
 }
 
+.legend__table-empty-space-holder--non-diff {
+    height: 8px;
+}
+
+
 .legend__table-top-border {
     border-left-width: 0;
     border-right-width: 0;
@@ -839,6 +910,15 @@ ToolbarToggle {
 
 .legend__table-column-controls {
     height: auto;
+    position: relative;
+    right: auto;
+    width: auto;
+    flex-grow: 1;
+    align-items: flex-end;
+}
+
+.legend__table-column-controls--non-diff {
+    height: 8px;
     position: relative;
     right: auto;
     width: auto;
@@ -1091,18 +1171,23 @@ Image.selected-item-details__preview {
 
 .object-or-type-label {
     flex-direction: row;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .object-or-type-label-selectable {
     flex-direction: row;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.object-or-type-label-selectable:hover {
-    background-color: rgb(85, 85, 85);
+.object-or-type-label__text {
+    flex-direction: column;
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .object-or-type-label__icon-space {

@@ -60,7 +60,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 od = od.GetBoxedValue(m_Snapshot, true);
             }
-            return BasicFormat(od.managedObjectData.ReadString());
+            return BasicFormat(od.managedObjectData.ReadString(out _));
         }
 
         string FormatIntPtr(ObjectData od)

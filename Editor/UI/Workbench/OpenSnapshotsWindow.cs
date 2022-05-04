@@ -84,8 +84,7 @@ namespace Unity.MemoryProfiler.Editor
             m_SecondSnapshotHolderEmpty = holderB.Q<VisualElement>("no-snapshot-loaded", "open-snapshot__container");
 
             var tagB = holderB.Q<Label>("open-snapshot__compare-tag");
-            tagB.RemoveFromClassList(GeneralStyles.ImageTintColorClassSnapshotA);
-            tagB.AddToClassList(GeneralStyles.ImageTintColorClassSnapshotB);
+            tagB.SwitchClasses(classToAdd: GeneralStyles.ImageTintColorClassSnapshotB, classToRemove: GeneralStyles.ImageTintColorClassSnapshotA);
             tagB.text = "B";
 
             UIElementsHelper.SetVisibility(m_SecondSnapshotHolder, false);
@@ -274,7 +273,7 @@ namespace Unity.MemoryProfiler.Editor
                 // TODO: Always hide the dial until we have correct memory pressure metrics.
                 UIElementsHelper.SetVisibility(itemUI.MemoryUsageDial.parent, false);
 
-                snapshotGUIData.SetCurrentState(true, first, CompareMode, isInView);
+                snapshotGUIData.SetCurrentState(true, first, CompareMode);
             }
             if (first)
                 firstIsOpen = snapshotGUIData != null;

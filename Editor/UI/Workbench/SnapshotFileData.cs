@@ -48,6 +48,7 @@ namespace Unity.MemoryProfiler.Editor
         public readonly DateTime UtcDateTime;
         public readonly string MetaContent;
         public readonly string MetaPlatform;
+        public readonly string MetaPlatformExtra;
         public readonly string SnapshotDate;
 
         public string Name;
@@ -85,7 +86,7 @@ namespace Unity.MemoryProfiler.Editor
         }
         State m_CurrentState = State.Closed;
 
-        public void SetCurrentState(bool open, bool first, bool compareMode, bool focused = true)
+        public void SetCurrentState(bool open, bool first, bool compareMode)
         {
             if (!open)
             {
@@ -131,6 +132,7 @@ namespace Unity.MemoryProfiler.Editor
             Name = name;
             MetaContent = snapshotMetadata.Content;
             MetaPlatform = snapshotMetadata.Platform;
+            MetaPlatformExtra = snapshotMetadata.PlatformExtra;
             SessionId = snapshotMetadata.SessionGUID;
             UnityVersion = snapshotMetadata.UnityVersion;
             ProductName = snapshotMetadata.ProductName;

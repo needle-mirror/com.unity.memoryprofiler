@@ -4,6 +4,34 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.7.0-preview.1] - 2022-05-04
+
+### Added
+- Progress bar when opening the Tree Map for the first time.
+
+### Fixed
+- Fixed Displaying of strings longer than 8000 characters breaking the Selected Item Details UI by capping the maximum length of strings to 8000 before displaying them.
+- Fixed Compilation on Unity 2021.1.
+- Fixed a possible TempJob allocation leak when failing to reading a corrupt snapshot.
+- Fixed a NullReferenceException that was thrown upon trying to go back to having Untracked Memory selected while in Fragmentation tab using Memory Profiler (Case 1401201).
+- Fixed type name headers in Details panel running off-screen for long type names ([Case 1401535](https://issuetracker.unity3d.com/product/unity/issues/guid/1401535/)).
+- Fixed NullPointer exception when clicking on the selected item label in the References panel if no item is selected. 
+
+### Changed
+- Sped up snapshot opening times.
+- Moved All Object Tree Map and Table to its own Page.
+  - The Memory Usage Summary on the Summary Page will now be always unfolded on switching to this page.
+  - For all other pages containing the Memory Usage Summary, it defaults to being folded up and will remember its state on each page for the current Session of the Editor. 
+- Optimized Tree Map generation. This reduces time to open Tree Map by 25%.
+- Remove reflection usage for opening the Preferences window focused on the Memory Profiler's settings.
+- Renamed "Top Issues" to "Potential Capture Issues".
+- Adjusted the colors of the bar diagrams in the Memory Usage Overview foldout to improve their readability and clarity.
+- Adjusted Engine and Editor API usage to reflect Memory Profiler APIs moving out of Experimental namespaces in 2022.2.0a13.
+
+### Removed
+- Removed View History buttons from the toolbar. With the removal of links in tables in version 0.5.0-preview.1, these buttons had become largely redundant.
+- Removed sorting of the tables for the Memory Summary bars until pending rework on them is conducted.
+
 ## [0.6.0-preview.1] - 2022-03-11
 
 ### Added

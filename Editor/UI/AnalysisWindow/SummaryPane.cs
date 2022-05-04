@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using System.Collections;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UIContentData;
@@ -12,6 +13,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class SummaryPane : ViewPane
     {
+#if !REMOVE_VIEW_HISTORY
         internal class ViewStateHistory : ViewStateChangedHistoryEvent
         {
             public ViewStateHistory(SummaryPane pane)
@@ -33,6 +35,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return evt != null && evt is History;
             }
         }
+        public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose;
+#endif
 
         public override VisualElement[] VisualElements
         {
@@ -44,9 +48,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public override string ViewName { get { return TextContent.SummaryView.text; } }
 
-        public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose;
-
+#if !REMOVE_VIEW_HISTORY
         bool m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
+#endif
 
         public SummaryPane(IUIStateHolder s, IViewPaneEventListener l) : base(s, l)
         {
@@ -54,23 +58,30 @@ namespace Unity.MemoryProfiler.Editor.UI
             summaryViewTree = AssetDatabase.LoadAssetAtPath(ResourcePaths.SummaryPaneUxmlPath, typeof(VisualTreeAsset)) as VisualTreeAsset;
 
             m_VisualElements = new[] { summaryViewTree.Clone() };
+            UIElementsHelper.SetVisibility(m_VisualElements[0].Q("proxy-root"), false);
         }
 
+#if !REMOVE_VIEW_HISTORY
         public void OpenHistoryEvent(History e, bool reopen, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
         {
         }
 
+#endif
+
         public override void SetSelectionFromHistoryEvent(SelectionEvent selectionEvent)
         {
 #if ENABLE_MEMORY_PROFILER_DEBUG
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
 #endif
         }
 
+#if !REMOVE_VIEW_HISTORY
         public override ViewOpenHistoryEvent GetOpenHistoryEvent()
         {
             return new History();
         }
+
+#endif
 
         public override void OnClose()
         {
@@ -82,6 +93,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             throw new System.InvalidOperationException();
         }
 
+#if !REMOVE_VIEW_HISTORY
         public override ViewStateChangedHistoryEvent GetViewStateFilteringChangesSinceLastSelectionOrViewClose()
         {
             m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
@@ -91,9 +103,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             return stateEvent;
         }
 
+#endif
+
         public override void OnSelectionChanged(MemorySampleSelection selection)
         {
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
         }
     }
 }

@@ -15,20 +15,53 @@ using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.MemoryProfiler.Editor.UI;
 using UnityEditor.Compilation;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
-using Unity.MemoryProfiler.Editor.Legacy.LegacyFormats;
 using System.IO;
-using Unity.MemoryProfiler.Editor.Legacy;
-using UnityEngine.Profiling.Experimental;
+
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.EditorCoroutines.Editor;
-using UnityEngine.Profiling.Memory.Experimental;
+
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 
+#if MEMORY_PROFILER_API_PUBLIC
+using Unity.Profiling.Memory;
+using Unity.Profiling;
+using QueryMemoryProfiler = Unity.Profiling.Memory.MemoryProfiler;
+#else
+using UnityEngine.Profiling.Memory.Experimental;
+using UnityEngine.Profiling.Experimental;
+using QueryMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
+#endif
+
 namespace Unity.MemoryProfiler.Editor
 {
-    using QueryMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
+    internal struct ScreenCaptureCompatibilityWrapper
+    {
+        public NativeArray<byte> RawImageDataReference { get; set; }
+        public TextureFormat ImageFormat { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+#if MEMORY_PROFILER_API_PUBLIC
+        public ScreenCaptureCompatibilityWrapper(DebugScreenCapture capture)
+        {
+            RawImageDataReference = capture.RawImageDataReference;
+            ImageFormat = capture.ImageFormat;
+            Width = capture.Width;
+            Height = capture.Height;
+        }
+
+#else
+        public ScreenCaptureCompatibilityWrapper(DebugScreenCapture capture)
+        {
+            RawImageDataReference = capture.rawImageDataReference;
+            ImageFormat = capture.imageFormat;
+            Width = capture.width;
+            Height = capture.height;
+        }
+
+#endif
+    }
     [Serializable]
     internal class CaptureControlUI
     {
@@ -62,17 +95,12 @@ namespace Unity.MemoryProfiler.Editor
         [SerializeField]
         bool m_GCCollectWhenCapturingEditor = true;
 
-        [NonSerialized]
-        LegacyReader m_LegacyReader;
-
         public void Initialize(IUIStateHolder parentWindow, SnapshotCollection snapshotsCollection, OpenSnapshotsWindow openSnapshotsWindow, OpenSnapshotsManager openSnapshotsManager, VisualElement root, VisualElement leftPane)
         {
             m_SnapshotsCollection = snapshotsCollection;
             m_OpenSnapshotsWindow = openSnapshotsWindow;
             m_OpenSnapshotsManager = openSnapshotsManager;
             m_ParentWindow = parentWindow;
-
-            m_LegacyReader = new LegacyReader();
 
             m_Splitter = root.Q<TwoPaneSplitView>("details-panel__splitter");
 
@@ -165,7 +193,7 @@ namespace Unity.MemoryProfiler.Editor
             menu.AddItem(TextContent.CaptureManagedObjectsItem, mo, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.ManagedObjects, !mo); });
             menu.AddItem(TextContent.CaptureNativeObjectsItem, no, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeObjects, !no); });
             //For now disable all the native allocation flags in one go, the call-stack flags will have an effect only when the player has call-stacks support
-            menu.AddItem(TextContent.CaptureNativeAllocationsItem, na, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeAllocations | CaptureFlags.NativeStackTraces, !na); });
+            menu.AddItem(TextContent.CaptureNativeAllocationsItem, na, () => { SetFlag(ref m_CaptureFlags, CaptureFlags.NativeAllocations | CaptureFlags.NativeAllocationSites | CaptureFlags.NativeStackTraces, !na); });
             menu.AddSeparator("");
             menu.AddItem(TextContent.CaptureScreenshotItem, m_CaptureWithScreenshot, () => { m_CaptureWithScreenshot = !m_CaptureWithScreenshot; });
             if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Editor)
@@ -231,6 +259,26 @@ namespace Unity.MemoryProfiler.Editor
             GUIUtility.ExitGUI();
         }
 
+        static class LegacyTool
+        {
+            const string k_Memsnap = ".memsnap";
+            const string k_Memsnap2 = ".memsnap2";
+            const string k_Memsnap3 = ".memsnap3";
+
+            public static bool IsLegacyFileFormat(string path)
+            {
+                string extension = Path.GetExtension(path);
+                switch (extension)
+                {
+                    case k_Memsnap:
+                    case k_Memsnap2:
+                    case k_Memsnap3:
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        }
         IEnumerator ImportCaptureRoutine(string path)
         {
             m_ImportButton.SetEnabled(false);
@@ -239,43 +287,20 @@ namespace Unity.MemoryProfiler.Editor
             string targetPath = null;
             ProgressBarDisplay.ShowBar("Importing snapshot.");
             yield return null;
-            bool legacy = m_LegacyReader.IsLegacyFileFormat(path);
+            bool legacy = LegacyTool.IsLegacyFileFormat(path);
             if (legacy)
             {
-                float initalProgress = 0.15f;
-                ProgressBarDisplay.UpdateProgress(initalProgress, "Reading legacy format file.");
-                var oldSnapshot = m_LegacyReader.ReadFromFile(path);
-                targetPath = Path.Combine(Application.temporaryCachePath, FileExtensionContent.ConvertedSnapshotTempFileName);
-
-                ProgressBarDisplay.UpdateProgress(0.25f, "Converting to current snapshot format.");
-
-                var conversion = LegacyPackedMemorySnapshotConverter.Convert(oldSnapshot, targetPath);
-                conversion.MoveNext(); //start execution
-
-                if (conversion.Current == null)
-                {
-                    ProgressBarDisplay.ClearBar();
-                    MemoryProfilerAnalytics.CancelEvent<MemoryProfilerAnalytics.ImportedSnapshotEvent>();
-                    m_ImportButton.SetEnabled(true);
-                    yield break;
-                }
-
-                var status = conversion.Current as EnumerationStatus;
-                float progressPerStep = (1.0f - initalProgress) / status.StepCount;
-                while (conversion.MoveNext())
-                {
-                    ProgressBarDisplay.UpdateProgress(initalProgress + status.CurrentStep * progressPerStep, status.StepStatus);
-                }
+                // TODO: Add instrumentation to see how often this happens
+                EditorUtility.DisplayDialog("Snapshot Format No Longer Supported!", "The format of this Snapshot is no longer supported for importing. Please use an older version of the Memory Profiler Package (<=0.6.0-preview.1) to convert the snapshot to a newer format.", "OK");
             }
             else
             {
                 targetPath = path;
+                m_SnapshotsCollection.AddSnapshotToCollection(targetPath, ImportMode.Copy);
             }
 
-            m_SnapshotsCollection.AddSnapshotToCollection(targetPath, legacy ? ImportMode.Move : ImportMode.Copy);
-
             ProgressBarDisplay.ClearBar();
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ImportedSnapshotEvent());
+            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ImportedSnapshotEvent() { fileExtensionOrVersionOfImportedSnapshot = Path.GetExtension(path)});
 
             m_ImportButton.SetEnabled(true);
             m_ImportButton.MarkDirtyRepaint();
@@ -415,7 +440,9 @@ namespace Unity.MemoryProfiler.Editor
                     if (!screenshotCaptureResult)
                         return;
 
-                    if (screenCapture.rawImageDataReference.Length == 0)
+                    var screenCaptureWrapper = new ScreenCaptureCompatibilityWrapper(screenCapture);
+
+                    if (screenCaptureWrapper.RawImageDataReference.Length == 0)
                         return;
 
                     if (wasStillWaitingForScreenshot) // only update progress if not timed out
@@ -426,8 +453,8 @@ namespace Unity.MemoryProfiler.Editor
                         path = Path.ChangeExtension(path, FileExtensionContent.SnapshotTempScreenshotFileExtension);
                     }
 
-                    Texture2D tex = new Texture2D(screenCapture.width, screenCapture.height, screenCapture.imageFormat, false);
-                    CopyDataToTexture(tex, screenCapture.rawImageDataReference);
+                    Texture2D tex = new Texture2D(screenCaptureWrapper.Width, screenCaptureWrapper.Height, screenCaptureWrapper.ImageFormat, false);
+                    CopyDataToTexture(tex, screenCaptureWrapper.RawImageDataReference);
                     File.WriteAllBytes(path, tex.EncodeToPNG());
                     if (Application.isPlaying)
                         UnityEngine.Object.Destroy(tex);

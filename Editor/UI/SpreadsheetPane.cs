@@ -1,3 +1,4 @@
+#define REMOVE_VIEW_HISTORY
 using UnityEngine;
 using UnityEditor;
 
@@ -20,10 +21,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public int CurrentTableIndex { get; private set; }
 
+        protected bool m_NeedRefresh = false;
+#if !REMOVE_VIEW_HISTORY
         public override bool ViewStateFilteringChangedSinceLastSelectionOrViewClose => m_ViewStateFilteringChangedSinceLastSelectionOrViewClose;
         bool m_ViewStateFilteringChangedSinceLastSelectionOrViewClose = false;
 
-        protected bool m_NeedRefresh = false;
 
         internal class ViewStateHistory : ViewStateChangedHistoryEvent
         {
@@ -129,6 +131,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     && m_ViewStateHistory.SpreadsheetState.SelectedRow == hEvt.m_ViewStateHistory.SpreadsheetState.SelectedRow;
             }
         }
+#endif
 
         public SpreadsheetPane(IUIStateHolder s, IViewPaneEventListener l)
             : base(s, l)
@@ -192,8 +195,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
             }
 
+#if !REMOVE_VIEW_HISTORY
             var hEvent = new History(this, m_UIState.CurrentMode, sheet.DisplayTable.GetLinkTo(pos));
             m_UIState.history.AddEvent(hEvent);
+#endif
             m_EventListener.OnOpenLink(link);
         }
 
@@ -250,12 +255,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_EventListener.OnRepaint();
         }
 
+#if !REMOVE_VIEW_HISTORY
         public void OpenHistoryEvent(History e, bool reopen, ViewStateChangedHistoryEvent viewStateToRestore = null, SelectionEvent selectionEvent = null, bool selectionIsLatent = false)
         {
             if (e == null) return;
             e.Restore(this, reopen, viewStateToRestore, selectionEvent, selectionIsLatent);
         }
 
+#endif
+
+#if !REMOVE_VIEW_HISTORY
         public override UI.ViewOpenHistoryEvent GetOpenHistoryEvent()
         {
             if (m_Spreadsheet != null && m_CurrentTableLink != null)
@@ -283,6 +292,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return stateEvent;
         }
 
+#endif
         private void OnGUI_OptionBar()
         {
             EditorGUILayout.BeginHorizontal();

@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Select the first breakdown.
             if (m_Model.Breakdowns != null && m_Model.Breakdowns.Count > 0)
-                SelectBreakdown(m_Model.Breakdowns[0]);
+                SelectBreakdown(m_Model.Breakdowns[0], true);
         }
 
         void GatherViewReferences()
@@ -77,8 +77,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             return manipulator;
         }
 
-        void SelectBreakdown(ObjectBreakdownsModel.Option breakdown)
+        void SelectBreakdown(ObjectBreakdownsModel.Option breakdown, bool defaultOpen = false)
         {
+            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewEvent>();
             // Configure the select breakdown button's text.
             m_SelectBreakdownButtonLabel.text = breakdown.DisplayName;
             m_BreakdownDescriptionLabel.text = breakdown.Description;
@@ -94,6 +95,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_BreakdownViewController = breakdown.CreateViewController(m_Model.Snapshot);
             AddChild(m_BreakdownViewController);
             m_BreakdownContainer.Add(m_BreakdownViewController.View);
+
+            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewEvent() { viewName = defaultOpen ? $"{breakdown.DisplayName}(Default)" : breakdown.ToString()});
         }
     }
 }

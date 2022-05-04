@@ -66,6 +66,31 @@ Label.snapshot--in-view{
     color: rgba(0, 0, 0, 0.4)
 }
 
+
+.drop-down-button__drop-down-part:hover {
+    background-color: rgb(177, 177, 177);
+}
+
+.drop-down-button__drop-down-part:checked:hover {
+    background-color: rgb(219, 219, 219);
+}
+
+.drop-down-button__drop-down-part__arrow-icon {
+    border-left-color: rgb(144, 144, 141);
+}
+
+.drop-down-button__drop-down-part__arrow-icon:hover {
+    border-left-color: rgb(131, 131, 128);
+}
+
+.drop-down-button__drop-down-part__arrow-icon:checked {
+    border-left-color: rgb(162, 162, 159);
+}
+
+.drop-down-button__drop-down-part__arrow-icon:checked:hover {
+    border-left-color: rgb(152, 152, 149);
+}
+
 .drop-down-toggle__drop-down-part:hover {
     background-color: rgb(177, 177, 177);
 }
@@ -170,4 +195,12 @@ Label.snapshot--in-view{
 
 .no-icon__icon {
     background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/NoIconIcon.png');
+}
+
+.object-or-type-label-selectable:hover {
+    background-color: rgb(85, 85, 85);
+}
+
+#object-or-type-label__menu-button:hover {
+    background-color: rgb(85, 85, 85);
 }

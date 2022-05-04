@@ -7,22 +7,23 @@
         <ui:VisualElement name="analysis-window--no-data-loaded" class="analysis-window__background analysis-window--no-data-loaded">
             <ui:Label text="To start inspection, select a Snapshot from the panel on the left, or capture a new Snapshot.&#10;The Snapshot Panel can be toggled on/off from the tool-bar.&#10;" name="analysis-window--no-data-loaded__message" class="analysis-window--no-data-loaded__message guidance-text" />
 			<ui:Button name="analysis-window--no-data-loaded__capture-button" class="analysis-window--no-data-loaded__capture-button">
-				<ui:Label text="Capture New Snapshot" tooltip="Take a new snapshot from the target specified in the drop-down in the top left hand corner of this window." />
-				<ui:Image tooltip="Take a new snapshot from the target specified in the drop-down in the top left hand corner of this window." class="icon-button icon-button__camera-icon square-button-icon" />
-			</ui:Button>
+                <ui:Label text="Capture New Snapshot" tooltip="Take a new snapshot from the target specified in the drop-down in the top left hand corner of this window." />
+                <ui:Image tooltip="Take a new snapshot from the target specified in the drop-down in the top left hand corner of this window." class="icon-button icon-button__camera-icon square-button-icon" />
+            </ui:Button>
         </ui:VisualElement>
         <ui:VisualElement name="analysis-window--data-loaded" class="analysis-window__background">
-            <Unity.MemoryProfiler.Editor.UI.Ribbon name="snapshot-window__ribbon__container" show-help-button="true" alignment="FlexStart">
-                <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Summary" toggled="true" name="summary" />
-                <Unity.MemoryProfiler.Editor.UI.RibbonButton text="Memory Breakdowns" name="snapshot-window__ribbon__breakdowns-button"/>
-                <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Objects and Allocations" toggled="true" name="objects-and-allocations" />
-                <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Fragmentation" toggled="true" name="fragmentation" />
+            <Unity.MemoryProfiler.Editor.UI.Ribbon name="analysis-window__ribbon__container" show-help-button="true" alignment="FlexStart">
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton text="Summary" name="analysis-window__ribbon__summary-button" />
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton text="Memory Breakdowns" name="analysis-window__ribbon__breakdowns-button" />
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton text="Tree Map" name="analysis-window__ribbon__tree-map-button" />
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton text="Objects and Allocations" name="analysis-window__ribbon__objects-and-allocations-button" />
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton text="Fragmentation" name="analysis-window__ribbon__fragmentation-button" />
             </Unity.MemoryProfiler.Editor.UI.Ribbon>
-            <ui:Instance template="MemoryUsageSummary" name="MemoryUsageSummary" style="flex-shrink: 0;" />
+            <ui:Instance template="MemoryUsageSummary" name="analysis-window__memory-usage-summary" style="flex-shrink: 0;" />
+            <ui:Instance template="TopTenIssuesList" name="analysis-window__top-ten-issues-list" class="top-ten-issues-section__template-container" />
             <ui:VisualElement name="analysis-window__view-pane" class="analysis-window__view-pane">
                 <ui:Instance template="SummaryPane" name="SummaryPane" />
             </ui:VisualElement>
-            <ui:Instance template="TopTenIssuesList" name="TopTenIssuesList" class="top-ten-issues-section__template-container" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>
