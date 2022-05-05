@@ -29,7 +29,7 @@ namespace Unity.MemoryProfiler.Editor
         public bool SnapshotBOpen { get { return m_UIState.SecondMode == m_UIState.CurrentMode; } }
         public bool DiffOpen { get { return m_UIState.diffMode == m_UIState.CurrentMode; } }
 
-        public event Action SwappedSnapshots = delegate {};
+        public event Action SwappedSnapshots = delegate { };
 
         private UI.ViewPane currentViewPane
         {

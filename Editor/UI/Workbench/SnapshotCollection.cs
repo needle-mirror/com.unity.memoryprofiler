@@ -56,7 +56,7 @@ namespace Unity.MemoryProfiler.Editor
         }
         public string m_UnityVersion;
 
-        public event Action<string> SessionNameChanged = delegate {};
+        public event Action<string> SessionNameChanged = delegate { };
 
         internal struct DynamicVisualElements
         {
@@ -188,11 +188,11 @@ namespace Unity.MemoryProfiler.Editor
         DirectoryInfo m_Info;
         List<SessionInfo> m_Sessions = new List<SessionInfo>();
         Dictionary<uint, SessionInfo> m_SessionsDictionary = new Dictionary<uint, SessionInfo>();
-        public event Action<SnapshotCollectionEnumerator> collectionRefresh = delegate {};
-        public event Action<SessionInfo> sessionDeleted = delegate {};
-        public event Action<uint, string> SessionNameChanged = delegate {};
-        public event Action SnapshotCountIncreased = delegate {};
-        public event Action<SnapshotFileData> SnapshotTakenAndAdded = delegate {};
+        public event Action<SnapshotCollectionEnumerator> collectionRefresh = delegate { };
+        public event Action<SessionInfo> sessionDeleted = delegate { };
+        public event Action<uint, string> SessionNameChanged = delegate { };
+        public event Action SnapshotCountIncreased = delegate { };
+        public event Action<SnapshotFileData> SnapshotTakenAndAdded = delegate { };
 
         public int SnapshotCount { get; private set; }
 

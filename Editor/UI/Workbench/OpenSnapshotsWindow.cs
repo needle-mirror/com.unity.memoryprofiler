@@ -12,11 +12,11 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal class OpenSnapshotsWindow : VisualElement
     {
-        public event Action SwapOpenSnapshots = delegate {};
-        public event Action ShowDiffOfOpenSnapshots = delegate {};
-        public event Action ShowFirstOpenSnapshot = delegate {};
-        public event Action ShowSecondOpenSnapshot = delegate {};
-        public event Action<bool> CompareModeChanged = delegate {};
+        public event Action SwapOpenSnapshots = delegate { };
+        public event Action ShowDiffOfOpenSnapshots = delegate { };
+        public event Action ShowFirstOpenSnapshot = delegate { };
+        public event Action ShowSecondOpenSnapshot = delegate { };
+        public event Action<bool> CompareModeChanged = delegate { };
 
         class OpenSnapshotItemUI
         {
@@ -171,12 +171,12 @@ namespace Unity.MemoryProfiler.Editor
 
             //item.AddManipulator(new Clickable(openSnapshotHandler));
             openSnapshotItemUI.Item = item;
-            openSnapshotItemUI.Image =  item.Q<Image>("preview-image-open-item");
+            openSnapshotItemUI.Image = item.Q<Image>("preview-image-open-item");
             openSnapshotItemUI.Image.scaleMode = ScaleMode.ScaleToFit;
             openSnapshotItemUI.PlatformIcon = item.Q<Image>("preview-image__platform-icon", GeneralStyles.PlatformIconClassName);
             openSnapshotItemUI.EditorPlatformIcon = item.Q<Image>("preview-image__editor-icon", GeneralStyles.PlatformIconClassName);
             openSnapshotItemUI.NoDataLabel = item.Q<Label>("no-snapshot-loaded-text");
-            openSnapshotItemUI.NoData = item.parent.Q<VisualElement>("no-snapshot-loaded" , "open-snapshot__container");
+            openSnapshotItemUI.NoData = item.parent.Q<VisualElement>("no-snapshot-loaded", "open-snapshot__container");
             openSnapshotItemUI.Name = item.Q<Label>("snapshot-name");
             openSnapshotItemUI.DataContainer = item.Q<VisualElement>("open-snapshot", "open-snapshot__container");
             openSnapshotItemUI.Date = item.Q<Label>("snapshot-date");

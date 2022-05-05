@@ -1,0 +1,33 @@
+#snapshot-issues__view {
+}
+
+#snapshot-issues__list {
+    flex-grow: 1;
+    flex-direction: column;
+
+    justify-content: space-between;
+}
+
+.snapshot-issues__issue-icon {
+    width: 12px;
+    height: 12px;
+
+    margin-top: 4px;
+}
+
+.snapshot-issues__issue-icon__error-icon {
+    background-image: resource('d_console.erroricon.sml.png');
+}
+
+.snapshot-issues__issue-icon__warn-icon {
+    background-image: resource('d_console.warnicon.sml.png');
+}
+
+.snapshot-issues__issue-icon__info-icon {
+    background-image: resource('d_console.infoicon.sml.png');
+}
+
+.snapshot-issues__issue__details {
+    white-space: normal;
+    padding-bottom: 20px;
+}

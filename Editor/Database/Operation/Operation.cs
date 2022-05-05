@@ -287,7 +287,8 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
             {
                 if (_comparableComparatorIdentity == null)
                 {
-                    _comparableComparatorIdentity = (IComparable a, IComparable b) => {
+                    _comparableComparatorIdentity = (IComparable a, IComparable b) =>
+                    {
                         try
                         {
                             return a.CompareTo(b);

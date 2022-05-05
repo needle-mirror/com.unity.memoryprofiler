@@ -138,12 +138,12 @@ namespace Unity.MemoryProfiler.Editor
             return o;
         }
 
-        public static Range operator+(Range r, long x)
+        public static Range operator +(Range r, long x)
         {
             return new Range(r.First + x, r.Last + x);
         }
 
-        public static Range operator-(Range r, long x)
+        public static Range operator -(Range r, long x)
         {
             return new Range(r.First - x, r.Last - x);
         }
@@ -354,7 +354,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             public long Current { get { return m_ArrayRange[m_Cursor]; } }
-            void IDisposable.Dispose() {}
+            void IDisposable.Dispose() { }
         }
         public Enumerator GetEnumerator()
         {

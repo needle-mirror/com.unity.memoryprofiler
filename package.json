@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.0.0-pre.1",
+  "version": "1.0.0-pre.2",
   "unity": "2022.2",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -16,17 +16,17 @@
     "com.unity.editorcoroutines": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n- Added Unity Objects comparison view when comparing two snapshots.\n\n### Removed \n- Removed accidentally exposed as public internal API\n- Removed Fragmentation, Objects & Allocations, and Tree Map legacy tabs.\n\n### Changed\n- Changed minimal supported version to 2020.3.\n- Use Editor built-in platform icons in the Snapshot panel.\n- Moved Unity Objects and All Of Memory breakdowns to their own tabs.\n- Moved Potential Duplicates to an option within Unity Objects.\n\n### Fixed\n- Fixed an issue whereby tab bar text would overlap with details text on sufficiently small window sizes.\n- Fixed an exception occurring when loading an unsupported snapshot and opening the Unity Objects breakdown. \n- Fixed an issue whereby a 'feature not available due to pre 2022.1' message can be shown incorrectly."
+    "changelog": "### Added\n\n### Changed\n- Changed details view UI to hide references section if selected item doesn't have refrences.\n\n### Fixed\n- Fixed a crash in DynamicArray.Resize [(Case 1426543)](https://issuetracker.unity3d.com/product/unity/issues/guid/1426543/).\n- Selecting a Unity Object Type in the Unity Objects Comparison view now clears the selection in the Details view.\n- Fixed `Value cannot be Null` error and infinite Circular References when expanding types with self references in the Managed Fields table in the Selected Item Details panel."
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.0.0-pre.1"
+    "com.unity.memoryprofiler.tests": "1.0.0-pre.2"
   },
   "upmCi": {
-    "footprint": "67da5a4d926d15fe70f078d5e73d84dbd3666cc3"
+    "footprint": "3793bc5e85465e00861fa8cf4105f45425b9c47f"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "4f7772a1d720510b796b11b7de4aa411772f5b5e"
+    "revision": "2ac5f941dea2a5584d13cef3d76fc67bc3965257"
   }
 }

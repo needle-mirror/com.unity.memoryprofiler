@@ -14,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor.Database
                 public Sort SortDefault;
                 public Sort SortOverride;
 
-                public DefaultSort() {}
+                public DefaultSort() { }
                 public DefaultSort(Sort sortDefault, Sort sortOverride)
                 {
                     SortDefault = sortDefault;

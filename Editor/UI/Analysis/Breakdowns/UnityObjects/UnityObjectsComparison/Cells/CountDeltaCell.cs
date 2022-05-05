@@ -36,12 +36,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_Label = this.Q<Label>(k_UxmlIdentifier_Label);
             m_IncreaseIcon = this.Q<VisualElement>(k_UxmlIdentifier_Icon);
-            
+
             // Make this a cell with a darkened background. This requires quite a bit of styling to be compatible with tree view selection styling, so that is why it is its own class.
             AddToClassList("dark-tree-view-cell");
         }
 
-        public new class UxmlFactory : UxmlFactory<CountDeltaCell> { }
+        public new class UxmlFactory : UxmlFactory<CountDeltaCell> {}
     }
 }
 #endif

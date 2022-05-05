@@ -41,7 +41,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_PositiveBar.visible = positiveProgress != 0f;
         }
 
-        public new class UxmlFactory : UxmlFactory<DeltaBarCell> { }
+        public new class UxmlFactory : UxmlFactory<DeltaBarCell> {}
     }
 }
 #endif

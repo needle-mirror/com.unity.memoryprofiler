@@ -16,7 +16,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// </summary>
     internal abstract class SpreadsheetLogic
     {
-        public event Action<long> RowSelectionChanged = delegate {};
+        public event Action<long> RowSelectionChanged = delegate { };
         protected void OnRowSelectionChanged(long row)
         {
             RowSelectionChanged(row);
@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public long SelectedRow = -1;
             public bool SelectionIsLatent = false;
 
-            public GUIState() {}
+            public GUIState() { }
 
             public GUIState(GUIState copy)
             {
@@ -65,7 +65,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         };
         protected GUIState m_GUIState = new GUIState();
         protected GUIState m_DelayedUpdateGUIState = null;
-        public SpreadsheetLogic(IViewEventListener listener) : this(null, listener) {}
+        public SpreadsheetLogic(IViewEventListener listener) : this(null, listener) { }
 
         public SpreadsheetLogic(SplitterStateEx splitter, IViewEventListener listener)
         {

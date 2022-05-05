@@ -366,7 +366,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                     public System.Collections.Generic.List<ViewColumn.Builder> column = new System.Collections.Generic.List<ViewColumn.Builder>();
                     public System.Collections.Generic.List<Node> child = new System.Collections.Generic.List<Node>();
 
-                    public Data() {}
+                    public Data() { }
                     public Data(DataType type)
                     {
                         this.type = type;

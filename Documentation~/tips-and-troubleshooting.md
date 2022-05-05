@@ -2,13 +2,13 @@
 
 When you use the Memory Profiler package, you should be aware of the following:
 
-## Ignore snapshot files
+## Ignore snapshot files in source control
 
-Add the .snap extension to your version control system’s [ignore file](https://www.atlassian.com/git/tutorials/saving-changes/gitignore) to avoid committing memory snapshot files to your repository. Memory snapshot files might take up large amounts of disk space.
+Add the .snap extension to your version control system’s [ignore file](https://www.atlassian.com/git/tutorials/saving-changes/gitignore) to avoid committing memory snapshot files to your repository. Memory snapshot files might use large amounts of disk space.
 
 ## Define snapshot metadata
 
-When you capture a snapshot, you can generate [MetaData](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MetaData.html) on the Player side. If the Player was built from a Project that has the Memory Profiler package installed, it generates some default metadata.
+When you capture a snapshot, you can generate [MetaData](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MetaData.html) on the Player side. If the Player was built from a Project that has the Memory Profiler package installed, the Player generates some default metadata for the snapshot.
 
 The default metadata consists of:
 * [MetaData.content](https://docs.unity3d.com/2018.3/Documentation/ScriptReference/Profiling.Memory.Experimental.MetaData-content.html): Contains the Project's name, and the scripting version when you capture the Editor.
@@ -27,3 +27,7 @@ To define custom metadata in a Project that has the Memory Profiler package inst
 You need to implement `void CollectMetadata(MetaData data)` in which you fill `data` with the information you want. You can create multiple classes that inherit from `Unity.MemoryProfiler.MetadataCollect` but their `CollectMetadata` methods have no defined call order.
 
 If you have a class that inherits from `Unity.MemoryProfiler.MetadataCollect`, it does not generate the default metadata described in __Define snapshot metadata__. If you want to keep some or all of the default metadata, go to the file `com.unity.memoryprofiler/Runtime/MetadataInjector.cs` and copy the content you want to keep from `DefaultCollect(MetaData data)` into your implementation.
+
+## Known Issues
+
+* The Memory Profiler reports the wrong Total Committed Memory value for Android devices on Unity versions before 2021.1.0a1 or before 2020.2.0b8. It reports the total RAM that the device has, not the total amount of RAM used. [(Case 1267773)](https://issuetracker.unity3d.com/product/unity/issues/guid/1267773/)

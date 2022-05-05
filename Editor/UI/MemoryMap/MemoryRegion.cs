@@ -25,7 +25,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             get { return AddressBegin + Size; }
         }
 
-        public MemoryRegion(RegionType type,  ulong begin, ulong size, string displayName)
+        public MemoryRegion(RegionType type, ulong begin, ulong size, string displayName)
         {
             AddressBegin = begin;
             Size = size;

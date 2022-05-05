@@ -62,7 +62,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Instantiates a <see cref="Ribbon"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<RibbonButton, UxmlTraits> {}
+        public new class UxmlFactory : UxmlFactory<RibbonButton, UxmlTraits> { }
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="RibbonButton"/>.

@@ -27,7 +27,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public bool IsCreated { get; private set; }
 
-        public DynamicArray(Allocator label) : this(0, label) {}
+        public DynamicArray(Allocator label) : this(0, label) { }
 
         public DynamicArray(long initialSize, Allocator label, bool memClear = false)
         {
@@ -123,7 +123,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             Checks.CheckEquals(true, IsCreated);
             var oldCount = Count;
-            Count = newSize;
             if (newSize > m_Capacity)
                 ResizeInternalBuffer(newSize, false);
 
@@ -132,6 +131,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 var typeSize = UnsafeUtility.SizeOf<T>();
                 UnsafeUtility.MemClear(((byte*)m_Data) + (oldCount * typeSize), (newSize - oldCount) * typeSize);
             }
+            Count = newSize;
         }
 
         [MethodImpl(256)]

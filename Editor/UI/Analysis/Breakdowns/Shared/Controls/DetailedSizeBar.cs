@@ -57,7 +57,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         Label SizeLabel { get; }
 
         Label TotalLabel { get; }
-        
+
         public void SetRelativeSize(float relativeSize)
         {
             Bar.SetProgress(relativeSize);
@@ -73,7 +73,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             TotalLabel.text = text;
         }
 
-        public new class UxmlFactory : UxmlFactory<DetailedSizeBar> { }
+        public new class UxmlFactory : UxmlFactory<DetailedSizeBar> {}
     }
 }
 #endif

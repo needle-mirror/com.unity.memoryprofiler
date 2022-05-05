@@ -60,7 +60,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (IsViewLoaded)
                 {
                     ReloadTabBarItems();
-                    SelectedIndex = k_DefaultIndex;
+                    SetSelectedIndex(k_DefaultIndex, true);
                 }
             }
         }
@@ -129,8 +129,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         bool IsValidViewControllerIndex(int index)
         {
             return (ViewControllers != null &&
-                    index >= 0 &&
-                    index < ViewControllers.Length);
+                index >= 0 &&
+                index < ViewControllers.Length);
         }
 
         void SwitchContentViewController(int previousViewControllerIndex, int newViewControllerIndex)
@@ -196,7 +196,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_TabBarItems = tabBarItems;
         }
-        
+
         void SwitchSelectedTabBarItem(int previousViewControllerIndex, int newViewControllerIndex)
         {
             SetTabBarItemAtIndexSelected(previousViewControllerIndex, false);

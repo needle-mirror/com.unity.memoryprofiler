@@ -41,7 +41,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
             switch (metaCol.Type.comparisonMethod)
             {
                 case DataMatchMethod.AsString:
-                    if(m_MatchExactly)
+                    if (m_MatchExactly)
                         m = new ExactStringMatcher();
                     else
                         m = new SubStringMatcher();
@@ -246,7 +246,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                 GUILayout.Label(string.Format("'{0}'", metaCol.DisplayName));
                 var matchingLogic = MatchExactly ? StringMatchingLogic.Is : StringMatchingLogic.Contains;
                 var newMatchingLogic = (StringMatchingLogic)EditorGUILayout.EnumPopup(matchingLogic, GUILayout.MaxWidth(75));
-                if(matchingLogic != newMatchingLogic)
+                if (matchingLogic != newMatchingLogic)
                 {
                     MatchExactly = newMatchingLogic == StringMatchingLogic.Is;
                     dirty = true;
@@ -280,7 +280,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                 var currentlyFocused = GUI.GetNameOfFocusedControl();
                 if (m_ForceFocus)
                 {
-                    if(currentlyFocused != k_MatchStringField)
+                    if (currentlyFocused != k_MatchStringField)
                     {
                         // Not a clue why this misdirection was necessary but in 2021.2.0a18, Summary view tables where setting the focus directly and correctly
                         // while Objects and Allocations tables would only do so the second time a match filter was added and when currentlyFocused == k_MatchStringField
@@ -291,7 +291,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
                         GUI.FocusControl(k_MatchStringField);
                     m_ForceFocus = false;
                 }
-                else if(m_ForceFocusAgainOneFrameLater && Event.current.type == EventType.Layout)
+                else if (m_ForceFocusAgainOneFrameLater && Event.current.type == EventType.Layout)
                 {
                     m_ForceFocusAgainOneFrameLater = false;
                     GUI.FocusControl(k_MatchStringField);

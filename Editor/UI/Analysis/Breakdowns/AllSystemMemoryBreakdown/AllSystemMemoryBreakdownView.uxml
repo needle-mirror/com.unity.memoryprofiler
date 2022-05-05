@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="all-system-memory-breakdown-view">
+        <Style src="AllSystemMemoryBreakdownView.uss"/>
+        <engine:VisualElement name="all-system-memory-breakdown-view__search-field-container">
+            <editor:ToolbarSearchField name="all-system-memory-breakdown-view__search-field"/>
+        </engine:VisualElement>
+        <engine:VisualElement name="all-system-memory-breakdown-view__total">
+            <Unity.MemoryProfiler.Editor.UI:ProgressBar name="all-system-memory-breakdown-view__total__bar"/>
+            <engine:VisualElement name="all-system-memory-breakdown-view__total-footer">
+                <engine:Label name="all-system-memory-breakdown-view__total-footer__table-label"/>
+                <engine:Label name="all-system-memory-breakdown-view__total-footer__snapshot-label"/>
+            </engine:VisualElement>
+        </engine:VisualElement>
+        <engine:VisualElement name="all-system-memory-breakdown-view__tree-view__main-container">
+            <engine:MultiColumnTreeView name="all-system-memory-breakdown-view__tree-view" sorting-enabled="true">
+                <engine:Columns reorderable="false">
+                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__address" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__size" resizable="true" stretchable="false"/>
+                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__residentsize" resizable="true" stretchable="false"/>
+                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__type" resizable="true" stretchable="false"/>
+                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__name" resizable="true" stretchable="true" optional="false"/>
+                </engine:Columns>
+                <engine:SortColumnDescriptions>
+                    <engine:SortColumnDescription column-name="all-system-memory-breakdown-view__tree-view__column__address" direction="ascending"/>
+                </engine:SortColumnDescriptions>
+            </engine:MultiColumnTreeView>
+            <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="all-system-memory-breakdown-view__loading-overlay"/>
+        </engine:VisualElement>
+        <engine:Label name="all-system-memory-breakdown-view__error-label"/>
+    </engine:VisualElement>
+
+</engine:UXML>

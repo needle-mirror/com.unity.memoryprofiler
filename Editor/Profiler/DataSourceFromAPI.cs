@@ -4,7 +4,6 @@ using Unity.MemoryProfiler.Editor.Format;
 
 namespace Unity.MemoryProfiler.Editor.DataAdapters
 {
-
     /// <summary>
     /// Represent a source of data that can be requested in chunks
     /// </summary>
@@ -95,7 +94,6 @@ namespace Unity.MemoryProfiler.Editor.DataAdapters
     }
 
     internal class AdaptorDynamicArray<DataT> : DataSource<DataT> where DataT : unmanaged
-
     {
         private DynamicArray<DataT> m_Array;
         public AdaptorDynamicArray(DynamicArray<DataT> array)

@@ -1,7 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
-    <ui:VisualElement name="memory-usage-breakdown__object-table__row" class="legend__row memory-usage-breakdown__object-table__legend-row">
-        <ui:Label name="memory-usage-breakdown__object-table__name" text="Textures" class="memory-usage-breakdown__object-table__name-column" />
-        <ui:Label name="memory-usage-breakdown__object-table__count-column" text="100" class="memory-usage-breakdown__object-table__count-column" />
-        <ui:Label name="memory-usage-breakdown__object-table__size-column" text="30 MB" class="memory-usage-breakdown__object-table__size-column" />
-    </ui:VisualElement>
-</ui:UXML>

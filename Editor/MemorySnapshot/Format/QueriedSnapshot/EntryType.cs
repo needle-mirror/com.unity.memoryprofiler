@@ -85,6 +85,15 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         NativeAllocatorInfo_PeakUsedSize,
         NativeAllocatorInfo_AllocationCount,
         NativeAllocatorInfo_Flags,
+        ObjectMetaData_MetaDataBufferIndicies,
+        ObjectMetaData_MetaDataBuffer,
+        // SystemMemoryRegionsVersion = 15
+        // Added system memory regions
+        SystemMemoryRegions_Address,
+        SystemMemoryRegions_Size,
+        SystemMemoryRegions_Resident,
+        SystemMemoryRegions_Type,
+        SystemMemoryRegions_Name,
         Count, //used to keep track of entry count, only add c++ matching entries above this one
     }
 }

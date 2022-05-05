@@ -17,7 +17,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         static int s_IdGenerator;
         int m_InspectorID;
         long m_Idx;
-        ulong m_IdentifyintPointer;
+        ulong m_IdentifyingPointer;
         bool m_IsStatic;
         int m_ExistingTreeViewItemId = -1;
         DuplicationType m_DuplicationType = DuplicationType.None;
@@ -75,7 +75,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Size = size > 0 ? EditorUtility.FormatBytes((long)size) : string.Empty;
             depth = -1;
             m_IsStatic = isStatic;
-            m_IdentifyintPointer = identifyingPointer;
+            m_IdentifyingPointer = identifyingPointer;
             children = new List<TreeViewItem>();
         }
 
@@ -86,7 +86,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var currentParent = parent;
             while (currentParent != null)
             {
-                if (currentParent.id == existingTreeViewItemId || m_IdentifyintPointer != 0 && (currentParent as ManagedObjectInspectorItem).m_IdentifyintPointer == m_IdentifyintPointer)
+                if (currentParent.id == existingTreeViewItemId || m_IdentifyingPointer != 0 && (currentParent as ManagedObjectInspectorItem).m_IdentifyingPointer == m_IdentifyingPointer)
                 {
                     if (currentParent.parent == null)
                         m_DuplicationType = DuplicationType.RecursiveToRoot;

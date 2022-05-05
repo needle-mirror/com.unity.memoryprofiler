@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         // Meta Expression are unresolved expression that must be parsed using ParseIdentifier to create an Expression
         internal class MetaExpression
         {
-            public MetaExpression() {}
+            public MetaExpression() { }
             public MetaExpression(string value, bool valueIsLiteral)
             {
                 this.valueIsLiteral = valueIsLiteral;
@@ -1100,14 +1100,14 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
             unsafe
             {
-                fixed(char* valPtr = val)
+                fixed (char* valPtr = val)
                 {
                     var format = DefaultDataFormatter.Instance;
                     for (int i = 0; i != count; ++i)
                     {
                         long ii = indices[i];
                         var rowValue = exp.GetValueString(ii, format).ToLower();
-                        fixed(char* rowValuePtr = rowValue)
+                        fixed (char* rowValuePtr = rowValue)
                         {
                             if (ContainsSubStr(rowValuePtr, rowValue.Length, valPtr, val.Length))
                             {
@@ -1186,7 +1186,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
                     {
                         long ii = indices[i];
                         var rowVal = exp.GetValueString(ii, format);
-                        if(rowVal.Length == expectedLength)
+                        if (rowVal.Length == expectedLength)
                         {
                             var rowValue = rowVal.ToLower();
                             fixed (char* rowValuePtr = rowValue)
@@ -1405,7 +1405,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
         public string columnName;
         public Operator operation;
         public Expression.MetaExpression value;
-        public MetaColumnComparison() {}
+        public MetaColumnComparison() { }
         public MetaColumnComparison(string column, Operator operation, Expression.MetaExpression value)
         {
             columnName = column;

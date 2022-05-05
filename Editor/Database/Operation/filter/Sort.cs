@@ -108,7 +108,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation.Filter
 
             EditorGUILayout.BeginVertical();
             int iLevelToRemove = -1;
-            if(Event.current.type == EventType.Layout || m_SortLevelCountLastLayout == SortLevel.Count)
+            if (Event.current.type == EventType.Layout || m_SortLevelCountLastLayout == SortLevel.Count)
             {
                 for (int i = 0; i != SortLevel.Count; ++i)
                 {

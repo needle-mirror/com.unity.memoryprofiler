@@ -116,7 +116,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             return unityObjectsTree;
         }
-        
+
         Dictionary<int, List<TreeViewItemData<UnityObjectsModel.ItemData>>> BuildUnityObjectTypeIndexToUnityObjectsMapForSnapshot(
             CachedSnapshot snapshot,
             in BuildArgs args)
@@ -189,7 +189,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         gpuObjectSize,
                         typeNameLookupKey,
                         ProcessUnityObjectSelection)
-                    );
+                );
 
                 // Add node to corresponding type's list of Unity Objects.
                 if (typeIndexToTypeObjectsMap.TryGetValue(typeIndex, out var typeObjects))
@@ -232,7 +232,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (potentialDuplicateObjects.Count > 1)
                     {
                         var potentialDuplicateData = potentialDuplicateObjects[0].data;
-                        
+
                         var duplicateCount = 0;
                         var potentialDuplicatesNativeSize = 0UL;
                         var potentialDuplicatesManagedSize = 0UL;
@@ -245,7 +245,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                             duplicateCount++;
                         }
-                        
+
                         // Create selection processor. Use Unity Object Type selection processor for now until we have an extensible Details view (that could show for example 'potential duplicate' view).
                         void ProcessDuplicateUnityObjectSelection()
                         {

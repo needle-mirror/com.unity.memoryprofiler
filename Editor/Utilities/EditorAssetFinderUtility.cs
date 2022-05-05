@@ -170,7 +170,7 @@ namespace Unity.MemoryProfiler.Editor
                     Selection.activeInstanceID = oldActiveSelection;
                     bool previewImageNeedsCleanup;
                     var previewImage = TryObtainingPreview(obj, out previewImageNeedsCleanup);
-                    return new Findings() { FoundObject = obj, DegreeOfCertainty = 100, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup};
+                    return new Findings() { FoundObject = obj, DegreeOfCertainty = 100, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup };
                 }
             }
             Selection.instanceIDs = oldSelection;
@@ -310,7 +310,7 @@ namespace Unity.MemoryProfiler.Editor
 
                     bool previewImageNeedsCleanup;
                     var previewImage = TryObtainingPreview(foundObj, out previewImageNeedsCleanup);
-                    return new Findings() { FoundObject = foundObj, DegreeOfCertainty = 70, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup};
+                    return new Findings() { FoundObject = foundObj, DegreeOfCertainty = 70, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup };
                 }
             }
             return new Findings() { FailReason = foundAssets.Length == 0 ? SearchFailReason.TypeIssues : SearchFailReason.FoundTooMany };
@@ -399,7 +399,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     bool previewImageNeedsCleanup;
                     var previewImage = TryObtainingPreview(foundCandidate, out previewImageNeedsCleanup);
-                    return new Findings() { FoundObject = foundCandidate, DegreeOfCertainty = 70, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup};
+                    return new Findings() { FoundObject = foundCandidate, DegreeOfCertainty = 70, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup };
                 }
             }
             return new Findings() { FailReason = SearchFailReason.NotFound };

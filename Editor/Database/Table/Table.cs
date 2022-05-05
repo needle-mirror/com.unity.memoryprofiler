@@ -229,7 +229,7 @@ namespace Unity.MemoryProfiler.Editor.Database
             }
         }
         public virtual IUpdater BeginUpdate() { return null; }
-        public virtual void EndUpdate(IUpdater updater) {}
+        public virtual void EndUpdate(IUpdater updater) { }
 
         // returns if a new row count has been computed
         public virtual bool ComputeRowCount()

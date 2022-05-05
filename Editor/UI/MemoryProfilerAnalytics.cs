@@ -256,7 +256,7 @@ namespace Unity.MemoryProfiler.Editor
             AdvancedSectionWasRevealed,
             AdvancedSectionWasHidden,
             PreviewSectionWasRevealed,
-            PreviewSectionWasHidden ,
+            PreviewSectionWasHidden,
             ManagedObjectInspectorSectionWasRevealed,
             ManagedObjectInspectorSectionWasHidden,
             OtherSectionWasRevealed,
@@ -344,9 +344,9 @@ namespace Unity.MemoryProfiler.Editor
             else
             {
                 if (string.Compare(snapshot.GuiData.UnityVersion, Application.unityVersion) > 0)
-                    snapshotDetails  |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SnapshotFromNewerUnityVersion;
+                    snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SnapshotFromNewerUnityVersion;
                 else
-                    snapshotDetails  |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SnapshotFromOlderUnityVersion;
+                    snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SnapshotFromOlderUnityVersion;
                 var snapshotVersion = snapshot.GuiData.UnityVersion.Split('.');
                 var editorVersion = Application.unityVersion.Split('.');
                 if (snapshotVersion != null && editorVersion != null && snapshotVersion.Length >= 3 && editorVersion.Length >= 3)
@@ -389,12 +389,12 @@ namespace Unity.MemoryProfiler.Editor
             /// Use <see cref="SnapshotFromSameProjectAsOpen"/> instead
             /// </summary>
             public bool success;
-            public bool SnapshotFromSameProjectAsOpen { set => success = value;}
+            public bool SnapshotFromSameProjectAsOpen { set => success = value; }
             /// <summary>
             /// Use <see cref="openSnapshotDetails"/> instead.
             /// </summary>
             public int shown;
-            public SnapshotProjectAndUnityVersionDetails openSnapshotDetails { set => shown = (int)value;}
+            public SnapshotProjectAndUnityVersionDetails openSnapshotDetails { set => shown = (int)value; }
             /// <summary>
             /// Use <see cref="runtimePlatform"/> instead.
             /// </summary>
@@ -506,7 +506,7 @@ namespace Unity.MemoryProfiler.Editor
             public int ts;
             public float duration;
             public bool success;
-            public bool sameSessionDiff {set => success = value; }
+            public bool sameSessionDiff { set => success = value; }
             /// <summary>
             /// Use <see cref="captureInfoA"/>
             /// </summary>
@@ -546,7 +546,7 @@ namespace Unity.MemoryProfiler.Editor
         internal enum ViewLevel
         {
             Page, // 0
-            ViewInPage , // 1
+            ViewInPage, // 1
             ViewInSidePanel, // 2
         }
 
@@ -569,7 +569,7 @@ namespace Unity.MemoryProfiler.Editor
             /// This is automatically set to <see cref="ViewLevel.Page"/> for all <see cref="OpenedPageEvent"/>s
             /// by <see cref="SetTime(int, float)"/> as the event ends. No need to set this manually
             /// </summary>
-            public ViewLevel viewLevel { set {shown = (int)value; } }
+            public ViewLevel viewLevel { set { shown = (int)value; } }
             /// <summary>
             /// Use <see cref="viewLevel"/> instead.
             /// </summary>
@@ -595,7 +595,7 @@ namespace Unity.MemoryProfiler.Editor
             /// This is automatically set to <see cref="ViewLevel.ViewInPage"/> for all <see cref="OpenedViewEvent"/>s
             /// by <see cref="SetTime(int, float)"/> as the event ends. No need to set this manually
             /// </summary>
-            public ViewLevel viewLevel { set {shown = (int)value; } }
+            public ViewLevel viewLevel { set { shown = (int)value; } }
             /// <summary>
             /// Use <see cref="viewLevel"/> instead.
             /// </summary>
@@ -621,7 +621,7 @@ namespace Unity.MemoryProfiler.Editor
             /// This is automatically set to <see cref="ViewLevel.ViewInSidePanel"/> for all <see cref="OpenedViewInSidePanelEvent"/>s
             /// by <see cref="SetTime(int, float)"/> as the event ends. No need to set this manually
             /// </summary>
-            public ViewLevel viewLevel { set {shown = (int)value; } }
+            public ViewLevel viewLevel { set { shown = (int)value; } }
             /// <summary>
             /// Use <see cref="viewLevel"/> instead.
             /// </summary>

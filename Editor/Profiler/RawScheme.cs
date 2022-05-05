@@ -515,7 +515,7 @@ namespace Unity.MemoryProfiler.Editor
 
             table.AddColumn(
                 new MetaColumn("isPersistent", "Persistent", new MetaType(typeof(bool)), false, Grouping.groupByDuplicate, null)
-                , DataArray.MakeColumn_Transform(m_Snapshot.NativeObjects.Flags, (a) => HasBit(a, ObjectFlags.IsPersistent) , (ref ObjectFlags o, bool v) => SetBit(ref o, ObjectFlags.IsPersistent, v))
+                , DataArray.MakeColumn_Transform(m_Snapshot.NativeObjects.Flags, (a) => HasBit(a, ObjectFlags.IsPersistent), (ref ObjectFlags o, bool v) => SetBit(ref o, ObjectFlags.IsPersistent, v))
             );
             table.AddColumn(
                 new MetaColumn("isDontDestroyOnLoad", "Don't Destroy On Load", new MetaType(typeof(bool)), false, Grouping.groupByDuplicate, null)

@@ -2,26 +2,14 @@ using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System;
-using System.Collections;
 using System.Runtime.CompilerServices;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 using UnityEditorInternal;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
-#if UNITY_2020_1_OR_NEWER
-#else
-using ConnectionUtility = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUIUtility;
-using ConnectionGUI = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUI;
-using UnityEngine.Experimental.Networking.PlayerConnection;
-#endif
-
-using Unity.EditorCoroutines.Editor;
 using Unity.MemoryProfiler.Editor.UI;
-using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
-using Unity.MemoryProfiler.Editor.UI.Treemap;
 using Unity.MemoryProfiler.Editor.UIContentData;
-using UnityEditor.IMGUI.Controls;
 
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.Tests")]
 namespace Unity.MemoryProfiler.Editor
@@ -29,15 +17,13 @@ namespace Unity.MemoryProfiler.Editor
     internal interface IUIStateHolder
     {
         event Action<UIState> UIStateChanged;
-        UI.UIState UIState { get;  }
+        UI.UIState UIState { get; }
         void Repaint();
         EditorWindow Window { get; }
     }
 
     internal class MemoryProfilerWindow : EditorWindow, IUIStateHolder
     {
-        static Dictionary<BuildTarget, string> s_PlatformIconClasses = new Dictionary<BuildTarget, string>();
-
         [NonSerialized]
         bool m_PrevApplicationFocusState;
 
@@ -45,16 +31,13 @@ namespace Unity.MemoryProfiler.Editor
         bool m_WindowInitialized = false;
 
         SnapshotsWindow m_SnapshotWindow = new SnapshotsWindow();
-        PathsToRootDetailView m_PathsToRootDetailView;
-        SelectedItemDetailsPanel m_SelectedObjectDetailsPanel;
+        DetailViewController m_DetailsViewController;
 
-        public event Action<UIState> UIStateChanged = delegate {};
+        public event Action<UIState> UIStateChanged = delegate { };
 
         public UI.UIState UIState { get; private set; }
 
         public EditorWindow Window => this;
-
-        ObjectOrTypeLabel m_ReferenceSelection; // TODO move this into a details panel to contain all the paths to root and selection work
 
         // Eventually the window will instantiate a single root view controller, once we have whole window migrated to view controller architecture. For now we manage the AnalysisViewController from the window.
         const string k_UxmlIdentifier_AnalysisViewContainer = "memory-profiler-window__analysis-view-container";
@@ -95,100 +78,12 @@ namespace Unity.MemoryProfiler.Editor
             UIState.ModeChanged += OnSnapshotsModeChanged;
             m_SnapshotWindow.SwappedSnapshots += OnSnapshotsSwapped;
 
-            m_PathsToRootDetailView?.OnDisable();
-            m_PathsToRootDetailView = new PathsToRootDetailView(this, new TreeViewState(),
-                new MultiColumnHeaderWithTruncateTypeName(PathsToRootDetailView.CreateDefaultMultiColumnHeaderState())
-                {
-                    canSort = false
-                }, root.Q("details-panel").Q<Ribbon>("references__ribbon__container"));
-            UIState.SelectionChanged += m_PathsToRootDetailView.UpdateRootObjects;
-            m_PathsToRootDetailView.SelectionChangedEvt += UIState.RegisterSelectionChangeEvent;
-
-            m_ReferenceSelection?.Dispose();
-            m_ReferenceSelection = root.Q("details-panel").Q<ObjectOrTypeLabel>("reference-item-details__unity-item-title");
-            m_ReferenceSelection.SwitchClasses(classToAdd: "object-or-type-label-selectable", classToRemove: "object-or-type-label");
-            m_ReferenceSelection.AddManipulator(new Clickable(() =>
+            // Detail sidebar creation
+            m_DetailsViewController = new DetailViewController(root.Q<VisualElement>("details-panel"), this)
             {
-                m_PathsToRootDetailView.ClearSecondarySelection();
-            }));
-            m_ReferenceSelection.ContextMenuOpening += ShowCopyMenuForReferencesTitle;
-
-            m_ReferenceSelection.SetToNoObjectSelected();
-
-            var detailsSplitter = root.Q("details-panel").Q<TwoPaneSplitView>("details-panel__splitter");
-            var referencesFoldout = root.Q("details-panel").Q<Foldout>("details-panel__section-header__references");
-            var selectionDetailsFolout = root.Q("details-panel").Q<Foldout>("details-panel__section-header__selection-details");
-            const string k_ReferencesLabelText = "References";
-            const string k_DetailsLabelText = "Selected Item Details";
-            referencesFoldout.RegisterValueChangedCallback((evt) =>
-            {
-                if (evt.target != referencesFoldout || evt.newValue == evt.previousValue)
-                    return;
-                if (evt.newValue)
-                {
-                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-                    detailsSplitter.UnCollapse(0);
-                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_ReferencesLabelText});
-                }
-                else
-                {
-                    if (detailsSplitter.hasCollapsedPanes)
-                    {
-                        // only one section can be collapsed at a time, or the UI goes funky because it doesn't know how to handle the situation.
-                        // Also the UX behavior for that case is somewhat undefined
-                        // Unfold the References section before collapsing the Selection Details Section,
-                        // skipping a frame in-between so that the style changes can get applied and the UI gets re-layouted properly
-                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-                        EditorCoroutineUtility.StartCoroutine(FlipDetailsFoldoutsDelayed(detailsSplitter, 0, selectionDetailsFolout), this);
-                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_DetailsLabelText});
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(MemoryProfilerAnalytics.ReferencePanelInteractionType.ReferencePanelWasHidden);
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionDetailsPanelWasRevealed);
-                    }
-                    else
-                    {
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(MemoryProfilerAnalytics.ReferencePanelInteractionType.ReferencePanelWasHidden);
-                        detailsSplitter.CollapseChild(0, true);
-                    }
-                }
-            });
-            selectionDetailsFolout.RegisterValueChangedCallback((evt) =>
-            {
-                if (evt.target != selectionDetailsFolout || evt.newValue == evt.previousValue)
-                    return;
-                if (evt.newValue)
-                {
-                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-                    detailsSplitter.UnCollapse(1);
-                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_DetailsLabelText});
-                }
-                else
-                {
-                    if (detailsSplitter.hasCollapsedPanes)
-                    {
-                        // only one section can be collapsed at a time, or the UI goes funky because it doesn't know how to handle the situation.
-                        // Also the UX behavior for that case is somewhat undefined
-                        // Unfold the Selection Details section before collapsing the References section,
-                        // skipping a frame in-between so that the style changes can get applied and the UI gets re-layouted properly
-                        MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-                        EditorCoroutineUtility.StartCoroutine(FlipDetailsFoldoutsDelayed(detailsSplitter, 1, referencesFoldout), this);
-                        MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_ReferencesLabelText});
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionDetailsPanelWasHidden);
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(MemoryProfilerAnalytics.ReferencePanelInteractionType.ReferencePanelWasRevealed);
-                    }
-                    else
-                    {
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionDetailsPanelWasHidden);
-                        detailsSplitter.CollapseChild(1, true);
-                    }
-                }
-            });
-            m_SelectedObjectDetailsPanel?.OnDisable();
-            m_SelectedObjectDetailsPanel = new SelectedItemDetailsPanel(this, root.Q("details-panel").Q("selected-item-details"));
-
-
-            new SelectedItemDetailsForTypesAndObjects(this);
-            UIState.SelectionChanged += m_SelectedObjectDetailsPanel.NewDetailItem;
-            UIState.SelectionChanged += UpdatePathsToRootSelectionDetails;
+                UIState = UIState
+            };
+            var view = m_DetailsViewController.View; // Fake loading controller as this controller uses parent view sub-item for now
 
             MemoryProfilerAnalytics.EnableAnalytics(this);
             m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
@@ -205,24 +100,8 @@ namespace Unity.MemoryProfiler.Editor
             UIStateChanged += m_SnapshotWindow.RegisterUIState;
             UIStateChanged(UIState);
 
-            var referencesContainer = root.Q("details-panel").Q<IMGUIContainer>("references-imguicontainer");
-            referencesContainer.onGUIHandler += () =>
-            {
-                m_PathsToRootDetailView.DoGUI(referencesContainer.contentRect);
-            };
             EditorGUICompatibilityHelper.hyperLinkClicked -= EditorGUI_HyperLinkClicked;
             EditorGUICompatibilityHelper.hyperLinkClicked += EditorGUI_HyperLinkClicked;
-        }
-
-        void ShowCopyMenuForReferencesTitle(ContextualMenuPopulateEvent evt)
-        {
-            m_SelectedObjectDetailsPanel?.ShowCopyMenu(evt, contextMenu: true);
-        }
-
-        void UpdatePathsToRootSelectionDetails(MemorySampleSelection memorySampleSelection)
-        {
-            if (memorySampleSelection.Rank == MemorySampleSelectionRank.SecondarySelection) return;
-            m_ReferenceSelection.SetLabelDataFromSelection(memorySampleSelection, memorySampleSelection.GetSnapshotItemIsPresentIn(UIState));
         }
 
         static void EditorGUI_HyperLinkClicked(MemoryProfilerHyperLinkClickedEventArgs args)
@@ -234,7 +113,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (ManagedObjectInspectorItem.TryParseHyperlink(args.hyperLinkData, out inspectorId, out treeViewId))
                 {
                     var memoryProfiler = args.window as MemoryProfilerWindow;
-                    memoryProfiler.m_SelectedObjectDetailsPanel?.ManagedInspectorLinkWasClicked(inspectorId, treeViewId);
+                    memoryProfiler.m_DetailsViewController.ManagedInspectorLinkWasClicked(inspectorId, treeViewId);
                 }
             }
         }
@@ -245,13 +124,6 @@ namespace Unity.MemoryProfiler.Editor
                 return;
 
             Init();
-        }
-
-        IEnumerator FlipDetailsFoldoutsDelayed(TwoPaneSplitView detailsSplitter, int index, Foldout foldout)
-        {
-            foldout.value = true;
-            yield return null;
-            detailsSplitter.CollapseChild(index, true);
         }
 
         void OnSceneChanged(Scene sceneA, Scene sceneB)
@@ -273,7 +145,7 @@ namespace Unity.MemoryProfiler.Editor
             m_WindowInitialized = false;
             Styles.Cleanup();
             ProgressBarDisplay.ClearBar();
-            UIStateChanged = delegate {};
+            UIStateChanged = delegate { };
 
             m_AnalysisViewController?.Dispose();
             m_SnapshotWindow.SwappedSnapshots -= OnSnapshotsSwapped;
@@ -281,16 +153,10 @@ namespace Unity.MemoryProfiler.Editor
                 UIState.ModeChanged -= OnSnapshotsModeChanged;
 
             m_SnapshotWindow.OnDisable();
-            m_PathsToRootDetailView?.OnDisable();
-            m_PathsToRootDetailView = null;
-            m_SelectedObjectDetailsPanel?.OnDisable();
-            m_SelectedObjectDetailsPanel = null;
-            m_ReferenceSelection?.Dispose();
-            m_ReferenceSelection = null;
+            m_DetailsViewController?.Dispose();
 
             if (UIState != null)
             {
-                UIState.SelectionChanged -= UpdatePathsToRootSelectionDetails;
                 UIState.Dispose();
                 UIState = null;
             }
@@ -315,6 +181,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             // Dispose the existing analysis view controller.
             m_AnalysisViewController?.Dispose();
+            m_AnalysisViewController = null;
 
             // Try ending any interaction events
             // Stop Collecting interaction events for the old page and send them off
@@ -322,7 +189,6 @@ namespace Unity.MemoryProfiler.Editor
 
             MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedPageEvent>();
             // Build analysis tab bar model from loaded snapshots.
-            AnalysisTabBarModel model = null;
             var viewName = "Summary(Default)";
             bool updateAnalytics = true;
             if (UIState.CurrentViewMode != UIState.ViewMode.ShowDiff)
@@ -330,9 +196,7 @@ namespace Unity.MemoryProfiler.Editor
                 // Instantiate the analysis-tab-bar model using the selected snapshot.
                 var snapshot = UIState.snapshotMode?.snapshot;
                 if (snapshot != null)
-                    model = AnalysisTabBarModel.CreateForSingleSnapshot(snapshot);
-                else
-                    updateAnalytics = false;
+                    m_AnalysisViewController = new AnalysisTabBarController(snapshot, null);
             }
             else
             {
@@ -340,14 +204,13 @@ namespace Unity.MemoryProfiler.Editor
                 // Instantiate the analysis-tab-bar model using both selected snapshots.
                 var snapshotA = (UIState.FirstMode as UIState.SnapshotMode)?.snapshot;
                 var snapshotB = (UIState.SecondMode as UIState.SnapshotMode)?.snapshot;
-                model = AnalysisTabBarModel.CreateForComparisonBetweenSnapshots(snapshotA, snapshotB);
+                m_AnalysisViewController = new AnalysisTabBarController(snapshotA, snapshotB);
             }
 
-            // Instantiate the analysis view controller and add its view to the hierarchy.
-            if (model != null)
-                m_AnalysisViewController = new AnalysisTabBarController(model);
-            else
+            // Instantiate default controller when no snapshot is loaded.
+            if (m_AnalysisViewController == null)
             {
+                updateAnalytics = false;
                 var noDataViewController = new NoDataViewController();
                 noDataViewController.TakeSnapshotSelected += OnTakeSnapshotSelected;
                 m_AnalysisViewController = noDataViewController;

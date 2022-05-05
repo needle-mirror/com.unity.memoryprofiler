@@ -19,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_InfoBox = new InfoBox()
             {
-                IssueLevel = IssueLevel.Info
+                IssueLevel = InfoBox.IssueType.Info
             };
 
             return m_InfoBox;

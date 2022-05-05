@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd"
+    xsi:schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd">
+
+    <VisualElement name="memory-usage-breakdown">
+        <Style src="MemoryBreakdownView.uss" />
+
+        <VisualElement name="memory-usage-breakdown__header">
+            <Label name="memory-usage-breakdown__header__title" text="Memory Usage" display-tooltip-when-elided="true"/>
+            <Button name="memory-usage-breakdown__header__inspect-button" text="Inspect"/>
+        </VisualElement>
+
+        <VisualElement name="memory-usage-breakdown__bars" />
+
+        <VisualElement name="memory-usage-breakdown__legend" />
+    </VisualElement>
+</UXML>

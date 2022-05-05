@@ -1,4 +1,5 @@
 * [Memory Profiler overview](index)
+* [What's new](whats-new)
 * [Getting Started](memory-profiler-window)
   * [Snapshots component](snapshots-component)
   * [Main component](main-component)

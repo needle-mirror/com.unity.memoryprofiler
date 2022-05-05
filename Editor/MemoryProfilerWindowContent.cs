@@ -82,32 +82,28 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static readonly string CopyButtonDropdownOptionManagedTypeName = "Managed Type Name";
         public static readonly string CopyButtonDropdownOptionNativeTypeName = "Native Type Name";
 
-        public static string TrackedMemoryDescription => "This stat represents the total amount of memory that is tracked by Unity, split into the amount that is actively used by allocations and memory that is reserved for further allocations.\n\n" + k_TrackingGaps + k_TrackedMemoryDescriptionEnd;
-        static string k_TrackedMemoryDescriptionEnd = "\n\nEverything else can be analyzed with this Memory Profiler. The Memory Usage Overview provides a rough indication of which area may be of interest for further analysis.";
-        public static string UntrackedMemoryDescription => "This stat is calculated as the difference between the results of a query of the Operating System's API's yielded as the amount of memory used by the application according to the OS (The result from this query is also known as the 'Total System Used Memory' counter) and the amount of memory that Unity's systems are tracking as 'used' or 'reserved'." +
-        "If this stat shows an 'unknown' amount, the captured Unity Player version might not yet have had an implementation of the 'Total System Used Memory' counter, or the tracked categories add up to more than what that counter reveals as in use." +
-        "The later can happen when some memory that Unity systems reserved or used are not, or not fully, counted as used by the Application, e.g. because the Executable and DLL memory is shared with other Applications or because some of the memory isn't 'dirty' (i.e. modified after being reserved/loaded from a file/allocated but not initialized).\n\n" + k_TrackingGaps + k_UntrackedMemoryDescriptionEnd;
-        const string k_TrackingGaps = "There are the following gaps in memory tracking that contribute to the amount of Untracked Memory:\n" +
-            " - Native Plug-in allocations\n" +
-            " - The size of Executable and DLLs on some platforms\n" +
-            " - Virtual Machine memory used by IL2CPP\n" +
-            " - Application Stack memory\n" +
-            " - Memory allocated using Marshal.AllocHGlobal\n" +
-            " - Native memory allocated by a Unity subsystems that is not tracked correctly due to a bug\n"  +
-            "\n(Please note that this list depends on the Unity version of the build you made this capture from. Newer versions of Unity may have closed some of these gaps. You can consult the Known Limitations section of the Documentation of Memory Profiler Package's latest version for an updated list.)";
-        const string k_UntrackedMemoryDescriptionEnd = "\n\nTo analyze this memory further, you will need to use a platform specific profiler.";
+        public static string ResidentMemoryDescription => "The application footprint in physical memory. It inculdes all Unity and non-Unity allocations resident in memory at the time of the capture.";
 
-        public static string ManagedHeapDescription => "The Managed Heap contains all memory used by managed objects, as well as pre-allocated empty space that has been reserved for them. " +
-        "This memory is managed by the Scripting Garbage Collector, so any managed objects in it that no longer have any reference chain to a root are collected. " +
-        "Roots for managed memory are static variables or GCHandels.\n" +
-        "A note on GCHandles as roots:\n" +
-        "These could be because you allocated a GCHandle for a managed object e.g. to pin it to memory using UnsafeUtility.PinGCObjectAndGetAddress()." +
-        "But also, any object of a Type that inherits from UnityEngine.Object that you reference from managed (C#) code will have a " +
-        "Managed Shell Object that corresponds to the Native Unity Object that contains some native backing data for that object. " +
-        "In these cases, the Native Unity Object will have a GCHandle that keeps the Managed Shell Object around as long as the Native Object exists. " +
-        "Select any of these objects to get more specific information of why they are held in memory in this Details Panel." +
-        "\n\nThe Used amount of the Managed Heap is made up of memory used for Managed Objects, and empty space in the Managed Heap that can not yet be returned to the system." +
-        "\nThe Reserved amount that is not Used may quickly be reused if needed, or will be returned to the system in every 6th GC.Collect sweep.";
+        public static string ExecutablesAndMappedDescription => "Memory taken up by the build code of the application, including all shared libraries and assemblies, managed and native. This value is not yet reported consistently on all platforms." +
+        "\n\nYou can reduce this memory usage by using a higher code stripping level and by reducing your dependencies on different modules and libraries.";
+        public static string NativeDescription => "Native memory, used by Objects such as:" +
+        "- Scene Objects (Game Objects and their Components)," +
+        "- Assets and Managers" +
+        "- Native Allocations including Native Arrays and other Native Containers" +
+        "- CPU side of Graphics Asset memory" +
+        "- And other" +
+        "\n\nThis doesn't include Audio and Graphics, which are shown in separate categories." +
+        "\n\nYou can inspect these categories further in the All of Memory Breakdown.";
+        public static string ProfilerDescription => "This is the Profiler overhead, which includes memory used to collect and send Profiler frame data, take memory captures or process the received Profiler frame data in the Editor.";
+        public static string GraphicsDescription => "Memory used by the Graphics Driver and the GPU to visualize your application. This includes display buffers, RenderTextures, Textures, Meshes, Animations." +
+        "\n\nNote: not all these objects' memory is represented in this category. For example, Read/Write enabled graphics assets need to retain a copy in CPU accessible memory, which doubles their memory usage. Also, not necessarily all memory from these Type of objects resides in GPU memory.";
+        public static string ManagedDescription => "Contains all Virtual Machine and Managed Heap memory" +
+        "\n\nThe Managed Heap contains data related to Managed Objects and the space that has been reserved for them. It is managed by the Scripting Garbage Collector, so that any managed objects that no longer have references chain to a root are collected." +
+        "\n\nThe used amount in the Managed Memory is made up of memory used for Managed objects and of empty space that cannot be returned." +
+        "\n\nThe 'reserved' amount in this category may be quickly be reused if needed, or it will be returned to the system every 6th GC.Collect sweep.";
+        public static string AudioDescription => "Memory used for Unity's Audio system, including AudioClips and playback buffers.";
+        public static string UnknownDescription => "Memory that the memory profiler cannot yet account for, due to platform specific requirements, potential bugs or other gaps in memory tracking. " +
+        "\n\nTo analyze this memory further, you will need to use a platform specific profiler";
 
         public static string ManagedDomainDescription => "The Virtual Machine memory contains data that the Scripting Backend (Mono or IL2CPP) needs in order to function, e.g.:\n" +
         "- Type MetaData for every used managed Type, including:\n" +
@@ -118,20 +114,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "A growth in Virtual Machine Memory between the first and second capture in a session can usually be mostly attributed to that. " +
         "Uninitialized types are those for which no one accessed any Type specific data yet, and their static constructor, explicit or implicit, has therefore not been called yet. " +
         "This could often be the type of arrays or generic Collections where their data has so far only been handled as a generic collection.";
-        public static string GraphicsDescription => "Memory used by the Graphics Driver and the GPU to visualize your application. This includes e.g. display buffers, RenderTextures, Textures, Meshes, Animations etc, but not necessarily all of their memory. " +
-        "For example, Read/Write enabled graphics assets need to retain a copy in CPU accessible memory, which doubles their memory usage. Also, not necessarily all memory from these Type of objects resides in GPU memory." +
-        //TODO: Update this once we have this data and make it version specific, hinting at which version within the current Editor or Snapshot major version stream the user would have to update to in order to get this data.
-        "\n\nThe snapshot data does not yet contain information how much memory an object is occupying on the GPU vs on the CPU so there is no way to filter for just the content of this category, yet. This will change once that data is added to the memory snapshot data.";
-        public static string AudioDescription => "Memory used for Unity's Audio system, including AudioClips and playback buffers.";
-        public static string OtherNativeDescription => "Other Native Memory that does not fit into the categories of Graphics, Audio or Profiler. " +
-        "This category also includes the CPU side of Graphics Asset memory. Aside from that, this memory is used by Objects such as Scene Objects (Game Objects and their Components), Assets and Managers and Native Allocations including Native Arrays and other Native Containers." +
-        //TODO: Update this once we have this data and make it version specific, hinting at which version within the current Editor or Snapshot major version stream the user would have to update to in order to get this data.
-        "\n\nThe snapshot data does not yet contain information how much memory an object is occupying on the GPU vs on the CPU, so there is no way to filter for just the content of this category, yet. This will change once that data is added to the memory snapshot data.";
-        public static string ProfilerDescription => "Memory used exclusively for the profiler, e.g. to collect and send Profiler frame data, take memory captures or process the received Profiler frame data in the Editor.";
-        public static string ExecutableAndDllsDescription => "This is the memory taken up by the build code of the application, including all libraries and assemblies, managed and native. " +
-        "This value is not yet reported on all platforms and some platforms, like Windows, may not fully attribute this memory to your application specifically, as the code used by some libraries could be shared with other applications. " +
-        "You can reduce this memory usage with stronger code stripping settings and by reducing your dependencies on different modules and libraries.";
-
         public static string ManagedObjectsDescription => "Memory used for Managed Objects, i.e. those that can be created and used from C# scripting code based on Types defined in C# scripting code. " +
         "This number only includes objects that are still referenced or held otherwise alive. Managed objects that the Garbage Collector still has to collect could reside in the Empty Active / Fragmented Heap Space.";
         public static string EmptyActiveHeapDescription => "This snapshot version does not yet contain a definitive report on which Managed Heap Section is the Active one. " +
@@ -165,7 +147,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static GUIContent SearchButtonCantSearch = new GUIContent("Can't Search", "The object is neither a Scene Object nor an Asset, so it can't be searched for with the Project or Scene search");
 
         const string k_SelectInEditorLabel = "Select in Editor";
-        public static GUIContent SelectInEditorButton100PercentCertain = new GUIContent(k_SelectInEditorLabel,  "This exact Object was found in the Editor! " + k_SelectInEditorSharedTooltipPart);
+        public static GUIContent SelectInEditorButton100PercentCertain = new GUIContent(k_SelectInEditorLabel, "This exact Object was found in the Editor! " + k_SelectInEditorSharedTooltipPart);
         public static GUIContent SelectInEditorButtonLessCertain = new GUIContent(k_SelectInEditorLabel, "A close match to this object was found in the Editor. " + k_SelectInEditorSharedTooltipPart);
         const string k_SelectInEditorSharedTooltipPart = "Click here to select it and ping it.";
         public static GUIContent SelectInEditorButtonNotFound = new GUIContent(k_SelectInEditorLabel, "This object wasn't found in the Editor.");
@@ -202,10 +184,10 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         //public const string CurrentPackageVersionBaseUrl = "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@0.4/";
         public const string LatestPackageVersionBaseUrl = "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@latest/index.html?subfolder=/";
         const string k_AnchorChar = "%23";
-        public const string WorkbenchHelp = "manual/workbench.html";
+        public const string WorkbenchHelp = "manual/snapshots-component.html";
         public const string IndexHelp = "manual/index.html";
-        public const string OpenSnapshotsPane = LatestPackageVersionBaseUrl + WorkbenchHelp + k_AnchorChar + "open-snapshots-pane";
-        public const string AnalysisWindowHelp = LatestPackageVersionBaseUrl + "manual/main-view.html";
+        public const string OpenSnapshotsPane = LatestPackageVersionBaseUrl + WorkbenchHelp + k_AnchorChar + "snapshots-component#open-snapshots-pane";
+        public const string AnalysisWindowHelp = LatestPackageVersionBaseUrl + "manual/main-component.html";
 #if UNITY_2022_3_OR_NEWER || UNITY_2023_2_OR_NEWER
         public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Unity.Profiling.Memory.CaptureFlags.html";
 #elif UNITY_2022_2_OR_NEWER || UNITY_2023_1_OR_NEWER
@@ -249,15 +231,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string WindowLightStyleSheetPath = StyleSheetsPath + "MemoryProfilerWindow_style_light.uss";
         public const string WindowDarkStyleSheetPath = StyleSheetsPath + "MemoryProfilerWindow_style_dark.uss";
         public const string WindowNewThemingStyleSheetPath = StyleSheetsPath + "MemoryProfilerWindow_style_newTheming.uss";
-
-        public const string AnalysisWindowUxmlPath = AnalysisWindowUxmlElementsPath + "AnalysisWindow.uxml";
-        public const string SummaryPaneUxmlPath = AnalysisWindowUxmlElementsPath + "SummaryPane/SummaryPane.uxml";
-        public const string TopIssuesUxmlPath = AnalysisWindowUxmlElementsPath + "SummaryPane/TopTenIssues.uxml";
-        public const string MemoryUsageSummaryUxmlPath = AnalysisWindowUxmlElementsPath + "MemoryUsageSummary.uxml";
-
-        public const string MemoryUsageBreakdownUxmlPath = AnalysisWindowUxmlElementsPath + "MemoryUsageBreakdown.uxml";
-        public const string MemoryUsageBreakdownLegendNameAndColorUxmlPath = AnalysisWindowUxmlElementsPath + "MemoryUsageBreakdownLegendNameAndColor.uxml";
-        public const string MemoryUsageBreakdownLegendSizeUxmlPath = AnalysisWindowUxmlElementsPath + "MemoryUsageBreakdownLegendSize.uxml";
 
         public const string RibbonUxmlPath = GeneralUseUxmlFilesPath + "Ribbon.uxml";
         public const string RibbonUssPath = StyleSheetsPath + "Ribbon.uss";

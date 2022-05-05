@@ -62,11 +62,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             protected string[] m_TableNames = { "none" };
             Database.Table[] m_Tables = { null };
 
-            public event Action<ViewPane> ViewPaneChanged = delegate {};
+            public event Action<ViewPane> ViewPaneChanged = delegate { };
 
             public ViewPane CurrentViewPane { get; private set; }
 
-            public BaseMode() {}
+            public BaseMode() { }
 
             protected BaseMode(BaseMode copy)
             {
@@ -237,10 +237,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public override ViewPane GetDefaultView(IUIStateHolder uiStateHolder, IViewPaneEventListener viewPaneEventListener)
             {
-                if (uiStateHolder.UIState.snapshotMode != null && uiStateHolder.UIState.snapshotMode.snapshot != null)
-                {
-                    return new SummaryPane(uiStateHolder, viewPaneEventListener);
-                }
                 return null;
             }
 
@@ -331,10 +327,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public override ViewPane GetDefaultView(IUIStateHolder uiStateHolder, IViewPaneEventListener viewPaneEventListener)
             {
-                if (uiStateHolder.UIState.diffMode != null)
-                {
-                    return new SummaryPane(uiStateHolder, viewPaneEventListener);
-                }
                 return null;
             }
 
@@ -374,9 +366,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public SelectionDetailsFactory CustomSelectionDetailsFactory = new SelectionDetailsFactory();
 
-        public event Action<BaseMode, ViewMode> ModeChanged = delegate {};
+        public event Action<BaseMode, ViewMode> ModeChanged = delegate { };
 
-        public event Action<MemorySampleSelection> SelectionChanged = delegate {};
+        public event Action<MemorySampleSelection> SelectionChanged = delegate { };
 
         public SnapshotAge FirstSnapshotAge { get; private set; }
 
@@ -594,7 +586,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void Dispose()
         {
             ClearAllOpenModes();
-            SelectionChanged = delegate {};
+            SelectionChanged = delegate { };
             history?.Dispose();
         }
 
@@ -697,7 +689,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void DiffLastAndCurrentSnapshot(bool snapshotAIsOlder, bool sameSessionDiff)
         {
             history.Clear();
-            diffMode = new DiffMode(FormattingOptions.ObjectDataFormatter, snapshotAIsOlder ? FirstMode : SecondMode , snapshotAIsOlder ? SecondMode : FirstMode, snapshotAIsOlder, sameSessionDiff);
+            diffMode = new DiffMode(FormattingOptions.ObjectDataFormatter, snapshotAIsOlder ? FirstMode : SecondMode, snapshotAIsOlder ? SecondMode : FirstMode, snapshotAIsOlder, sameSessionDiff);
             CurrentViewMode = ViewMode.ShowDiff;
 
             FirstSnapshotAge = snapshotAIsOlder ? SnapshotAge.Older : SnapshotAge.Newer;

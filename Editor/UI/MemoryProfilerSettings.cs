@@ -25,7 +25,13 @@ namespace Unity.MemoryProfiler.Editor
         const string k_TruncateTypes = "Unity.MemoryProfiler.Editor.MemoryProfilerTruncateTypes";
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
 
-        public static event Action TruncateStateChanged = delegate {};
+        public static event Action TruncateStateChanged = delegate { };
+
+        internal static class FeatureFlags
+        {
+            // For By Status and Path From Roots
+            public static bool GenerateTransformTreesForByStatusTable_2022_09 => false;
+        }
 
         public static string MemorySnapshotStoragePath
         {

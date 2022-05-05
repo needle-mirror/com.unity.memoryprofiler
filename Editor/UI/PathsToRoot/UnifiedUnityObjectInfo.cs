@@ -250,7 +250,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public UnifiedUnityObjectInfo(CachedSnapshot snapshot, ObjectData unityObject)
             : this(snapshot, new UnifiedType(snapshot, unityObject), unityObject)
-        {}
+        { }
 
         public UnifiedUnityObjectInfo(CachedSnapshot snapshot, UnifiedType type, ObjectData unityObject)
         {

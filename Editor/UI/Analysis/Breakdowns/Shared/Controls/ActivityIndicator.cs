@@ -44,7 +44,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public new class UxmlFactory : UxmlFactory<ActivityIndicator> { }
+        public new class UxmlFactory : UxmlFactory<ActivityIndicator> {}
     }
 }
 #endif

@@ -5,7 +5,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     internal class HotKey
     {
         public string name;
-        public HotKey() {}
+        public HotKey() { }
         public HotKey(string name)
         {
             this.name = name;
@@ -49,7 +49,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     internal class HotKeyTriggerCommand : HotKeyTrigger
     {
         public string m_CommandName;
-        public HotKeyTriggerCommand() {}
+        public HotKeyTriggerCommand() { }
         public HotKeyTriggerCommand(string commandName)
         {
             m_CommandName = commandName;
@@ -80,7 +80,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         public HotKey m_HotKey;
         public HotKeyTrigger m_Trigger;
-        public HotKeyBind() {}
+        public HotKeyBind() { }
         public HotKeyBind(HotKey hotKey, HotKeyTrigger trigger)
         {
             m_HotKey = hotKey;

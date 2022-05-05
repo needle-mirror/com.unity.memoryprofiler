@@ -43,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor.Database.Operation
 
     internal abstract class MatcherFactory : IColumnFactory
     {
-        protected interface IParser {}
+        protected interface IParser { }
         protected class Parser<T> : IParser
         {
             public delegate bool ParseDelegate(string s, out T result);

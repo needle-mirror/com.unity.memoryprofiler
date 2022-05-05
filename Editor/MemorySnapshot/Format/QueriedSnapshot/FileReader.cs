@@ -72,7 +72,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
     struct FileReader : IFileReader
     {
         [StructLayout(LayoutKind.Explicit, Size = 16, Pack = 4)]
-        struct Blob16Byte{}
+        struct Blob16Byte { }
 
         enum FormatSignature : uint
         {
@@ -158,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         {
             unsafe
             {
-                var op =  AsyncRead(entry, buffer, offset, count);
+                var op = AsyncRead(entry, buffer, offset, count);
                 op.Complete();
                 return op;
             }

@@ -56,7 +56,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public int splitterInitialOffset;
         public int currentActiveSplitter = -1;
 
-        public event Action<int, int> RealSizeChanged = delegate {};
+        public event Action<int, int> RealSizeChanged = delegate { };
 
         public SplitterStateEx(int[] realSizes, bool[] shown, string[] columnNames)
         {
@@ -114,7 +114,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             for (int i = 0; i < Length; i++)
             {
                 if (!shown[i])
-                    hiddenColumns.Add(new HiddenColumnInfo(){ Index = i, Name = columnNames[i] });
+                    hiddenColumns.Add(new HiddenColumnInfo() { Index = i, Name = columnNames[i] });
             }
             return hiddenColumns;
         }

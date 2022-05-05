@@ -48,8 +48,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         int m_FirstSelectionEventIndex = -1;
         public bool hasPresentEvent = false;
 
-        public event System.Action historyChanged = delegate {};
-        public event System.Action lastSelectionEventCleared = delegate {};
+        public event System.Action historyChanged = delegate { };
+        public event System.Action lastSelectionEventCleared = delegate { };
 
         public void Clear()
         {

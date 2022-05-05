@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEngine;
@@ -1100,40 +1101,47 @@ namespace Unity.MemoryProfiler.Editor
             return referencingObjects.ToArray();
         }
 
-        public static int[] GetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, int instanceID)
+        /// <summary>
+        /// Tries to get all instance IDs of Transform Components connected to the passed in Transform Component's instance ID.
+        /// </summary>
+        /// <param name="snapshot"></param>
+        /// <param name="transformInstanceID">The instance ID of the Transform to check</param>
+        /// <param name="parentTransformInstanceIdToIgnore">If you are only looking for child transforms, pass in the parent ID so it will be ignored. -1 if no parent should be ignored.</param>
+        /// <param name="outInstanceIds">The connected instanceIDs if any where found, otherwise it is empty.</param>
+        /// <returns>Returns True if connected Transform IDs were found, False if not.</returns>
+        public static bool TryGetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, int transformInstanceID, int parentTransformInstanceIdToIgnore, ref HashSet<int> outInstanceIds)
         {
-            HashSet<int> found = new HashSet<int>();
-            var objectData = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[instanceID]);
-            if (snapshot.Connections.FromToMappedConnection.ContainsKey((int)objectData.GetUnifiedObjectIndex(snapshot)))
+            var found = outInstanceIds;
+            found.Clear();
+            var transformToSearchConnectionsFor = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[transformInstanceID]);
+            if (snapshot.Connections.FromToMappedConnection.TryGetValue((int)transformToSearchConnectionsFor.GetUnifiedObjectIndex(snapshot), out var list))
             {
-                var list = snapshot.Connections.FromToMappedConnection[(int)objectData.GetUnifiedObjectIndex(snapshot)];
                 foreach (var connection in list)
                 {
-                    objectData = ObjectData.FromUnifiedObjectIndex(snapshot, connection);
-                    if (objectData.isNative && snapshot.NativeTypes.TransformIdx == snapshot.NativeObjects.NativeTypeArrayIndex[objectData.nativeObjectIndex])
-                        found.Add(snapshot.NativeObjects.InstanceId[objectData.nativeObjectIndex]);
+                    var possiblyConnectedTransform = ObjectData.FromUnifiedObjectIndex(snapshot, connection);
+                    var instanceIdOfPossibleConnection = possiblyConnectedTransform.GetInstanceID(snapshot);
+                    if (possiblyConnectedTransform.isNative && snapshot.NativeTypes.TransformIdx == snapshot.NativeObjects.NativeTypeArrayIndex[possiblyConnectedTransform.nativeObjectIndex]
+                        && instanceIdOfPossibleConnection != NativeObjectEntriesCache.InstanceIDNone && instanceIdOfPossibleConnection != parentTransformInstanceIdToIgnore && instanceIdOfPossibleConnection != transformInstanceID)
+                        found.Add(instanceIdOfPossibleConnection);
                 }
+                return found.Count > 0;
             }
-
-            int[] returnedObjectData = new int[found.Count];
-            found.CopyTo(returnedObjectData);
-            return returnedObjectData;
+            return false;
         }
 
         public static int GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, int instanceID)
         {
-            var objectData = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[instanceID]);
-            if (snapshot.Connections.FromToMappedConnection.ContainsKey((int)objectData.GetUnifiedObjectIndex(snapshot)))
+            var transform = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[instanceID]);
+            if (snapshot.Connections.FromToMappedConnection.TryGetValue((int)transform.GetUnifiedObjectIndex(snapshot), out var list))
             {
-                var list = snapshot.Connections.FromToMappedConnection[(int)objectData.GetUnifiedObjectIndex(snapshot)];
                 foreach (var connection in list)
                 {
-                    objectData = ObjectData.FromUnifiedObjectIndex(snapshot, connection);
-                    if (objectData.isNative && objectData.IsGameObject(snapshot) && snapshot.NativeObjects.ObjectName[objectData.nativeObjectIndex] == snapshot.NativeObjects.ObjectName[ObjectData.FromUnifiedObjectIndex(snapshot, connection).nativeObjectIndex])
+                    var objectData = ObjectData.FromUnifiedObjectIndex(snapshot, connection);
+                    if (objectData.isNative && objectData.IsGameObject(snapshot) && snapshot.NativeObjects.ObjectName[transform.nativeObjectIndex] == snapshot.NativeObjects.ObjectName[ObjectData.FromUnifiedObjectIndex(snapshot, connection).nativeObjectIndex])
                         return snapshot.NativeObjects.InstanceId[objectData.nativeObjectIndex];
                 }
             }
-            return -1;
+            return NativeObjectEntriesCache.InstanceIDNone;
         }
 
         public static ObjectData[] GenerateReferencesTo(CachedSnapshot snapshot, ObjectData obj)

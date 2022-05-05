@@ -11,7 +11,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UssClass_Light = "no-data-view__light";
         const string k_UxmlIdentifier_Label = "no-data-view__label";
         const string k_UxmlIdentifier_Button = "no-data-view__button";
-        
+
         Label m_Label;
         Button m_Button;
 

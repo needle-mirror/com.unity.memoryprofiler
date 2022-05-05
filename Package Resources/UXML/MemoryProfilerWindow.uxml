@@ -43,7 +43,7 @@
             </ui:VisualElement>
         </uie:Toolbar>
         <ui:VisualElement name="container" style="flex-grow: 1; flex-direction: row;">
-            <Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="300" name="snapshot-window__splitter">
+            <ui:TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="300" name="snapshot-window__splitter">
                 <ui:VisualElement name="snapshot-window" style="flex-grow: 1; min-width: 270px;">
                     <Unity.MemoryProfiler.Editor.UI.Ribbon name="snapshot-window__ribbon__container" show-help-button="true" show-menu-button="false">
                         <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Single Snapshot" />
@@ -64,11 +64,11 @@
                     </ui:VisualElement>
                     <ui:Instance template="SessionList" name="SessionList" style="flex-grow: 1;" />
                 </ui:VisualElement>
-                <Unity.MemoryProfiler.Editor.TwoPaneSplitView fixed-pane-index="1" fixed-pane-initial-dimension="350" orientation="Horizontal" name="details-panel__splitter" style="min-width: 700px;">
+                <ui:TwoPaneSplitView fixed-pane-index="1" fixed-pane-initial-dimension="350" orientation="Horizontal" name="details-panel__splitter" style="min-width: 700px;">
                     <ui:VisualElement name="memory-profiler-window__analysis-view-container"/>
                     <ui:Instance template="DetailsPanel" name="details-panel" style="width: auto; max-width: none; min-width: 350px;" />
-                </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
-            </Unity.MemoryProfiler.Editor.TwoPaneSplitView>
+                </ui:TwoPaneSplitView>
+            </ui:TwoPaneSplitView>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

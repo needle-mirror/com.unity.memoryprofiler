@@ -138,7 +138,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // The key into the model's ItemTypeNamesMap, to retrieve this item's type name.
             public int TypeNameLookupKey { get; }
-            
+
             // A callback to process the selection of this item.
             public Action SelectionProcessor { get; }
 

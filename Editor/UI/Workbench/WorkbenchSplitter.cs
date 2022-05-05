@@ -14,15 +14,15 @@ namespace Unity.MemoryProfiler.Editor
         public VisualElement LeftPane { get; private set; }
         public VisualElement RightPane { get; private set; }
 
-        public event Action<float> LeftPaneWidthChanged = delegate {};
+        public event Action<float> LeftPaneWidthChanged = delegate { };
 
         VisualElement m_DragLine;
 
-        public new class UxmlFactory : UxmlFactory<WorkbenchSplitter, UxmlTraits> {}
+        public new class UxmlFactory : UxmlFactory<WorkbenchSplitter, UxmlTraits> { }
 
         public float workbenchWidth { get { return LeftPane.style.width.value.value; } set { LeftPane.style.width = value; } }
 
-        public WorkbenchSplitter() : this(GeneralStyles.InitialWorkbenchWidth) {}
+        public WorkbenchSplitter() : this(GeneralStyles.InitialWorkbenchWidth) { }
 
         public WorkbenchSplitter(float initialWorkbenchWidth)
         {
@@ -105,7 +105,7 @@ namespace Unity.MemoryProfiler.Editor
             protected bool m_Active;
             VisualElement m_LeftPane;
 
-            public event Action<float> LeftPaneWidthChanged = delegate {};
+            public event Action<float> LeftPaneWidthChanged = delegate { };
 
             public SquareResizer(VisualElement leftPane)
             {

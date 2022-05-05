@@ -27,7 +27,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             return IsRoot(cs) ? Data.GetAssetPath(cs) : String.Empty;
         }
 
-    public string FlagsInfo = "";
+        public string FlagsInfo = "";
         public string ToolTipMsg;
         public bool HasCircularReference;
         bool needsIcon = true;
@@ -36,7 +36,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         {
             depth = -1;
             children = new List<TreeViewItem>();
-            TypeName = TruncatedTypeName ="";
+            TypeName = TruncatedTypeName = "";
             id = s_IdGenerator++;
             if (Allocation)
             {
@@ -85,7 +85,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
             else
             {
-                TypeName = TruncatedTypeName ="";
+                TypeName = TruncatedTypeName = "";
                 displayName = "";
                 ObjectFlags = null;
                 ToolTipMsg = "";

@@ -1,0 +1,94 @@
+.breakdown-view__dark:root
+{
+  --breakdown-view__table-size-bar__background-color: #5A5A5A;
+  --breakdown-view__table-size-bar__fill-background-color: #C4C4C4;
+}
+
+.breakdown-view__light:root
+{
+  --breakdown-view__table-size-bar__background-color: #CBCBCB;
+  --breakdown-view__table-size-bar__fill-background-color: white;
+}
+
+#breakdown-view
+{
+    flex-grow: 1;
+    margin: 16px;
+}
+
+#breakdown-view__search-field-container
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#breakdown-view__description-label
+{
+    flex-shrink: 1;
+    margin-right: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#breakdown-view__search-field
+{
+    height: 14px;
+    margin: 0px;
+    padding: 4px;
+    width: 40%;
+}
+
+#breakdown-view__search-field TextField
+{
+    padding-left: 4px;
+}
+
+#breakdown-view__search-field TextElement
+{
+    font-size: 12px;
+}
+
+#breakdown-view__table-size-bar
+{
+    flex-shrink: 0;
+    margin: 20px 0px 0px;
+}
+
+#breakdown-view__table-size-bar .detailed-size-bar__bar
+{
+    background-color: var(--breakdown-view__table-size-bar__background-color);
+    height: 14px;
+}
+
+#breakdown-view__table-size-bar .detailed-size-bar__bar .progress-bar__fill
+{
+    background-color: var(--breakdown-view__table-size-bar__fill-background-color);
+    min-width: 1px;
+    transition-duration: 0.23s;
+    transition-property: width;
+    transition-timing-function: ease-out;
+}
+
+#breakdown-view__table-size-bar .detailed-size-bar__size-label
+{
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#breakdown-view__table-size-bar .detailed-size-bar__total-label
+{
+    margin-left: 16px;
+}
+
+#breakdown-view__table-size-bar .detailed-size-bar__footer
+{
+    margin: 8px 0px;
+}
+
+#breakdown-view__table-container
+{
+    flex-grow: 1;
+}

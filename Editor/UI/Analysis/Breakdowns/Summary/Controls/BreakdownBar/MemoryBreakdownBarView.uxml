@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd"
+    xsi:schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd">
+
+    <VisualElement>
+        <VisualElement name="memory-usage-breakdown__bar__container-a" class="memory-usage-breakdown__bar__container">
+            <VisualElement name="memory-usage-breakdown__bar"/>
+            <Label name="memory-usage-breakdown__bar__total-value" text="Total: 150MB" display-tooltip-when-elided="true" />
+        </VisualElement>
+
+        <VisualElement name="memory-usage-breakdown__bar__container-b" class="memory-usage-breakdown__bar__container">
+            <VisualElement name="memory-usage-breakdown__bar"/>
+            <Label name="memory-usage-breakdown__bar__total-value" text="Total: 150MB" display-tooltip-when-elided="true" />
+        </VisualElement>
+    </VisualElement>
+
+</UXML>

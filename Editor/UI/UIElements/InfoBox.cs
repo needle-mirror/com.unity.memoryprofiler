@@ -10,8 +10,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class InfoBox : VisualElement
     {
-        IssueLevel m_IssueLevel = IssueLevel.Info;
-        public IssueLevel IssueLevel
+        public enum IssueType
+        {
+            Info,
+            Warning,
+            Error
+        }
+
+        IssueType m_IssueLevel = IssueType.Info;
+        public IssueType IssueLevel
         {
             get { return m_IssueLevel; }
             set
@@ -21,13 +28,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_Icon.AddToClassList(k_ClassIconItem);
                 switch (value)
                 {
-                    case IssueLevel.Info:
+                    case IssueType.Info:
                         m_Icon.AddToClassList(k_ClassIconTypeInfo);
                         break;
-                    case IssueLevel.Warning:
+                    case IssueType.Warning:
                         m_Icon.AddToClassList(k_ClassIconTypeWarning);
                         break;
-                    case IssueLevel.Error:
+                    case IssueType.Error:
                         m_Icon.AddToClassList(k_ClassIconTypeError);
                         break;
                     default:
@@ -133,14 +140,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Instantiates a <see cref="InfoBox"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<InfoBox, UxmlTraits> {}
+        public new class UxmlFactory : UxmlFactory<InfoBox, UxmlTraits> { }
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="InfoBox"/>.
         /// </summary>
         public new class UxmlTraits : VisualElement.UxmlTraits
         {
-            UxmlEnumAttributeDescription<IssueLevel> m_IssueLevel = new UxmlEnumAttributeDescription<IssueLevel> { name = "issue-level", defaultValue = IssueLevel.Info };
+            UxmlEnumAttributeDescription<IssueType> m_IssueLevel = new UxmlEnumAttributeDescription<IssueType> { name = "issue-level", defaultValue = IssueType.Info };
             UxmlStringAttributeDescription m_Message = new UxmlStringAttributeDescription { name = "message", defaultValue = "Info about something..." };
             UxmlStringAttributeDescription m_DocumentationLink = new UxmlStringAttributeDescription { name = "documentation-link", defaultValue = null };
             public override IEnumerable<UxmlChildElementDescription> uxmlChildElementsDescription

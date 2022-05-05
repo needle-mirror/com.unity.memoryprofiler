@@ -123,7 +123,7 @@ namespace Unity.MemoryProfiler.Editor
             m_DetailsToggle.RegisterValueChangedCallback(ToggleDetailsVisibility);
 
             //we have to do this to get the image on the left as it cant be added another way.
-            m_DetailsToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] {"icon_button", "square-button-icon", "icon-button__inspector-icon"}));
+            m_DetailsToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] { "icon_button", "square-button-icon", "icon-button__inspector-icon" }));
 
             var exportButton = root.Q<Button>("toolbar__export-button");
             exportButton.clicked += () => OpenExportMenu(exportButton.GetRect());
@@ -208,32 +208,32 @@ namespace Unity.MemoryProfiler.Editor
         void OpenExportMenu(Rect position)
         {
             var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("Not Yet Implemented!"), false, () => {});
+            menu.AddItem(new GUIContent("Not Yet Implemented!"), false, () => { });
             menu.AddSeparator("");
             if (m_OpenSnapshotsWindow.CompareMode)
             {
                 if (m_OpenSnapshotsManager.SnapshotALoaded)
-                    menu.AddItem(new GUIContent("Export Snapshot A"), false, () => {});
+                    menu.AddItem(new GUIContent("Export Snapshot A"), false, () => { });
                 else
                     menu.AddDisabledItem(new GUIContent("No Snapshot A loaded"));
 
                 if (m_OpenSnapshotsManager.SnapshotBLoaded)
-                    menu.AddItem(new GUIContent("Export Snapshot B"), false, () => {});
+                    menu.AddItem(new GUIContent("Export Snapshot B"), false, () => { });
                 else
                     menu.AddDisabledItem(new GUIContent("No Snapshot B loaded"));
 
                 if (m_OpenSnapshotsManager.DiffOpen)
-                    menu.AddItem(new GUIContent("Export Diff"), false, () => {});
+                    menu.AddItem(new GUIContent("Export Diff"), false, () => { });
                 else
                     menu.AddDisabledItem(new GUIContent("Open Diff to export it"));
             }
             else
             {
                 if (m_OpenSnapshotsManager.SnapshotALoaded)
-                    menu.AddItem(new GUIContent("Export Open Snapshot"), false, () => {});
+                    menu.AddItem(new GUIContent("Export Open Snapshot"), false, () => { });
             }
             if (m_OpenSnapshotsManager.SnapshotALoaded)
-                menu.AddItem(new GUIContent("Export Current View"), false, () => {});
+                menu.AddItem(new GUIContent("Export Current View"), false, () => { });
 
             menu.DropDown(position);
         }
@@ -300,7 +300,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             ProgressBarDisplay.ClearBar();
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ImportedSnapshotEvent() { fileExtensionOrVersionOfImportedSnapshot = Path.GetExtension(path)});
+            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ImportedSnapshotEvent() { fileExtensionOrVersionOfImportedSnapshot = Path.GetExtension(path) });
 
             m_ImportButton.SetEnabled(true);
             m_ImportButton.MarkDirtyRepaint();

@@ -22,7 +22,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
     internal struct MemoryMapSelectionData
     {
         public static MemoryMapSelectionData k_Default { get { return new MemoryMapSelectionData() { m_Data = new Vector4(0, 0, -1, -1) }; } }
-        public Vector4 Data { get { return m_Data; }  }
+        public Vector4 Data { get { return m_Data; } }
 
         public float SelectionBegin { get { return m_Data.x; } set { m_Data.x = value; UpdateValidState(); } }
         public float SelectionEnd { get { return m_Data.y; } set { m_Data.y = value; UpdateValidState(); } }
@@ -127,7 +127,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             ulong[] m_Addresses;
             public ulong Address(int index) => m_Addresses[index];
 
-            public void Preload() {}
+            public void Preload() { }
 
             ulong[] m_Sizes;
             public ulong Size(int index) => m_Sizes[index];
@@ -194,7 +194,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public void AddGroup(ulong beginRow, ulong endRow)
         {
-            float       prevGroupSpace = 1.0f;
+            float prevGroupSpace = 1.0f;
 
             MemoryGroup prevGroup;
 
@@ -211,11 +211,11 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             }
 
             MemoryGroup group;
-            group.AddressBegin  = (beginRow / m_BytesInRow) * m_BytesInRow;
-            group.AddressEnd    = ((endRow + m_BytesInRow - 1) / m_BytesInRow) * m_BytesInRow;
-            group.RowsOffsetY   = prevGroup.RowsOffsetY + prevGroup.RowsCount * Styles.MemoryMap.RowPixelHeight +  prevGroupSpace * Styles.MemoryMap.HeaderHeight;
-            group.RowsOffset    = prevGroup.RowsOffset + prevGroup.RowsCount;
-            group.RowsCount     = (group.AddressEnd - group.AddressBegin) / m_BytesInRow;
+            group.AddressBegin = (beginRow / m_BytesInRow) * m_BytesInRow;
+            group.AddressEnd = ((endRow + m_BytesInRow - 1) / m_BytesInRow) * m_BytesInRow;
+            group.RowsOffsetY = prevGroup.RowsOffsetY + prevGroup.RowsCount * Styles.MemoryMap.RowPixelHeight + prevGroupSpace * Styles.MemoryMap.HeaderHeight;
+            group.RowsOffset = prevGroup.RowsOffset + prevGroup.RowsCount;
+            group.RowsCount = (group.AddressEnd - group.AddressBegin) / m_BytesInRow;
 
             group.Labels = new AddressLabel[1 + (group.RowsCount - 1) / Styles.MemoryMap.SubAddressStepInRows];
             group.Labels[0].TextRect = new Rect(16.0f, group.RowsOffsetY - 0.25f * Styles.MemoryMap.HeaderHeight, Styles.MemoryMap.HeaderWidth, Styles.MemoryMap.HeaderHeight);
@@ -362,11 +362,11 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     if (m_MinCachedRow <= m_Groups[i].RowsEnd && m_Groups[i].RowsStart <= m_MaxCachedRow)
                     {
                         long begin = Math.Max(m_MinCachedRow, m_Groups[i].RowsStart);
-                        long end   = Math.Min(m_MaxCachedRow, m_Groups[i].RowsEnd);
+                        long end = Math.Min(m_MaxCachedRow, m_Groups[i].RowsEnd);
 
                         for (long j = begin; j < end; j++)
                         {
-                            Color c = new Color(j, j == begin ? 1.0f : 0 , j + 1 == end ? 1.0f : 0 , 1.0f);
+                            Color c = new Color(j, j == begin ? 1.0f : 0, j + 1 == end ? 1.0f : 0, 1.0f);
 
                             m_RawTexture[(int)((j % m_Texture.height) * m_Texture.width)] = c;
                         }
@@ -389,7 +389,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             ulong diffToBeginOfRow = (diffToBeginOfGroup % m_BytesInRow);
 
-            float  x0 = diffToBeginOfRow / (float)m_BytesInRow * MemoryMapRect.width;
+            float x0 = diffToBeginOfRow / (float)m_BytesInRow * MemoryMapRect.width;
 
             int xDelta = (int)(((long)(addrEnd % m_BytesInRow) - (long)(addrBegin % m_BytesInRow)) / (float)m_BytesInRow * MemoryMapRect.width);
             ulong rowDelta = (ulong)((addrEnd - addrBegin + diffToBeginOfRow) / m_BytesInRow);
@@ -416,7 +416,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             ulong diffToBeginOfRow = (diffToBeginOfGroup % m_BytesInRow);
 
-            float  x0 = diffToBeginOfRow / (float)m_BytesInRow * MemoryMapRect.width;
+            float x0 = diffToBeginOfRow / (float)m_BytesInRow * MemoryMapRect.width;
 
             int xDelta = (int)(((long)(addrEnd % m_BytesInRow) - (long)(addrBegin % m_BytesInRow)) / (float)m_BytesInRow * MemoryMapRect.width);
             ulong rowDelta = (ulong)((addrEnd - addrBegin + diffToBeginOfRow) / m_BytesInRow);
@@ -443,7 +443,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 ulong size = (ulong)data.Size(j);
 
                 ulong stripAddrBegin = addr.Clamp(addressMin, addressMax);
-                ulong stripAddrEnd   = (addr + size).Clamp(addressMin, addressMax);
+                ulong stripAddrEnd = (addr + size).Clamp(addressMin, addressMax);
 
                 if (stripAddrBegin != stripAddrEnd)
                 {
@@ -459,8 +459,8 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 ulong addr = (ulong)data.Address(j);
                 ulong size = (ulong)data.Size(j);
 
-                ulong stripAddrBegin = addr.Clamp(addressMin,  addressMax);
-                ulong stripAddrEnd   = (addr + size).Clamp(addressMin,  addressMax);
+                ulong stripAddrBegin = addr.Clamp(addressMin, addressMax);
+                ulong stripAddrEnd = (addr + size).Clamp(addressMin, addressMax);
 
                 if (stripAddrBegin != stripAddrEnd)
                 {
@@ -471,7 +471,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public static Color32 Add(Color32 c1, Color32 c2)
         {
-            return new Color32((byte)(c1.r  + c2.r), (byte)(c1.g  + c2.g), (byte)(c1.b  + c2.b), (byte)(c1.a + c2.a));
+            return new Color32((byte)(c1.r + c2.r), (byte)(c1.g + c2.g), (byte)(c1.b + c2.b), (byte)(c1.a + c2.a));
         }
 
         public static Color32 Max(Color32 c1, Color32 c2)
@@ -510,7 +510,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 if (addr0 == addr1 && size0 == size1)
                 {
                     ulong stripAddrBegin = addr0.Clamp(addressMin, addressMax);
-                    ulong stripAddrEnd   = (addr0 + size0).Clamp(addressMin, addressMax);
+                    ulong stripAddrEnd = (addr0 + size0).Clamp(addressMin, addressMax);
 
                     if (stripAddrBegin != stripAddrEnd)
                     {
@@ -525,7 +525,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     if (addr0 < addr1 || (addr0 == addr1 && size0 != size1))
                     {
                         ulong stripAddrBegin = addr0.Clamp(addressMin, addressMax);
-                        ulong stripAddrEnd   = (addr0 + size0).Clamp(addressMin, addressMax);
+                        ulong stripAddrEnd = (addr0 + size0).Clamp(addressMin, addressMax);
 
                         if (stripAddrBegin != stripAddrEnd)
                         {
@@ -538,7 +538,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     if (addr0 > addr1 || (addr0 == addr1 && size0 != size1))
                     {
                         ulong stripAddrBegin = addr1.Clamp(addressMin, addressMax);
-                        ulong stripAddrEnd   = (addr1 + size1).Clamp(addressMin, addressMax);
+                        ulong stripAddrEnd = (addr1 + size1).Clamp(addressMin, addressMax);
 
                         if (stripAddrBegin != stripAddrEnd)
                         {
@@ -563,12 +563,12 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                 {
                     float v0 = m_Groups[i].RowsStart;
                     float v1 = m_Groups[i].RowsEnd;
-                    float s =  m_Groups[i].RowsCount;
+                    float s = m_Groups[i].RowsCount;
 
                     GL.TexCoord3(u1, v0, 0); GL.Vertex3(MemoryMapRect.xMax, m_Groups[i].MinY, 0f);
-                    GL.TexCoord3(u0, v0, 0); GL.Vertex3(Styles.MemoryMap.HeaderWidth, m_Groups[i].MinY,  0f);
+                    GL.TexCoord3(u0, v0, 0); GL.Vertex3(Styles.MemoryMap.HeaderWidth, m_Groups[i].MinY, 0f);
                     GL.TexCoord3(u0, v1, s); GL.Vertex3(Styles.MemoryMap.HeaderWidth, m_Groups[i].MaxY, 0f);
-                    GL.TexCoord3(u1, v1, s); GL.Vertex3(MemoryMapRect.xMax,       m_Groups[i].MaxY, 0f);
+                    GL.TexCoord3(u1, v1, s); GL.Vertex3(MemoryMapRect.xMax, m_Groups[i].MaxY, 0f);
                 }
             }
             GL.End();

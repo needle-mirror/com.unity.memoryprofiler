@@ -389,7 +389,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Instantiates a <see cref="SnapshotListItem"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<SnapshotListItem, UxmlTraits> {}
+        public new class UxmlFactory : UxmlFactory<SnapshotListItem, UxmlTraits> { }
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="SnapshotListItem"/>.

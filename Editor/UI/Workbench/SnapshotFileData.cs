@@ -222,7 +222,7 @@ namespace Unity.MemoryProfiler.Editor
 
             //HACK: call this bit here to make sure we can update our screen shots, as it seems that changing the editor scene will get the current snapshot imagines collected
             // as they are not unity scene root objects
-            if (m_GuiData.VisualElement != null &&  m_GuiData.VisualElement.screenshot != null)
+            if (m_GuiData.VisualElement != null && m_GuiData.VisualElement.screenshot != null)
                 m_GuiData.VisualElement.screenshot.image = m_GuiData.GuiTexture.Texture;
         }
 
@@ -271,7 +271,7 @@ namespace Unity.MemoryProfiler.Editor
             return m_GuiData.UtcDateTime.Ticks.CompareTo(other.m_GuiData.UtcDateTime.Ticks);
         }
 
-        public static bool operator==(SnapshotFileData lhs, SnapshotFileData rhs)
+        public static bool operator ==(SnapshotFileData lhs, SnapshotFileData rhs)
         {
             if (ReferenceEquals(lhs, rhs))
                 return true;
@@ -282,7 +282,7 @@ namespace Unity.MemoryProfiler.Editor
             return lhs.FileInfo.FullName.Equals(rhs.FileInfo.FullName);
         }
 
-        public static bool operator!=(SnapshotFileData lhs, SnapshotFileData rhs)
+        public static bool operator !=(SnapshotFileData lhs, SnapshotFileData rhs)
         {
             return !(lhs == rhs);
         }

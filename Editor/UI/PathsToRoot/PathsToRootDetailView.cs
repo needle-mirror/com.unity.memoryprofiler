@@ -37,7 +37,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         int m_ProcessingStackSize = 0;
         int m_ObjectsProcessed = 0;
 
-        public event Action<MemorySampleSelection> SelectionChangedEvt = delegate {};
+        public event Action<MemorySampleSelection> SelectionChangedEvt = delegate { };
         bool truncateTypeNames = MemoryProfilerSettings.MemorySnapshotTruncateTypes;
 
         enum PathsToRootViewColumns
@@ -131,7 +131,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
             Reload();
             if (startAnalyitcs)
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = m_ActiveTree.ToString()});
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = m_ActiveTree.ToString() });
         }
 
         void OnTruncateStateChanged()
@@ -874,7 +874,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     if (pathsToRootDetailTreeViewItem.icon != null)
                         GUI.Label(new Rect(cellRect.x, cellRect.y, 20, 20), pathsToRootDetailTreeViewItem.TypeIcon);
                     var typeNameRect = new Rect(cellRect.x + 20, cellRect.y, cellRect.width - 20, cellRect.height);
-                    var text = $"{(truncateTypeNames ? pathsToRootDetailTreeViewItem.TruncatedTypeName :pathsToRootDetailTreeViewItem.TypeName)} \"{pathsToRootDetailTreeViewItem.displayName}\"";
+                    var text = $"{(truncateTypeNames ? pathsToRootDetailTreeViewItem.TruncatedTypeName : pathsToRootDetailTreeViewItem.TypeName)} \"{pathsToRootDetailTreeViewItem.displayName}\"";
                     if (pathsToRootDetailTreeViewItem.IsRoot(m_CachedSnapshot))
                         text = $"SceneRoot {text}";
                     var isMainSelection = item.id == k_CurrentSelectionTreeViewItemId;

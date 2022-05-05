@@ -44,9 +44,9 @@ namespace Unity.MemoryProfiler.Editor.Extensions.String
 
             unsafe
             {
-                fixed(char* patternPtr = pattern)
+                fixed (char* patternPtr = pattern)
                 {
-                    fixed(char* srcPtr = src)
+                    fixed (char* srcPtr = src)
                     {
                         int patternLengthOffset = pattern.Length - 1;
                         Int16* srcIter = (Int16*)srcPtr + startIndex + patternLengthOffset;

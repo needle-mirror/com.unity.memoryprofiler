@@ -16,7 +16,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// </summary>
     internal class DatabaseSpreadsheet : TextSpreadsheet
     {
-        public event Action UserChangedFilters = delegate {};
+        public event Action UserChangedFilters = delegate { };
 
         protected Database.Table m_TableSource;
         protected Database.Table m_TableDisplay;
@@ -459,7 +459,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.ColumnVisibilityChangedEvent>();
                     splitter.HideColumn(col);
 
-                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ColumnVisibilityChangedEvent() { viewName = m_TableDisplay.GetName(), shownOrHidden = false, columnIndex = (int)col, columnName = m_TableDisplay.GetMetaData().GetColumnByIndex((int)col).Name});
+                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ColumnVisibilityChangedEvent() { viewName = m_TableDisplay.GetName(), shownOrHidden = false, columnIndex = (int)col, columnName = m_TableDisplay.GetMetaData().GetColumnByIndex((int)col).Name });
 
                     MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
                         MemoryProfilerAnalytics.PageInteractionType.ColumnWasHidden);
@@ -509,7 +509,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
                     MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
                         MemoryProfilerAnalytics.PageInteractionType.TableSortingWasChanged);
-                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() {column = columnName, filterName = "Sort" });
+                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = columnName, filterName = "Sort" });
                 }
                 else if (filter is Filter.DefaultSort)
                 {
@@ -533,7 +533,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 else if (filter is Filter.Group)
                 {
-                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = (filter as Filter.Group).GetColumnName(m_TableDisplay), filterName = "Group"});
+                    m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = (filter as Filter.Group).GetColumnName(m_TableDisplay), filterName = "Group" });
                 }
                 else if (filter is Filter.Match)
                 {
@@ -541,7 +541,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_FilterBuffer.Add(new MemoryProfilerAnalytics.Filter() { column = matchFilter.GetColumnName(m_TableDisplay), filterName = "Match" });
                 }
             }
-            MemoryProfilerAnalytics.FiltersChanged(m_TableDisplay.GetName(),  m_FilterBuffer);
+            MemoryProfilerAnalytics.FiltersChanged(m_TableDisplay.GetName(), m_FilterBuffer);
         }
 
         string GetColumnName(Filter.Sort.Level sortLevel)
@@ -695,8 +695,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                     long val = 0;
                     unsafe
                     {
-                        long * outVal = &val;
-                        void * inVal = &value;
+                        long* outVal = &val;
+                        void* inVal = &value;
                         UnsafeUtility.MemCpy(outVal, inVal, valueTypeSize);
                     }
                     switch (diffCol.GetRowValue(i))
@@ -725,8 +725,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                     long val = 0;
                     unsafe
                     {
-                        long * outVal = &val;
-                        void * inVal = &value;
+                        long* outVal = &val;
+                        void* inVal = &value;
                         UnsafeUtility.MemCpy(outVal, inVal, valueTypeSize);
                     }
                     m_CurrentAccumulativeSize += val;
@@ -1141,7 +1141,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             UpdateMatchFilterState();
             GUILayout.FlexibleSpace();
-            GUILayout.Label("Count: " +  m_CurrentRowCount.ToString("N0"));
+            GUILayout.Label("Count: " + m_CurrentRowCount.ToString("N0"));
             if (m_CurrentAccumulativeSize > 0)
                 GUILayout.Label("Total Size: " + EditorUtility.FormatBytes(m_CurrentAccumulativeSize));
             else if (m_CurrentAccumulativeSizeDeleted > 0 || m_CurrentAccumulativeSizeNew > 0 || m_CurrentAccumulativeSizeSame > 0)

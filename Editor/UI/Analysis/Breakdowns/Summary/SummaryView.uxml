@@ -1,25 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<engine:UXML
+<UXML
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xmlns:engine="UnityEngine.UIElements"
-    xmlns:editor="UnityEditor.UIElements"
-    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xmlns="UnityEngine.UIElements"
     xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
-    
-    <!--Legacy summary page. Replace with reworked view.-->
-    <!--2019.4 requires Templates to be defined at root level. Remove when we drop support for 2019.-->
-    <engine:Template name="MemoryUsageSummary" src="project:Packages/com.unity.memoryprofiler/Package Resources/UXML/SubElements/AnalysisWindow/MemoryUsageSummary.uxml"/>
-    <engine:Template name="TopTenIssuesList" src="project:Packages/com.unity.memoryprofiler/Package Resources/UXML/SubElements/AnalysisWindow/SummaryPane/TopTenIssuesList.uxml"/>
-    <!---->
 
-    <engine:VisualElement name="summary-view">
+    <VisualElement name="summary-view">
         <Style src="SummaryView.uss"/>
 
-        <!--Legacy summary page. Replace with reworked view.-->
-        <engine:Instance template="MemoryUsageSummary" name="MemoryUsageSummary" style="flex-shrink: 0;" />
-        <engine:Instance template="TopTenIssuesList" name="TopTenIssuesList" class="top-ten-issues-section__template-container" />
-        <!---->
+        <ScrollView name="selected-item-details__selection-details__scroll-area">
+            <VisualElement class="memory-usage-summary__widget">
+                <VisualElement name="memory-usage-summary__unavailable">
+                    <VisualElement name="memory-usage-summary__unavailable__icon-space">
+                        <VisualElement name="memory-usage-summary__unavailable__icon"/>
+                    </VisualElement>
+                    <Label name="memory-usage-summary__unavailable__message" text="The Memory Usage Overview is not available with this snapshot."/>
+                </VisualElement>
+            </VisualElement>
 
-    </engine:VisualElement>
+            <VisualElement class="memory-usage-summary__widget">
+                <VisualElement name="memory-usage-summary__warning__box" />
+            </VisualElement>
 
-</engine:UXML>
+            <VisualElement class="memory-usage-summary__widget">
+                <VisualElement name="memory-usage-summary__content__system" class="memory-usage-summary__widget__content" />
+            </VisualElement>
+
+            <VisualElement class="memory-usage-summary__widget">
+                <VisualElement name="memory-usage-summary__content__total" class="memory-usage-summary__widget__content" />
+            </VisualElement>
+
+            <VisualElement class="memory-usage-summary__widget__group">
+                <VisualElement class="memory-usage-summary__widget memory-usage-summary__widget__group-item">
+                    <VisualElement name="memory-usage-summary__content__managed" class="memory-usage-summary__widget__content" />
+                </VisualElement>
+
+                <VisualElement class="memory-usage-summary__widget memory-usage-summary__widget__group-item">
+                    <VisualElement name="memory-usage-summary__content__unity-objects" class="memory-usage-summary__widget__content" />
+                </VisualElement>
+            </VisualElement>
+
+            <VisualElement name="memory-usage-summary__header__right">
+                <Toggle  name="memory-usage-summary-section__normalized-toggle" text="Normalized" tooltip="Normalize bars to their snapshots total memory usage or scale it in relation to the maximal memory usage of the two snapshots"/>
+            </VisualElement>
+        </ScrollView>
+    </VisualElement>
+</UXML>

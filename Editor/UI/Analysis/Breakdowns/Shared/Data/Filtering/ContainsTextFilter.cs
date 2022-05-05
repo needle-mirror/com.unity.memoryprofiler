@@ -11,7 +11,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             Text = text;
         }
-        
+
         public static ContainsTextFilter Create(string text)
         {
             // Cannot create a text filter with a null filter string. Note that string.Empty is allowed, which will pass non-null strings (i.e. 'contains any text').

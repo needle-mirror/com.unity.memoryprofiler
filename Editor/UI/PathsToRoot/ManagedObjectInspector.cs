@@ -248,7 +248,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var countOfGenericClose = 0;
                     unsafe
                     {
-                        fixed(char* c = typename)
+                        fixed (char* c = typename)
                         {
                             char* it = c + k_NativeArrayTypePrefix.Length;
                             for (int charPos = k_NativeArrayTypePrefix.Length; charPos < typename.Length; charPos++)
@@ -457,8 +457,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         ulong GetIdentifyingPointer(ObjectData obj, CachedSnapshot cs)
         {
             var address = obj.GetObjectPointer(cs);
-            if (obj.m_Parent != null && obj.m_Parent.obj.GetObjectPointer(cs) == address)
-                return 0;
             return address;
         }
 
@@ -496,7 +494,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (i - arrayIndexToStartAt >= k_MaxArrayIncrement)
                 {
-                    var continueArray = new ReferencePendingProcessing { ObjectData = arrayObject, Root = root, ArrayIndexToContinueAt = i};
+                    var continueArray = new ReferencePendingProcessing { ObjectData = arrayObject, Root = root, ArrayIndexToContinueAt = i };
                     // if not, add a placeholder to continue processing as needed by the user
                     var stopGapChild = new ManagedObjectInspectorItem(m_InspectorID, continueArray);
                     stopGapChild.depth = rootItem.depth + 1;
@@ -855,7 +853,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (multiColumnHeader != null && multiColumnHeader.sortedColumnIndex != -1)
             {
                 MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.SortedColumnEvent>();
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.SortedColumnEvent() {
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.SortedColumnEvent()
+                {
                     viewName = "Managed Object Inspector",
                     Ascending = multiColumnHeader.IsSortedAscending(multiColumnHeader.sortedColumnIndex),
                     shown = multiColumnHeader.sortedColumnIndex,

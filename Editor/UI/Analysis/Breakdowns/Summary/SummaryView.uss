@@ -2,3 +2,87 @@
 {
     margin-top: 8px;
 }
+
+.memory-usage-summary__section {
+    flex: 1;
+    flex-direction: column;
+
+    margin: 10px;
+}
+
+.memory-usage-summary__widget__group {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.memory-usage-summary__widget {
+    flex: 1 0 auto;
+
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 30px;
+    padding-right: 30px;
+
+    margin-bottom: 10px;
+    margin-left: 10px;
+    margin-right: 10px;
+
+    background-color: var(--unity-colors-box-background);
+}
+
+.memory-usage-summary__widget__group-item {
+    flex: 1 0 auto;
+}
+
+.memory-usage-summary__widget__content {
+
+}
+
+#memory-usage-summary__header__right {
+    position: absolute;
+    top: 0px;
+    right: 0px;
+    align-items: flex-end;
+}
+
+#memory-usage-summary__unavailable {
+    flex: 1 1 0;
+    flex-direction: row;
+
+    margin: 4px;
+    padding: 4px;
+
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgb(35, 35, 35);
+
+    color: rgb(189, 189, 189);
+    background-color: rgba(96, 96, 96, 0.2);
+}
+
+#memory-usage-summary__unavailable__icon {
+    flex: auto 0 0;
+    width: 32px;
+    height: 32px;
+    margin: 4px;
+
+    background-image: resource('d_console.infoicon.png');
+}
+
+#memory-usage-summary__unavailable__icon-space {
+    justify-content: center;
+}
+
+#memory-usage-summary__unavailable__message {
+    flex: 1 0 0;
+    flex-direction: row;
+
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-bottom: 0px;
+
+    overflow: hidden;
+    white-space: normal;
+    -unity-font-style: normal;
+    -unity-text-align: middle-left;
+}

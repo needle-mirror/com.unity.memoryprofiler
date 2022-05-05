@@ -6,5 +6,5 @@ The Main Component displays various data visualizations about the selected Memor
 * [The Unity Objects tab](unity-objects-tab.md)
 * [The All Of Memory tab](all-memory-tab.md)
 
-![The Main Component in the Memory Profiler window](images/main-component.png)
+![The Main Component in the Memory Profiler window](images/summary-tab.png)
 <br/>*The Main Component in the Memory Profiler window*

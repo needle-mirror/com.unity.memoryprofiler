@@ -18,16 +18,16 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         static class Content
         {
-            public static readonly  GUIContent[] TableModesList = new GUIContent[3]
+            public static readonly GUIContent[] TableModesList = new GUIContent[3]
             {
                 new GUIContent("Regions list"),
                 new GUIContent("Allocations list"),
                 new GUIContent("Objects list")
             };
 
-            public static readonly  GUIContent FilterLabel = new GUIContent("Display Filters");
-            public static readonly  GUIContent RowSizeLabel = new GUIContent("Row Size");
-            public static readonly  GUIContent ColorSchemeLabel = new GUIContent("Color scheme");
+            public static readonly GUIContent FilterLabel = new GUIContent("Display Filters");
+            public static readonly GUIContent RowSizeLabel = new GUIContent("Row Size");
+            public static readonly GUIContent ColorSchemeLabel = new GUIContent("Color scheme");
         }
 
 #if !REMOVE_VIEW_HISTORY

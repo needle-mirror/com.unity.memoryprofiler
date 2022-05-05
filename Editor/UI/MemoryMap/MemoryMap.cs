@@ -9,7 +9,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
         [Flags]
         public enum DisplayElements
         {
-            Allocations   = 1 << 0,
+            Allocations = 1 << 0,
             ManagedObjects = 1 << 1,
             NativeObjects = 1 << 2,
             VirtualMemory = 1 << 3,
@@ -17,11 +17,11 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
         public struct ViewState
         {
-            public ulong    BytesInRow;
-            public ulong    HighlightedAddrMin;
-            public ulong    HighlightedAddrMax;
-            public int      DisplayElements;
-            public Vector2  ScrollArea;
+            public ulong BytesInRow;
+            public ulong HighlightedAddrMin;
+            public ulong HighlightedAddrMax;
+            public int DisplayElements;
+            public Vector2 ScrollArea;
         }
 
         public ViewState CurrentViewState
@@ -196,7 +196,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             ProgressBarDisplay.UpdateProgress(0.0f, "Sorting regions ...");
 
-            Array.Sort(m_SnapshotMemoryRegion, delegate(MemoryRegion a, MemoryRegion b)
+            Array.Sort(m_SnapshotMemoryRegion, delegate (MemoryRegion a, MemoryRegion b)
             {
                 int result = a.AddressBegin.CompareTo(b.AddressBegin);
 
@@ -224,7 +224,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             while (m_SnapshotMemoryRegion[metaRegions].AddressBegin == 0 && m_SnapshotMemoryRegion[metaRegions].AddressBegin == m_SnapshotMemoryRegion[metaRegions].AddressEnd)
                 metaRegions++;
 
-            int   groupIdx = 0;
+            int groupIdx = 0;
             ulong groupAddressBegin = m_SnapshotMemoryRegion[metaRegions].AddressBegin;
             ulong groupAddressEnd = groupAddressBegin;
 
@@ -236,7 +236,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     continue;
 
                 ulong addressBegin = m_SnapshotMemoryRegion[i].AddressBegin;
-                ulong addressEnd   = m_SnapshotMemoryRegion[i].AddressEnd;
+                ulong addressEnd = m_SnapshotMemoryRegion[i].AddressEnd;
 
                 if ((addressBegin > groupAddressEnd) && (addressBegin / m_BytesInRow) > (groupAddressEnd / m_BytesInRow) + 1)
                 {
@@ -439,7 +439,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
                     continue;
 
                 ulong stripGroupAddrBegin = m_SnapshotMemoryRegion[i].AddressBegin.Clamp(addressMin, addressMax);
-                ulong stripGroupAddrEnd   = m_SnapshotMemoryRegion[i].AddressEnd.Clamp(addressMin, addressMax);
+                ulong stripGroupAddrEnd = m_SnapshotMemoryRegion[i].AddressEnd.Clamp(addressMin, addressMax);
 
                 if (stripGroupAddrBegin == stripGroupAddrEnd)
                     continue;
@@ -452,7 +452,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             for (int i = 0; i < m_Groups.Count; ++i)
             {
                 ulong stripGroupAddrBegin = m_Groups[i].AddressBegin.Clamp(addressMin, addressMax);
-                ulong stripGroupAddrEnd   = m_Groups[i].AddressEnd.Clamp(addressMin, addressMax);
+                ulong stripGroupAddrEnd = m_Groups[i].AddressEnd.Clamp(addressMin, addressMax);
 
                 if (stripGroupAddrBegin == stripGroupAddrEnd)
                     continue;
@@ -508,7 +508,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
 
             FlushTextures(m_ScrollArea.y, m_ScrollArea.y + r.height);
 
-            float viewTop    = m_ScrollArea.y;
+            float viewTop = m_ScrollArea.y;
             float viewBottom = m_ScrollArea.y + r.height;
 
             HandleMouseClick(r);
@@ -655,7 +655,7 @@ namespace Unity.MemoryProfiler.Editor.UI.MemoryMap
             }
             else if (Event.current.type == EventType.MouseDrag)
             {
-                ulong addr = MouseToAddress(Event.current.mousePosition);;
+                ulong addr = MouseToAddress(Event.current.mousePosition); ;
                 m_HighlightedAddrMin = (addr < m_MouseDragStartAddr) ? addr : m_MouseDragStartAddr;
                 m_HighlightedAddrMax = (addr < m_MouseDragStartAddr) ? m_MouseDragStartAddr : addr;
 

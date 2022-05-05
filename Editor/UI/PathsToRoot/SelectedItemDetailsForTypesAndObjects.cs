@@ -1,15 +1,12 @@
 using System;
-using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.Database;
+using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
-using UnityEditor.IMGUI.Controls;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class SelectedItemDetailsForTypesAndObjects : SelectionDetailsProducer
+    internal class SelectedItemDetailsForTypesAndObjects : ISelectionDetailsProducer
     {
         IUIStateHolder m_uiStateHolder;
         long m_CurrentSelectionIdx;
@@ -35,12 +32,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         /// <param name="ui"></param>
         /// <param name="memorySampleSelection"></param>
-        public override void OnShowDetailsForSelection(ISelectedItemDetailsUI ui, MemorySampleSelection memorySampleSelection)
+        public void OnShowDetailsForSelection(ISelectedItemDetailsUI ui, MemorySampleSelection memorySampleSelection)
         {
             throw new NotImplementedException();
         }
 
-        internal override void OnShowDetailsForSelection(ISelectedItemDetailsUI ui, MemorySampleSelection memorySampleSelection, out string summary)
+        public void OnShowDetailsForSelection(ISelectedItemDetailsUI ui, MemorySampleSelection memorySampleSelection, out string summary)
         {
             m_CachedSnapshot = memorySampleSelection.GetSnapshotItemIsPresentIn(m_uiStateHolder.UIState);
             m_UI = ui;
@@ -90,9 +87,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public override void OnClearSelectionDetails(ISelectedItemDetailsUI detailsUI)
+        public void OnClearSelectionDetails(ISelectedItemDetailsUI detailsUI)
         {
-            base.OnClearSelectionDetails(detailsUI);
             m_CurrentSelectionIdx = -1;
             m_CurrentSelectionObjectData = default;
             m_CachedSnapshot = null;
@@ -260,12 +256,31 @@ namespace Unity.MemoryProfiler.Editor.UI
             //if (m_SelectedUnityObject.HasManagedSide) m_UI.AddDynamicElement("Managed Size", EditorUtility.FormatBytes(m_SelectedUnityObject.ManagedSize));
 
             var refCountExtra = (selectedUnityObject.IsFullUnityObjet && selectedUnityObject.TotalRefCount > 0) ? $"({selectedUnityObject.NativeRefCount} Native + {selectedUnityObject.ManagedRefCount} Managed)" : string.Empty;
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", $"{selectedUnityObject.TotalRefCount} {refCountExtra}{(selectedUnityObject.IsFullUnityObjet?" + 2 Self References":"")}");
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", $"{selectedUnityObject.TotalRefCount} {refCountExtra}{(selectedUnityObject.IsFullUnityObjet ? " + 2 Self References" : "")}");
 
             if (selectedUnityObject.IsFullUnityObjet && !selectedUnityObject.ManagedObjectData.IsValid)
             {
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Bug!", "This Native Object is associated with an invalid Managed Object, " + TextContent.InvalidObjectPleaseReportABugMessage);
             }
+
+            if (MetaDataHelpers.GenerateMetaDataString(snapshot, selectedUnityObject.NativeObjectIndex, out var metaData))
+            {
+                foreach (var tuple in metaData)
+                {
+                    if (tuple.Item1 == "Warning")
+                    {
+                        var infoBox = new InfoBox();
+                        infoBox.IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Warning;
+                        infoBox.Message = tuple.Item2;
+                        m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameMetaData, infoBox);
+                    }
+                    else
+                    {
+                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameMetaData, tuple.Item1, tuple.Item2, "");
+                    }
+                }
+            }
+
             // Debug info
             if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Instance ID", selectedUnityObject.InstanceId.ToString());
             if (selectedUnityObject.HasNativeSide)
@@ -391,12 +406,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (selectedUnityObject.IsRuntimeCreated)
             {
-                statusSummary += $"{(string.IsNullOrEmpty(statusSummary)?'D':'d')}ynamically & run-time created ";
+                statusSummary += $"{(string.IsNullOrEmpty(statusSummary) ? 'D' : 'd')}ynamically & run-time created ";
             }
             else
             {
                 // e.g. Combined Scene Meshes
-                statusSummary += $"{(string.IsNullOrEmpty(statusSummary)?'D':'d')}ynamically & build-time created ";
+                statusSummary += $"{(string.IsNullOrEmpty(statusSummary) ? 'D' : 'd')}ynamically & build-time created ";
             }
 
             statusSummary += "Asset";

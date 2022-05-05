@@ -31,7 +31,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
             public bool isPrimaryKey = false;
             public string FormatName;
 
-            public Builder() {}
+            public Builder() { }
             public Builder(string name, Operation.Expression.MetaExpression value)
             {
                 this.name = name;
@@ -85,7 +85,7 @@ namespace Unity.MemoryProfiler.Editor.Database.View
                 {
                     if (metaColumn.Type.scriptingType == null)
                     {
-                        metaColumn.Type = new MetaType() { scriptingType = columnValueType, comparisonMethod = typeComparisonMethod  };
+                        metaColumn.Type = new MetaType() { scriptingType = columnValueType, comparisonMethod = typeComparisonMethod };
                     }
                     else if (columnValueType != null && metaColumn.Type.scriptingType != columnValueType)
                     {
@@ -227,7 +227,8 @@ namespace Unity.MemoryProfiler.Editor.Database.View
 
                 // Parse expression value
                 Operation.Expression.ParseIdentifierOption parseOpt = new Operation.Expression.ParseIdentifierOption(buildingData.Schema, vTable, true, false, columnValueType, expressionParsingContext);
-                parseOpt.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) => {
+                parseOpt.formatError = (string s, Operation.Expression.ParseIdentifierOption opt) =>
+                {
                     return FormatErrorContextInfo(buildingData.Schema, vTable) + " : " + s;
                 };
 

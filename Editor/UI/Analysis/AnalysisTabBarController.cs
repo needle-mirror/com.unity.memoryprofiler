@@ -1,11 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class AnalysisTabBarController : TabBarController, TabBarController.IResponder
+    class AnalysisTabBarController : TabBarController
     {
         const string k_UxmlAssetGuid = "c6e4b2cc6ed5ca245a88ee690b17b4c0";
         const string k_UssClass_Dark = "analysis-tab-bar-view__dark";
@@ -15,27 +17,33 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_ContentView = "analysis-tab-bar-view__content-view";
 
         // Model.
-        readonly AnalysisTabBarModel m_Model;
+        readonly CachedSnapshot m_BaseSnapshot;
+        readonly CachedSnapshot m_CompareSnapshot;
 
         // View.
         Button m_HelpButton;
 
-        public AnalysisTabBarController(AnalysisTabBarModel model) : base()
-        {
-            m_Model = model;
-            MakeTabBarItem = MakeAnalysisTabBarItem;
-            Responder = this;
+        List<Option> m_Options;
 
-            // Set view controllers from model's options.
-            var options = model.Options;
-            var viewControllers = new ViewController[options.Count];
-            for (var i = 0; i < options.Count; i++)
+        public AnalysisTabBarController(CachedSnapshot baseSnapshot, CachedSnapshot compareSnapshot) : base()
+        {
+            m_BaseSnapshot = baseSnapshot;
+            m_CompareSnapshot = compareSnapshot;
+
+            MakeTabBarItem = MakeAnalysisTabBarItem;
+        }
+
+        public Action MakePageSelector(string name)
+        {
+            for (int i = 0; i < m_Options.Count; i++)
             {
-                var option = options[i];
-                viewControllers[i] = option.ViewController;
+                if (m_Options[i].DisplayName != name)
+                    continue;
+
+                return (() => SelectedIndex = i);
             }
 
-            ViewControllers = viewControllers;
+            return null;
         }
 
         protected override VisualElement ContentView { get; set; }
@@ -61,6 +69,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             base.ViewLoaded();
             m_HelpButton.clicked += OpenHelpDocumentation;
+
+            if (m_CompareSnapshot == null)
+                InitForSingleSnapshot(m_BaseSnapshot);
+            else
+                InitForComparisonBetweenSnapshots(m_BaseSnapshot, m_CompareSnapshot);
+
+            ViewControllers = m_Options.Select(x => x.ViewController).ToArray();
+            SelectedIndex = 0;
         }
 
         void GatherReferencesInView(VisualElement view)
@@ -72,7 +88,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         VisualElement MakeAnalysisTabBarItem(ViewController viewController, int viewControllerIndex)
         {
-            var option = m_Model.Options[viewControllerIndex];
+            var option = m_Options[viewControllerIndex];
             var tabBarItem = new Label(option.DisplayName)
             {
                 tooltip = option.Description
@@ -85,8 +101,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
                 MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedPageEvent>();
                 SelectedIndex = viewControllerIndex;
-                var viewName = m_Model.Options[SelectedIndex].AnalyticsPageName;
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedPageEvent() { viewName = viewName});
+                var viewName = m_Options[SelectedIndex].AnalyticsPageName;
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedPageEvent() { viewName = viewName });
                 // Start collecting interaction events for this page
                 MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInPage>(new MemoryProfilerAnalytics.InteractionsInPage() { viewName = viewName });
             });
@@ -101,9 +117,96 @@ namespace Unity.MemoryProfiler.Editor.UI
             Application.OpenURL(UIContentData.DocumentationUrls.AnalysisWindowHelp);
         }
 
-        void IResponder.TabBarControllerSelectedIndexChanged(TabBarController tabBarController, int selectedIndex)
+        // Create a model containing the available Analysis options for a single snapshot.
+        void InitForSingleSnapshot(CachedSnapshot snapshot)
         {
-            var option = m_Model.Options[selectedIndex];
+#if UNITY_2022_1_OR_NEWER
+            const string unityObjectsDescription = "A breakdown of memory contributing to all Unity Objects.";
+            const string allTrackedMemoryDescription = "A breakdown of all tracked memory that Unity knows about.";
+            m_Options = new List<Option>()
+            {
+                new Option("Summary",
+                    new SummaryViewController(snapshot, null) { TabController = this }),
+                new Option("Unity Objects",
+                    new UnityObjectsBreakdownViewController(snapshot, unityObjectsDescription),
+                    unityObjectsDescription),
+                new Option("All Of Memory",
+                    new AllTrackedMemoryBreakdownViewController(snapshot, allTrackedMemoryDescription),
+                    allTrackedMemoryDescription),
+#if UNITY_ENABLE_EXPERIMENTAL_FEATURES
+                new Option("All of System Memory",
+                    new AllSystemMemoryBreakdownViewController(snapshot)),
+#endif
+            };
+#else
+            var errorDescription = $"This feature is not available in Unity {UnityEngine.Application.unityVersion}. Please use Unity 2022.1 or newer.";
+            m_Options = new List<Option>()
+            {
+                new Option("Summary",
+                    new SummaryViewController(snapshot)) { TabController = this },
+                new Option("Unity Objects",
+                    new FeatureUnavailableViewController(errorDescription),
+                    "A breakdown of memory contributing to all Unity Objects."),
+                new Option("All Of Memory",
+                    new FeatureUnavailableViewController(errorDescription),
+                    "A breakdown of all tracked memory that Unity knows about."),
+            };
+#endif
+        }
+
+        // Create a model containing the available Analysis options when comparing two snapshots.
+        void InitForComparisonBetweenSnapshots(CachedSnapshot baseSnapshot, CachedSnapshot comparedSnapshot)
+        {
+#if UNITY_2022_1_OR_NEWER
+            const string unityObjectsComparisonDescription = "A comparison of memory contributing to all Unity Objects in each capture.";
+            m_Options = new List<Option>()
+            {
+                new Option("Summary",
+                    new SummaryViewController(baseSnapshot, comparedSnapshot) { TabController = this },
+                    analyticsPageName: "Summary Comparison"),
+                new Option("Unity Objects",
+                    new UnityObjectsComparisonViewController(
+                        baseSnapshot,
+                        comparedSnapshot,
+                        unityObjectsComparisonDescription),
+                    unityObjectsComparisonDescription,
+                    "Unity Objects Comparison"),
+            };
+#else
+            var errorDescription = $"This feature is not available in Unity {UnityEngine.Application.unityVersion}. Please use Unity 2022.1 or newer.";
+            m_Options = new List<Option>()
+            {
+                new Option("Summary",
+                    new SummaryViewController(baseSnapshot, comparedSnapshot) { TabController = this },
+                    analyticsPageName: "Summary Comparison"),
+                new Option("Unity Objects",
+                    new FeatureUnavailableViewController(errorDescription),
+                    "A comparison of memory contributing to all Unity Objects in each capture.",
+                    "Unity Objects Comparison"),
+            };
+#endif
+        }
+
+        readonly struct Option
+        {
+            public Option(string displayName, ViewController viewController, string description = null, string analyticsPageName = null)
+            {
+                DisplayName = displayName;
+                ViewController = viewController;
+                Description = description;
+
+                if (string.IsNullOrEmpty(analyticsPageName))
+                    analyticsPageName = DisplayName;
+                AnalyticsPageName = analyticsPageName;
+            }
+
+            public string DisplayName { get; }
+
+            public ViewController ViewController { get; }
+
+            public string Description { get; }
+
+            public string AnalyticsPageName { get; }
         }
     }
 }

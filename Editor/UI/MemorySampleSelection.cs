@@ -228,7 +228,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public MemorySampleSelection(UIState uiState, Table displayTable, long rowIndex, SnapshotAge snapshotAge = SnapshotAge.None) : this()
         {
             m_SnapshotAge = snapshotAge;
-            var snapshot = GetRelevantOpenSnapshot(uiState, ref m_SnapshotAge,  rowIndex, displayTable);
+            var snapshot = GetRelevantOpenSnapshot(uiState, ref m_SnapshotAge, rowIndex, displayTable);
             Table = displayTable.GetName();
             Rank = MemorySampleSelectionRank.MainSelection;
             RowIndex = rowIndex;
@@ -850,7 +850,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return -1;
         }
 
-        static CachedSnapshot GetRelevantOpenSnapshot(UIState uiState, ref SnapshotAge snapshotAge,  long rowIndex = -1, Table displayTable = null)
+        static CachedSnapshot GetRelevantOpenSnapshot(UIState uiState, ref SnapshotAge snapshotAge, long rowIndex = -1, Table displayTable = null)
         {
             if (snapshotAge != SnapshotAge.None)
             {

@@ -49,7 +49,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Instantiates a <see cref="DropDownButton"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<DropDownButton, UxmlTraits> {}
+        public new class UxmlFactory : UxmlFactory<DropDownButton, UxmlTraits> { }
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="DropDownButton"/>.

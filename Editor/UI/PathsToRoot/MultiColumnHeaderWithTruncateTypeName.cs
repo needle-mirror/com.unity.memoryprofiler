@@ -12,9 +12,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         /// only for analytics to track which table the change came from.
         /// For adjusting the display styling subscribe to the global <see cref="MemoryProfilerSettings.TruncateStateChanged"/> event instead.
         /// </summary>
-        public event Action<bool> TruncationChangedViaThisHeader = delegate {};
+        public event Action<bool> TruncationChangedViaThisHeader = delegate { };
         public MultiColumnHeaderWithTruncateTypeName(MultiColumnHeaderState state)
-            : base(state) {}
+            : base(state) { }
 
         protected override void AddColumnHeaderContextMenuItems(GenericMenu menu)
         {

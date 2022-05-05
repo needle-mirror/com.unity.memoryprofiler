@@ -137,7 +137,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public Action<ContextualMenuPopulateEvent> ContextMenuOpening = delegate {};
+        public Action<ContextualMenuPopulateEvent> ContextMenuOpening = delegate { };
 
         // Idea for later: jump to documentation for native Unity Types, or Unity Objects with type names in Unity owned namespaces?
         //string m_DocumentationLink = null;
@@ -424,7 +424,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Instantiates a <see cref="ObjectOrTypeLabel"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<ObjectOrTypeLabel, UxmlTraits> {}
+        public new class UxmlFactory : UxmlFactory<ObjectOrTypeLabel, UxmlTraits> { }
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="ObjectOrTypeLabel"/>.

@@ -95,7 +95,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             {
                 meta.Content = new string('A', contentLength);
                 int copySize = sizeof(char) * contentLength;
-                fixed(char* cntPtr = meta.Content)
+                fixed (char* cntPtr = meta.Content)
                 {
                     UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
                 }
@@ -114,7 +114,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             {
                 meta.Platform = new string('A', contentLength);
                 int copySize = sizeof(char) * contentLength;
-                fixed(char* cntPtr = meta.Platform)
+                fixed (char* cntPtr = meta.Platform)
                 {
                     UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
                 }
@@ -132,7 +132,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             else
             {
                 byte[] pixels = new byte[contentLength]; //texturePixels
-                fixed(byte* pxPtr = pixels)
+                fixed (byte* pxPtr = pixels)
                 {
                     UnsafeUtility.MemCpy(pxPtr, bufferPtr + offset, contentLength);
                 }
@@ -164,7 +164,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             {
                 meta.Content = new string('A', contentLength);
                 int copySize = sizeof(char) * contentLength;
-                fixed(char* cntPtr = meta.Content)
+                fixed (char* cntPtr = meta.Content)
                 {
                     UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
                 }
@@ -183,7 +183,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             {
                 meta.PlatformExtra = new string('A', contentLength);
                 int copySize = sizeof(char) * contentLength;
-                fixed(char* cntPtr = meta.Platform)
+                fixed (char* cntPtr = meta.Platform)
                 {
                     UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
                 }
@@ -250,21 +250,21 @@ namespace Unity.MemoryProfiler.Editor.Format
         {
             unsafe
             {
-                fixed(void* freeBlocks = m_FreeBlockBuckets)
-                return TotalVirtualMemory == other.TotalVirtualMemory
-                    && TotalUsedMemory == other.TotalUsedMemory
-                    && TempAllocatorUsedMemory == other.TempAllocatorUsedMemory
-                    && TotalReservedMemory == other.TotalReservedMemory
-                    && GraphicsUsedMemory == other.GraphicsUsedMemory
-                    && AudioUsedMemory == other.AudioUsedMemory
-                    && GcHeapUsedMemory == other.GcHeapUsedMemory
-                    && GcHeapReservedMemory == other.GcHeapReservedMemory
-                    && ProfilerUsedMemory == other.ProfilerUsedMemory
-                    && ProfilerReservedMemory == other.ProfilerReservedMemory
-                    && MemoryProfilerUsedMemory == other.MemoryProfilerUsedMemory
-                    && MemoryProfilerReservedMemory == other.MemoryProfilerReservedMemory
-                    && FreeBlockBucketCount == other.FreeBlockBucketCount
-                    && UnsafeUtility.MemCmp(freeBlocks,  other.m_FreeBlockBuckets, sizeof(uint) * k_FreeBlockPowOf2BucketCount) == 0;
+                fixed (void* freeBlocks = m_FreeBlockBuckets)
+                    return TotalVirtualMemory == other.TotalVirtualMemory
+                        && TotalUsedMemory == other.TotalUsedMemory
+                        && TempAllocatorUsedMemory == other.TempAllocatorUsedMemory
+                        && TotalReservedMemory == other.TotalReservedMemory
+                        && GraphicsUsedMemory == other.GraphicsUsedMemory
+                        && AudioUsedMemory == other.AudioUsedMemory
+                        && GcHeapUsedMemory == other.GcHeapUsedMemory
+                        && GcHeapReservedMemory == other.GcHeapReservedMemory
+                        && ProfilerUsedMemory == other.ProfilerUsedMemory
+                        && ProfilerReservedMemory == other.ProfilerReservedMemory
+                        && MemoryProfilerUsedMemory == other.MemoryProfilerUsedMemory
+                        && MemoryProfilerReservedMemory == other.MemoryProfilerReservedMemory
+                        && FreeBlockBucketCount == other.FreeBlockBucketCount
+                        && UnsafeUtility.MemCmp(freeBlocks, other.m_FreeBlockBuckets, sizeof(uint) * k_FreeBlockPowOf2BucketCount) == 0;
             }
         }
     };
@@ -295,16 +295,16 @@ namespace Unity.MemoryProfiler.Editor.Format
         {
             get
             {
-                fixed(byte* ptr = m_UnityVersionBuffer)
-                return MakeStringFromBuffer(ptr, m_UnityVersionLength);
+                fixed (byte* ptr = m_UnityVersionBuffer)
+                    return MakeStringFromBuffer(ptr, m_UnityVersionLength);
             }
         }
         public string ProductName
         {
             get
             {
-                fixed(byte* ptr = m_ProductNameBuffer)
-                return MakeStringFromBuffer(ptr, m_ProductNameLength);
+                fixed (byte* ptr = m_ProductNameBuffer)
+                    return MakeStringFromBuffer(ptr, m_ProductNameLength);
             }
         }
 
@@ -314,7 +314,7 @@ namespace Unity.MemoryProfiler.Editor.Format
                 return string.Empty;
 
             string str = new string('A', (int)length);
-            fixed(char* dstPtr = str)
+            fixed (char* dstPtr = str)
             {
                 UnsafeUtility.MemCpyStride(dstPtr, UnsafeUtility.SizeOf<char>(), srcPtr, UnsafeUtility.SizeOf<byte>(), UnsafeUtility.SizeOf<byte>(), (int)length);
             }
@@ -326,18 +326,18 @@ namespace Unity.MemoryProfiler.Editor.Format
         {
             unsafe
             {
-                fixed(void* prod = m_ProductNameBuffer, version = m_UnityVersionBuffer)
-                return SessionGUID == other.SessionGUID
-                    && RuntimePlatform == other.RuntimePlatform
-                    && GraphicsDeviceType == other.GraphicsDeviceType
-                    && TotalPhysicalMemory == other.TotalPhysicalMemory
-                    && TotalGraphicsMemory == other.TotalGraphicsMemory
-                    && ScriptingBackend == other.ScriptingBackend
-                    && TimeSinceStartup == other.TimeSinceStartup
-                    && m_UnityVersionLength == other.m_UnityVersionLength
-                    && m_ProductNameLength == other.m_ProductNameLength
-                    && UnsafeUtility.MemCmp(prod, other.m_ProductNameBuffer, m_ProductNameLength) == 0
-                    && UnsafeUtility.MemCmp(version, other.m_UnityVersionBuffer, m_UnityVersionLength) == 0;
+                fixed (void* prod = m_ProductNameBuffer, version = m_UnityVersionBuffer)
+                    return SessionGUID == other.SessionGUID
+                        && RuntimePlatform == other.RuntimePlatform
+                        && GraphicsDeviceType == other.GraphicsDeviceType
+                        && TotalPhysicalMemory == other.TotalPhysicalMemory
+                        && TotalGraphicsMemory == other.TotalGraphicsMemory
+                        && ScriptingBackend == other.ScriptingBackend
+                        && TimeSinceStartup == other.TimeSinceStartup
+                        && m_UnityVersionLength == other.m_UnityVersionLength
+                        && m_ProductNameLength == other.m_ProductNameLength
+                        && UnsafeUtility.MemCmp(prod, other.m_ProductNameBuffer, m_ProductNameLength) == 0
+                        && UnsafeUtility.MemCmp(version, other.m_UnityVersionBuffer, m_UnityVersionLength) == 0;
             }
         }
     };

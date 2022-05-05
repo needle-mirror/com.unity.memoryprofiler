@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd"
+    xsi:schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd">
+
+    <Template name="memory-usage-breakdown__legend__column-template" src="MemoryBreakdownLegendColumnTemplate.uxml" />
+
+    <VisualElement>
+        <VisualElement name="memory-usage-breakdown__legend" class="memory-usage-breakdown__legend">
+            <VisualElement name="memory-usage-breakdown__legend__name-column">
+                <VisualElement name="memory-usage-breakdown__legend__column-controls">
+                    <Label display-tooltip-when-elided="true" name="emptyspaceholder" class="memory-usage-breakdown__legend__empty-space-holder" />
+                </VisualElement>
+
+                <VisualElement class="memory-usage-breakdown__legend__list memory-usage-breakdown__legend__top-border" />
+                <VisualElement name="memory-usage-breakdown__legend__cells" />
+                <VisualElement class="memory-usage-breakdown__legend__list memory-usage-breakdown__legend__bottom-border" />
+            </VisualElement>
+
+            <Instance template="memory-usage-breakdown__legend__column-template" name="memory-usage-breakdown__legend__snapshot-a-column">
+                <AttributeOverrides element-name="memory-usage-breakdown__legend__header-icon-text" text="A"/>
+            </Instance>
+            <Instance template="memory-usage-breakdown__legend__column-template" name="memory-usage-breakdown__legend__snapshot-b-column">
+                <AttributeOverrides element-name="memory-usage-breakdown__legend__header-icon-text" text="B"/>
+            </Instance>
+            <Instance template="memory-usage-breakdown__legend__column-template" name="memory-usage-breakdown__legend__diff-column">
+                <AttributeOverrides element-name="memory-usage-breakdown__legend__header-icon-text" text="A-B"/>
+            </Instance>
+        </VisualElement>
+    </VisualElement>
+</UXML>

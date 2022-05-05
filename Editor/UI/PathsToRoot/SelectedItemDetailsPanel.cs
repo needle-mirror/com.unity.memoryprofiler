@@ -25,6 +25,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         void SetItemName(UnifiedType typeInfo);
         void SetItemName(UnifiedUnityObjectInfo unityObjectInfo);
         void SetDescription(string description);
+        void AddInfoBox(string groupName, InfoBox infoBox);
         void AddDynamicElement(string title, string content);
         void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel);
         void SetDocumentationURL(string url);
@@ -152,6 +153,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
         public const string GroupNameBasic = "Basic";
+        public const string GroupNameMetaData = "MetaData";
         public const string GroupNameHelp = "Help";
         public const string GroupNameAdvanced = "Advanced";
         public const string GroupNameDebug = "Debug"; // Only useful for Memory Profiler developers or _maybe_ for bug reports
@@ -227,6 +229,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_GroupedElements = detailsPanelRoot.Q("selected-item-details__grouped-elements");
             m_SelectedItemDetailsGroupUxmlPathViewTree = EditorGUIUtility.Load(ResourcePaths.SelectedItemDetailsGroupUxmlPath) as VisualTreeAsset;
             CreateDetailsGroup(GroupNameBasic);
+            CreateDetailsGroup(GroupNameMetaData);
             CreateDetailsGroup(GroupNameHelp);
             CreateDetailsGroup(GroupNameAdvanced).Foldout.value = false;
             CreateDetailsGroup(GroupNameDebug).Foldout.value = false;
@@ -266,7 +269,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 : CopyDetailsOptionLabels[(int)option].text, (a) =>
                 {
                     CopySelectedItemTitel(option, contextMenu, saveAsDefault);
-                }, disabled ? DropdownMenuAction.Status.Disabled : selected? DropdownMenuAction.Status.Checked: DropdownMenuAction.Status.Normal);
+                }, disabled ? DropdownMenuAction.Status.Disabled : selected ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
         }
 
         // IMGUI version
@@ -482,11 +485,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_DynamicElements.Add(label);
         }
 
-        public void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel)
+        public void AddInfoBox(string groupName, InfoBox infoBox)
         {
             if (groupName == GroupNameDebug && !ShowDebugInfo)
                 return;
 
+            var groupItem = AddGroupItem(groupName);
+            groupItem.Content.Insert(0, infoBox);
+        }
+
+        DetailsGroup AddGroupItem(string groupName)
+        {
             DetailsGroup groupItem;
             if (!m_ActiveDetailsGroupsByGroupName.TryGetValue(groupName, out groupItem))
             {
@@ -497,6 +506,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UIElementsHelper.SetVisibility(groupItem.Root, true);
                 m_ActiveDetailsGroupsByGroupName.Add(groupName, groupItem);
             }
+            return groupItem;
+        }
+
+        public void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel)
+        {
+            if (groupName == GroupNameDebug && !ShowDebugInfo)
+                return;
+
+            var groupItem = AddGroupItem(groupName);
+
             var groupedItem = m_SelectedItemDetailsGroupedItemUxmlPathViewTree.Clone();
             groupedItem.Q("selected-item-details__grouped-item__container").AddToClassList($"selected-item-details__grouped-item__{title.ToLower()}");
             if (options.HasFlag(SelectedItemDynamicElementOptions.PlaceFirstInGroup))

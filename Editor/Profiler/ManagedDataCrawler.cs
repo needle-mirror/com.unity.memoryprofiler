@@ -190,7 +190,7 @@ namespace Unity.MemoryProfiler.Editor
             return PtrObject != 0 && PtrTypeInfo != 0 && data.bytes != null;
         }
 
-        public static bool operator==(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
+        public static bool operator ==(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
         {
             return lhs.PtrObject == rhs.PtrObject
                 && lhs.PtrTypeInfo == rhs.PtrTypeInfo
@@ -201,7 +201,7 @@ namespace Unity.MemoryProfiler.Editor
                 && lhs.RefCount == rhs.RefCount;
         }
 
-        public static bool operator!=(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
+        public static bool operator !=(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
         {
             return !(lhs == rhs);
         }
@@ -436,14 +436,14 @@ namespace Unity.MemoryProfiler.Editor
             }
             unsafe
             {
-                fixed(byte* ptr = bytes)
+                fixed (byte* ptr = bytes)
                 {
                     string str = null;
                     char* begin = (char*)(ptr + (offset + additionalOffsetForObjectHeader + sizeof(int)));
                     str = new string(begin, 0, readLength);
                     if (fullLength != readLength)
                     {
-                        fixed(char* s = str, e = StringTools.Elipsis)
+                        fixed (char* s = str, e = StringTools.Elipsis)
                         {
                             var c = s;
                             c += readLength - StringTools.Elipsis.Length;
@@ -683,7 +683,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue(objectInfo.ITypeDescription, out nativeTypeIndex))
                 {
                     // TODO: Add index to a list of Managed Unity Objects here
-                    var heapSection =  snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
+                    var heapSection = snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
                     if (!heapSection.IsValid)
                     {
                         Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
@@ -722,7 +722,7 @@ namespace Unity.MemoryProfiler.Editor
                                     {
                                         unsafe
                                         {
-                                            fixed(char* nativeName = snapshot.NativeTypes.TypeName[nativeTypeIndex], managedName = typeName)
+                                            fixed (char* nativeName = snapshot.NativeTypes.TypeName[nativeTypeIndex], managedName = typeName)
                                             {
                                                 // no need to create a bunch of managed substrings in a hot loop
                                                 char* managedSubstring = managedName + startOfNamespaceStrippedManagedTypeName;

@@ -15,7 +15,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Texture2D m_Texture;
 
-        static readonly ushort[] k_Indices = new ushort[] {
+        static readonly ushort[] k_Indices = new ushort[]
+        {
             0, 1, 2,
             1, 3, 2,
         };
@@ -25,7 +26,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             generateVisualContent = GenerateVisualContent;
         }
 
-
         void Init(float scale)
         {
             Scale = scale;
@@ -33,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void GenerateVisualContent(MeshGenerationContext obj)
         {
-            if(m_Texture == null)
+            if (m_Texture == null)
             {
 #if UNITY_2020_1_OR_NEWER
                 m_Texture = resolvedStyle.backgroundImage.texture;
@@ -43,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             if (m_Texture == null)
                 return;
-            TiledQuads(new Vector2(0,0), localBound.size, Color.white, Scale, m_Texture, obj);
+            TiledQuads(new Vector2(0, 0), localBound.size, Color.white, Scale, m_Texture, obj);
         }
 
         void TiledQuads(Vector2 pos, Vector2 size, Color color, float scale, Texture2D texture2D, MeshGenerationContext context)
@@ -68,7 +68,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var totalTiles = xTiles * yTiles;
 
-            var uvOffset = new Vector2(0,0);
+            var uvOffset = new Vector2(0, 0);
             var lastRowUvOffset = new Vector2(0, 1 - yTaper);
 
             // if more quads are needed than ushort allows for, split the mesh.
@@ -76,8 +76,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             const int k_IndexCountPerQuad = 6;
             int quadIndexToSplitMeshAt = totalTiles;
             if (totalTiles * k_IndexCountPerQuad > ushort.MaxValue)
-               quadIndexToSplitMeshAt = short.MaxValue / k_IndexCountPerQuad;
-            
+                quadIndexToSplitMeshAt = short.MaxValue / k_IndexCountPerQuad;
+
             var mesh = context.Allocate(k_VertextCountPerQuad * quadIndexToSplitMeshAt, k_IndexCountPerQuad * quadIndexToSplitMeshAt, texture2D);
             ushort vertextOffset = 0;
 
@@ -99,7 +99,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     color, mesh, vertextOffset);
 
                 vertextOffset += k_VertextCountPerQuad;
-                
+
                 // Check if the current mesh is full and the next one is needed
                 if (q >= quadIndexToSplitMeshAt && q + 1 < totalTiles)
                 {

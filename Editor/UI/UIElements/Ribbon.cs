@@ -65,9 +65,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             get { return m_Content; }
         }
 
-        public event Action<int> Clicked = delegate {};
-        public event Action HelpClicked = delegate {};
-        public event Action MenuClicked = delegate {};
+        public event Action<int> Clicked = delegate { };
+        public event Action HelpClicked = delegate { };
+        public event Action MenuClicked = delegate { };
 
         VisualElement m_Root;
         VisualElement m_Content;
@@ -206,7 +206,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Instantiates a <see cref="Ribbon"/> using the data read from a UXML file.
         /// </summary>
-        public new class UxmlFactory : UxmlFactory<Ribbon, UxmlTraits> {}
+        public new class UxmlFactory : UxmlFactory<Ribbon, UxmlTraits> { }
 
         /// <summary>
         /// Defines <see cref="UxmlTraits"/> for the <see cref="Ribbon"/>.

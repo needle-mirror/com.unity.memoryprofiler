@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -111,6 +112,16 @@ namespace Unity.MemoryProfiler.Editor
         public bool HasGfxResourceReferencesAndAllocators
         {
             get { return m_SnapshotVersion >= FormatVersion.GfxResourceReferencesAndAllocatorsVersion; }
+        }
+
+        public bool HasNativeObjectMetaData
+        {
+            get { return m_SnapshotVersion >= FormatVersion.NativeObjectMetaDataVersion; }
+        }
+
+        public bool HasSystemMemoryRegionsInfo
+        {
+            get { return m_SnapshotVersion >= FormatVersion.SystemMemoryRegionsVersion; }
         }
 
         public ManagedData CrawledData { internal set; get; }
@@ -346,6 +357,18 @@ namespace Unity.MemoryProfiler.Editor
                 MemoryLabelSizes.Dispose();
                 MemoryLabelName = null;
             }
+
+            public ulong GetLabelSize(string label)
+            {
+                if (Count <= 0)
+                    return 0;
+
+                var labelIndex = Array.IndexOf(MemoryLabelName, label);
+                if (labelIndex == -1)
+                    return 0;
+
+                return MemoryLabelSizes[labelIndex];
+            }
         }
 
         public class NativeCallstackSymbolEntriesCache : IDisposable
@@ -514,11 +537,17 @@ namespace Unity.MemoryProfiler.Editor
 
             public class TransformTree
             {
-                public static int kInvalidInstanceID = 0;
-                public int InstanceID { get; private set; } = kInvalidInstanceID;
-                public int GameObjectID { get; set; } = kInvalidInstanceID;
+                public int InstanceID { get; private set; } = NativeObjectEntriesCache.InstanceIDNone;
+                public int GameObjectID { get; set; } = NativeObjectEntriesCache.InstanceIDNone;
                 public TransformTree Parent = null;
-                public List<TransformTree> Children = new List<TransformTree>();
+
+                static ReadOnlyCollection<TransformTree> s_EmptyList = new List<TransformTree>().AsReadOnly();
+                List<TransformTree> m_Children = null;
+                /// <summary>
+                /// Use <see cref="AddChild(int)"/> or <see cref="AddChildren(ICollection{int})"/> to add child Transforms instead of adding to this list directly.
+                /// </summary>
+                public ReadOnlyCollection<TransformTree> Children => m_Children?.AsReadOnly() ?? s_EmptyList;
+
                 public bool IsScene { get; private set; } = false;
 
                 public TransformTree(bool isScene)
@@ -533,19 +562,26 @@ namespace Unity.MemoryProfiler.Editor
 
                 public void AddChild(int instanceId)
                 {
+                    // only a parent (aka Scene at the root) is allowed to have an invalid instance ID
+                    // no recursion or self references are allowed either
+                    if (instanceId == NativeObjectEntriesCache.InstanceIDNone
+                        || instanceId == InstanceID
+                        || (Parent != null && Parent.InstanceID == instanceId))
+                        return;
+
                     var child = new TransformTree(instanceId);
                     child.Parent = this;
-                    Children.Add(child);
+                    if (m_Children == null)
+                        m_Children = new List<TransformTree>() { child };
+                    else
+                        m_Children.Add(child);
                 }
 
-                public void AddChildren(int[] instanceIds)
+                public void AddChildren(ICollection<int> instanceIds)
                 {
                     foreach (var instanceId in instanceIds)
                     {
-                        if (instanceId == Parent.InstanceID) continue;
-                        var child = new TransformTree(instanceId);
-                        child.Parent = this;
-                        Children.Add(child);
+                        AddChild(instanceId);
                     }
                 }
             }
@@ -611,7 +647,7 @@ namespace Unity.MemoryProfiler.Editor
                 SceneHierarchies = new TransformTree[Name.Length];
                 for (int i = 0; i < Name.Length; i++)
                 {
-                    SceneHierarchies[i] = new TransformTree(TransformTree.kInvalidInstanceID);
+                    SceneHierarchies[i] = new TransformTree(true);
                     foreach (var ii in SceneIndexedRootTransformInstanceIds[i])
                     {
                         SceneHierarchies[i].AddChild(ii);
@@ -645,11 +681,13 @@ namespace Unity.MemoryProfiler.Editor
             public void GenerateGameObjectData(CachedSnapshot snapshot)
             {
                 AllRootGameObjectInstanceIds = new DynamicArray<int>(AllRootTransformInstanceIds.Count, Allocator.Persistent);
-                for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
                 {
-                    AllRootGameObjectInstanceIds[i] = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, AllRootTransformInstanceIds[i]);
+                    var cachedList = new List<int>();
+                    for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
+                    {
+                        AllRootGameObjectInstanceIds[i] = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, AllRootTransformInstanceIds[i]);
+                    }
                 }
-
                 RootGameObjectInstanceIdHashSet = new HashSet<int>();
                 for (int i = 0; i < AllRootGameObjectInstanceIds.Count; i++)
                 {
@@ -670,22 +708,26 @@ namespace Unity.MemoryProfiler.Editor
             public void CreateTransformTrees(CachedSnapshot snapshot)
             {
                 if (!snapshot.HasSceneRootsAndAssetbundles || SceneHierarchies == null) return;
+                var cachedHashSet = new HashSet<int>();
                 foreach (var hierarchy in SceneHierarchies)
                 {
                     foreach (var child in hierarchy.Children)
                     {
-                        AddTransforms(child, snapshot);
+                        AddTransforms(child, snapshot, cachedHashSet);
                     }
                 }
             }
 
-            void AddTransforms(TransformTree id, CachedSnapshot snapshot)
+            void AddTransforms(TransformTree id, CachedSnapshot snapshot, HashSet<int> cachedHashSet)
             {
                 id.GameObjectID = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, id.InstanceID);
-                id.AddChildren(ObjectConnection.GetConnectedTransformInstanceIdsFromTransformInstanceId(snapshot, id.InstanceID));
-                foreach (var child in id.Children)
+                if (ObjectConnection.TryGetConnectedTransformInstanceIdsFromTransformInstanceId(snapshot, id.InstanceID, id.Parent.InstanceID, ref cachedHashSet))
                 {
-                    AddTransforms(child, snapshot);
+                    id.AddChildren(cachedHashSet);
+                    foreach (var child in id.Children)
+                    {
+                        AddTransforms(child, snapshot, cachedHashSet);
+                    }
                 }
             }
         }
@@ -848,6 +890,8 @@ namespace Unity.MemoryProfiler.Editor
             public SortedDictionary<int, int> instanceId2Index;
 
             public readonly ulong TotalSizes = 0ul;
+            DynamicArray<int> MetaDataBufferIndicies = default;
+            byte[][] MetaDataBuffers;
 
             unsafe public NativeObjectEntriesCache(ref IFileReader reader)
             {
@@ -897,6 +941,38 @@ namespace Unity.MemoryProfiler.Editor
                     for (int i = 0; i < Count; ++i)
                         ManagedObjectIndex[i] = -1;
                 }
+
+                // handle formats tht have the new metadata added for native objects
+                if (reader.FormatVersion >= FormatVersion.NativeObjectMetaDataVersion)
+                {
+                    //get the array that tells us how to index the buffers for the actual meta data
+                    MetaDataBufferIndicies = reader.Read(EntryType.ObjectMetaData_MetaDataBufferIndicies, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
+                    // loop the array and get the total number of entries we need
+                    int sum = 0;
+                    for (int i = 0; i < MetaDataBufferIndicies.Count; i++)
+                    {
+                        if (MetaDataBufferIndicies[i] != -1)
+                            sum++;
+                    }
+                    //resize the data array
+                    MetaDataBuffers = new byte[sum][];
+                    using (DynamicArray<byte> tmp = new DynamicArray<byte>(0, Allocator.Temp))
+                    {
+                        var tmpSize = reader.GetSizeForEntryRange(EntryType.ObjectMetaData_MetaDataBuffer, 0, sum);
+                        tmp.Resize(tmpSize, false);
+                        reader.Read(EntryType.ObjectMetaData_MetaDataBuffer, tmp, 0, sum);
+                        ConvertDynamicArrayByteBufferToManagedArray(tmp, ref MetaDataBuffers);
+                    }
+                }
+            }
+
+            public Byte[] MetaData(int nativeObjectIndex)
+            {
+                if (MetaDataBufferIndicies.Count == 0) return null;
+                var bufferIndex = MetaDataBufferIndicies[nativeObjectIndex];
+                if (bufferIndex == -1) return null;
+
+                return MetaDataBuffers[bufferIndex];
             }
 
             public void Dispose()
@@ -914,6 +990,60 @@ namespace Unity.MemoryProfiler.Editor
                 ObjectName = null;
                 nativeObjectAddressToInstanceId = null;
                 instanceId2Index = null;
+                MetaDataBufferIndicies.Dispose();
+                MetaDataBuffers = null;
+            }
+        }
+
+        public class SystemMemoryRegionEntriesCache : IDisposable
+        {
+            public enum MemoryType : ushort
+            {
+                // NB!: The same as in SystemInfo.h
+                Private = 0, // Private to this process allocations
+                Mapped = 1,  // Allocations mapped to a file (dll/exe/etc)
+                Shared = 2,  // Shared memory
+                Device = 3,   // Shared device or driver memory (like GPU, sound cards, etc)
+                Count
+            }
+
+            public long Count;
+            public string[] RegionName;
+            public DynamicArray<ulong> RegionAddress = default;
+            public DynamicArray<ulong> RegionSize = default;
+            public DynamicArray<ulong> RegionResident = default;
+            public DynamicArray<ushort> RegionType = default;
+
+            public SystemMemoryRegionEntriesCache(ref IFileReader reader, NativeMemoryRegionEntriesCache nativeMemoryRegions, ManagedMemorySectionEntriesCache managedMemoryRegions)
+            {
+                Count = reader.GetEntryCount(EntryType.SystemMemoryRegions_Address);
+                RegionName = new string[Count];
+
+                if (Count == 0)
+                    return;
+
+                RegionAddress = reader.Read(EntryType.SystemMemoryRegions_Address, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                RegionSize = reader.Read(EntryType.SystemMemoryRegions_Size, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                RegionResident = reader.Read(EntryType.SystemMemoryRegions_Resident, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                RegionType = reader.Read(EntryType.SystemMemoryRegions_Type, 0, Count, Allocator.Persistent).Result.Reinterpret<ushort>();
+
+                using (DynamicArray<byte> tmp = new DynamicArray<byte>(0, Allocator.TempJob))
+                {
+                    var tmpSize = reader.GetSizeForEntryRange(EntryType.SystemMemoryRegions_Name, 0, Count);
+                    tmp.Resize(tmpSize, false);
+                    reader.Read(EntryType.SystemMemoryRegions_Name, tmp, 0, Count);
+                    ConvertDynamicArrayByteBufferToManagedArray(tmp, ref RegionName);
+                }
+            }
+
+            public void Dispose()
+            {
+                Count = 0;
+                RegionName = null;
+                RegionAddress.Dispose();
+                RegionSize.Dispose();
+                RegionResident.Dispose();
+                RegionType.Dispose();
             }
         }
 
@@ -1625,7 +1755,7 @@ namespace Unity.MemoryProfiler.Editor
                         if (ToFromMappedConnection.TryGetValue(To[i], out var fromList))
                             fromList.Add(From[i]);
                         else
-                            ToFromMappedConnection[To[i]] = new List<int> {From[i] };
+                            ToFromMappedConnection[To[i]] = new List<int> { From[i] };
 
 
                         if (FromToMappedConnection.TryGetValue(From[i], out var toList))
@@ -1675,6 +1805,9 @@ namespace Unity.MemoryProfiler.Editor
         public NativeAllocatorEntriesCache NativeAllocators;
         public NativeGfxResourcReferenceEntriesCache NativeGfxResourceReferences;
 
+        public SystemMemoryRegionEntriesCache SystemMemoryRegions;
+        public MemorySummaryEntriesCache MemorySummaryEntries;
+
         public CachedSnapshot(IFileReader reader)
         {
             unsafe
@@ -1715,6 +1848,8 @@ namespace Unity.MemoryProfiler.Editor
                 NativeGfxResourceReferences = new NativeGfxResourcReferenceEntriesCache(ref reader);
                 NativeAllocators = new NativeAllocatorEntriesCache(ref reader);
 
+                SystemMemoryRegions = new SystemMemoryRegionEntriesCache(ref reader, NativeMemoryRegions, ManagedHeapSections);
+
                 if (GcHandles.Count > 0)
                     CaptureFlags |= CaptureFlags.ManagedObjects;
                 if (NativeAllocations.Count > 0)
@@ -1734,8 +1869,12 @@ namespace Unity.MemoryProfiler.Editor
                 SortedNativeAllocations = new SortedNativeAllocationsCache(this);
                 SortedNativeObjects = new SortedNativeObjectsCache(this);
 
+                if (HasSystemMemoryRegionsInfo)
+                    MemorySummaryEntries = new MemorySummaryEntriesCache(this);
+
                 CrawledData = new ManagedData(GcHandles.Count, Connections.Count);
-                SceneRoots.CreateTransformTrees(this);
+                if (MemoryProfilerSettings.FeatureFlags.GenerateTransformTreesForByStatusTable_2022_09)
+                    SceneRoots.CreateTransformTrees(this);
                 SceneRoots.GenerateGameObjectData(this);
             }
         }
@@ -1796,6 +1935,8 @@ namespace Unity.MemoryProfiler.Editor
                 SceneRoots.Dispose();
                 NativeGfxResourceReferences.Dispose();
                 NativeAllocations.Dispose();
+
+                SystemMemoryRegions.Dispose();
             }
         }
 
@@ -1839,14 +1980,14 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public int  Count { get { return (int)m_Snapshot.NativeMemoryRegions.Count; } }
-            public ulong  Address(int index) { return m_Snapshot.NativeMemoryRegions.AddressBase[this[index]]; }
-            public ulong  Size(int index) { return m_Snapshot.NativeMemoryRegions.AddressSize[this[index]]; }
+            public int Count { get { return (int)m_Snapshot.NativeMemoryRegions.Count; } }
+            public ulong Address(int index) { return m_Snapshot.NativeMemoryRegions.AddressBase[this[index]]; }
+            public ulong Size(int index) { return m_Snapshot.NativeMemoryRegions.AddressSize[this[index]]; }
 
             public string Name(int index) { return m_Snapshot.NativeMemoryRegions.MemoryRegionName[this[index]]; }
-            public int    UnsortedParentRegionIndex(int index) { return m_Snapshot.NativeMemoryRegions.ParentIndex[this[index]]; }
-            public int    UnsortedFirstAllocationIndex(int index) { return m_Snapshot.NativeMemoryRegions.FirstAllocationIndex[this[index]]; }
-            public int    UnsortedNumAllocations(int index) { return m_Snapshot.NativeMemoryRegions.NumAllocations[this[index]]; }
+            public int UnsortedParentRegionIndex(int index) { return m_Snapshot.NativeMemoryRegions.ParentIndex[this[index]]; }
+            public int UnsortedFirstAllocationIndex(int index) { return m_Snapshot.NativeMemoryRegions.FirstAllocationIndex[this[index]]; }
+            public int UnsortedNumAllocations(int index) { return m_Snapshot.NativeMemoryRegions.NumAllocations[this[index]]; }
         }
 
         //TODO: unify with the other old section entries as those are sorted by default now
@@ -1864,7 +2005,7 @@ namespace Unity.MemoryProfiler.Editor
                 //Dummy for the interface
             }
 
-            public int  Count { get { return (int)m_Entries.Count; } }
+            public int Count { get { return (int)m_Entries.Count; } }
             public ulong Address(int index) { return m_Entries.StartAddress[index]; }
             public ulong Size(int index) { return (ulong)m_Entries.Bytes[index].Length; }
             public byte[] Bytes(int index) { return m_Entries.Bytes[index]; }
@@ -1903,7 +2044,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public int  Count { get { return (int)m_Snapshot.CrawledData.ManagedObjects.Count; } }
+            public int Count { get { return (int)m_Snapshot.CrawledData.ManagedObjects.Count; } }
 
             public ulong Address(int index) { return this[index].PtrObject; }
             public ulong Size(int index) { return (ulong)this[index].Size; }
@@ -1941,7 +2082,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public int  Count { get { return (int)m_Snapshot.NativeAllocations.Count; } }
+            public int Count { get { return (int)m_Snapshot.NativeAllocations.Count; } }
             public ulong Address(int index) { return m_Snapshot.NativeAllocations.Address[this[index]]; }
             public ulong Size(int index) { return m_Snapshot.NativeAllocations.Size[this[index]]; }
             public int MemoryRegionIndex(int index) { return m_Snapshot.NativeAllocations.MemoryRegionIndex[this[index]]; }
@@ -1983,7 +2124,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public int  Count { get { return (int)m_Snapshot.NativeObjects.Count; } }
+            public int Count { get { return (int)m_Snapshot.NativeObjects.Count; } }
             public ulong Address(int index) { return m_Snapshot.NativeObjects.NativeObjectAddress[this[index]]; }
             public ulong Size(int index) { return m_Snapshot.NativeObjects.Size[this[index]]; }
             public string Name(int index) { return m_Snapshot.NativeObjects.ObjectName[this[index]]; }
@@ -2013,7 +2154,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     var nStr = new string('A', actualLength);
                     elements[i] = nStr as T;
-                    fixed(char* dstPtr = nStr)
+                    fixed (char* dstPtr = nStr)
                     {
                         UnsafeUtility.MemCpyStride(dstPtr, UnsafeUtility.SizeOf<char>(),
                             srcPtr, UnsafeUtility.SizeOf<byte>(), UnsafeUtility.SizeOf<byte>(), actualLength);
@@ -2051,6 +2192,206 @@ namespace Unity.MemoryProfiler.Editor
                     elements[i] = arr as T;
                 }
             }
+        }
+
+        public class MemorySummaryEntriesCache
+        {
+            public struct Source
+            {
+                public enum SourceType : ushort
+                {
+                    Unknown,
+                    SystemMemoryRegion,
+                    NativeMemoryRegion,
+                    NativeAllocation,
+                    ManagedHeapSection,
+                    Count
+                }
+
+                public SourceType Type;
+                public int Index;
+
+                public Source(SourceType type, int index)
+                {
+                    Type = type;
+                    Index = index;
+                }
+            }
+
+            public struct AddressPoint
+            {
+                public ulong Address;
+                public Source Source;
+                public int Id;
+            }
+
+            CachedSnapshot m_Snapshot;
+            int m_ItemsCount;
+            AddressPoint[] m_CombinedData;
+
+            public MemorySummaryEntriesCache(CachedSnapshot snapshot)
+            {
+                m_Snapshot = snapshot;
+                m_ItemsCount = 0;
+                m_CombinedData = null;
+            }
+
+            public void Preload()
+            {
+                if (m_CombinedData != null)
+                    return;
+
+                // We're building a sorted by address list of ranges with
+                // a link to a source of the data
+                var maxPointsCount = (m_Snapshot.SystemMemoryRegions.Count +
+                    m_Snapshot.NativeMemoryRegions.Count +
+                    m_Snapshot.ManagedHeapSections.Count +
+                    m_Snapshot.NativeAllocations.Count) * 2;
+                m_CombinedData = new AddressPoint[maxPointsCount];
+
+                // Add OS reported system memory regions
+                m_ItemsCount = AddPoints(
+                    m_ItemsCount,
+                    m_CombinedData,
+                    Convert.ToInt32(m_Snapshot.SystemMemoryRegions.Count),
+                    Source.SourceType.SystemMemoryRegion,
+                    (int i) =>
+                    {
+                        var address = m_Snapshot.SystemMemoryRegions.RegionAddress[i];
+                        var size = m_Snapshot.SystemMemoryRegions.RegionSize[i];
+                        return (true, address, size);
+                    });
+
+                // Add MemoryManager native regions
+                m_ItemsCount = AddPoints(
+                    m_ItemsCount,
+                    m_CombinedData,
+                    Convert.ToInt32(m_Snapshot.NativeMemoryRegions.Count),
+                    Source.SourceType.NativeMemoryRegion,
+                    (int i) =>
+                    {
+                        var address = m_Snapshot.NativeMemoryRegions.AddressBase[i];
+                        var size = m_Snapshot.NativeMemoryRegions.AddressSize[i];
+                        var name = m_Snapshot.NativeMemoryRegions.MemoryRegionName[i];
+                        bool valid = (size > 0) && !name.Contains("Virtual Memory");
+                        return (valid, address, size);
+                    });
+
+                // Add Mono reported managed sections
+                m_ItemsCount = AddPoints(
+                    m_ItemsCount,
+                    m_CombinedData,
+                    Convert.ToInt32(m_Snapshot.ManagedHeapSections.Count),
+                    Source.SourceType.ManagedHeapSection,
+                    (int i) =>
+                    {
+                        var address = m_Snapshot.ManagedHeapSections.StartAddress[i];
+                        var size = m_Snapshot.ManagedHeapSections.SectionSize[i];
+                        bool valid = (size > 0);
+                        return (valid, address, size);
+                    });
+
+                // Add individual native allocations
+                m_ItemsCount = AddPoints(
+                    m_ItemsCount,
+                    m_CombinedData,
+                    Convert.ToInt32(m_Snapshot.NativeAllocations.Count),
+                    Source.SourceType.NativeAllocation,
+                    (int i) =>
+                    {
+                        var address = m_Snapshot.NativeAllocations.Address[i];
+                        var size = m_Snapshot.NativeAllocations.Size[i];
+                        bool valid = (size > 0);
+                        return (valid, address, size);
+                    });
+
+                Array.Sort<AddressPoint>(
+                    m_CombinedData,
+                    0,
+                    (int)m_ItemsCount,
+                    Comparer<AddressPoint>.Create((AddressPoint a, AddressPoint b) =>
+                    {
+                        var ret = a.Address.CompareTo(b.Address);
+                        if (ret == 0)
+                            ret = a.Source.Type.CompareTo(b.Source.Type);
+                        if (ret == 0)
+                            ret = a.Id.CompareTo(b.Id);
+                        return ret;
+                    })
+                    );
+            }
+
+            public void ForEach(Action<int, ulong, ulong, Source> action)
+            {
+                Preload();
+
+                var activeRegions = new List<AddressPoint>();
+                var currentSourceType = Source.SourceType.Unknown;
+                for (int i = 0; i < m_ItemsCount; i++)
+                {
+                    var cur = m_CombinedData[i];
+
+                    // Begin and end points have the same ID, so we check
+                    // if there is already open region with the same ID and
+                    // close it if we already have it, or open a new one otherwise
+                    var startPoint = activeRegions.FindIndex((x) => { return cur.Id == x.Id; });
+                    if (startPoint != -1)
+                    {
+                        var closed = activeRegions[startPoint];
+                        if (closed.Source.Type == currentSourceType)
+                            action(i, closed.Address, (cur.Address - closed.Address), closed.Source);
+
+                        activeRegions.RemoveAt(startPoint);
+                        if (activeRegions.Count > 0)
+                            currentSourceType = activeRegions.Max((x) => x.Source.Type);
+                        else
+                            currentSourceType = Source.SourceType.Unknown;
+                    }
+                    else
+                    {
+                        // Use region with the highest priority as current
+                        if (cur.Source.Type > currentSourceType)
+                            currentSourceType = cur.Source.Type;
+
+                        activeRegions.Add(cur);
+                    }
+                }
+                Debug.Assert(activeRegions.Count == 0, $"Memory Summary has {activeRegions.Count} unclosed ranges");
+            }
+
+            // Adds a fixed number of points from a container of the specific type
+            static int AddPoints(int index, AddressPoint[] data, int count, Source.SourceType source, Func<int, (bool valid, ulong address, ulong size)> accessor)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    var (valid, address, size) = accessor(i);
+
+                    if (!valid || (size == 0))
+                        continue;
+
+                    var id = index;
+                    data[index++] = new AddressPoint()
+                    {
+                        Address = address,
+                        Source = new Source(source, i),
+                        Id = id
+                    };
+
+                    data[index++] = new AddressPoint()
+                    {
+                        Address = address + size,
+                        Source = new Source(Source.SourceType.Unknown, 0),
+                        Id = id
+                    };
+                }
+
+                return index;
+            }
+
+            public int Count { get { Preload(); return m_ItemsCount; } }
+            public Source DataSource(int index) { Preload(); return m_CombinedData[index].Source; }
+
+            public AddressPoint[] Data() { Preload(); return m_CombinedData; }
         }
     }
 }

@@ -97,7 +97,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public virtual void OnGUI(Rect r) {}
+        public virtual void OnGUI(Rect r) { }
         void UI.IViewEventListener.OnRepaint()
         {
             m_EventListener.OnRepaint();

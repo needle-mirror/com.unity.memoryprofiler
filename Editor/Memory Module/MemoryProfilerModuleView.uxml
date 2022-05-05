@@ -1,0 +1,54 @@
+<ui:UXML
+    xmlns:ui="UnityEngine.UIElements"
+    xmlns:uie="UnityEditor.UIElements"
+    xsi="http://www.w3.org/2001/XMLSchema-instance"
+    engine="UnityEngine.Experimental.UIElements"
+    editor="UnityEditor.Experimental.UIElements"
+    upm="UnityEditor.PackageManager.UI"
+    noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd"
+    schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd "
+    editor-extension-mode="True">
+
+    <ui:VisualElement name="memory-profiler-module__view">
+        <Style src="MemoryProfilerModuleView.uss" />
+
+        <uie:Toolbar name="memory-profiler-module__toolbar">
+            <uie:ToolbarButton name="memory-profiler-module__toolbar__view-mode">
+                <ui:Label name="memory-profiler-module__toolbar__view-mode-label" text="Simple" />
+                <ui:VisualElement class="unity-base-popup-field__arrow toolbar__drop-down__arrow" />
+            </uie:ToolbarButton>
+
+            <uie:ToolbarSpacer />
+
+            <uie:ToolbarButton name="memory-profiler-module__toolbar__install-package-button" text="Install Memory Profiler Package" />
+            <ui:VisualElement name="memory-profiler-module__toolbar__editor-warning">
+                <ui:Image name="memory-profiler-module__toolbar__editor-warning__icon"/>
+                <ui:Label name="memory-profiler-module__toolbar__editor-warning__label" text="Memory usage in the Editor is not the same as it would be in a Player"/>
+            </ui:VisualElement>
+        </uie:Toolbar>
+
+        <ui:VisualElement name="memory-profiler-module__container">
+            <ui:VisualElement name="memory-profiler-module__no-frame-data">
+                <ui:Label name="memory-profiler-module__no-frame-data__label" text="No frame data available. Select a frame from the charts above to see its details here."/>
+            </ui:VisualElement>
+
+            <ui:ScrollView name="memory-profiler-module__simple">
+                <ui:VisualElement class="memory-profiler-module__widget">
+                    <ui:VisualElement name="memory-profiler-module__content__system" class="memory-profiler-module__widget__content" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="memory-profiler-module__widget">
+                    <ui:VisualElement name="memory-profiler-module__content__total" class="memory-profiler-module__widget__content" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="memory-profiler-module__widget">
+                    <ui:VisualElement name="memory-profiler-module__content__unity-objects" class="memory-profiler-module__widget__content" />
+                </ui:VisualElement>
+            </ui:ScrollView>
+
+            <ui:VisualElement name="memory-profiler-module__detailed">
+                <ui:Label name="memory-profiler-module__detailed__label" text="Please use the Memory Profiler package to take detailed snapshots of memory."/>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

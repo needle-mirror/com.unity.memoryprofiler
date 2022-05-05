@@ -33,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor
         Stack<SnapshotListItem> m_SnapshotListItemPool = new Stack<SnapshotListItem>();
         Stack<VisualElement> m_SessionListItemPool = new Stack<VisualElement>();
 
-        public event Action SwappedSnapshots = delegate {};
+        public event Action SwappedSnapshots = delegate { };
 
         IUIStateHolder m_ParentWindow;
 
@@ -50,7 +50,7 @@ namespace Unity.MemoryProfiler.Editor
             var snaphsotWindowToggle = rRoot.Q<ToolbarToggle>("toolbar__snaphsot-window-toggle");
             snaphsotWindowToggle.RegisterValueChangedCallback(ToggleSnapshotWindowVisibility);
 
-            snaphsotWindowToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] {"icon_button", "square-button-icon", "icon-button__snapshot-icon"}));
+            snaphsotWindowToggle.hierarchy.Insert(0, UIElementsHelper.GetImageWithClasses(new[] { "icon_button", "square-button-icon", "icon-button__snapshot-icon" }));
 
             m_Splitter = rRoot.Q<TwoPaneSplitView>("snapshot-window__splitter");
             m_EmptyWorkbenchText = rRoot.Q("session-list__empty-text");
@@ -331,7 +331,7 @@ namespace Unity.MemoryProfiler.Editor
             if (!isCloseEvent)
             {
                 var snapshotDetails = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(snapshot);
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.LoadedSnapshotEvent() {success = snapshot.GuiData.ProductName == Application.productName, openSnapshotDetails = snapshotDetails, unityVersionOfSnapshot = snapshot.GuiData.UnityVersion, runtimePlatform = snapshot.GuiData.RuntimePlatform});
+                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.LoadedSnapshotEvent() { success = snapshot.GuiData.ProductName == Application.productName, openSnapshotDetails = snapshotDetails, unityVersionOfSnapshot = snapshot.GuiData.UnityVersion, runtimePlatform = snapshot.GuiData.RuntimePlatform });
             }
             //}
             //catch (Exception e)
@@ -383,7 +383,7 @@ namespace Unity.MemoryProfiler.Editor
             m_CaptureControlUI.OnDisable();
         }
 
-        public void  CloseAllOpenSnapshots()
+        public void CloseAllOpenSnapshots()
         {
             m_OpenSnapshots.CloseAllOpenSnapshots();
         }

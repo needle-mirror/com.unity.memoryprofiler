@@ -35,7 +35,7 @@ namespace Unity.MemoryProfiler.Editor
 #else
         public static MemoryProfilerHyperLinkClickedEventArgs ConvertEventArguments(object sender, EventArgs args)
         {
-            return new MemoryProfilerHyperLinkClickedEventArgs() { window = EditorWindow.focusedWindow , hyperLinkData = s_eventArghyperlinkInfos.GetValue(args) as Dictionary<string, string> };
+            return new MemoryProfilerHyperLinkClickedEventArgs() { window = EditorWindow.focusedWindow, hyperLinkData = s_eventArghyperlinkInfos.GetValue(args) as Dictionary<string, string> };
         }
 
 #endif
@@ -52,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        public static event Action<MemoryProfilerHyperLinkClickedEventArgs> hyperLinkClicked = delegate {};
+        public static event Action<MemoryProfilerHyperLinkClickedEventArgs> hyperLinkClicked = delegate { };
         const string k_hyperLinkClickedEventName = "hyperLinkClicked";
 
         static EventHandler s_EventHandler;
@@ -67,8 +67,8 @@ namespace Unity.MemoryProfiler.Editor
             var editorGUIType = typeof(EditorGUI);
             var internalEvent = editorGUIType.GetEvent(k_hyperLinkClickedEventName, BindingFlags.NonPublic | BindingFlags.Static);
             var eventAdder = internalEvent.GetAddMethod(true);
-            var eventRemover =  internalEvent.GetRemoveMethod(true);
-            if (s_EventHandler  == null)
+            var eventRemover = internalEvent.GetRemoveMethod(true);
+            if (s_EventHandler == null)
                 s_EventHandler = OnHyperLinkClicked;
             eventRemover.Invoke(null, new object[] { s_EventHandler });
             eventAdder.Invoke(null, new object[] { s_EventHandler });

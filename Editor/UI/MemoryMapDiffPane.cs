@@ -16,16 +16,16 @@ namespace Unity.MemoryProfiler.Editor.UI
         public override string ViewName { get { return TextContent.MemoryMapViewDiff.text; } }
         static class Content
         {
-            public static readonly  GUIContent[] TableModesList = new GUIContent[3]
+            public static readonly GUIContent[] TableModesList = new GUIContent[3]
             {
                 new GUIContent("Regions list"),
                 new GUIContent("Allocations list"),
                 new GUIContent("Objects list")
             };
 
-            public static readonly  GUIContent FilterLabel = new GUIContent("Display Filters");
-            public static readonly  GUIContent RowSizeLabel = new GUIContent("Row Size");
-            public static readonly  GUIContent ColorSchemeLabel = new GUIContent("Color scheme");
+            public static readonly GUIContent FilterLabel = new GUIContent("Display Filters");
+            public static readonly GUIContent RowSizeLabel = new GUIContent("Row Size");
+            public static readonly GUIContent ColorSchemeLabel = new GUIContent("Color scheme");
         }
 #if !REMOVE_VIEW_HISTORY
         internal class ViewStateHistory : ViewStateChangedHistoryEvent
@@ -539,7 +539,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            if (GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, age == SnapshotAge.Older ? "New (B)" : "Old (B)",  EditorStyles.radioButton))
+            if (GUILayout.Toggle(m_ActiveMode == m_UIState.SecondMode, age == SnapshotAge.Older ? "New (B)" : "Old (B)", EditorStyles.radioButton))
             {
                 if (m_ActiveMode != m_UIState.SecondMode)
                 {
@@ -628,7 +628,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 GenericMenu menu = new GenericMenu();
                 for (int i = 0; i < m_BytesInRowList.Length; i++)
-                    menu.AddItem(m_BytesInRowList[i].Content, i == activeSize,  (object data) => m_MemoryMap.BytesInRow = m_BytesInRowList[(int)data].Size, i);
+                    menu.AddItem(m_BytesInRowList[i].Content, i == activeSize, (object data) => m_MemoryMap.BytesInRow = m_BytesInRowList[(int)data].Size, i);
                 menu.DropDown(popupRect);
             }
 
@@ -639,7 +639,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 GenericMenu menu = new GenericMenu();
                 for (int i = 0; i < m_ColorSchemeList.Length; i++)
                 {
-                    menu.AddItem(m_ColorSchemeList[i], (int)m_MemoryMap.ActiveColorScheme  == i, (object data) => m_MemoryMap.ActiveColorScheme = ((MemoryMap.MemoryMapDiff.ColorScheme)data), i);
+                    menu.AddItem(m_ColorSchemeList[i], (int)m_MemoryMap.ActiveColorScheme == i, (object data) => m_MemoryMap.ActiveColorScheme = ((MemoryMap.MemoryMapDiff.ColorScheme)data), i);
                 }
                 menu.DropDown(popupRect);
             }

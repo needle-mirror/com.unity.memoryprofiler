@@ -69,7 +69,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                         size = (long)(Header.HeaderMeta - (ulong)entryOffset); //adding the size of the last element
                     }
                     else
-                        size =(m_AdditionalEntryStorage[offset + count] - m_AdditionalEntryStorage[offset]);
+                        size = (m_AdditionalEntryStorage[offset + count] - m_AdditionalEntryStorage[offset]);
 
                     return size + (includeOffsetsMemory ? (UnsafeUtility.SizeOf<long>() * (count + 1)) : 0);
                 default:

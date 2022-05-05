@@ -25,7 +25,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetEnabled(false);
         }
 
-        public new class UxmlFactory : UxmlFactory<ActivityIndicatorOverlay> { }
+        public new class UxmlFactory : UxmlFactory<ActivityIndicatorOverlay> {}
     }
 }
 #endif
