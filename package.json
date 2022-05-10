@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "0.7.0-preview.2",
+  "version": "0.7.1-preview.1",
   "unity": "2019.4",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -16,17 +16,17 @@
     "com.unity.editorcoroutines": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n- Fixed the layout of entries in the Selected Item Details panel."
+    "changelog": "### Fixed\n- Fixed a crash in DynamicArray.Resize [(Case 1426543)](https://issuetracker.unity3d.com/product/unity/issues/guid/1426543/)."
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "0.7.0-preview.2"
+    "com.unity.memoryprofiler.tests": "0.7.1-preview.1"
   },
   "upmCi": {
-    "footprint": "23b13fd6225e326130575c1c1cd5b2684aedec8c"
+    "footprint": "1c45d01ae3d4dc02bb5b4e8c6683e470b9183be4"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "b33742afcd98f4c2a0c233fce5538f3b9f5d2787"
+    "revision": "2d8bf7d2ec50db575f8b6920ef9fc8b898b709da"
   }
 }
