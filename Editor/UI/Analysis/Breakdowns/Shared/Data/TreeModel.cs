@@ -16,8 +16,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         public List<TreeViewItemData<T>> RootNodes { get; }
 
         // Sort the tree's data according to the provided sort comparison.
-        protected void Sort(Comparison<TreeViewItemData<T>> sortComparison)
+        public void Sort(Comparison<TreeViewItemData<T>> sortComparison)
         {
+            if (sortComparison == null)
+                return;
+
             RootNodes.Sort(sortComparison);
             var stack = new Stack<TreeViewItemData<T>>(RootNodes);
             while (stack.Count > 0)

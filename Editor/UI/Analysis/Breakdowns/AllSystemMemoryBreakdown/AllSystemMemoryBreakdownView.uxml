@@ -21,7 +21,8 @@
         <engine:VisualElement name="all-system-memory-breakdown-view__tree-view__main-container">
             <engine:MultiColumnTreeView name="all-system-memory-breakdown-view__tree-view" sorting-enabled="true">
                 <engine:Columns reorderable="false">
-                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__address" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__address-beg" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="all-system-memory-breakdown-view__tree-view__column__address-end" resizable="true" stretchable="false" optional="false"/>
                     <engine:Column name="all-system-memory-breakdown-view__tree-view__column__size" resizable="true" stretchable="false"/>
                     <engine:Column name="all-system-memory-breakdown-view__tree-view__column__residentsize" resizable="true" stretchable="false"/>
                     <engine:Column name="all-system-memory-breakdown-view__tree-view__column__type" resizable="true" stretchable="false"/>

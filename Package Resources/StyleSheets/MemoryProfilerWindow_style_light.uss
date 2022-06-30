@@ -143,10 +143,6 @@ Label.snapshot--in-view{
     background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/MemoryProfiler_LeftPanel_LightTheme.png');
 }
 
-.icon-button__swap-icon {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/SwapVertical.png');
-}
-
 .icon-button__camera-icon {
     background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/CameraIcon.png');
 }

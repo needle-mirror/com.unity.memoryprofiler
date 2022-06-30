@@ -327,7 +327,7 @@ Image.history-button__Icon {
 }
 
 .seession-list__item__foldout .unity-toggle__text {
-    -unity-text-align: upper-center;
+    -unity-text-align: middle-left;
     color: rgb(134, 134, 134);
     flex-grow: 1;
     overflow: hidden;
@@ -375,11 +375,11 @@ Image.history-button__Icon {
 }
 
 .image-tint-color__snapshot-a {
-    -unity-background-image-tint-color: rgb(75, 135, 164);
+    -unity-background-image-tint-color: #F0F0F0;
 }
 
 .image-tint-color__snapshot-b {
-    -unity-background-image-tint-color: rgb(185, 201, 151);
+    -unity-background-image-tint-color: #F0F0F0;
 }
 
 .image-tint-color__snapshot-diff {
@@ -415,7 +415,7 @@ Image.history-button__Icon {
     border-top-width: 2px;
     border-right-width: 2px;
     border-bottom-width: 2px;
-    border-color: rgb(185, 201, 151);
+    border-color: rgb(75, 135, 164);
     padding-left: 8px;
     padding-right: 8px;
     padding-top: 2px;
@@ -693,26 +693,37 @@ ToolbarToggle {
     -unity-background-scale-mode: stretch-to-fill;
     background-color: rgb(153, 153, 153);
     max-width: 56%;
+    overflow: hidden;
 }
 
 .total-ram-usage-bar__used-label {
     color: rgb(40, 40, 40);
     overflow: hidden;
+    margin-top: 2px;
 }
 
 .total-ram-usage-bar__used-label--light {
     color: rgb(196, 196, 196);
     position: absolute;
+    margin-top: 2px;
 }
 
 .total-ram-usage-bar__available-label {
     color: rgb(196, 196, 196);
     position: absolute;
     right: 0;
+    margin-top: 2px;
 }
 
 .total-ram-usage-bar__available-label--dark {
     color: rgb(40, 40, 40);
+    margin-top: 2px;
+}
+
+.total-ram-usage-bar__not-available-label {
+    color: rgb(134, 134, 134);
+    margin-top: 2px;
+    -unity-font-style: italic;
 }
 
 .snapshotMetaDataName {
@@ -740,55 +751,6 @@ ToolbarToggle {
     flex-direction: row;
 }
 
-.memory-usage-dial__background-image {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/MemoryUsageDial_Ring.png');
-    flex-grow: 1;
-    width: 64px;
-    height: 32px;
-    flex-direction: column-reverse;
-    align-items: center;
-    -unity-background-image-tint-color: rgba(255, 255, 255, 0);
-    padding-bottom: 0;
-    margin-bottom: 0;
-}
-
-.memory-usage-dial__container {
-    border-left-color: rgb(151, 151, 151);
-    border-right-color: rgb(151, 151, 151);
-    border-top-color: rgb(151, 151, 151);
-    border-bottom-color: rgb(151, 151, 151);
-    border-bottom-width: 1px;
-    flex-grow: 1;
-    flex-shrink: 0;
-    width: 68px;
-    margin-left: 0;
-    padding-left: 2px;
-}
-
-.memory-usage-dial__root {
-    align-items: center;
-    width: 0;
-    height: 0;
-}
-
-.memory-usage-dial__indicator {
-    width: 12px;
-    position: absolute;
-    right: 22px;
-    border-left-color: rgb(255, 255, 255);
-    border-right-color: rgb(255, 255, 255);
-    border-top-color: rgb(255, 255, 255);
-    border-bottom-color: rgb(255, 255, 255);
-    border-left-width: 0;
-    border-right-width: 0;
-    border-top-width: 0.5px;
-    border-bottom-width: 0.5px;
-    border-top-left-radius: 1px;
-    border-bottom-left-radius: 1px;
-    border-top-right-radius: 1px;
-    border-bottom-right-radius: 1px;
-}
-
 .snapshot-list__item__open-snapshot__compare-tag__spacer {
     width: 20px;
 }
@@ -797,15 +759,6 @@ ToolbarToggle {
     position: absolute;
     right: 10px;
     top: 2px;
-}
-
-.swap-snapshot-buttons-holder {
-    position: absolute;
-    left: 0;
-    right: 0;
-    flex-direction: row;
-    justify-content: center;
-    top: 200px;
 }
 
 .square-icon-button {

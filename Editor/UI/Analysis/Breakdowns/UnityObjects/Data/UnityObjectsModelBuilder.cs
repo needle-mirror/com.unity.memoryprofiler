@@ -13,7 +13,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public UnityObjectsModel Build(CachedSnapshot snapshot, in BuildArgs args)
         {
             if (!CanBuildBreakdownForSnapshot(snapshot))
-                throw new ArgumentException("Unsupported snapshot version.", nameof(snapshot));
+                throw new UnsupportedSnapshotVersionException(snapshot);
 
             var rootNodes = BuildUnityObjectsGroupedByType(snapshot, args, out var itemTypeNamesMap);
             if (args.FlattenHierarchy)

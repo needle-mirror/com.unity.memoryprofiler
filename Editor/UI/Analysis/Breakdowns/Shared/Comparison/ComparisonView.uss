@@ -1,0 +1,283 @@
+.comparison-view__dark:root
+{
+  --comparison-view__snapshot-size-bar__background-color: #5A5A5A;
+  --comparison-view__snapshot-size-bar__fill-background-color: #F0F0F0;
+  --comparison-view__tree-view__background-color: #3E3E3E;
+  --comparison-view__tree-view__border-color: #232323;
+  --comparison-view__loading-overlay__background-color: rgba(35, 35, 35, 0.8);
+  --comparison-view__tree-view__dark-cell__background-color: #313131;
+}
+
+.comparison-view__light:root
+{
+  --comparison-view__snapshot-size-bar__background-color: #CBCBCB;
+  --comparison-view__snapshot-size-bar__fill-background-color: white;
+  --comparison-view__tree-view__background-color: #C8C8C8;
+  --comparison-view__tree-view__border-color: #999999;
+  --comparison-view__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
+  --comparison-view__tree-view__dark-cell__background-color: #AAAAAA;
+}
+
+.unity-multi-column-view__row-container:checked > .unity-multi-column-view__cell > .dark-tree-view-cell
+{
+  --comparison-view__tree-view__dark-cell__background-color: transparent;
+}
+
+.unity-multi-column-view__row-container:hover > .unity-multi-column-view__cell > .dark-tree-view-cell
+{
+  --comparison-view__tree-view__dark-cell__background-color: transparent;
+}
+
+#comparison-view
+{
+    flex-grow: 1;
+    margin-top: 16px;
+}
+
+#comparison-view__search-field-container
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    margin: 0px 16px 16px 16px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#comparison-view__description-label
+{
+    flex-shrink: 1;
+    margin-right: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#comparison-view__search-field
+{
+    height: 14px;
+    margin: 0px;
+    padding: 4px;
+    width: 40%;
+}
+
+#comparison-view__search-field TextField
+{
+    padding-left: 4px;
+}
+
+#comparison-view__search-field TextElement
+{
+    font-size: 12px;
+}
+
+.comparison-view__snapshot-size-bar
+{
+    flex-direction: row;
+    margin: 4px 16px 0px 16px;
+}
+
+.comparison-view__snapshot-version-icon
+{
+    -unity-text-align: middle-center;
+    -unity-font-style: bold;
+    -unity-background-image-tint-color: var(--comparison-view__snapshot-size-bar__fill-background-color);
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Circle.png');
+    color: rgb(40, 40, 40);
+    font-size: 11px;
+    height: 22px;
+    margin-right: 8px;
+    width: 22px;
+}
+
+.comparison-view__snapshot-size-bar .detailed-size-bar
+{
+    flex-grow: 1;
+    margin-left: 12px;
+    margin-top: 4px;
+}
+
+.comparison-view__snapshot-size-bar .detailed-size-bar__bar
+{
+    background-color: var(--comparison-view__snapshot-size-bar__background-color);
+    height: 14px;
+}
+
+.comparison-view__snapshot-size-bar .detailed-size-bar__bar .progress-bar__fill
+{
+    background-color: var(--comparison-view__snapshot-size-bar__fill-background-color);
+    min-width: 1px;
+    transition-duration: 0.23s;
+    transition-property: width;
+    transition-timing-function: ease-out;
+}
+
+.comparison-view__snapshot-size-bar .detailed-size-bar__size-label
+{
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.comparison-view__snapshot-size-bar .detailed-size-bar__total-label
+{
+    margin-left: 16px;
+}
+
+.comparison-view__snapshot-size-bar .detailed-size-bar__footer
+{
+    margin: 8px 0px;
+}
+
+#comparison-view__primary
+{
+    padding: 16px;
+    min-height: 120px;
+}
+
+#comparison-view__tree-view
+{
+    background-color: var(--comparison-view__tree-view__background-color);
+    border-color: var(--comparison-view__tree-view__border-color);
+    border-top-width: 1px;
+    flex-grow: 1;
+}
+
+#comparison-view__tree-view
+{
+    flex-grow: 1;
+}
+
+#comparison-view__tree-view .unity-multi-column-header
+{
+    margin: 2px 8px;
+}
+
+#comparison-view__tree-view #unity-content-viewport
+{
+    margin: 0px 8px;
+}
+
+.dark-tree-view-cell
+{
+    background-color: var(--comparison-view__tree-view__dark-cell__background-color);
+}
+
+#comparison-view__footer-toolbar
+{
+    border-top-width: 1px;
+    height: 32px;
+}
+
+#comparison-view__toolbar__unchanged-toggle
+{
+    padding: 0px 12px;
+}
+
+.unity-toggle__text
+{
+    padding-left: 4px;
+}
+
+#comparison-view__loading-overlay
+{
+    align-items: center;
+    background-color: var(--comparison-view__loading-overlay__background-color);
+    bottom: 0px;
+    justify-content: center;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    transition-duration: 0.23s;
+    transition-property: opacity;
+    transition-timing-function: ease-out;
+}
+
+#comparison-view__loading-overlay:enabled
+{
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+}
+
+#comparison-view__loading-overlay:disabled
+{
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+}
+
+#comparison-view__loading-overlay ActivityIndicator
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Loading.png');
+    height: 16px;
+    width: 16px;
+}
+
+#comparison-view__secondary
+{
+    flex-direction: row;
+    padding: 16px;
+    min-height: 120px;
+}
+
+.comparison-view__secondary__title-container
+{
+    align-items: center;
+    flex-direction: row;
+}
+
+.comparison-view__secondary__title-label
+{
+    font-size: 18px;
+    padding: 8px 0px;
+}
+
+.comparison-view__secondary__description-label
+{
+    -unity-text-align: middle-right;
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#comparison-view__secondary__base
+{
+    margin-right: 8px;
+    width: 50%;
+}
+
+#comparison-view__secondary__base-table-container
+{
+    flex-grow: 1;
+}
+
+#comparison-view__secondary__compared
+{
+    margin-left: 8px;
+    width: 50%;
+}
+
+#comparison-view__secondary__compared-table-container
+{
+    flex-grow: 1;
+}
+
+#comparison-view__secondary MultiColumnTreeView
+{
+    height: 120px;
+}
+
+#comparison-view__error-label
+{
+    -unity-text-align: middle-center;
+    background-color: var(--comparison-view__loading-overlay__background-color);
+    bottom: 0px;
+    display: none;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    visibility: hidden;
+}

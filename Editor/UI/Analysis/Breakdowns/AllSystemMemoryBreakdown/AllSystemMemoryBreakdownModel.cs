@@ -5,46 +5,13 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    /// TODO:
-    ///  [System Regions]
-    ///  - [NativeMemoryRegions]
-    ///      - NativeAllocations
-    ///      - SortedNativeAllocations -> find root for prettier name / area or object
-    ///  - [ManagedHeapSections]
-    ///      - SortedManagedObjects
-    ///  - [ManagedStacks]
-    ///      - Empty
-    ///  - [NativeGfxResourceReferences]
-    ///      - (detailed by itself)
-    ///
-    /// * check sorted version, as it might have more relations information
-    ///
-    /// NativeRootReferenceEntriesCache -> has accumulated size
-
-
     // Data model representing the 'AllSystemMemoryBreakdown' breakdown.
     class AllSystemMemoryBreakdownModel : TreeModel<AllSystemMemoryBreakdownModel.ItemData>
     {
-        public AllSystemMemoryBreakdownModel(List<TreeViewItemData<ItemData>> treeRootNodes, ulong totalCommitted, ulong totalResident, ulong[] committedByType, ulong[] residentByType)
+        public AllSystemMemoryBreakdownModel(List<TreeViewItemData<ItemData>> treeRootNodes)
             : base(treeRootNodes)
         {
-            TotalCommitted = totalCommitted;
-            TotalResident = totalResident;
-            CommittedByType = committedByType;
-            ResidentByType = residentByType;
         }
-
-        // The total size, in bytes, of memory committed by the process.
-        public ulong TotalCommitted { get; }
-
-        // The total size, in bytes, of memory physically used by the process.
-        public ulong TotalResident { get; }
-
-        // Breakdown of total committed by type.
-        public ulong[] CommittedByType { get; }
-
-        // Breakdown of total resident by type.
-        public ulong[] ResidentByType { get; }
 
         // Sort the tree's data as specified by the sort descriptors.
         public void Sort(IEnumerable<SortDescriptor> sortDescriptors)
@@ -109,10 +76,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case SortableItemDataProperty.Type:
                     if (direction == SortDirection.Ascending)
                         return new Comparison<TreeViewItemData<ItemData>>(
-                            (x, y) => x.data.DataType.CompareTo(y.data.DataType));
+                            (x, y) => x.data.ItemType.CompareTo(y.data.ItemType));
                     else
                         return new Comparison<TreeViewItemData<ItemData>>(
-                            (x, y) => y.data.DataType.CompareTo(x.data.DataType));
+                            (x, y) => y.data.ItemType.CompareTo(x.data.ItemType));
 
                 default:
                     throw new ArgumentException("Unable to sort. Unknown column name.");
@@ -122,30 +89,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         // The data associated with each item in the tree.
         public readonly struct ItemData
         {
-            public enum Type
-            {
-                Unknown,
-                MixedTypes,
-                ///
-                MappedFile,
-                SharedMemory,
-                DeviceMemory,
-                UnityNativeRegion,
-                UnityManagedHeap,
-                UnityManagedStack,
-                UnityManagedDomain,
-                ///
-                Count
-            }
-
-            public ItemData(string name, ulong address, ulong size, ulong residentSize, Type dataType, CachedSnapshotDataIndex dataIndex = default)
+            public ItemData(string name, ulong address, ulong size, ulong residentSize, string itemType, CachedSnapshot.SourceLink dataSource = default)
             {
                 Name = name;
                 Address = address;
                 Size = size;
                 ResidentSize = residentSize;
-                DataType = dataType;
-                DataIndex = dataIndex;
+                ItemType = itemType;
+                DataSource = dataSource;
             }
 
             // The name of the element.
@@ -160,10 +111,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             // The resident part size of this item.
             public ulong ResidentSize { get; }
 
-            public Type DataType { get; }
+            public string ItemType { get; }
 
             // The index into the CachedSnapshot's data, to retrieve relevant item from CachedSnapshot.
-            public CachedSnapshotDataIndex DataIndex { get; }
+            public CachedSnapshot.SourceLink DataSource { get; }
         }
 
         public class SortDescriptor
@@ -176,48 +127,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public SortableItemDataProperty Property { get; }
             public SortDirection Direction { get; }
-        }
-
-        public readonly struct CachedSnapshotDataIndex
-        {
-            CachedSnapshotDataIndex(long index, Source dataSource)
-            {
-                Index = index;
-                DataSource = dataSource;
-            }
-
-            public long Index { get; }
-
-            public Source DataSource { get; }
-
-            public static CachedSnapshotDataIndex FromSystemMemoryRegionIndex(long index)
-            {
-                return new CachedSnapshotDataIndex(index, Source.SystemMemoryRegion);
-            }
-
-            public static CachedSnapshotDataIndex FromNativeMemoryRegionIndex(long index)
-            {
-                return new CachedSnapshotDataIndex(index, Source.NativeMemoryRegion);
-            }
-
-            public static CachedSnapshotDataIndex FromManagedHeapIndex(long index)
-            {
-                return new CachedSnapshotDataIndex(index, Source.ManagedHeap);
-            }
-
-            public static CachedSnapshotDataIndex FromManagedStackIndex(long index)
-            {
-                return new CachedSnapshotDataIndex(index, Source.ManagedStack);
-            }
-
-            public enum Source
-            {
-                Invalid,
-                SystemMemoryRegion,
-                NativeMemoryRegion,
-                ManagedHeap,
-                ManagedStack
-            }
         }
 
         public enum SortableItemDataProperty

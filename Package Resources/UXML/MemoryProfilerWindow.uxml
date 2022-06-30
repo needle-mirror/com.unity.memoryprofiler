@@ -57,11 +57,6 @@
                         <ui:Instance template="OpenSnapshotItem" name="OpenSnapshotItemB" class="open-snapshot-item" style="overflow: visible;" />
                     </ui:VisualElement>
                     <ui:VisualElement name="open-snapshot-view__separator-2" class="open-snapshot-view__separator" />
-                    <ui:VisualElement name="swap-snapshot-buttons-holder" class="swap-snapshot-buttons-holder">
-                        <ui:Button name="swap-snapshots-button" style="flex-shrink: 1;">
-                            <ui:Image tooltip="Swap A and B." class="icon-button icon-button__swap-icon square-button-icon" />
-                        </ui:Button>
-                    </ui:VisualElement>
                     <ui:Instance template="SessionList" name="SessionList" style="flex-grow: 1;" />
                 </ui:VisualElement>
                 <ui:TwoPaneSplitView fixed-pane-index="1" fixed-pane-initial-dimension="350" orientation="Horizontal" name="details-panel__splitter" style="min-width: 700px;">

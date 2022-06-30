@@ -1,8 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Unity.MemoryProfiler.Editor.UIContentData;
-using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -44,6 +42,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else
                 b = new Summary();
 
+            // Add fixed categories
             var rows = new List<MemoryBreakdownModel.Row>() {
                     new MemoryBreakdownModel.Row(k_CategoryManaged, a.Managed, a.ManagedUsed, b.Managed, b.ManagedUsed, "managed", TextContent.ManagedDescription, null),
                     new MemoryBreakdownModel.Row(k_CategoryDrivers, a.GraphicsAndDrivers, 0, b.GraphicsAndDrivers, 0, "gfx", TextContent.GraphicsDescription, null),
@@ -54,6 +53,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     new MemoryBreakdownModel.Row(k_CategoryUnknown, a.Unknown, 0, b.Unknown, 0, "unknown", TextContent.UnknownDescription, DocumentationUrls.UntrackedMemoryDocumentation),
                 };
 
+            // Add platform-specific categories
             // Merge two platform specific containers into table rows
             if ((a.PlatformSpecific != null) || (b.PlatformSpecific != null))
             {
@@ -65,6 +65,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                     ulong valueA = 0, valueB = 0;
                     a.PlatformSpecific?.TryGetValue(key, out valueA);
                     b.PlatformSpecific?.TryGetValue(key, out valueB);
+
+                    // Don't show zero-sized sections
+                    if ((valueA == 0) && (valueB == 0))
+                        continue;
+
                     k_CategoryPlatformSpecific.TryGetValue(key, out var info);
                     rows.Add(new MemoryBreakdownModel.Row(info.name, valueA, 0, valueB, 0, key, info.descr, null));
                 }
@@ -116,45 +121,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             // For the old captures use supplied pre-calculated values
             if (cs.HasSystemMemoryRegionsInfo && cs.SystemMemoryRegions.Count > 0 && cs.MetaData.TargetMemoryStats.HasValue)
             {
-                CalculateTotalsFromSystemRegions(cs, ref summary.TotalCommitted, out var nonUnityRegionsSizeByName, out var nonUnityRegionsSizeByType);
+                summary.PlatformSpecific = new Dictionary<string, ulong>();
+                CalculateTotalsFromSystemRegions(cs, ref summary.TotalCommitted, ref summary.GraphicsAndDrivers, ref summary.ExecutablesAndMapped, ref summary.PlatformSpecific);
 
                 // GraphicsAndDrivers - sum of all driver mapped memory
                 // On Windows, we use pre-calculated value if no regions is marked as device type
-                summary.GraphicsAndDrivers = nonUnityRegionsSizeByType[SystemMemoryRegionEntriesCache.MemoryType.Device];
                 if ((summary.GraphicsAndDrivers == 0) && cs.MetaData.TargetMemoryStats.HasValue)
                     summary.GraphicsAndDrivers = cs.MetaData.TargetMemoryStats.Value.GraphicsUsedMemory;
-
-                // Size of all mapped files, including resource files
-                summary.ExecutablesAndMapped = nonUnityRegionsSizeByType[SystemMemoryRegionEntriesCache.MemoryType.Mapped];
-
-                // Check platform specific categories
-                if (cs.MetaData.TargetInfo.HasValue)
-                {
-                    summary.PlatformSpecific = new Dictionary<string, ulong>();
-
-                    switch (cs.MetaData.TargetInfo.Value.RuntimePlatform)
-                    {
-                        case RuntimePlatform.Android:
-                        {
-                            // Don't count `/dev/ashmem/dalvik-***` as it falls into device at the moment
-                            // And needs some post-processing to get a correct value
-                            ulong dalvikTotal = 0;
-                            var dalvikRegions = nonUnityRegionsSizeByName.Keys.Where(x =>
-                                x.StartsWith("[anon:dalvik-alloc") ||
-                                x.StartsWith("[anon:dalvik-main") ||
-                                x.StartsWith("[anon:dalvik-large") ||
-                                x.StartsWith("[anon:dalvik-non") ||
-                                x.StartsWith("[anon:dalvik-zygote")
-                                );
-                            foreach (var key in dalvikRegions)
-                                dalvikTotal += nonUnityRegionsSizeByName[key];
-
-                            if (dalvikTotal > 0)
-                                summary.PlatformSpecific.Add("dalvik", dalvikTotal);
-                        }
-                        break;
-                    }
-                }
             }
             else if (cs.MetaData.TargetMemoryStats.HasValue)
             {
@@ -191,51 +164,50 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         private static void CalculateTotalsFromSystemRegions(
             CachedSnapshot cs,
-            ref ulong committed,
-            out Dictionary<string, ulong> nonUnityRegionsSizeByName,
-            out Dictionary<SystemMemoryRegionEntriesCache.MemoryType, ulong> nonUnityRegionsSizeByType)
+            ref ulong totalCommitted,
+            ref ulong graphicsAndDrivers,
+            ref ulong executablesAndMapped,
+            ref Dictionary<string, ulong> platformSpecific)
         {
             // Calculate total committed and resident from system regions
-            committed = 0;
+            totalCommitted = 0;
             for (int i = 0; i < cs.SystemMemoryRegions.Count; i++)
             {
                 var size = cs.SystemMemoryRegions.RegionSize[i];
-                var residentSize = cs.SystemMemoryRegions.RegionResident[i];
-
-                committed += size;
+                totalCommitted += size;
             }
 
             // Calculate graphics & drivers and mapped files from memory summary
             // We need to do cross-section with tracked allocations to eliminate tracked
             // areas from system regions, as some platforms might mistakenly report
-            // some areas as mapped while they're allocatet by Unity
-            var _nonUnityRegionsSizeByName = new Dictionary<string, ulong>();
-            var _nonUnityRegionsByType = new Dictionary<SystemMemoryRegionEntriesCache.MemoryType, ulong>();
-            for (ushort i = 0; i < (int)SystemMemoryRegionEntriesCache.MemoryType.Count; i++)
-                _nonUnityRegionsByType[(SystemMemoryRegionEntriesCache.MemoryType)i] = 0;
-
-            cs.MemorySummaryEntries.ForEach((int i, ulong address, ulong size, MemorySummaryEntriesCache.Source source) =>
+            // some areas as mapped while they're allocatet by Unity.
+            // For that we do flatted hierarchy scan
+            ulong _graphicsAndDrivers = 0;
+            ulong _executablesAndMapped = 0;
+            var _platformSpecific = new Dictionary<string, ulong>();
+            _platformSpecific["dalvik"] = 0;
+            cs.MemoryEntriesHierarchy.ForEachFlat((address, size, childrenCount, type, source) =>
             {
-                if (source.Type != MemorySummaryEntriesCache.Source.SourceType.SystemMemoryRegion)
+                if (source.Id != SourceLink.SourceId.SystemMemoryRegion)
                     return;
 
-                var type = (SystemMemoryRegionEntriesCache.MemoryType)cs.SystemMemoryRegions.RegionType[source.Index];
-                _nonUnityRegionsByType[type] = _nonUnityRegionsByType[type] + size;
-
-                var name = cs.SystemMemoryRegions.RegionName[source.Index];
-                if (name.Length > 0)
+                switch (type)
                 {
-                    if (_nonUnityRegionsSizeByName.TryGetValue(name, out var namedGroupSize))
-                        _nonUnityRegionsSizeByName[name] = namedGroupSize + size;
-                    else
-                        _nonUnityRegionsSizeByName[name] = size;
+                    case MemoryEntriesHierarchyCache.RegionType.AndroidRuntime:
+                        _platformSpecific["dalvik"] += size;
+                        break;
+                    case MemoryEntriesHierarchyCache.RegionType.Device:
+                        _graphicsAndDrivers += size;
+                        break;
+                    case MemoryEntriesHierarchyCache.RegionType.Mapped:
+                        _executablesAndMapped += size;
+                        break;
                 }
             });
 
-            // Copy temporary storage to return values
-            // as we can't use out var in lambdas
-            nonUnityRegionsSizeByName = _nonUnityRegionsSizeByName;
-            nonUnityRegionsSizeByType = _nonUnityRegionsByType;
+            graphicsAndDrivers = _graphicsAndDrivers;
+            executablesAndMapped = _executablesAndMapped;
+            platformSpecific = _platformSpecific;
         }
 
         struct Summary

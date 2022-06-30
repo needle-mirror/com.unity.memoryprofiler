@@ -130,10 +130,6 @@ Label.snapshot--in-view {
     background-image: resource('d_SaveAs.png');
 }
 
-.icon-button__swap-icon {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_SwapVertical.png');
-}
-
 .icon-button__camera-icon {
     background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/d_CameraIcon.png');
 }

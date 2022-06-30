@@ -13,19 +13,20 @@
                     <ui:VisualElement name="open-snapshot__meta-data">
                         <ui:Label text="No snapshot loaded" display-tooltip-when-elided="true" name="noDataLoaded" class="snapshot__meta-data__text  snapshotMetaDataName" style="display: none;" />
                         <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
-                            <ui:Label text="Snapshot Name" display-tooltip-when-elided="true" name="snapshot-name" class="snapshot__meta-data__text  snapshotMetaDataName" />
+                            <ui:Label text="Snapshot Name" name="snapshot-name" class="snapshot__meta-data__text  snapshotMetaDataName" />
                             <ui:TextField picking-mode="Ignore" text="Snapshot Name" name="snapshot-name" class="snapshot__meta-data__text snapshot__meta-data__text-field" style="display: none;" />
                             <ui:VisualElement name="snapshot-list__item__open-snapshot__compare-tag__spacer" class="snapshot-list__item__open-snapshot__compare-tag__spacer" />
                         </ui:VisualElement>
-                        <ui:Label text="2021-02-09 14:08" display-tooltip-when-elided="true" name="snapshot-date" class="snapshot__meta-data__text  snapshotMetaDataDate" />
+                        <ui:Label text="2021-02-09 14:08" name="snapshot-date" class="snapshot__meta-data__text  snapshotMetaDataDate" />
                     </ui:VisualElement>
                     <ui:VisualElement name="total-ram-usage-bar__holder">
                         <ui:VisualElement name="total-ram-usage-bar" class="total-ram-usage-bar">
-                            <ui:Label text="--GB" display-tooltip-when-elided="true" name="total-ram-usage-bar__used-label--light" class="total-ram-usage-bar__used-label--light" />
+                            <ui:Label text="N/A" name="total-ram-usage-bar__not-available-label" class="total-ram-usage-bar__not-available-label" />
+                            <ui:Label text="--GB" name="total-ram-usage-bar__used-label--light" class="total-ram-usage-bar__used-label--light" />
                             <ui:VisualElement name="total-ram-usage-bar__used-bar" class="total-ram-usage-bar__used-bar">
-                                <ui:Label text="--GB" display-tooltip-when-elided="true" name="total-ram-usage-bar__used-label" class="total-ram-usage-bar__used-label" />
+                                <ui:Label text="--GB" name="total-ram-usage-bar__used-label" class="total-ram-usage-bar__used-label" />
                             </ui:VisualElement>
-                            <ui:Label text="--GB" display-tooltip-when-elided="true" name="total-ram-usage-bar__available-label" class="total-ram-usage-bar__available-label" />
+                            <ui:Label text="--GB" name="total-ram-usage-bar__available-label" class="total-ram-usage-bar__available-label" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>

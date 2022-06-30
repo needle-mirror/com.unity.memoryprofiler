@@ -32,10 +32,9 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static readonly string SessionName = "Session {0}";
         public static readonly GUIContent SessionFoldoutLabel = new GUIContent("{0} - {1}", "{0} - Unity {1} - Session ID: {2}");
 
-        public static readonly string TotalUsedMemory = "Total Used: {0}";
-        public static readonly GUIContent TotalAvailableSystemResources = new GUIContent("Hardware Resources: {0}", "Hardware Resources: {0} ({1} RAM + {2} VRAM)");
-        public static readonly GUIContent TotalAvailableSystemResourcesUnifiedStatusUnknown = new GUIContent("Hardware Resources: {0}", "Hardware Resources: {0} Memory");
-        public static readonly GUIContent TotalAvailableSystemResourcesUnified = new GUIContent("Hardware Resources: {0}", "Hardware Resources: {0} Unified Memory");
+        public static readonly string TotalResidentMemory = "Total Resident: {0}";
+        public static readonly string TotalCommittedMemory = "Total Committed: {0}";
+        public static readonly GUIContent TotalPhysicallyAvailableMemory = new GUIContent("Max Available: {0}", "Maximum amount of available physical memory: {0}");
 
         public const string DefaultVirtualMachineMemoryCategoryLabel = "Virtual Machine (Scripting)";
         public const string MonoVirtualMachineMemoryCategoryLabel = "Virtual Machine (Mono)";

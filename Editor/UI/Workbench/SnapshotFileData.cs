@@ -11,6 +11,7 @@ using System.Collections;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.Collections;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -49,7 +50,6 @@ namespace Unity.MemoryProfiler.Editor
         public readonly string MetaContent;
         public readonly string MetaPlatform;
         public readonly string MetaPlatformExtra;
-        public readonly string SnapshotDate;
 
         public string Name;
 
@@ -59,6 +59,8 @@ namespace Unity.MemoryProfiler.Editor
         public SnapshotListItem VisualElement;
         public ProfileTargetInfo? TargetInfo;
         public ProfileTargetMemoryStats? MemoryStats;
+
+        public readonly ulong TotalResident;
 
         public enum State
         {
@@ -125,6 +127,12 @@ namespace Unity.MemoryProfiler.Editor
                 long ticks;
                 reader.ReadUnsafe(EntryType.Metadata_RecordDate, &ticks, UnsafeUtility.SizeOf<long>(), 0, 1);
                 UtcDateTime = new DateTime(ticks);
+
+                TotalResident = 0;
+                var count = reader.GetEntryCount(EntryType.SystemMemoryRegions_Address);
+                var regionResident = reader.Read(EntryType.SystemMemoryRegions_Resident, 0, count, Allocator.Temp).Result.Reinterpret<ulong>();
+                for (int i = 0; i < count; i++)
+                    TotalResident += regionResident[i];
             }
 
             Date = UtcDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);

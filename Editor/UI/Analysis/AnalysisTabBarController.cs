@@ -120,9 +120,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Create a model containing the available Analysis options for a single snapshot.
         void InitForSingleSnapshot(CachedSnapshot snapshot)
         {
-#if UNITY_2022_1_OR_NEWER
             const string unityObjectsDescription = "A breakdown of memory contributing to all Unity Objects.";
             const string allTrackedMemoryDescription = "A breakdown of all tracked memory that Unity knows about.";
+#if UNITY_2022_1_OR_NEWER
             m_Options = new List<Option>()
             {
                 new Option("Summary",
@@ -143,13 +143,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Options = new List<Option>()
             {
                 new Option("Summary",
-                    new SummaryViewController(snapshot)) { TabController = this },
+                    new SummaryViewController(snapshot, null) { TabController = this }),
                 new Option("Unity Objects",
                     new FeatureUnavailableViewController(errorDescription),
-                    "A breakdown of memory contributing to all Unity Objects."),
+                    unityObjectsDescription),
                 new Option("All Of Memory",
                     new FeatureUnavailableViewController(errorDescription),
-                    "A breakdown of all tracked memory that Unity knows about."),
+                    allTrackedMemoryDescription),
             };
 #endif
         }
@@ -157,8 +157,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Create a model containing the available Analysis options when comparing two snapshots.
         void InitForComparisonBetweenSnapshots(CachedSnapshot baseSnapshot, CachedSnapshot comparedSnapshot)
         {
-#if UNITY_2022_1_OR_NEWER
             const string unityObjectsComparisonDescription = "A comparison of memory contributing to all Unity Objects in each capture.";
+            const string allTrackedMemoryComparisonDescription = "A comparison of all tracked memory in each capture.";
+#if UNITY_2022_1_OR_NEWER
             m_Options = new List<Option>()
             {
                 new Option("Summary",
@@ -171,6 +172,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                         unityObjectsComparisonDescription),
                     unityObjectsComparisonDescription,
                     "Unity Objects Comparison"),
+                new Option("All Of Memory",
+                    new AllTrackedMemoryComparisonViewController(
+                        baseSnapshot,
+                        comparedSnapshot,
+                        allTrackedMemoryComparisonDescription),
+                    allTrackedMemoryComparisonDescription,
+                    "All Of Memory Comparison")
             };
 #else
             var errorDescription = $"This feature is not available in Unity {UnityEngine.Application.unityVersion}. Please use Unity 2022.1 or newer.";
@@ -181,8 +189,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                     analyticsPageName: "Summary Comparison"),
                 new Option("Unity Objects",
                     new FeatureUnavailableViewController(errorDescription),
-                    "A comparison of memory contributing to all Unity Objects in each capture.",
+                    unityObjectsComparisonDescription,
                     "Unity Objects Comparison"),
+                new Option("All Of Memory",
+                    new FeatureUnavailableViewController(errorDescription),
+                    allTrackedMemoryComparisonDescription,
+                    "All Of Memory Comparison"),
             };
 #endif
         }

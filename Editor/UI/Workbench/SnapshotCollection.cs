@@ -67,7 +67,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (Foldout == null)
                     return;
                 Foldout.text = string.Format(TextContent.SessionFoldoutLabel.text, session.SessionName, session.ProductName);
-                Foldout.tooltip = string.Format(TextContent.SessionFoldoutLabel.tooltip, Foldout.text, session.UnityVersion, session.SessionId);
+                Foldout.Q<Toggle>().tooltip = string.Format(TextContent.SessionFoldoutLabel.tooltip, Foldout.text, session.UnityVersion, session.SessionId);
             }
         }
 
@@ -304,20 +304,19 @@ namespace Unity.MemoryProfiler.Editor
 
             if (targetPath == snapshot.FileInfo.FullName)
             {
-                snapshot.GuiData.VisualElement.SnapshotNameLabel.text = snapshot.GuiData.Name;
+                snapshot.GuiData.VisualElement.UpdateSnapshotName(snapshot.GuiData.Name);
                 snapshot.GuiData.VisualElement.RenamingFieldVisible = false;
                 return false;
             }
 
-            var dir = snapshot.FileInfo.FullName.Substring(0, nameStart);
-            if (Directory.GetFiles(dir).Contains(string.Format("{0}{1}{2}", dir, name, FileExtensionContent.SnapshotFileExtension)))
+            if (File.Exists(targetPath))
             {
                 EditorUtility.DisplayDialog("Error", string.Format("Filename '{0}' already exists", name), "OK");
                 return false;
             }
 
             snapshot.GuiData.Name = name;
-            snapshot.GuiData.VisualElement.SnapshotNameLabel.text = name;
+            snapshot.GuiData.VisualElement.UpdateSnapshotName(name);
             snapshot.GuiData.VisualElement.RenamingFieldVisible = false;
 
 #if UNITY_2019_3_OR_NEWER

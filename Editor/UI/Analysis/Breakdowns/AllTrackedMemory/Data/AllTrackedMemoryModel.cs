@@ -27,59 +27,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         // The total size, in bytes, of memory accounted for in the original snapshot.
         public ulong TotalSnapshotMemorySize { get; }
 
-        // Sort the tree's data as specified by the sort descriptors.
-        public void Sort(IEnumerable<SortDescriptor> sortDescriptors)
-        {
-            var sortComparison = BuildSortComparison(sortDescriptors);
-            if (sortComparison == null)
-                return;
-
-            Sort(sortComparison);
-        }
-
-        // Build a sort comparison from a collection of sort descriptors.
-        Comparison<TreeViewItemData<ItemData>> BuildSortComparison(IEnumerable<SortDescriptor> sortDescriptors)
-        {
-            // Currently we only support sorting by a single property.
-            SortDescriptor sortDescriptor = null;
-            using (var enumerator = sortDescriptors.GetEnumerator())
-            {
-                if (enumerator.MoveNext())
-                    sortDescriptor = enumerator.Current;
-            }
-
-            if (sortDescriptor == null)
-                return null;
-
-            var property = sortDescriptor.Property;
-            var direction = sortDescriptor.Direction;
-            switch (property)
-            {
-                case SortableItemDataProperty.Name:
-                    if (direction == SortDirection.Ascending)
-                        return (x, y) => string.Compare(
-                            x.data.Name,
-                            y.data.Name,
-                            StringComparison.OrdinalIgnoreCase);
-                    else
-                        return (x, y) => string.Compare(
-                            y.data.Name,
-                            x.data.Name,
-                            StringComparison.OrdinalIgnoreCase);
-
-                case SortableItemDataProperty.Size:
-                    if (direction == SortDirection.Ascending)
-                        return (x, y) => x.data.Size.CompareTo(y.data.Size);
-                    else
-                        return (x, y) => y.data.Size.CompareTo(x.data.Size);
-
-                default:
-                    throw new ArgumentException("Unable to sort. Unknown column name.");
-            }
-        }
-
         // The data associated with each item in the tree.
-        public readonly struct ItemData
+        public readonly struct ItemData : IComparableItemData
         {
             public ItemData(
                 string name,
@@ -104,30 +53,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // A callback to process the selection of this item.
             public Action SelectionProcessor { get; }
-        }
-
-        public class SortDescriptor
-        {
-            public SortDescriptor(SortableItemDataProperty property, SortDirection direction)
-            {
-                Property = property;
-                Direction = direction;
-            }
-
-            public SortableItemDataProperty Property { get; }
-            public SortDirection Direction { get; }
-        }
-
-        public enum SortableItemDataProperty
-        {
-            Name,
-                Size,
-        }
-
-        public enum SortDirection
-        {
-            Ascending,
-                Descending,
         }
     }
 }

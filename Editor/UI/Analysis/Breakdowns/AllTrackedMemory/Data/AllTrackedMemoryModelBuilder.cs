@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -13,11 +14,18 @@ namespace Unity.MemoryProfiler.Editor.UI
         public AllTrackedMemoryModel Build(CachedSnapshot snapshot, in BuildArgs args)
         {
             if (!CanBuildBreakdownForSnapshot(snapshot))
-                throw new ArgumentException("Unsupported snapshot version.", nameof(snapshot));
+                throw new UnsupportedSnapshotVersionException(snapshot);
 
-            var rootNodes = BuildAllTrackedMemoryBreakdown(snapshot, args);
+            var tree = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+            if (!args.ExcludeAll)
+            {
+                tree = BuildAllTrackedMemoryBreakdown(snapshot, args);
+                if (args.PathFilter != null)
+                    tree = BuildItemsAtPathInTreeExclusively(args.PathFilter, tree);
+            }
+
             var totalSnapshotMemorySize = snapshot.MetaData.TargetMemoryStats.Value.TotalVirtualMemory;
-            var model = new AllTrackedMemoryModel(rootNodes, totalSnapshotMemorySize);
+            var model = new AllTrackedMemoryModel(tree, totalSnapshotMemorySize);
             return model;
         }
 
@@ -629,21 +637,129 @@ namespace Unity.MemoryProfiler.Editor.UI
             in BuildArgs args,
             out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
         {
-            const string k_ExecutableAndDllsName = "Executable And Dlls";
-            if (args.NameFilter != null && !args.NameFilter.TextPasses(k_ExecutableAndDllsName))
+            const string k_ExecutablesName = "Executables & Mapped";
+
+            // Legacy file, create just root with total size calculated from memory label
+            if (snapshot.MemoryEntriesHierarchy == null)
+            {
+                if (args.NameFilter != null && !args.NameFilter.TextPasses(k_ExecutablesName))
+                {
+                    tree = default;
+                    return false;
+                }
+
+                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    m_ItemId++,
+                    new AllTrackedMemoryModel.ItemData(
+                        k_ExecutablesName,
+                        snapshot.NativeRootReferences.ExecutableAndDllsReportedValue)
+                    );
+                return true;
+            }
+
+            // Build dictionary of all "mapped" regions
+            var executablesMap = new Dictionary<string, ulong>();
+            snapshot.MemoryEntriesHierarchy.ForEachFlat((address, size, childrenCount, type, source) =>
+            {
+                if (source.Id != SourceLink.SourceId.SystemMemoryRegion)
+                    return;
+
+                if (type != MemoryEntriesHierarchyCache.RegionType.Mapped)
+                    return;
+
+                var name = snapshot.SystemMemoryRegions.RegionName[source.Index];
+
+                if (executablesMap.TryGetValue(name, out var currentValue))
+                    executablesMap[name] = currentValue + size;
+                else
+                    executablesMap[name] = size;
+            });
+
+            // Add "mapped" regions to the tree node of executables & mapped
+            ulong executableTotalValue = 0;
+            var executablesItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+            foreach(var item in executablesMap)
+            {
+                if (args.NameFilter != null && !args.NameFilter.TextPasses(item.Key))
+                    continue;
+
+                var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    m_ItemId++,
+                    new AllTrackedMemoryModel.ItemData(
+                        item.Key,
+                        item.Value)
+                );
+                executablesItems.Add(treeItem);
+
+                executableTotalValue += item.Value;
+            }
+
+            // Don't show high-level group if all items are filtered out
+            if ((args.NameFilter != null) && (executablesItems.Count <= 0))
             {
                 tree = default;
                 return false;
             }
 
-            var executableAndDllsReportedValue = snapshot.NativeRootReferences.ExecutableAndDllsReportedValue;
+            // Make a root node for executables & mapped branch
             tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                 m_ItemId++,
                 new AllTrackedMemoryModel.ItemData(
-                    k_ExecutableAndDllsName,
-                    executableAndDllsReportedValue)
+                    k_ExecutablesName,
+                    executableTotalValue),
+                executablesItems
                 );
             return true;
+        }
+
+        // Returns all items in the tree that pass the provided filterPath. Each filter is applied at one level in the tree, starting at the root. Children will be removed.
+        List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> BuildItemsAtPathInTreeExclusively(
+            IEnumerable<ITextFilter> filterPath,
+            IEnumerable<TreeViewItemData<AllTrackedMemoryModel.ItemData>> tree)
+        {
+            var itemsAtPath = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+
+            var items = tree;
+            var filterPathQueue = new Queue<ITextFilter>(filterPath);
+            while (filterPathQueue.Count > 0)
+            {
+                var found = false;
+                TreeViewItemData<AllTrackedMemoryModel.ItemData> itemOnPath = default;
+                var filter = filterPathQueue.Dequeue();
+                foreach (var item in items)
+                {
+                    if (filter.TextPasses(item.data.Name))
+                    {
+                        found = true;
+                        itemOnPath = item;
+
+                        // If we are at the end of the path, continue iterating to collect all siblings that match path. Otherwise break to proceed to the next level.
+                        if (filterPathQueue.Count == 0)
+                            itemsAtPath.Add(item);
+                        else
+                            break;
+                    }
+                }
+
+                // Search failed.
+                if (!found)
+                    break;
+
+                // Search successful so far. Proceed to the next level in the tree.
+                items = itemOnPath.children;
+            }
+
+            // Reconstruct the items without children.
+            var exclusiveItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(itemsAtPath.Count);
+            foreach (var item in itemsAtPath)
+            {
+                var itemWithoutChildren = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    item.id,
+                    item.data);
+                exclusiveItems.Add(itemWithoutChildren);
+            }
+
+            return exclusiveItems;
         }
 
         internal readonly struct BuildArgs
@@ -651,6 +767,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public BuildArgs(
                 ITextFilter nameFilter,
                 IEnumerable<ITextFilter> pathFilter = null,
+                bool excludeAll = false,
                 Action<long> nativeObjectSelectionProcessor = null,
                 Action<int> nativeTypeSelectionProcessor = null,
                 Action<long> managedObjectSelectionProcessor = null,
@@ -658,15 +775,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 NameFilter = nameFilter;
                 PathFilter = pathFilter;
+                ExcludeAll = excludeAll;
                 NativeObjectSelectionProcessor = nativeObjectSelectionProcessor;
                 NativeTypeSelectionProcessor = nativeTypeSelectionProcessor;
                 ManagedObjectSelectionProcessor = managedObjectSelectionProcessor;
                 ManagedTypeSelectionProcessor = managedTypeSelectionProcessor;
             }
 
-            public ITextFilter NameFilter { get; } // TODO
+            // Only items with a name that passes this filter will be included.
+            public ITextFilter NameFilter { get; }
 
-            public IEnumerable<ITextFilter> PathFilter { get; } // TODO
+            // Only items with a path (of names) that passes this filter will be included.
+            public IEnumerable<ITextFilter> PathFilter { get; }
+
+            // If true, excludes all items. This is currently used by the All Of Memory Comparison functionality to show an empty table when particular comparison items (groups) are selected.
+            public bool ExcludeAll { get; }
 
             // Selection processor for a Native Object item. Argument is the index of the native object.
             public Action<long> NativeObjectSelectionProcessor { get; }

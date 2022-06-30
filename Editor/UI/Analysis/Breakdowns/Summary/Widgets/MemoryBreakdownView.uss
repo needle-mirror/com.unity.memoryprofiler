@@ -323,18 +323,10 @@
     border-radius: 10px;
     border-width: 0;
 
+    background-color: #F0F0F0;
     color: #282828;
     -unity-text-align: middle-center;
     -unity-font-style: bold;
-}
-#memory-usage-breakdown__legend__snapshot-a-column #memory-usage-breakdown__legend__header-icon-text {
-    background-color: rgb(75, 135, 164);
-}
-#memory-usage-breakdown__legend__snapshot-b-column #memory-usage-breakdown__legend__header-icon-text {
-    background-color: rgb(185, 201, 151);
-}
-#memory-usage-breakdown__legend__diff-column #memory-usage-breakdown__legend__header-icon-text {
-    background-color: rgb(143, 143, 143);
 }
 
 /* Breakdown bar */

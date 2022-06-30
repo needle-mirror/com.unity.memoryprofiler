@@ -4,6 +4,22 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-pre.3] - 2022-06-30
+
+### Added
+- All Of Memory Comparison functionality.
+- Added the ability to sort by multiple columns on Unity Objects, All Of Memory, Unity Objects Comparison, and All Of Memory Comparison table column headers. CTRL-click a table column header to add it as an additional (secondary, tertiary etc.) sorting column.
+- List of executables and mapped files if snapshot is made with Unity 2022.2 or newer.
+
+### Changed
+- Close a snapshot by clicking the new 'Close' button, instead of selecting an open snapshot.
+- Remove A/B snapshot colors.
+- Remove Swap Snapshots button.
+
+### Fixed
+- Renaming a snapshot no longer allows duplicate file names with different casing, which naturally caused file system errors.
+- Fixed detail panel reference view not showing all the references for selected object.
+
 ## [1.0.0-pre.2] - 2022-05-05
 
 ### Added

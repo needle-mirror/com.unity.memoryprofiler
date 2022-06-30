@@ -1,5 +1,4 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
-    <ui:Template name="MemoryUsageDial" src="MemoryUsageDial.uxml" />
     <ui:VisualElement name="proxy-root" class="proxy-root">
         <Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/MemoryProfilerWindow_style.uss" />
         <Style src="/Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/OpenSnapshotsWindow_style.uss" />
@@ -28,10 +27,11 @@
                 </ui:VisualElement>
                 <ui:VisualElement class="total-ram-usage-bar__subtext">
                     <ui:VisualElement>
-                        <ui:Label name="open-snapshot__total-ram-used" text="Total Used: --GB" display-tooltip-when-elided="true" />
+                        <ui:Label name="open-snapshot__total-ram-used" text="Total Resident: --GB" display-tooltip-when-elided="true" />
+                        <ui:Label name="open-snapshot__total-ram-used-not-available" text="Total Resident: N/A" display-tooltip-when-elided="true" />
                         <ui:Label name="open-snapshot__total-hardware-resources" text="Hardware Resources: --GB" display-tooltip-when-elided="true" />
                     </ui:VisualElement>
-                    <ui:Instance template="MemoryUsageDial" name="MemoryUsageDial" />
+                    <ui:Button name="open-snapshot__close-button" text="Close"/>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

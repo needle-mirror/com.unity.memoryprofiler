@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -1678,11 +1679,17 @@ namespace Unity.MemoryProfiler.Editor
         public class ConnectionEntriesCache : IDisposable
         {
             public long Count;
+
+            // From/To with the same index forms a pair "from->to"
             public DynamicArray<int> From { private set; get; }
             public DynamicArray<int> To { private set; get; }
-            // ToFromMappedConnection and FromToMappedConnections are derived data used to accelarate searches in the details panel
-            public Dictionary<int, List<int>> ToFromMappedConnection { get; private set; } = new Dictionary<int, List<int>>();
-            public Dictionary<int, List<int>> FromToMappedConnection { get; private set; } = new Dictionary<int, List<int>>();
+
+            // List of objects referencing an object with the specfic key
+            public Dictionary<int, List<int>> ReferencedBy { get; private set; } = new Dictionary<int, List<int>>();
+
+            // List of objects an object with the specific key is refereing to
+            public Dictionary<int, List<int>> ReferenceTo { get; private set; } = new Dictionary<int, List<int>>();
+
 #if DEBUG_VALIDATION // could be always present but currently only used for validation in the crawler
             public long IndexOfFirstNativeToGCHandleConnection = -1;
 #endif
@@ -1690,80 +1697,94 @@ namespace Unity.MemoryProfiler.Editor
             unsafe public ConnectionEntriesCache(ref IFileReader reader, NativeObjectEntriesCache nativeObjects, long gcHandlesCount, bool connectionsNeedRemaping)
             {
                 Count = reader.GetEntryCount(EntryType.Connections_From);
-                From = new DynamicArray<int>(Count, Allocator.Persistent);
-                To = new DynamicArray<int>(Count, Allocator.Persistent);
+
+                // Set allocator to `temp` if we're going to discard the data later
+                Allocator allocator = Allocator.Persistent;
+                if (Count > 0 && connectionsNeedRemaping)
+                    allocator = Allocator.Temp;
+
+                From = new DynamicArray<int>(Count, allocator);
+                To = new DynamicArray<int>(Count, allocator);
 
                 if (Count == 0)
                     return;
 
-                From = reader.Read(EntryType.Connections_From, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
-                To = reader.Read(EntryType.Connections_To, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
+                From = reader.Read(EntryType.Connections_From, 0, Count, allocator).Result.Reinterpret<int>();
+                To = reader.Read(EntryType.Connections_To, 0, Count, allocator).Result.Reinterpret<int>();
 
                 if (connectionsNeedRemaping)
+                    RemapInstanceIdsToUnifiedIndex(nativeObjects, gcHandlesCount);
+
+                for (int i = 0; i < Count; i++)
                 {
-                    var instanceIds = nativeObjects.InstanceId;
-                    var gchandlesIndices = nativeObjects.ManagedObjectIndex;
+                    if (ReferencedBy.TryGetValue(To[i], out var fromList))
+                        fromList.Add(From[i]);
+                    else
+                        ReferencedBy[To[i]] = new List<int> { From[i] };
 
-                    Dictionary<int, int> instanceIDToIndex = new Dictionary<int, int>();
-                    Dictionary<int, int> instanceIDToGcHandleIndex = new Dictionary<int, int>();
+                    if (ReferenceTo.TryGetValue(From[i], out var toList))
+                        toList.Add(To[i]);
+                    else
+                        ReferenceTo[From[i]] = new List<int> { To[i] };
+                }
+            }
 
-                    for (int i = 0; i < instanceIds.Count; ++i)
+            void RemapInstanceIdsToUnifiedIndex(NativeObjectEntriesCache nativeObjects, long gcHandlesCount)
+            {
+                var instanceIds = nativeObjects.InstanceId;
+                var gcHandlesIndices = nativeObjects.ManagedObjectIndex;
+
+                // Create two temporary acceleration structures:
+                // - Native object InstanceID to GC object
+                // - Native object InstanceID to Unified Index
+                //
+                // Unified Index - [0..gcHandlesCount)[0..nativeObjects.Count]
+                var instanceIDToUnifiedIndex = new Dictionary<int, int>();
+                var instanceIDToGcHandleIndex = new Dictionary<int, int>();
+                for (int i = 0; i < instanceIds.Count; ++i)
+                {
+                    if (gcHandlesIndices[i] != -1)
                     {
-                        if (gchandlesIndices[i] != -1)
-                        {
-                            instanceIDToGcHandleIndex.Add(instanceIds[i], gchandlesIndices[i]);
-                        }
-                        instanceIDToIndex.Add(instanceIds[i], i);
+                        instanceIDToGcHandleIndex.Add(instanceIds[i], gcHandlesIndices[i]);
                     }
+                    instanceIDToUnifiedIndex.Add(instanceIds[i], (int)gcHandlesCount + i);
+                }
+
 #if DEBUG_VALIDATION
-                    if (instanceIDToGcHandleIndex.Count > 0)
-                        IndexOfFirstNativeToGCHandleConnection = Count;
+                if (instanceIDToGcHandleIndex.Count > 0)
+                    IndexOfFirstNativeToGCHandleConnection = Count;
 #endif
 
-                    DynamicArray<int> fromRemap = new DynamicArray<int>(Count + instanceIDToGcHandleIndex.Count, Allocator.Persistent);
-                    DynamicArray<int> toRemap = new DynamicArray<int>(fromRemap.Count, Allocator.Persistent);
+                // Connections - reported Native objects connections
+                // Plus links between Native and Managed objects (instanceIDToGcHandleIndex)
+                DynamicArray<int> newFrom = new DynamicArray<int>(Count + instanceIDToGcHandleIndex.Count, Allocator.Persistent);
+                DynamicArray<int> newTo = new DynamicArray<int>(newFrom.Count, Allocator.Persistent);
 
-                    // add all Native to Native connections.
-                    // The indexes they link to are all bigger than gcHandlesCount.
-                    // Such indices in the From/To arrays indicate a link from a native object to a native object
-                    // and subtracting gcHandlesCount from them gives the Native Object index
-                    for (long i = 0; i < Count; ++i)
-                    {
-                        fromRemap[i] = (int)(gcHandlesCount + instanceIDToIndex[From[i]]);
-                        toRemap[i] = (int)(gcHandlesCount + instanceIDToIndex[To[i]]);
-                    }
-
-                    //dispose of original data
-                    To.Dispose();
-                    From.Dispose();
-
-                    var enumerator = instanceIDToGcHandleIndex.GetEnumerator();
-                    for (long i = Count; i < fromRemap.Count; ++i)
-                    {
-                        enumerator.MoveNext();
-                        fromRemap[i] = (int)(gcHandlesCount + instanceIDToIndex[enumerator.Current.Key]);
-                        // elements in To that are `To[i] < gcHandlesCount` are indexes into the GCHandles list
-                        toRemap[i] = enumerator.Current.Value;
-                    }
-
-                    From = fromRemap;
-                    To = toRemap;
-                    Count = From.Count;
-
-                    for (int i = 0; i < Count; i++)
-                    {
-                        if (ToFromMappedConnection.TryGetValue(To[i], out var fromList))
-                            fromList.Add(From[i]);
-                        else
-                            ToFromMappedConnection[To[i]] = new List<int> { From[i] };
-
-
-                        if (FromToMappedConnection.TryGetValue(From[i], out var toList))
-                            toList.Add(To[i]);
-                        else
-                            FromToMappedConnection[From[i]] = new List<int> { To[i] };
-                    }
+                // Add all Native to Native connections reported in snapshot as Unified Index
+                for (long i = 0; i < Count; ++i)
+                {
+                    newFrom[i] = instanceIDToUnifiedIndex[From[i]];
+                    newTo[i] = instanceIDToUnifiedIndex[To[i]];
                 }
+
+                // Dispose of original data to save memory
+                // as we no longer need it
+                To.Dispose();
+                From.Dispose();
+
+                // Add all Managed to Native connections
+                var enumerator = instanceIDToGcHandleIndex.GetEnumerator();
+                for (long i = Count; i < newFrom.Count; ++i)
+                {
+                    enumerator.MoveNext();
+                    newFrom[i] = instanceIDToUnifiedIndex[enumerator.Current.Key];
+                    // elements in To that are `To[i] < gcHandlesCount` are indexes into the GCHandles list
+                    newTo[i] = enumerator.Current.Value;
+                }
+
+                From = newFrom;
+                To = newTo;
+                Count = From.Count;
             }
 
             public void Dispose()
@@ -1806,7 +1827,7 @@ namespace Unity.MemoryProfiler.Editor
         public NativeGfxResourcReferenceEntriesCache NativeGfxResourceReferences;
 
         public SystemMemoryRegionEntriesCache SystemMemoryRegions;
-        public MemorySummaryEntriesCache MemorySummaryEntries;
+        public MemoryEntriesHierarchyCache MemoryEntriesHierarchy;
 
         public CachedSnapshot(IFileReader reader)
         {
@@ -1870,7 +1891,7 @@ namespace Unity.MemoryProfiler.Editor
                 SortedNativeObjects = new SortedNativeObjectsCache(this);
 
                 if (HasSystemMemoryRegionsInfo)
-                    MemorySummaryEntries = new MemorySummaryEntriesCache(this);
+                    MemoryEntriesHierarchy = new MemoryEntriesHierarchyCache(this);
 
                 CrawledData = new ManagedData(GcHandles.Count, Connections.Count);
                 if (MemoryProfilerSettings.FeatureFlags.GenerateTransformTreesForByStatusTable_2022_09)
@@ -1879,29 +1900,60 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
+        public string FullPath
+        {
+            get
+            {
+                return m_Reader.FullPath;
+            }
+        }
+
         //Unified Object index are in that order: gcHandle, native object, crawled objects
         public long ManagedObjectIndexToUnifiedObjectIndex(long i)
         {
-            if (i < 0) return -1;
-            if (i < GcHandles.Count) return i;
-            if (i < CrawledData.ManagedObjects.Count) return i + NativeObjects.Count;
+            // Invalid
+            if (i < 0)
+                return -1;
+
+            // GC Handle
+            if (i < GcHandles.Count)
+                return i;
+
+            // Managed objects, but not reported through GC Handle
+            if (i < CrawledData.ManagedObjects.Count)
+                return i + NativeObjects.Count;
+
             return -1;
         }
 
         public long NativeObjectIndexToUnifiedObjectIndex(long i)
         {
-            if (i < 0) return -1;
-            if (i < NativeObjects.Count) return i + GcHandles.Count;
+            if (i < 0)
+                return -1;
+
+            // Shift behind native objects
+            if (i < NativeObjects.Count)
+                return i + GcHandles.Count;
+
             return -1;
         }
 
         public int UnifiedObjectIndexToManagedObjectIndex(long i)
         {
-            if (i < 0) return -1;
-            if (i < GcHandles.Count) return (int)i;
+            if (i < 0)
+                return -1;
+
+            if (i < GcHandles.Count)
+                return (int)i;
+
+            // If CrawledData.ManagedObjects includes GcHandles as first GcHandles.Count
+            // than it makes sense as we want to remap only excess
             int firstCrawled = (int)(GcHandles.Count + NativeObjects.Count);
             int lastCrawled = (int)(NativeObjects.Count + CrawledData.ManagedObjects.Count);
-            if (i >= firstCrawled && i < lastCrawled) return (int)(i - (int)NativeObjects.Count);
+
+            if (i >= firstCrawled && i < lastCrawled)
+                return (int)(i - (int)NativeObjects.Count);
+
             return -1;
         }
 
@@ -2194,56 +2246,216 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        public class MemorySummaryEntriesCache
+        readonly public struct SourceLink
         {
-            public struct Source
+            public enum SourceId : byte
             {
-                public enum SourceType : ushort
-                {
-                    Unknown,
-                    SystemMemoryRegion,
-                    NativeMemoryRegion,
-                    NativeAllocation,
-                    ManagedHeapSection,
-                    Count
-                }
+                SystemMemoryRegion,
+                NativeMemoryRegion,
+                NativeAllocation,
+                ManagedHeapSection,
+            }
 
-                public SourceType Type;
-                public int Index;
+            [Flags]
+            public enum SourceFlags : byte
+            {
+                None = 0,
+                EndPoint = 1 << 1,
+                StartPoint = 1 << 2,
+            }
 
-                public Source(SourceType type, int index)
-                {
-                    Type = type;
-                    Index = index;
-                }
+            public readonly SourceId Id;
+            public readonly SourceFlags Flags;
+            public readonly long Index;
+
+            public SourceLink(SourceId source, long index, SourceFlags flags)
+            {
+                Id = source;
+                Index = index;
+                Flags = flags;
+            }
+        }
+
+        public class MemoryEntriesHierarchyCache
+        {
+            public enum RegionType : byte
+            {
+                Free,
+                Untracked,
+                Reserved,
+                Ignored,
+
+                Native,
+                Managed,
+                Device,
+                Mapped,
+                Shared,
+                AndroidRuntime,
             }
 
             public struct AddressPoint
             {
                 public ulong Address;
-                public Source Source;
-                public int Id;
+                public SourceLink Source;
+                public RegionType Type;
+
+                // Nb! Through hierarchy build process ChildCount
+                // is used as begin/end section ID
+                public long ChildrenCount;
             }
 
             CachedSnapshot m_Snapshot;
             int m_ItemsCount;
             AddressPoint[] m_CombinedData;
 
-            public MemorySummaryEntriesCache(CachedSnapshot snapshot)
+            public MemoryEntriesHierarchyCache(CachedSnapshot snapshot)
             {
                 m_Snapshot = snapshot;
                 m_ItemsCount = 0;
                 m_CombinedData = null;
             }
 
-            public void Preload()
+            internal MemoryEntriesHierarchyCache(AddressPoint[] m_Data)
+            {
+                m_Snapshot = null;
+                m_ItemsCount = m_Data.Length;
+                m_CombinedData = m_Data;
+
+                SortPoints();
+                Postprocess();
+            }
+
+            public int Count
+            {
+                get
+                {
+                    Build();
+                    return m_ItemsCount;
+                }
+            }
+
+            public AddressPoint[] Data
+            {
+                get
+                {
+                    Build();
+                    return m_CombinedData;
+                }
+            }
+
+            public SourceLink GetDataSource(int index)
+            {
+                Build();
+                return m_CombinedData[index].Source;
+            }
+
+            public bool HasChildren(long index)
+            {
+                Build();
+                return m_CombinedData[index].ChildrenCount > 0;
+            }
+
+            public IEnumerable<long> GetRoots()
+            {
+                Build();
+
+                for (long i = 0; i < m_ItemsCount; i++)
+                {
+                    var cur = m_CombinedData[i];
+                    if (cur.Type != RegionType.Free)
+                        yield return i;
+
+                    i += cur.ChildrenCount;
+                }
+            }
+
+            public IEnumerable<long> GetChildren(long index)
+            {
+                Build();
+
+                var root = m_CombinedData[index];
+                for (long i = 0; i < root.ChildrenCount; i++)
+                {
+                    var childIndex = index + i + 1;
+                    var child = m_CombinedData[childIndex];
+                    if (child.Type != RegionType.Free)
+                        yield return childIndex;
+
+                    i += child.ChildrenCount;
+                }
+            }
+
+            /// <summary>
+            /// Flat scan all memory regions
+            /// </summary>
+            /// <param name="action"></param>
+            public void ForEachFlat(Action<ulong, ulong, long, RegionType, SourceLink> action)
+            {
+                Build();
+
+                if (m_ItemsCount == 0)
+                    return;
+
+                for (long i = 0; i < m_ItemsCount - 1; i++)
+                {
+                    var cur = m_CombinedData[i];
+                    var next = m_CombinedData[i + 1];
+
+                    // Ignore free memory regions
+                    if (cur.Type == RegionType.Free)
+                        continue;
+
+                    var size = next.Address - cur.Address;
+                    action(cur.Address, size, cur.ChildrenCount, cur.Type, cur.Source);
+                }
+            }
+
+            public string GetName(long index)
+            {
+                if (m_Snapshot == null)
+                    return String.Empty;
+
+                var item = m_CombinedData[index];
+                switch (item.Source.Id)
+                {
+                    case SourceLink.SourceId.SystemMemoryRegion:
+                        return m_Snapshot.SystemMemoryRegions.RegionName[item.Source.Index];
+                    case SourceLink.SourceId.NativeMemoryRegion:
+                        return m_Snapshot.NativeMemoryRegions.MemoryRegionName[item.Source.Index];
+                    case SourceLink.SourceId.NativeAllocation:
+                    {
+                        if (m_Snapshot.NativeAllocations.RootReferenceId.Count > 0)
+                        {
+                            var rootReferenceId = m_Snapshot.NativeAllocations.RootReferenceId[item.Source.Index];
+                            if (rootReferenceId < m_Snapshot.NativeRootReferences.Count)
+                                return m_Snapshot.NativeRootReferences.AreaName[rootReferenceId] + ":" + m_Snapshot.NativeRootReferences.ObjectName[rootReferenceId];
+                        }
+                        return "No Root Area";
+                    }
+                    case SourceLink.SourceId.ManagedHeapSection:
+                        return m_Snapshot.ManagedHeapSections.SectionName[item.Source.Index];
+                }
+
+                return String.Empty;
+            }
+
+            void Build()
             {
                 if (m_CombinedData != null)
                     return;
 
+                AddPoints();
+
+                SortPoints();
+                Postprocess();
+            }
+
+            void AddPoints()
+            {
                 // We're building a sorted by address list of ranges with
                 // a link to a source of the data
-                var maxPointsCount = (m_Snapshot.SystemMemoryRegions.Count +
+                var maxPointsCount = (
+                    m_Snapshot.SystemMemoryRegions.Count +
                     m_Snapshot.NativeMemoryRegions.Count +
                     m_Snapshot.ManagedHeapSections.Count +
                     m_Snapshot.NativeAllocations.Count) * 2;
@@ -2253,58 +2465,64 @@ namespace Unity.MemoryProfiler.Editor
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
                     m_CombinedData,
+                    SourceLink.SourceId.SystemMemoryRegion,
                     Convert.ToInt32(m_Snapshot.SystemMemoryRegions.Count),
-                    Source.SourceType.SystemMemoryRegion,
                     (int i) =>
                     {
                         var address = m_Snapshot.SystemMemoryRegions.RegionAddress[i];
                         var size = m_Snapshot.SystemMemoryRegions.RegionSize[i];
-                        return (true, address, size);
+                        var name = m_Snapshot.SystemMemoryRegions.RegionName[i];
+                        var type = m_Snapshot.SystemMemoryRegions.RegionType[i];
+                        var sourceType = GetSystemRegionType(type, name);
+                        return (true, address, size, sourceType);
                     });
 
                 // Add MemoryManager native regions
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
                     m_CombinedData,
+                    SourceLink.SourceId.NativeMemoryRegion,
                     Convert.ToInt32(m_Snapshot.NativeMemoryRegions.Count),
-                    Source.SourceType.NativeMemoryRegion,
                     (int i) =>
                     {
                         var address = m_Snapshot.NativeMemoryRegions.AddressBase[i];
                         var size = m_Snapshot.NativeMemoryRegions.AddressSize[i];
                         var name = m_Snapshot.NativeMemoryRegions.MemoryRegionName[i];
                         bool valid = (size > 0) && !name.Contains("Virtual Memory");
-                        return (valid, address, size);
+                        return (valid, address, size, RegionType.Native);
                     });
 
                 // Add Mono reported managed sections
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
                     m_CombinedData,
+                    SourceLink.SourceId.ManagedHeapSection,
                     Convert.ToInt32(m_Snapshot.ManagedHeapSections.Count),
-                    Source.SourceType.ManagedHeapSection,
                     (int i) =>
                     {
                         var address = m_Snapshot.ManagedHeapSections.StartAddress[i];
                         var size = m_Snapshot.ManagedHeapSections.SectionSize[i];
                         bool valid = (size > 0);
-                        return (valid, address, size);
+                        return (valid, address, size, RegionType.Managed);
                     });
 
                 // Add individual native allocations
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
                     m_CombinedData,
+                    SourceLink.SourceId.NativeAllocation,
                     Convert.ToInt32(m_Snapshot.NativeAllocations.Count),
-                    Source.SourceType.NativeAllocation,
                     (int i) =>
                     {
                         var address = m_Snapshot.NativeAllocations.Address[i];
                         var size = m_Snapshot.NativeAllocations.Size[i];
                         bool valid = (size > 0);
-                        return (valid, address, size);
+                        return (valid, address, size, RegionType.Native);
                     });
+            }
 
+            void SortPoints()
+            {
                 Array.Sort<AddressPoint>(
                     m_CombinedData,
                     0,
@@ -2313,58 +2531,155 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         var ret = a.Address.CompareTo(b.Address);
                         if (ret == 0)
-                            ret = a.Source.Type.CompareTo(b.Source.Type);
-                        if (ret == 0)
-                            ret = a.Id.CompareTo(b.Id);
+                        {
+                            if (a.Source.Flags.HasFlag(SourceLink.SourceFlags.EndPoint) && !b.Source.Flags.HasFlag(SourceLink.SourceFlags.EndPoint))
+                                return -1;
+                            else if (!a.Source.Flags.HasFlag(SourceLink.SourceFlags.EndPoint) && b.Source.Flags.HasFlag(SourceLink.SourceFlags.EndPoint))
+                                return 1;
+                            else if (a.Source.Flags.HasFlag(SourceLink.SourceFlags.EndPoint) && b.Source.Flags.HasFlag(SourceLink.SourceFlags.EndPoint))
+                                ret = -a.Source.Id.CompareTo(b.Source.Id);
+                            else
+                                ret = a.Source.Id.CompareTo(b.Source.Id);
+                        }
                         return ret;
-                    })
-                    );
+                    }));
             }
 
-            public void ForEach(Action<int, ulong, ulong, Source> action)
+            /// <summary>
+            /// Scans all points and updates flags and childs count
+            /// based on begin/end flags
+            /// </summary>
+            void Postprocess()
             {
-                Preload();
+                const int kMaxStackDepth = 16;
+                var hierarchyStack = new long[kMaxStackDepth];
+                var hierarchyStackCount = 0;
 
-                var activeRegions = new List<AddressPoint>();
-                var currentSourceType = Source.SourceType.Unknown;
                 for (int i = 0; i < m_ItemsCount; i++)
                 {
                     var cur = m_CombinedData[i];
 
-                    // Begin and end points have the same ID, so we check
-                    // if there is already open region with the same ID and
-                    // close it if we already have it, or open a new one otherwise
-                    var startPoint = activeRegions.FindIndex((x) => { return cur.Id == x.Id; });
-                    if (startPoint != -1)
+                    if (!cur.Source.Flags.HasFlag(SourceLink.SourceFlags.StartPoint))
                     {
-                        var closed = activeRegions[startPoint];
-                        if (closed.Source.Type == currentSourceType)
-                            action(i, closed.Address, (cur.Address - closed.Address), closed.Source);
+                        if (hierarchyStackCount <= 0)
+                        {
+                            // Lose end point. This is valid situation as memory snapshot
+                            // capture process modifies memory and system, native and managed
+                            // states might be slighly out of sync and have overlapping regions
+                            m_CombinedData[i].ChildrenCount = 0;
+                            m_CombinedData[i].Type = RegionType.Free;
+                            continue;
+                        }
 
-                        activeRegions.RemoveAt(startPoint);
-                        if (activeRegions.Count > 0)
-                            currentSourceType = activeRegions.Max((x) => x.Source.Type);
-                        else
-                            currentSourceType = Source.SourceType.Unknown;
+                        // We use ChildCount to store begin/end pair IDs, so that
+                        // we can check that they are from the same pair
+                        var startIndex = hierarchyStack[hierarchyStackCount - 1];
+                        var startItem = m_CombinedData[startIndex];
+                        if (startItem.ChildrenCount != cur.ChildrenCount)
+                        {
+                            // Non-matching end point. This is valid situation (see Lose end point comment).
+                            // Try to find matching starting point
+                            var index = Array.FindIndex(hierarchyStack, 0, hierarchyStackCount, (x) => m_CombinedData[x].ChildrenCount == cur.ChildrenCount);
+                            if (index < 0)
+                            {
+                                // No starting point, ignore the point entirely
+                                m_CombinedData[i].ChildrenCount = 0;
+                                m_CombinedData[i].Type = RegionType.Ignored;
+                                continue;
+                            }
+
+                            // Terminate all cut regions
+                            for (int j = index; j < hierarchyStackCount; j++)
+                            {
+                                var dataIndex = hierarchyStack[j];
+                                m_CombinedData[dataIndex].ChildrenCount = i - dataIndex - 1;
+                            }
+
+                            // if there is matching begin -> unwind stack to that point
+                            startIndex = hierarchyStack[index];
+                            hierarchyStackCount = index + 1;
+                        }
+
+                        // Remove from stack
+                        hierarchyStackCount--;
+
+                        // Replace ChildCount with actual child count
+                        m_CombinedData[startIndex].ChildrenCount = i - startIndex - 1;
+
+                        // Based on hierarchy level "unknown" memory spans are:
+                        // - free if it's on system regions level
+                        // - untracked if it's inside system regions
+                        // - reserved if it's inside native or heap sections
+                        m_CombinedData[i].ChildrenCount = 0;
+                        switch (hierarchyStackCount)
+                        {
+                            case 0:
+                                m_CombinedData[i].Type = RegionType.Free;
+                                break;
+                            case 1:
+                                m_CombinedData[i].Type = RegionType.Untracked;
+                                break;
+                            default:
+                                m_CombinedData[i].Type = RegionType.Reserved;
+                                break;
+                        }
                     }
                     else
                     {
-                        // Use region with the highest priority as current
-                        if (cur.Source.Type > currentSourceType)
-                            currentSourceType = cur.Source.Type;
-
-                        activeRegions.Add(cur);
+                        hierarchyStack[hierarchyStackCount] = i;
+                        hierarchyStackCount++;
                     }
                 }
-                Debug.Assert(activeRegions.Count == 0, $"Memory Summary has {activeRegions.Count} unclosed ranges");
+            }
+
+            RegionType GetSystemRegionType(ushort type, string name)
+            {
+                if (m_Snapshot.MetaData.TargetInfo.HasValue)
+                {
+                    switch (m_Snapshot.MetaData.TargetInfo.Value.RuntimePlatform)
+                    {
+                        case RuntimePlatform.Android:
+                        {
+                            if (name.StartsWith("[anon:dalvik-alloc") ||
+                                name.StartsWith("[anon:dalvik-main") ||
+                                name.StartsWith("[anon:dalvik-large") ||
+                                name.StartsWith("[anon:dalvik-non") ||
+                                name.StartsWith("[anon:dalvik-zygote"))
+                            {
+                                return RegionType.AndroidRuntime;
+                            }
+                            else if (name.StartsWith("/dev/"))
+                            {
+                                return RegionType.Device;
+                            }
+                            break;
+                        }
+                        default:
+                            break;
+                    }
+                }
+
+                switch ((SystemMemoryRegionEntriesCache.MemoryType)type)
+                {
+                    case SystemMemoryRegionEntriesCache.MemoryType.Private:
+                        return RegionType.Native;
+                    case SystemMemoryRegionEntriesCache.MemoryType.Mapped:
+                        return RegionType.Mapped;
+                    case SystemMemoryRegionEntriesCache.MemoryType.Device:
+                        return RegionType.Device;
+                    case SystemMemoryRegionEntriesCache.MemoryType.Shared:
+                        return RegionType.Shared;
+                }
+
+                return RegionType.Native;
             }
 
             // Adds a fixed number of points from a container of the specific type
-            static int AddPoints(int index, AddressPoint[] data, int count, Source.SourceType source, Func<int, (bool valid, ulong address, ulong size)> accessor)
+            static int AddPoints(int index, AddressPoint[] data, SourceLink.SourceId sourceName, int count, Func<int, (bool valid, ulong address, ulong size, RegionType type)> accessor)
             {
                 for (int i = 0; i < count; i++)
                 {
-                    var (valid, address, size) = accessor(i);
+                    var (valid, address, size, type) = accessor(i);
 
                     if (!valid || (size == 0))
                         continue;
@@ -2373,25 +2688,46 @@ namespace Unity.MemoryProfiler.Editor
                     data[index++] = new AddressPoint()
                     {
                         Address = address,
-                        Source = new Source(source, i),
-                        Id = id
+                        Source = new SourceLink(sourceName, i, SourceLink.SourceFlags.StartPoint),
+                        ChildrenCount = id,
+                        Type = type,
                     };
 
                     data[index++] = new AddressPoint()
                     {
                         Address = address + size,
-                        Source = new Source(Source.SourceType.Unknown, 0),
-                        Id = id
+                        Source = new SourceLink(sourceName, 0, SourceLink.SourceFlags.EndPoint),
+                        ChildrenCount = id,
+                        Type = RegionType.Free,
                     };
                 }
 
                 return index;
             }
 
-            public int Count { get { Preload(); return m_ItemsCount; } }
-            public Source DataSource(int index) { Preload(); return m_CombinedData[index].Source; }
+            public void DebugPrintToFile()
+            {
+                using (var file = new StreamWriter("hierarchy.txt"))
+                {
+                    DebugPrintToFile(file, 0, m_ItemsCount, "");
+                }
+            }
 
-            public AddressPoint[] Data() { Preload(); return m_CombinedData; }
+            void DebugPrintToFile(StreamWriter file, long start, long count, string prefix)
+            {
+                for (long i = 0; i < count; i++)
+                {
+                    var cur = m_CombinedData[start + i];
+
+                    file.WriteLine(prefix + $"[{start + i:D8}] - {cur.Address:X16} - {cur.ChildrenCount:D8} - {cur.Source.Id,10} - {cur.Type,10} - {GetName(start + i)}");
+
+                    if (cur.ChildrenCount > 0)
+                    {
+                        DebugPrintToFile(file, start + i + 1, cur.ChildrenCount, prefix + "-");
+                        i += cur.ChildrenCount;
+                    }
+                }
+            }
         }
     }
 }

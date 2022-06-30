@@ -31,74 +31,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         // The total size, in bytes, of memory accounted for in the original snapshot.
         public ulong TotalSnapshotMemorySize { get; }
 
-        // Sort the tree's data as specified by the sort descriptors.
-        public void Sort(IEnumerable<SortDescriptor> sortDescriptors)
-        {
-            var sortComparison = BuildSortComparison(sortDescriptors);
-            if (sortComparison == null)
-                return;
-
-            Sort(sortComparison);
-        }
-
-        Comparison<TreeViewItemData<ItemData>> BuildSortComparison(IEnumerable<SortDescriptor> sortDescriptors)
-        {
-            // Currently we only support sorting by a single property.
-            SortDescriptor sortDescriptor = null;
-            using (var enumerator = sortDescriptors.GetEnumerator())
-            {
-                if (enumerator.MoveNext())
-                    sortDescriptor = enumerator.Current;
-            }
-
-            if (sortDescriptor == null)
-                return null;
-
-            var property = sortDescriptor.Property;
-            var direction = sortDescriptor.Direction;
-            switch (property)
-            {
-                case SortableItemDataProperty.Name:
-                    if (direction == SortDirection.Ascending)
-                        return (x, y) => string.Compare(
-                            x.data.Name,
-                            y.data.Name,
-                            StringComparison.OrdinalIgnoreCase);
-                    else
-                        return (x, y) => string.Compare(
-                            y.data.Name,
-                            x.data.Name,
-                            StringComparison.OrdinalIgnoreCase);
-
-                case SortableItemDataProperty.TotalSize:
-                    if (direction == SortDirection.Ascending)
-                        return (x, y) => x.data.TotalSize.CompareTo(y.data.TotalSize);
-                    else
-                        return (x, y) => y.data.TotalSize.CompareTo(x.data.TotalSize);
-
-                case SortableItemDataProperty.NativeSize:
-                    if (direction == SortDirection.Ascending)
-                        return (x, y) => x.data.NativeSize.CompareTo(y.data.NativeSize);
-                    else
-                        return (x, y) => y.data.NativeSize.CompareTo(x.data.NativeSize);
-
-                case SortableItemDataProperty.ManagedSize:
-                    if (direction == SortDirection.Ascending)
-                        return (x, y) => x.data.ManagedSize.CompareTo(y.data.ManagedSize);
-                    else
-                        return (x, y) => y.data.ManagedSize.CompareTo(x.data.ManagedSize);
-
-                case SortableItemDataProperty.GpuSize:
-                    if (direction == SortDirection.Ascending)
-                        return (x, y) => x.data.GpuSize.CompareTo(y.data.GpuSize);
-                    else
-                        return (x, y) => y.data.GpuSize.CompareTo(x.data.GpuSize);
-
-                default:
-                    throw new ArgumentException("Unable to sort. Unknown column name.");
-            }
-        }
-
         // The data associated with each item in the tree.
         public readonly struct ItemData
         {
@@ -144,33 +76,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // The number of children.
             public int ChildCount { get; }
-        }
-
-        public class SortDescriptor
-        {
-            public SortDescriptor(SortableItemDataProperty property, SortDirection direction)
-            {
-                Property = property;
-                Direction = direction;
-            }
-
-            public SortableItemDataProperty Property { get; }
-            public SortDirection Direction { get; }
-        }
-
-        public enum SortableItemDataProperty
-        {
-            Name,
-            TotalSize,
-            NativeSize,
-            ManagedSize,
-            GpuSize,
-        }
-
-        public enum SortDirection
-        {
-            Ascending,
-            Descending,
         }
     }
 }

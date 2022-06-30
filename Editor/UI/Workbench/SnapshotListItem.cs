@@ -1,12 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Unity.MemoryProfiler.Editor.UIContentData;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -32,10 +30,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (value != m_RenamingFieldVisible)
                 {
-                    UIElementsHelper.SwitchVisibility(m_SnapshotRenameField, SnapshotNameLabel, value);
+                    UIElementsHelper.SwitchVisibility(m_SnapshotRenameField, m_SnapshotNameLabel, value);
 
                     m_RenamingFieldVisible = value;
-                    m_SnapshotRenameField.SetValueWithoutNotify(SnapshotNameLabel.text);
+                    m_SnapshotRenameField.SetValueWithoutNotify(m_SnapshotNameLabel.text);
                     if (value)
                     {
                         EditorCoroutines.Editor.EditorCoroutineUtility.StartCoroutine(FocusRenamFieldDelayed(), this);
@@ -53,6 +51,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SnapshotRenameFieldTextInput.Focus();
         }
 
+        const string k_TotalMemoryNotAvailable = "N/A";
+        const string k_Tooltip = "{0}\nPlatform: {1} {2}\n\nMax Available: {3}\nTotal Resident: {4}\nTotal Committed: {5}";
+        const string k_TooltipValueNotAvailable = "not available";
+
         Func<SnapshotFileData, string, bool> m_Rename;
         Action<SnapshotFileData> m_Open;
         Func<SnapshotFileData, bool> m_CanRenameSnaphot;
@@ -60,9 +62,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         VisualElement m_TemplateRoot;
         public VisualElement Root;
-        VisualElement m_OptionDropdownButton;
         Button m_OpenButton;
-        public Label SnapshotNameLabel;
+        Label m_SnapshotNameLabel;
         Label m_SnapshotDateLabel;
         Label m_OpenSnapshotTagLabel;
         VisualElement m_OpenSnapshotTagSpacer;
@@ -75,6 +76,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         Label m_TotalRamBarUsedLabel;
         Label m_TotalRamBarUsedLabelAlterative;
         Label m_TotalRamBarAvailableLabel;
+        Label m_TotalRamBarUsedNotAvailableLabel;
 
         VisualTreeAsset m_SnapshotListItemTree;
 
@@ -95,7 +97,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         case SnapshotFileGUIData.State.Closed:
                             break;
                         case SnapshotFileGUIData.State.Open:
-                            SnapshotNameLabel.RemoveFromClassList(Styling.OpenClassName);
+                            m_SnapshotNameLabel.RemoveFromClassList(Styling.OpenClassName);
                             Root.RemoveFromClassList(Styling.OpenClassName);
                             break;
                         case SnapshotFileGUIData.State.OpenA:
@@ -117,7 +119,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                             SetSnapshotTag(TagState.None);
                             break;
                         case SnapshotFileGUIData.State.Open:
-                            SnapshotNameLabel.AddToClassList(Styling.OpenClassName);
+                            m_SnapshotNameLabel.AddToClassList(Styling.OpenClassName);
                             Root.AddToClassList(Styling.OpenClassName);
                             SetSnapshotTag(TagState.None);
                             break;
@@ -206,8 +208,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             screenshot.image = Texture2D.blackTexture;
             screenshot.scaleMode = ScaleMode.ScaleToFit;
 
-            SnapshotNameLabel = Root.Q<Label>("snapshot-name", Styling.SnapshotMetaDataTextClassName);
-            SnapshotNameLabel.AddManipulator(new Clickable(() => RenameCapture()));
+            m_SnapshotNameLabel = Root.Q<Label>("snapshot-name", Styling.SnapshotMetaDataTextClassName);
+            m_SnapshotNameLabel.AddManipulator(new Clickable(() => RenameCapture()));
             m_SnapshotRenameField = Root.Q<TextField>("snapshot-name");
             m_SnapshotRenameField.isDelayed = true;
             m_SnapshotRenameFieldTextInput = m_SnapshotRenameField.Q("unity-text-input");
@@ -215,7 +217,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_OpenButton = Root.Q<Button>("snapshot-list__item__button", "full-visual-element-button");
             // TODO: Add to UXML and implement?
-            m_OptionDropdownButton = Root.Q<Image>("optionButton");
             m_OpenSnapshotTagLabel = Root.Q<Label>("snapshot-list__item__open-snapshot__compare-tag");
             m_OpenSnapshotTagSpacer = Root.Q("snapshot-list__item__open-snapshot__compare-tag__spacer");
 
@@ -224,6 +225,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TotalRamBarUsedLabel = m_TotalRamBarHolder.Q<Label>("total-ram-usage-bar__used-label");
             m_TotalRamBarUsedLabelAlterative = m_TotalRamBarHolder.Q<Label>("total-ram-usage-bar__used-label--light");
             m_TotalRamBarAvailableLabel = m_TotalRamBarHolder.Q<Label>("total-ram-usage-bar__available-label");
+            m_TotalRamBarUsedNotAvailableLabel = m_TotalRamBarHolder.Q<Label>("total-ram-usage-bar__not-available-label");
 
             UIElementsHelper.SetVisibility(m_OpenSnapshotTagLabel, false);
             UIElementsHelper.SetVisibility(m_OpenSnapshotTagSpacer, false);
@@ -336,54 +338,86 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void AssignSnapshot(SnapshotFileData snapshotFileData)
         {
             m_Snapshot = snapshotFileData;
-            if (snapshotFileData != null && snapshotFileData.GuiData != null)
+            if (snapshotFileData == null || snapshotFileData.GuiData == null)
+                return;
+
+            snapshotFileData.GuiData.VisualElement = this;
+
+            screenshot.image = snapshotFileData.GuiData.MetaScreenshot != null ? snapshotFileData.GuiData.MetaScreenshot : Texture2D.blackTexture;
+
+            SnapshotsWindow.SetPlatformIcons(Root, snapshotFileData.GuiData);
+
+            m_SnapshotDateLabel.text = snapshotFileData.GuiData.Date;
+
+            UIElementsHelper.SetVisibility(m_OpenSnapshotTagLabel, false);
+            UIElementsHelper.SetVisibility(m_OpenSnapshotTagSpacer, false);
+
+            // Assigning the snapshot open-state after the tag was hidden so it can be unhidden again if needed
+            CurrentState = snapshotFileData.GuiData.CurrentState;
+
+            // Update memory values and bar
+            if (snapshotFileData.GuiData.TargetInfo.HasValue)
             {
-                snapshotFileData.GuiData.VisualElement = this;
+                var totalAvailableMemory = snapshotFileData.GuiData.TargetInfo.Value.TotalPhysicalMemory;
+                m_TotalRamBarAvailableLabel.text = EditorUtility.FormatBytes((long)totalAvailableMemory);
 
-                screenshot.image = snapshotFileData.GuiData.MetaScreenshot != null ? snapshotFileData.GuiData.MetaScreenshot : Texture2D.blackTexture;
-                screenshot.tooltip = snapshotFileData.GuiData.MetaPlatform + " " + snapshotFileData.GuiData.MetaPlatformExtra;
-
-                SnapshotsWindow.SetPlatformIcons(Root, snapshotFileData.GuiData);
-
-                SnapshotNameLabel.text = snapshotFileData.GuiData.Name;
-                SnapshotNameLabel.tooltip = snapshotFileData.FileInfo.FullName;
-                m_SnapshotRenameField.SetValueWithoutNotify(SnapshotNameLabel.text);
-                m_SnapshotDateLabel.text = snapshotFileData.GuiData.Date;
-                m_SnapshotDateLabel.tooltip = snapshotFileData.GuiData.MetaContent;
-
-                UIElementsHelper.SetVisibility(m_OpenSnapshotTagLabel, false);
-                UIElementsHelper.SetVisibility(m_OpenSnapshotTagSpacer, false);
-
-                // Assigning the snapshot open-state after the tag was hidden so it can be unhidden again if needed
-                CurrentState = snapshotFileData.GuiData.CurrentState;
-
-                if (snapshotFileData.GuiData.TargetInfo.HasValue && snapshotFileData.GuiData.MemoryStats.HasValue)
+                if (snapshotFileData.GuiData.TotalResident > 0)
                 {
-                    UIElementsHelper.SetVisibility(m_TotalRamBarHolder, true);
+                    UIElementsHelper.SetVisibility(m_TotalRamBarUsed, true);
+                    UIElementsHelper.SetVisibility(m_TotalRamBarUsedLabelAlterative, true);
+                    UIElementsHelper.SetVisibility(m_TotalRamBarUsedNotAvailableLabel, false);
 
-                    var totalAvailableMemory = PlatformsHelper.GetPlatformSpecificTotalAvailableMemory(snapshotFileData.GuiData.TargetInfo.Value);
-                    var totalUsedMemory = Math.Min(snapshotFileData.GuiData.MemoryStats.Value.TotalVirtualMemory, totalAvailableMemory);
-                    if (totalUsedMemory == 0)
-                    {
-                        // Fallback for platforms where System Used Memory isn't implemented yet
-                        totalUsedMemory = snapshotFileData.GuiData.MemoryStats.Value.TotalReservedMemory;
-                    }
-                    // if more is used than available, we might have a non unified device in a mixed platform or otherwise mis-accounted the available space
-                    // assume that the apps memory still fitted in when the snapshot was taken.
-                    totalAvailableMemory = Math.Max(totalAvailableMemory, totalUsedMemory);
-                    // Set width in percent
-                    var filledInPercent = ((float)totalUsedMemory / (float)totalAvailableMemory * 100f);
+                    var totalResident = snapshotFileData.GuiData.TotalResident;
+                    var filledInPercent = ((float)totalResident / (float)totalAvailableMemory * 100f);
                     m_TotalRamBarUsed.style.SetBarWidthInPercent(filledInPercent);
 
-                    m_TotalRamBarUsedLabel.text = EditorUtility.FormatBytes((long)totalUsedMemory);
-                    m_TotalRamBarUsedLabelAlterative.text = EditorUtility.FormatBytes((long)totalUsedMemory);
-                    m_TotalRamBarAvailableLabel.text = EditorUtility.FormatBytes((long)totalAvailableMemory);
+                    var residentMemoryLabel = EditorUtility.FormatBytes((long)totalResident);
+                    m_TotalRamBarUsedLabel.text = residentMemoryLabel;
+                    m_TotalRamBarUsedLabelAlterative.text = residentMemoryLabel;
                 }
                 else
                 {
-                    UIElementsHelper.SetVisibility(m_TotalRamBarHolder, false);
+                    UIElementsHelper.SetVisibility(m_TotalRamBarUsed, false);
+                    UIElementsHelper.SetVisibility(m_TotalRamBarUsedLabelAlterative, false);
+                    UIElementsHelper.SetVisibility(m_TotalRamBarUsedNotAvailableLabel, true);
                 }
             }
+            else
+            {
+                // No information to show at all
+                UIElementsHelper.SetVisibility(m_TotalRamBarUsed, false);
+                UIElementsHelper.SetVisibility(m_TotalRamBarUsedLabelAlterative, false);
+                UIElementsHelper.SetVisibility(m_TotalRamBarUsedNotAvailableLabel, true);
+                m_TotalRamBarAvailableLabel.text = k_TotalMemoryNotAvailable;
+            }
+
+            UpdateSnapshotName(m_Snapshot.GuiData.Name);
+        }
+
+        public void UpdateSnapshotName(string name)
+        {
+            m_SnapshotNameLabel.text = name;
+            m_SnapshotRenameField.SetValueWithoutNotify(m_SnapshotNameLabel.text);
+
+            var totalAvailableMemoryLabel = k_TooltipValueNotAvailable;
+            if (m_Snapshot.GuiData.TargetInfo.HasValue)
+                totalAvailableMemoryLabel = EditorUtility.FormatBytes((long)m_Snapshot.GuiData.TargetInfo.Value.TotalPhysicalMemory);
+
+            var residentMemoryLabel = k_TooltipValueNotAvailable;
+            if (m_Snapshot.GuiData.TotalResident > 0)
+                residentMemoryLabel = EditorUtility.FormatBytes((long)m_Snapshot.GuiData.TotalResident);
+
+            var totalCommittedLabel = k_TooltipValueNotAvailable;
+            if (m_Snapshot.GuiData.MemoryStats.HasValue)
+                totalCommittedLabel = EditorUtility.FormatBytes((long)m_Snapshot.GuiData.MemoryStats.Value.TotalVirtualMemory);
+
+            Root.tooltip = String.Format(k_Tooltip,
+                m_Snapshot.GuiData.Name,
+                m_Snapshot.GuiData.MetaPlatform,
+                m_Snapshot.GuiData.MetaPlatformExtra,
+                totalAvailableMemoryLabel,
+                residentMemoryLabel,
+                totalCommittedLabel);
         }
 
         /// <summary>

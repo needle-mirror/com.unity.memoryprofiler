@@ -49,7 +49,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public OpenSnapshotsWindow InitializeOpenSnapshotsWindow(float initialWidth, VisualElement root)
         {
-            m_OpenSnapshotsPane = new OpenSnapshotsWindow(initialWidth, root);
+            m_OpenSnapshotsPane = new OpenSnapshotsWindow(initialWidth, root, () => CloseCapture(First), () => CloseCapture(Second));
 
             m_OpenSnapshotsPane.SwapOpenSnapshots += () => SwapOpenSnapshots();
             m_OpenSnapshotsPane.ShowDiffOfOpenSnapshots += ShowDiffOfOpenSnapshots;
@@ -70,25 +70,18 @@ namespace Unity.MemoryProfiler.Editor
 
         public void OpenSnapshot(SnapshotFileData snapshot)
         {
+            // Snapshot is already open in first slot.
             if (snapshot == First)
-            {
-                // close First
-                CloseCapture(snapshot);
                 return;
-            }
+
+            // If snapshot is already open in second slot, we switch it to the first slot if in single mode.
             if (snapshot == Second)
             {
                 if (!m_OpenSnapshotsPane.CompareMode)
-                {
                     SwapOpenSnapshots(false);
-                }
-                else
-                {
-                    // close Second
-                    CloseCapture(snapshot);
-                }
                 return;
             }
+
             if (First != null)
             {
                 if (m_OpenSnapshotsPane.CompareMode)

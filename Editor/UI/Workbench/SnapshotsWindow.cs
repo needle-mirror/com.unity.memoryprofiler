@@ -321,23 +321,18 @@ namespace Unity.MemoryProfiler.Editor
 
         void OpenCapture(SnapshotFileData snapshot)
         {
-            bool isCloseEvent = m_OpenSnapshots.IsSnapshotOpen(snapshot);
-            //try
-            //{
-            if (!isCloseEvent)
-                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.LoadedSnapshotEvent>();
+            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.LoadedSnapshotEvent>();
 
             m_OpenSnapshots.OpenSnapshot(snapshot);
-            if (!isCloseEvent)
+
+            var snapshotDetails = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(snapshot);
+            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.LoadedSnapshotEvent()
             {
-                var snapshotDetails = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(snapshot);
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.LoadedSnapshotEvent() { success = snapshot.GuiData.ProductName == Application.productName, openSnapshotDetails = snapshotDetails, unityVersionOfSnapshot = snapshot.GuiData.UnityVersion, runtimePlatform = snapshot.GuiData.RuntimePlatform });
-            }
-            //}
-            //catch (Exception e)
-            //{
-            //    throw e;
-            //}
+                success = snapshot.GuiData.ProductName == Application.productName,
+                openSnapshotDetails = snapshotDetails,
+                unityVersionOfSnapshot = snapshot.GuiData.UnityVersion,
+                runtimePlatform = snapshot.GuiData.RuntimePlatform
+            });
         }
 
         void RefreshSnapshotList(SnapshotCollectionEnumerator snaps)

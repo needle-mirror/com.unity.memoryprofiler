@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.0.0-pre.2",
+  "version": "1.0.0-pre.3",
   "unity": "2022.2",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -15,18 +15,18 @@
   "dependencies": {
     "com.unity.editorcoroutines": "1.0.0"
   },
-  "_upm": {
-    "changelog": "### Added\n\n### Changed\n- Changed details view UI to hide references section if selected item doesn't have refrences.\n\n### Fixed\n- Fixed a crash in DynamicArray.Resize [(Case 1426543)](https://issuetracker.unity3d.com/product/unity/issues/guid/1426543/).\n- Selecting a Unity Object Type in the Unity Objects Comparison view now clears the selection in the Details view.\n- Fixed `Value cannot be Null` error and infinite Circular References when expanding types with self references in the Managed Fields table in the Selected Item Details panel."
-  },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.0.0-pre.2"
+    "com.unity.memoryprofiler.tests": "1.0.0-pre.3"
+  },
+  "_upm": {
+    "changelog": "### Added\n- All Of Memory Comparison functionality.\n- Added the ability to sort by multiple columns on Unity Objects, All Of Memory, Unity Objects Comparison, and All Of Memory Comparison table column headers. CTRL-click a table column header to add it as an additional (secondary, tertiary etc.) sorting column.\n- List of executables and mapped files if snapshot is made with Unity 2022.2 or newer.\n\n### Changed\n- Close a snapshot by clicking the new 'Close' button, instead of selecting an open snapshot.\n- Remove A/B snapshot colors.\n- Remove Swap Snapshots button.\n\n### Fixed\n- Renaming a snapshot no longer allows duplicate file names with different casing, which naturally caused file system errors.\n- Fixed detail panel reference view not showing all the references for selected object."
   },
   "upmCi": {
-    "footprint": "3793bc5e85465e00861fa8cf4105f45425b9c47f"
+    "footprint": "65873fc5d6426679a71a0b43dcd23764bd9cf444"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "2ac5f941dea2a5584d13cef3d76fc67bc3965257"
+    "revision": "728ba93d5d05e91f1650f36b91c57aa38de3379d"
   }
 }

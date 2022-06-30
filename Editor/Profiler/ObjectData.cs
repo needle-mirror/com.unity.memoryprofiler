@@ -1015,90 +1015,76 @@ namespace Unity.MemoryProfiler.Editor
                     if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(obj.hostManagedObjectPtr, out var idx))
                     {
                         objIndex = snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
-                        if (!snapshot.CrawledData.ConnectionsToMappedToUnifiedIndex.TryGetValue(objIndex, out var connectionIndicies))
-                            break;
-
-                        //add crawled connections
-                        foreach (var i in connectionIndicies)
-                        {
-                            var c = snapshot.CrawledData.Connections[i];
-                            switch (c.connectionType)
-                            {
-                                case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
-
-                                    var objParent = ObjectData.FromManagedObjectIndex(snapshot, c.fromManagedObjectIndex);
-                                    if (c.fieldFrom >= 0)
-                                    {
-                                        referencingObjects.Add(objParent.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
-                                    }
-                                    else if (c.arrayIndexFrom >= 0)
-                                    {
-                                        referencingObjects.Add(objParent.GetArrayElement(snapshot, c.arrayIndexFrom, false));
-                                    }
-                                    else
-                                    {
-                                        referencingObjects.Add(objParent);
-                                    }
-
-                                    break;
-                                case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
-
-                                    var objType = ObjectData.FromManagedType(snapshot, c.fromManagedType);
-                                    if (c.fieldFrom >= 0)
-                                    {
-                                        referencingObjects.Add(objType.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
-                                    }
-                                    else if (c.arrayIndexFrom >= 0)
-                                    {
-                                        referencingObjects.Add(objType.GetArrayElement(snapshot, c.arrayIndexFrom, false));
-                                    }
-                                    else
-                                    {
-                                        referencingObjects.Add(objType);
-                                    }
-
-                                    break;
-                                case ManagedConnection.ConnectionType.UnityEngineObject:
-                                    // these get at added in the loop at the end of the function
-                                    // tried using a hash set to prevent duplicates but the lookup during add locks up the window
-                                    // if there are more than about 50k references
-                                    //referencingObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
-                                    break;
-                            }
-                        }
+                        AddManagedReferences(snapshot, objIndex, ref referencingObjects);
                     }
                     break;
                 }
                 case ObjectDataType.NativeObject:
                     objIndex = snapshot.NativeObjectIndexToUnifiedObjectIndex(obj.nativeObjectIndex);
-                    if (!snapshot.CrawledData.ConnectionsMappedToNativeIndex.TryGetValue(obj.nativeObjectIndex, out var connectionIndices))
-                        break;
+                    var managedObjectIndex = snapshot.NativeObjects.ManagedObjectIndex[obj.nativeObjectIndex];
+                    if (managedObjectIndex > 0)
+                        AddManagedReferences(snapshot, managedObjectIndex, ref referencingObjects);
 
-                    //add crawled connection
-                    foreach (var i in connectionIndices)
-                    {
-                        switch (snapshot.CrawledData.Connections[i].connectionType)
-                        {
-                            case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
-                            case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
-                                break;
-                            case ManagedConnection.ConnectionType.UnityEngineObject:
-                                referencingObjects.Add(ObjectData.FromManagedObjectIndex(snapshot, snapshot.CrawledData.Connections[i].UnityEngineManagedObjectIndex));
-                                break;
-                        }
-                    }
                     break;
             }
-            //add connections from the raw snapshot
-            if (objIndex >= 0 && snapshot.Connections.ToFromMappedConnection.ContainsKey((int)objIndex))
+
+            // Add connections from the raw snapshot
+            if (objIndex >= 0 && snapshot.Connections.ReferencedBy.ContainsKey((int)objIndex))
             {
-                foreach (var i in snapshot.Connections.ToFromMappedConnection[(int)objIndex])
+                foreach (var i in snapshot.Connections.ReferencedBy[(int)objIndex])
                 {
                     referencingObjects.Add(ObjectData.FromUnifiedObjectIndex(snapshot, i));
                 }
             }
 
             return referencingObjects.ToArray();
+        }
+
+        static void AddManagedReferences(CachedSnapshot snapshot, long objectIndex, ref List<ObjectData> results)
+        {
+            if (!snapshot.CrawledData.ConnectionsToMappedToUnifiedIndex.TryGetValue(objectIndex, out var connectionIndicies))
+                return;
+
+            // Add crawled connections
+            foreach (var i in connectionIndicies)
+            {
+                var c = snapshot.CrawledData.Connections[i];
+                switch (c.connectionType)
+                {
+                    case ManagedConnection.ConnectionType.ManagedObject_To_ManagedObject:
+                    {
+                        var objParent = ObjectData.FromManagedObjectIndex(snapshot, c.fromManagedObjectIndex);
+                        if (c.fieldFrom >= 0)
+                            results.Add(objParent.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
+                        else if (c.arrayIndexFrom >= 0)
+                            results.Add(objParent.GetArrayElement(snapshot, c.arrayIndexFrom, false));
+                        else
+                            results.Add(objParent);
+
+                        break;
+                    }
+                    case ManagedConnection.ConnectionType.ManagedType_To_ManagedObject:
+                    {
+                        var objType = ObjectData.FromManagedType(snapshot, c.fromManagedType);
+                        if (c.fieldFrom >= 0)
+                            results.Add(objType.GetInstanceFieldBySnapshotFieldIndex(snapshot, c.fieldFrom, false));
+                        else if (c.arrayIndexFrom >= 0)
+                            results.Add(objType.GetArrayElement(snapshot, c.arrayIndexFrom, false));
+                        else
+                            results.Add(objType);
+
+                        break;
+                    }
+                    case ManagedConnection.ConnectionType.UnityEngineObject:
+                    {
+                        // these get at added in the loop at the end of the function
+                        // tried using a hash set to prevent duplicates but the lookup during add locks up the window
+                        // if there are more than about 50k references
+                        //referencingObjects.Add(ObjectData.FromNativeObjectIndex(snapshot, c.UnityEngineNativeObjectIndex));
+                        break;
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -1114,7 +1100,7 @@ namespace Unity.MemoryProfiler.Editor
             var found = outInstanceIds;
             found.Clear();
             var transformToSearchConnectionsFor = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[transformInstanceID]);
-            if (snapshot.Connections.FromToMappedConnection.TryGetValue((int)transformToSearchConnectionsFor.GetUnifiedObjectIndex(snapshot), out var list))
+            if (snapshot.Connections.ReferenceTo.TryGetValue((int)transformToSearchConnectionsFor.GetUnifiedObjectIndex(snapshot), out var list))
             {
                 foreach (var connection in list)
                 {
@@ -1132,7 +1118,7 @@ namespace Unity.MemoryProfiler.Editor
         public static int GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, int instanceID)
         {
             var transform = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.instanceId2Index[instanceID]);
-            if (snapshot.Connections.FromToMappedConnection.TryGetValue((int)transform.GetUnifiedObjectIndex(snapshot), out var list))
+            if (snapshot.Connections.ReferenceTo.TryGetValue((int)transform.GetUnifiedObjectIndex(snapshot), out var list))
             {
                 foreach (var connection in list)
                 {
@@ -1236,9 +1222,9 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             //add connections from the raw snapshot
-            if (objIndex >= 0 && snapshot.Connections.FromToMappedConnection.ContainsKey((int)objIndex))
+            if (objIndex >= 0 && snapshot.Connections.ReferenceTo.ContainsKey((int)objIndex))
             {
-                var cns = snapshot.Connections.FromToMappedConnection[(int)objIndex];
+                var cns = snapshot.Connections.ReferenceTo[(int)objIndex];
                 foreach (var i in cns)
                 {
                     // Don't count Native -> Managed Connections again if they have been added based on m_CachedPtr entries
@@ -1360,9 +1346,9 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             //add connections from the raw snapshot
-            if (objIndex >= 0 && snapshot.Connections.FromToMappedConnection.ContainsKey((int)objIndex))
+            if (objIndex >= 0 && snapshot.Connections.ReferenceTo.ContainsKey((int)objIndex))
             {
-                var cns = snapshot.Connections.FromToMappedConnection[(int)objIndex];
+                var cns = snapshot.Connections.ReferenceTo[(int)objIndex];
                 foreach (var i in cns)
                 {
                     // Don't count Native -> Managed Connections again if they have been added based on m_CachedPtr entries

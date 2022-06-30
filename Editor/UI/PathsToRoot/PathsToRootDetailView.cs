@@ -490,7 +490,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 return;
             }
 
-            var processingStack = new Stack<PathsToRootDetailTreeViewItem>();
+            var processingQueue = new Queue<PathsToRootDetailTreeViewItem>();
             m_RawReferenceTree.children.Clear();
 
             foreach (var objectData in objectsConnectingTo)
@@ -501,29 +501,21 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             foreach (var treeViewItem in m_RawReferenceTree.children)
             {
                 var objectTreeChild = (PathsToRootDetailTreeViewItem)treeViewItem;
-                processingStack.Push(objectTreeChild);
+                processingQueue.Enqueue(objectTreeChild);
             }
 
-            m_ProcessingStackSize = processingStack.Count;
+            m_ProcessingStackSize = processingQueue.Count;
 
-            RawDataSearch(processingStack);
-            /*  if (m_CachedSnapshot.HasSceneRootsAndAssetbundles)
-              {
-                  SearchUsingSceneRoots(item, itemObjectData, objectsConnectingTo, processingStack);
-              }
-              else
-              {
-                  SearchUsingFallBack(processingStack);
-              }*/
+            RawDataSearch(processingQueue);
 
             m_GUIState = PathsToRootViewGUIState.SearchComplete;
         }
 
-        void RawDataSearch(Stack<PathsToRootDetailTreeViewItem> processingStack)
+        void RawDataSearch(Queue<PathsToRootDetailTreeViewItem> processingQueue)
         {
-            while (processingStack.Count > 0 && m_ObjectsProcessed < 1000)
+            while (processingQueue.Count > 0 && m_ObjectsProcessed < 1000)
             {
-                var current = processingStack.Pop();
+                var current = processingQueue.Dequeue();
                 m_ObjectsProcessed++;
 
                 var connections = current.Data.GetAllReferencingObjects(m_CachedSnapshot);
@@ -540,7 +532,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
                     if (!child.HasCircularReference)
                     {
-                        processingStack.Push(child);
+                        processingQueue.Enqueue(child);
                         m_ProcessingStackSize++;
                     }
                 }

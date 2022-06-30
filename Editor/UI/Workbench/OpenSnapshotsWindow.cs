@@ -1,10 +1,7 @@
-using System.Collections;
-using System.Collections.Generic;
+using System;
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
-using UnityEditor.UIElements;
-using System;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 
@@ -12,6 +9,8 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal class OpenSnapshotsWindow : VisualElement
     {
+        const string k_TotalResidentMemoryNotAvailable = "Total resident memory information isn't available for this snapshot. Use a newer version of Unity to capture this information.";
+
         public event Action SwapOpenSnapshots = delegate { };
         public event Action ShowDiffOfOpenSnapshots = delegate { };
         public event Action ShowFirstOpenSnapshot = delegate { };
@@ -29,29 +28,25 @@ namespace Unity.MemoryProfiler.Editor
             public VisualElement DataContainer;
             public Label Name;
             public Label Date;
-            public MemoryUsageDial MemoryUsageDial;
-            //public Label Age;
             public DateTime UtcDateTime;
 
             // Rework UI
             public Label ProjectName;
             public Label SessionName;
             public VisualElement TotalAvailableBar;
-            public VisualElement TotalUseddBar;
+            public VisualElement TotalResidentBar;
             public Label TotalUsedMemory;
+            public Label TotalUsedMemoryNotAvailable;
             public Label TotalAvailableMemory;
         }
         OpenSnapshotItemUI m_OpenSnapshotItemUIFirst = new OpenSnapshotItemUI();
         OpenSnapshotItemUI m_OpenSnapshotItemUISecond = new OpenSnapshotItemUI();
-        Button m_DiffButton;
 
         VisualElement m_SnappshotViewSeparator;
-        VisualElement m_SwapButtonHolder;
 
         public bool CompareMode { get { return m_CompareSnapshotMode; } }
         bool m_CompareSnapshotMode = false;
         Ribbon m_Ribbon;
-
 
         VisualElement m_FirstSnapshotHolder;
         VisualElement m_FirstSnapshotHolderEmpty;
@@ -60,14 +55,10 @@ namespace Unity.MemoryProfiler.Editor
 
         VisualElement m_TagA;
 
-        const string k_UxmlPath = "Packages/com.unity.memoryprofiler/Package Resources/UXML/OpenSnapshotsWindow.uxml";
-        const string k_CommonStyleSheetPath = "Packages/com.unity.memoryprofiler/Package Resources/StyleSheets/OpenSnapshotsWindow_style.uss";
-        const string k_OpenSnapshotItemUxmlPath = "Packages/com.unity.memoryprofiler/Package Resources/UXML/OpenSnapshotItem.uxml";
-
         bool firstIsOpen;
         bool secondIsOpen;
 
-        public OpenSnapshotsWindow(float initialWidth, VisualElement root)
+        public OpenSnapshotsWindow(float initialWidth, VisualElement root, Action closeFirstSnapshot, Action closeSecondSnapshot)
         {
             var holderA = root.Q<VisualElement>("open-snapshot-item-a");
             m_FirstSnapshotHolder = holderA.Q<VisualElement>("open-snapshot", "open-snapshot__container");
@@ -91,11 +82,8 @@ namespace Unity.MemoryProfiler.Editor
             UIElementsHelper.SetVisibility(m_SecondSnapshotHolderEmpty, false);
 
             m_SnappshotViewSeparator = root.Q<VisualElement>("open-snapshot-view__separator");
-            m_SwapButtonHolder = root.Q<VisualElement>("swap-snapshot-buttons-holder");
-            m_SwapButtonHolder.Q<Button>("swap-snapshots-button").clicked += OnSwapOpenSnapshots;
 
             UIElementsHelper.SetVisibility(m_SnappshotViewSeparator, false);
-            UIElementsHelper.SetVisibility(m_SwapButtonHolder, false);
             UIElementsHelper.SetVisibility(m_TagA, false);
 
             m_Ribbon = root.Q<Ribbon>("snapshot-window__ribbon__container");
@@ -103,8 +91,8 @@ namespace Unity.MemoryProfiler.Editor
 
             m_Ribbon.HelpClicked += () => Application.OpenURL(DocumentationUrls.OpenSnapshotsPane);
 
-            InitializeOpenSnapshotItem(m_FirstSnapshotHolder, ref m_OpenSnapshotItemUIFirst, () => ShowFirstOpenSnapshot());
-            InitializeOpenSnapshotItem(m_SecondSnapshotHolder, ref m_OpenSnapshotItemUISecond, () => ShowSecondOpenSnapshot());
+            InitializeOpenSnapshotItem(m_FirstSnapshotHolder, ref m_OpenSnapshotItemUIFirst, closeFirstSnapshot);
+            InitializeOpenSnapshotItem(m_SecondSnapshotHolder, ref m_OpenSnapshotItemUISecond, closeSecondSnapshot);
             UIElementsHelper.SetVisibility(m_SecondSnapshotHolderEmpty, false);
         }
 
@@ -133,7 +121,6 @@ namespace Unity.MemoryProfiler.Editor
             UIElementsHelper.SetVisibility(m_SecondSnapshotHolder, false);
             UIElementsHelper.SetVisibility(m_SecondSnapshotHolderEmpty, false);
             UIElementsHelper.SetVisibility(m_SnappshotViewSeparator, false);
-            UIElementsHelper.SetVisibility(m_SwapButtonHolder, false);
             UIElementsHelper.SetVisibility(m_TagA, false);
         }
 
@@ -146,7 +133,6 @@ namespace Unity.MemoryProfiler.Editor
                 UIElementsHelper.SetVisibility(m_SecondSnapshotHolder, secondIsOpen);
                 UIElementsHelper.SetVisibility(m_SecondSnapshotHolderEmpty, !secondIsOpen);
                 UIElementsHelper.SetVisibility(m_SnappshotViewSeparator, true);
-                UIElementsHelper.SetVisibility(m_SwapButtonHolder, true);
                 UIElementsHelper.SetVisibility(m_TagA, true);
                 if (firstIsOpen && secondIsOpen)
                     ShowDiffOfOpenSnapshots();
@@ -159,17 +145,17 @@ namespace Unity.MemoryProfiler.Editor
             SwapOpenSnapshots();
         }
 
-        void InitializeOpenSnapshotItem(VisualElement snapshotHolder, ref OpenSnapshotItemUI openSnapshotItemUI, Action openSnapshotHandler)
+        void InitializeOpenSnapshotItem(VisualElement snapshotHolder, ref OpenSnapshotItemUI openSnapshotItemUI, Action closeSnapshotHandler)
         {
             VisualElement item = snapshotHolder;
             openSnapshotItemUI.ProjectName = item.Q<Label>("open-snapshot__project-name");
             openSnapshotItemUI.SessionName = item.Q<Label>("open-snapshot__session-name");
-            openSnapshotItemUI.TotalUseddBar = item.Q("total-ram-usage-bar__used-bar");
+            openSnapshotItemUI.TotalResidentBar = item.Q("total-ram-usage-bar__used-bar");
             openSnapshotItemUI.TotalAvailableBar = item.Q("total-ram-usage-bar");
             openSnapshotItemUI.TotalUsedMemory = item.Q<Label>("open-snapshot__total-ram-used");
+            openSnapshotItemUI.TotalUsedMemoryNotAvailable = item.Q<Label>("open-snapshot__total-ram-used-not-available");
             openSnapshotItemUI.TotalAvailableMemory = item.Q<Label>("open-snapshot__total-hardware-resources");
 
-            //item.AddManipulator(new Clickable(openSnapshotHandler));
             openSnapshotItemUI.Item = item;
             openSnapshotItemUI.Image = item.Q<Image>("preview-image-open-item");
             openSnapshotItemUI.Image.scaleMode = ScaleMode.ScaleToFit;
@@ -180,7 +166,8 @@ namespace Unity.MemoryProfiler.Editor
             openSnapshotItemUI.Name = item.Q<Label>("snapshot-name");
             openSnapshotItemUI.DataContainer = item.Q<VisualElement>("open-snapshot", "open-snapshot__container");
             openSnapshotItemUI.Date = item.Q<Label>("snapshot-date");
-            openSnapshotItemUI.MemoryUsageDial = item.Q<MemoryUsageDial>();
+            var closeButton = item.Q<Button>("open-snapshot__close-button");
+            closeButton.clicked += closeSnapshotHandler;
             UIElementsHelper.SetVisibility(openSnapshotItemUI.PlatformIcon, false);
             UIElementsHelper.SetVisibility(openSnapshotItemUI.EditorPlatformIcon, false);
             UIElementsHelper.SetVisibility(openSnapshotItemUI.NoData, true);
@@ -206,8 +193,6 @@ namespace Unity.MemoryProfiler.Editor
                 UIElementsHelper.SetVisibility(itemUI.PlatformIcon, false);
                 UIElementsHelper.SetVisibility(itemUI.EditorPlatformIcon, false);
                 itemUI.UtcDateTime = default(DateTime);
-
-                itemUI.MemoryUsageDial.Percentage = 0;
             }
             else
             {
@@ -222,56 +207,47 @@ namespace Unity.MemoryProfiler.Editor
                 itemUI.ProjectName.text = snapshotGUIData.ProductName;
                 itemUI.SessionName.text = snapshotGUIData.SessionName;
                 itemUI.SessionName.tooltip = $"{itemUI.SessionName.text} - Unity {snapshotGUIData.UnityVersion}";
-                ulong totalAvailableMemory = 0;
+
+                itemUI.TotalUsedMemoryNotAvailable.tooltip = k_TotalResidentMemoryNotAvailable;
+
                 if (snapshotGUIData.TargetInfo.HasValue)
                 {
                     UIElementsHelper.SetVisibility(itemUI.TotalAvailableMemory, true);
-                    UIElementsHelper.SetVisibility(itemUI.TotalAvailableBar, true);
                     var info = snapshotGUIData.TargetInfo.Value;
 
-                    totalAvailableMemory = PlatformsHelper.GetPlatformSpecificTotalAvailableMemory(info);
+                    var totalAvailableMemory = info.TotalPhysicalMemory;
+                    var text = string.Format(TextContent.TotalPhysicallyAvailableMemory.text, EditorUtility.FormatBytes((long)info.TotalPhysicalMemory));
+                    var tooltip = string.Format(TextContent.TotalPhysicallyAvailableMemory.tooltip, EditorUtility.FormatBytes((long)info.TotalPhysicalMemory));
+                    itemUI.TotalAvailableBar.tooltip = tooltip;
+                    itemUI.TotalAvailableMemory.tooltip = tooltip;
+                    itemUI.TotalAvailableMemory.text = text;
 
-                    var totalAvailableInfoText = PlatformsHelper.GetPlatformSpecificTotalAvailableMemoryText(info);
-                    itemUI.TotalAvailableBar.tooltip = totalAvailableInfoText.tooltip;
-                    itemUI.TotalAvailableMemory.tooltip = totalAvailableInfoText.tooltip;
-                    itemUI.TotalAvailableMemory.text = totalAvailableInfoText.text;
-                }
-                else
-                {
-                    UIElementsHelper.SetVisibility(itemUI.TotalAvailableMemory, false);
-                    UIElementsHelper.SetVisibility(itemUI.TotalAvailableBar, false);
-                }
-                if (snapshotGUIData.MemoryStats.HasValue)
-                {
-                    UIElementsHelper.SetVisibility(itemUI.TotalUsedMemory, true);
-                    var totalUsed = string.Format(TextContent.TotalUsedMemory,
-                        EditorUtility.FormatBytes((long)snapshotGUIData.MemoryStats.Value.TotalVirtualMemory));
-                    itemUI.TotalUseddBar.tooltip = totalUsed;
-
-                    var totalKnownUsedMemory = snapshotGUIData.MemoryStats.Value.TotalVirtualMemory;
-                    if (totalKnownUsedMemory == 0)
+                    // Show resident/total usage bar only if both resident and total physical values are available
+                    bool residentMemoryAvailable = snapshotGUIData.TotalResident > 0;
+                    UIElementsHelper.SetVisibility(itemUI.TotalAvailableBar, residentMemoryAvailable);
+                    UIElementsHelper.SetVisibility(itemUI.TotalUsedMemory, residentMemoryAvailable);
+                    UIElementsHelper.SetVisibility(itemUI.TotalUsedMemoryNotAvailable, !residentMemoryAvailable);
+                    if (residentMemoryAvailable)
                     {
-                        // Fallback for platforms where System Used Memory isn't implemented yet
-                        totalKnownUsedMemory = snapshotGUIData.MemoryStats.Value.TotalReservedMemory;
-                    }
-                    // if more is used than available, we might have a non unified device in a mixed platform or otherwise mis-accounted the available space
-                    // assume that the apps memory still fitted in when the snapshot was taken.
-                    totalAvailableMemory = Math.Max(totalAvailableMemory, totalKnownUsedMemory);
-                    float usagePercentage = (float)totalKnownUsedMemory / totalAvailableMemory * 100f;
+                        var totalLabel = string.Format(TextContent.TotalResidentMemory,
+                            EditorUtility.FormatBytes((long)snapshotGUIData.TotalResident));
+                        itemUI.TotalUsedMemory.text = totalLabel;
 
-                    itemUI.TotalUseddBar.style.SetBarWidthInPercent(usagePercentage);
-                    itemUI.TotalUsedMemory.text = totalUsed;
-                    itemUI.MemoryUsageDial.Percentage = Mathf.RoundToInt(usagePercentage);
-                    UIElementsHelper.SetVisibility(itemUI.MemoryUsageDial.parent, true);
+                        // Resident/Physical memory bar
+                        var totalResident = Math.Min(snapshotGUIData.TotalResident, totalAvailableMemory);
+                        float usagePercentage = (float)totalResident / totalAvailableMemory * 100f;
+                        itemUI.TotalResidentBar.style.SetBarWidthInPercent(usagePercentage);
+                        itemUI.TotalResidentBar.tooltip = totalLabel;
+                    }
                 }
                 else
                 {
                     UIElementsHelper.SetVisibility(itemUI.TotalUsedMemory, false);
-                    UIElementsHelper.SetVisibility(itemUI.MemoryUsageDial.parent, false);
-                }
+                    UIElementsHelper.SetVisibility(itemUI.TotalAvailableBar, false);
+                    UIElementsHelper.SetVisibility(itemUI.TotalAvailableMemory, false);
 
-                // TODO: Always hide the dial until we have correct memory pressure metrics.
-                UIElementsHelper.SetVisibility(itemUI.MemoryUsageDial.parent, false);
+                    UIElementsHelper.SetVisibility(itemUI.TotalUsedMemoryNotAvailable, true);
+                }
 
                 snapshotGUIData.SetCurrentState(true, first, CompareMode);
             }

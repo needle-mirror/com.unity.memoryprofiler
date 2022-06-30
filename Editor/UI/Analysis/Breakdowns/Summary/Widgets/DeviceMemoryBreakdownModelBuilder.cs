@@ -34,7 +34,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 a,
                 b,
                 new List<MemoryBreakdownModel.Row>() {
-                    new MemoryBreakdownModel.Row("Resident", a.Resident, 0, b.Resident, 0, "resident", TextContent.ResidentMemoryDescription, null),
+                    new MemoryBreakdownModel.Row("Total Resident", a.Resident, 0, b.Resident, 0, "resident", TextContent.ResidentMemoryDescription, null),
                 });
         }
 

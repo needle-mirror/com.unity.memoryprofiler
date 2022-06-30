@@ -1,4 +1,6 @@
-# Getting started
+# The Memory Profiler window
+
+The __Memory Profiler__ package operates in its own window inside the Editor.
 
 To open the Memory Profiler window, go to  __Window__ &gt; __Analysis__ and select __Memory Profiler__.
 

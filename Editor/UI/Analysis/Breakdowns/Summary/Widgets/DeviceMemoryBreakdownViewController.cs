@@ -13,7 +13,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlBreakdownBar = "memory-usage-breakdown__bars";
         const string k_UxmlLegendTable = "memory-usage-breakdown__legend";
 
-        const string k_TotalLabelFormat = "Max available: {0}";
+        const string k_TotalLabelFormat = "Max Available: {0}";
 
         // Model
         readonly IMemoryBreakdownModelBuilder<DeviceMemoryBreakdownModel> m_Builder;

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -139,7 +138,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 isSupportedSnapshots,
                 new MemoryBreakdownViewController(new AllProcessMemoryBreakdownModelBuilder(m_BaseSnapshot, m_ComparedSnapshot))
                 {
-                    TotalLabelFormat = "Total committed memory: {0}",
+                    TotalLabelFormat = "Total Committed: {0}",
                     InspectAction = comapreMode ? null : TabController.MakePageSelector("All Of Memory"),
                     Normalized = normalizedSetting
                 });

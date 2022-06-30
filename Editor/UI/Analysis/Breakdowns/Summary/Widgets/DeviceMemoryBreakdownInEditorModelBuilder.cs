@@ -42,7 +42,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 state,
                 new DeviceMemoryBreakdownModel.State(),
                 new List<MemoryBreakdownModel.Row>() {
-                    new MemoryBreakdownModel.Row("Resident", state.Resident, 0, 0, 0, "resident", TextContent.ResidentMemoryDescription, null),
+                    new MemoryBreakdownModel.Row("Total Resident", state.Resident, 0, 0, 0, "resident", TextContent.ResidentMemoryDescription, null),
                 });
         }
 

@@ -1,6 +1,6 @@
 * [Memory Profiler overview](index)
 * [What's new](whats-new)
-* [Getting Started](memory-profiler-window)
+* [The Memory Profiler window](memory-profiler-window)
   * [Snapshots component](snapshots-component)
   * [Main component](main-component)
     * [Summary tab](summary-tab)
@@ -10,4 +10,5 @@
   * [Selection Details component](selection-details-component)
 * Workflows
     * [How to inspect memory usage](workflow-memory-usage)
+    * [Compare two snapshots](workflow-comparison)
 * [Tips and troubleshooting](tips-and-troubleshooting)

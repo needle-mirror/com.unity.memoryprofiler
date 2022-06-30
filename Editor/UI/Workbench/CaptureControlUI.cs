@@ -510,7 +510,14 @@ namespace Unity.MemoryProfiler.Editor
 
             if (snapshotCaptureResult)
             {
-                string snapshotPath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, FileExtensionContent.SnapshotFileNamePart + DateTime.Now.Ticks + FileExtensionContent.SnapshotFileExtension);
+                // Read meta information to build human readable file name
+                FileInfo file = new FileInfo(capturePath);
+                var snapFileData = new SnapshotFileData(file);
+                var dateString = snapFileData.GuiData.UtcDateTime.ToLocalTime().ToString("yyyy-MM-dd_HH-mm-ss", System.Globalization.CultureInfo.InvariantCulture);
+                var finalFileName = $"{snapFileData.GuiData.ProductName}_{dateString}{FileExtensionContent.SnapshotFileExtension}";
+
+                // Move file to the final location
+                string snapshotPath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, finalFileName);
                 File.Move(capturePath, snapshotPath);
 
                 if (screenshotCaptureResult)
