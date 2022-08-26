@@ -435,7 +435,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             UIElementsHelper.SetVisibility(m_CopyButton, false);
             NonObjectTitleShown = true;
-            m_Title.text = "No Item Selected";
+            m_Title.text = "No details available";
         }
 
         internal void NewDetailItem(MemorySampleSelection memorySampleSelection)

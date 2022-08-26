@@ -22,7 +22,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string kSystemAllocatorWarningDetailsDiffA = "System Allocator is used in snapshot A.";
         const string kSystemAllocatorWarningDetailsDiffB = "System Allocator is used in snapshot B.";
         const string kSystemAllocatorWarningDetailsDiffBoth = "System Allocator is used in both snapshots.";
-        const string kSystemAllocatorWarningDetails = "Dynamic Heap Allocator is generally more efficient than the System Allocator. Additionally, Native Objects can be allocated outside of Native Regions when using the System Allocator, so the Fragmentation page can't determine as well how much contiguous memory belongs to their initial allocation.";
+        const string kSystemAllocatorWarningDetails = "Dynamic Heap Allocator is generally more efficient than the System Allocator. Additionally, Native Objects can be allocated outside of Native Regions when using the System Allocator.";
 
         const string kNoIssuesFound = "No Issues detected.";
         const string kEnumerating3 = "{0}, {1} and {2}";

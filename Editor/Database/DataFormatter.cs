@@ -26,7 +26,6 @@ namespace Unity.MemoryProfiler.Editor.Database
         , IDataFormatter<float>
         , IDataFormatter<double>
         , IDataFormatter<string>
-        , IDataFormatter<Operation.DiffTable.DiffResult>
     {
         static DefaultDataFormatter m_Instance;
         const string k_NullPtrAddr = "0x0000000000000000";
@@ -71,6 +70,5 @@ namespace Unity.MemoryProfiler.Editor.Database
         string IDataFormatter<float>.Format(float value) { return value.ToString(); }
         string IDataFormatter<double>.Format(double value) { return value.ToString(); }
         string IDataFormatter<string>.Format(string value) { return value.ToString(); }
-        string IDataFormatter<Operation.DiffTable.DiffResult>.Format(Operation.DiffTable.DiffResult value) { return value.ToString(); }
     }
 }

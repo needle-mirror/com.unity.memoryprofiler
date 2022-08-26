@@ -2204,13 +2204,7 @@ namespace Unity.MemoryProfiler.Editor
 
                 if (typeof(T) == typeof(string))
                 {
-                    var nStr = new string('A', actualLength);
-                    elements[i] = nStr as T;
-                    fixed (char* dstPtr = nStr)
-                    {
-                        UnsafeUtility.MemCpyStride(dstPtr, UnsafeUtility.SizeOf<char>(),
-                            srcPtr, UnsafeUtility.SizeOf<byte>(), UnsafeUtility.SizeOf<byte>(), actualLength);
-                    }
+                    elements[i] = new string(unchecked((sbyte*)srcPtr), 0, actualLength, System.Text.Encoding.UTF8) as T;
                 }
                 else
                 {

@@ -1,6 +1,7 @@
 #if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
@@ -155,11 +156,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Total Native Heap.
             if (nativeItems.Count > 0)
             {
+                var groupSelectorProcessor = args.GroupSelectionProcessor;
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     m_ItemId++,
                     new AllTrackedMemoryModel.ItemData(
                         "Native Memory",
-                        accountedSize),
+                        accountedSize,
+                        () => groupSelectorProcessor?.Invoke(TextContent.NativeDescription)),
                     nativeItems);
                 return true;
             }
@@ -271,11 +274,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (nativeTypeItems.Count > 0)
                 {
+                    var groupSelectorProcessor = args.GroupSelectionProcessor;
                     var nativeObjectsItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                         m_ItemId++,
                         new AllTrackedMemoryModel.ItemData(
                             "Unity Objects",
                             nativeObjectsTotalSize,
+                            () => groupSelectorProcessor?.Invoke(TextContent.ManagedObjectsDescription),
                             childCount: nativeTypeItems.Count),
                         nativeTypeItems);
                     nativeItems.Add(nativeObjectsItem);
@@ -353,11 +358,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (nativeRootAreaItems.Count > 0)
                 {
+                    var groupSelectorProcessor = args.GroupSelectionProcessor;
                     var nativeRootsItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                         m_ItemId++,
                         new AllTrackedMemoryModel.ItemData(
                             "Unity Subsystems",
                             nativeRootsTotalSize,
+                            () => groupSelectorProcessor?.Invoke(TextContent.UnitySubsystemsDescription),
                             childCount: nativeRootAreaItems.Count),
                         nativeRootAreaItems);
                     nativeItems.Add(nativeRootsItem);
@@ -548,11 +555,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (scriptingItems.Count > 0)
             {
+                var groupSelectorProcessor = args.GroupSelectionProcessor;
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     m_ItemId++,
                     new AllTrackedMemoryModel.ItemData(
                         "Scripting Memory",
-                        accountedSize),
+                        accountedSize,
+                        () => groupSelectorProcessor?.Invoke(TextContent.ManagedDescription)),
                     scriptingItems);
                 return true;
             }
@@ -603,11 +612,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (graphicsItems.Count > 0)
                 {
+                    var groupSelectorProcessor = args.GroupSelectionProcessor;
                     tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                         m_ItemId++,
                         new AllTrackedMemoryModel.ItemData(
-                            "Graphics Memory",
-                            accountedSize),
+                            k_GraphicsMemoryName,
+                            accountedSize,
+                            () => groupSelectorProcessor?.Invoke(TextContent.GraphicsDescription)),
                         graphicsItems);
                     return true;
                 }
@@ -621,7 +632,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                         m_ItemId++,
                         new AllTrackedMemoryModel.ItemData(
-                            "Graphics Memory",
+                            k_GraphicsMemoryName,
                             graphicsUsedMemory),
                         graphicsItems);
                     return true;
@@ -701,12 +712,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return false;
             }
 
+            var groupSelectorProcessor = args.GroupSelectionProcessor;
+
             // Make a root node for executables & mapped branch
             tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                 m_ItemId++,
                 new AllTrackedMemoryModel.ItemData(
                     k_ExecutablesName,
-                    executableTotalValue),
+                    executableTotalValue,
+                    () => groupSelectorProcessor?.Invoke(TextContent.ExecutablesAndMappedDescription)),
                 executablesItems
                 );
             return true;
@@ -771,7 +785,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Action<long> nativeObjectSelectionProcessor = null,
                 Action<int> nativeTypeSelectionProcessor = null,
                 Action<long> managedObjectSelectionProcessor = null,
-                Action<int> managedTypeSelectionProcessor = null)
+                Action<int> managedTypeSelectionProcessor = null,
+                Action<string> groupSelectionProcessor = null)
             {
                 NameFilter = nameFilter;
                 PathFilter = pathFilter;
@@ -780,6 +795,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 NativeTypeSelectionProcessor = nativeTypeSelectionProcessor;
                 ManagedObjectSelectionProcessor = managedObjectSelectionProcessor;
                 ManagedTypeSelectionProcessor = managedTypeSelectionProcessor;
+                GroupSelectionProcessor = groupSelectionProcessor;
             }
 
             // Only items with a name that passes this filter will be included.
@@ -802,6 +818,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Selection processor for a Managed Type item. Argument is the index of the managed type.
             public Action<int> ManagedTypeSelectionProcessor { get; }
+
+            // Selection processor for a Group item. Argument is the description of the group.
+            public Action<string> GroupSelectionProcessor { get; }
         }
     }
 }

@@ -81,21 +81,23 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static readonly string CopyButtonDropdownOptionManagedTypeName = "Managed Type Name";
         public static readonly string CopyButtonDropdownOptionNativeTypeName = "Native Type Name";
 
-        public static string ResidentMemoryDescription => "The application footprint in physical memory. It inculdes all Unity and non-Unity allocations resident in memory at the time of the capture.";
+        public static string ResidentMemoryDescription => "The application footprint in physical memory. It includes all Unity and non-Unity allocations resident in memory at the time of the capture.";
 
         public static string ExecutablesAndMappedDescription => "Memory taken up by the build code of the application, including all shared libraries and assemblies, managed and native. This value is not yet reported consistently on all platforms." +
         "\n\nYou can reduce this memory usage by using a higher code stripping level and by reducing your dependencies on different modules and libraries.";
-        public static string NativeDescription => "Native memory, used by Objects such as:" +
-        "- Scene Objects (Game Objects and their Components)," +
-        "- Assets and Managers" +
-        "- Native Allocations including Native Arrays and other Native Containers" +
-        "- CPU side of Graphics Asset memory" +
-        "- And other" +
+        public static string NativeDescription => "Native memory, used by objects such as:" +
+        "\n- Scene Objects (Game Objects and their Components)," +
+        "\n- Assets and Managers" +
+        "\n- Native Allocations including Native Arrays and other Native Containers" +
+        "\n- CPU side of Graphics Asset memory" +
+        "\n- And other" +
         "\n\nThis doesn't include Audio and Graphics, which are shown in separate categories." +
-        "\n\nYou can inspect these categories further in the All of Memory Breakdown.";
+        "\n\nYou can inspect these categories further in the All of Memory Breakdown." +
+        "\n\nNote: Values in Summary and All Of Memory views might be different as they use different ways of grouping items together.";
         public static string ProfilerDescription => "This is the Profiler overhead, which includes memory used to collect and send Profiler frame data, take memory captures or process the received Profiler frame data in the Editor.";
         public static string GraphicsDescription => "Memory used by the Graphics Driver and the GPU to visualize your application. This includes display buffers, RenderTextures, Textures, Meshes, Animations." +
-        "\n\nNote: not all these objects' memory is represented in this category. For example, Read/Write enabled graphics assets need to retain a copy in CPU accessible memory, which doubles their memory usage. Also, not necessarily all memory from these Type of objects resides in GPU memory.";
+        "\n\nNote: not all these objects' memory is represented in this category. For example, Read/Write enabled graphics assets need to retain a copy in CPU accessible memory, which doubles their memory usage. Also, not necessarily all memory from these Type of objects resides in GPU memory." +
+        "\n\nValues in the Summary and All Of Memory views might be different . The Summary view shows the total used memory as reported by the operating system, while the All Of Memory view sums the estimated memory size of all known objects.";
         public static string ManagedDescription => "Contains all Virtual Machine and Managed Heap memory" +
         "\n\nThe Managed Heap contains data related to Managed Objects and the space that has been reserved for them. It is managed by the Scripting Garbage Collector, so that any managed objects that no longer have references chain to a root are collected." +
         "\n\nThe used amount in the Managed Memory is made up of memory used for Managed objects and of empty space that cannot be returned." +
@@ -131,6 +133,8 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "If no fitting place is found for the Object, GC Collection is triggered. When using the Incremental GC, a new heap section is immediately allocated (expanding the heap) for the new Object, " +
             "while the Garbage Collection happens asynchronously. When it is not used, a new section is only allocated if there is not enough space after the collection either." +
             "\n\nThis Memory could also still be occupied by Objects that have been abandoned after the last GC.Alloc sweep and are waiting for collection in the next one.";
+
+        public static string UnitySubsystemsDescription => "Lists all Unity subsystems, responsible for managing different features and functionalities within the Unity Engine.";
 
         public const string UsedByNativeCodeStatus = "Empty Array Required by Unity's subsystems";
         public const string UsedByNativeCodeHint = "This array's Type is marked with a [UsedByNativeCode] or [RequiredByNativeCode] Attribute in the Unity code-base and the array exists so that the Type is not compiled out on build. It is held in memory via a GCHandle. You can search the public C# reference repository for those attributes https://github.com/Unity-Technologies/UnityCsReference/.";

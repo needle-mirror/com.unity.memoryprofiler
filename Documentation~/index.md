@@ -1,11 +1,11 @@
 # Memory Profiler
 
-The Memory Profiler is a tool you can use to identify areas in your Unity Project, and the Unity Editor, where you can reduce memory usage. You can use it to capture, inspect, and compare memory snapshots. A memory snapshot is a record of how the memory in your application is organized at the point in a frame when the snapshot was taken.
+The Memory Profiler is a tool you can use to inspect the memory usage of your Unity application and the Unity Editor. The package adds a Memory Profiler window to the Unity Editor, which you can use to capture, inspect, and compare [Snapshots](snapshots.md) of memory. Snapshots are a record of how the memory your application uses was organized when the Memory Profiler captured the snapshot.
 
-![](images/index-page-screenshot.png)
+![The Memory Profiler window](images/index-page-screenshot.png)
 The Memory Profiler window
 
-When you record some data with the Memory Profiler, you can access the data through the [Memory Profiler window](memory-profiler-window.md) in the Unity Editor. This window provides an overview of native and managed memory allocations. Use this data to profile your application and to detect memory leaks and fragmentation.
+The Memory Profiler window also provides an overview of native and managed memory allocations, to assess your application's memory use and identify potential issues such as memory leaks.
 
 This package is separate to the built-in [Memory Profiler module](https://docs.unity3d.com/Manual/ProfilerMemory.html), and each is useful for different purposes. The Memory Profiler package is designed to provide more detailed information about your application's memory allocations.
 
@@ -13,7 +13,9 @@ This package is separate to the built-in [Memory Profiler module](https://docs.u
 
 To install this package, follow the instructions in the [Package Manager documentation](https://docs.unity3d.com/Manual/upm-ui.html).
 
-In Unity version 2021.3 or later, select the `+` button in the Package Manager window, select the option __Add By Name__ and enter `com.unity.memoryprofiler` to install the package. For any Unity version newer than 2021.2.0a5, you can click [this link to install it by name](com.unity3d.kharma:upmpackage/com.unity.memoryprofiler).
+In Unity version 2021.3 or later, select the `+` button in the Package Manager window, select the option __Add By Name__ and enter `com.unity.memoryprofiler` to install the package. For more information, see [Adding a registry package by name](https://docs.unity3d.com/Manual/upm-ui-quick.html). You can also use the following link to open the Unity Editor and install the Memory Profiler via the package manager directly:
+
+[Open the Unity Editor and install the Memory Profiler](com.unity3d.kharma:upmpackage/com.unity.memoryprofiler)
 
 ## Requirements
 
@@ -28,16 +30,34 @@ This version of the Memory Profiler is compatible with the following versions of
 
 When you install the Memory Profiler package, Unity automatically installs the [Editor Coroutines](https://docs.unity3d.com/Packages/com.unity.editorcoroutines@0.0/manual/index.html) package as a dependency.
 
-## Package contents
+## Known Issues
 
-The following table indicates the root folders in the package where you can find useful resources:
+* The Memory Profiler reports the wrong Total Committed Memory value for Android devices on Unity versions before 2021.1.0a1 or before 2020.2.0b8. It reports the total RAM that the device has, not the total amount of RAM used. [(Case 1267773)](https://issuetracker.unity3d.com/product/unity/issues/guid/1267773/)
 
-|Location|Description|
-|:---|:---|
-|`Documentation~`|Contains the documentation for the package.|
-|`Tests`|Contains the unit tests for the package.|
+### Data concerns when sharing snapshots
+
+The memory snapshots you take with the Memory Profiler UI or the [Memory Profiler API](https://docs.unity3d.com/Documentation/ScriptReference/Profiling.Memory.Experimental.MemoryProfiler.html) contain the entire contents of the managed heap of the Player or Editor instance you are capturing.
+
+You can see most of the data through the Memory Profiler UI, with the exception of managed allocations that do not have a garbage collection handle. These allocations might be related to Mono type data, leaked managed data, or allocations that the garbage collector has already collected and released but the memory section they were located in hasn’t been overwritten with new data. The latter happens because garbage-collected memory is not "stomped" for performance reasons.
+
+The kind of data that you can explore in areas such as the __All Managed Objects__ view gives you an idea of what data could be included in the memory snapshot. The Memory profiler includes any object instance of a class, all fields on that object, as well as the class’ statics excluding literals such as const values.
+
+The Memory Profiler stores fields depending on the data type:
+
+* It stores [value types](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/value-types) by their value
+* It stores [reference types](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/reference-types) as pointer addresses. The UI resolves any pointer address as a link to the object the address points to.
+
+For example, string type fields might indicate via their name what the string they point to means. So searching for a field named "Password", "Credentials" or "Token" might identify strings with sensitive data. If Unity has garbage collected the object that points to the string, or even the string itself, the data might still be there. However, it is no longer easily identifiable, unless you have a rough idea of what you're looking for or part of the string value to search for.
+
+**Note:** The previous section only mentions string data as potentially problematic, but this issue isn't exclusive to strings and might happen in other forms as well, such as field or type names.
+
+One way to safeguard against accidentally disclosing personally-identifying information, credentials or similar confidential data when you share snapshot files outside of your teams, is to put that data into constant fields. Constant fields bake that data into the binary executable, which the Memory Profiler does not capture. However, a binary executable might be de-compiled by users and expose the data that way.
+
+You can only take a memory snapshot in development Players, so these fields might be non-const in release builds, which will make it more difficult to get to the data, but not entirely impossible.
+
+If you have any further questions regarding this topic, use the [Unity Forum thread](https://forum.unity.com/threads/data-concerns-when-sharing-snapshots.718916/) to discuss this issue.
 
 ## Additional resources
 
-* [Profiler overview](https://docs.unity3d.com/Manual/Profiler.html)
-* [Ultimate guide to profiling Unity games](https://resources.unity.com/games/ultimate-guide-to-profiling-unity-games)
+* [Profiler overview](https://docs.unity3d.com/Manual/Profiler.html) - Documentation about how to use Unity's built-in profiler.
+* [Ultimate guide to profiling Unity games](https://resources.unity.com/games/ultimate-guide-to-profiling-unity-games) - A guide describing how to profile an application including best practices, recommended workflows and advice.

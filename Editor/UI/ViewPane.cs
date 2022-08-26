@@ -6,14 +6,18 @@ using Unity.Profiling;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    internal interface IViewEventListener
+    {
+        void OnRepaint();
+    }
+
     internal interface IViewPaneEventListener
     {
-        void OnOpenLink(Database.LinkRequest link);
-        void OnOpenLink(Database.LinkRequest link, UIState.SnapshotMode mode);
         void OnOpenMemoryMap();
         void OnOpenTreeMap();
         void OnRepaint();
     }
+
     internal abstract class ViewPane : UI.IViewEventListener
     {
         public abstract string ViewName { get; }

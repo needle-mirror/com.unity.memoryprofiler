@@ -1,3 +1,15 @@
+.memory-usage-breakdown__dark:root
+{
+  --memory-usage-breakdown__legend__used-reserved-label__text-color: #868686;
+  --memory-usage-breakdown__bar__element__border-color: none;
+}
+
+.memory-usage-breakdown__light:root
+{
+  --memory-usage-breakdown__legend__used-reserved-label__text-color: #626262;
+  --memory-usage-breakdown__bar__element__border-color: black;
+}
+
 #memory-usage-breakdown {
     flex: 1 1 auto;
 }
@@ -50,6 +62,7 @@
     /* Selection & highlight border */
     border-width: 1px;
     border-radius: 1px;
+    border-color: var(--memory-usage-breakdown__bar__element__border-color);
 }
 #memory-usage-breakdown__bar .memory-usage-breakdown__element-hovered {
     border-color: var(--unity-colors-input_field-border-hover);
@@ -231,7 +244,7 @@
 
 .memory-usage-breakdown__legend__used-reserved-label {
     -unity-font-style: italic;
-    color: rgb(134, 134, 134);
+    color: var(--memory-usage-breakdown__legend__used-reserved-label__text-color);
 }
 
 .memory-usage-breakdown__legend__first-row {

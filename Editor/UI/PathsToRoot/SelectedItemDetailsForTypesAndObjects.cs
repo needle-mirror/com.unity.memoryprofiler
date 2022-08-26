@@ -25,6 +25,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             uiStateHolder.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.UnifiedObject, this);
             uiStateHolder.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.ManagedType, this);
             uiStateHolder.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.NativeType, this);
+            uiStateHolder.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.Group, this);
         }
 
         /// <summary>
@@ -80,6 +81,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     type = new UnifiedType(m_CachedSnapshot, (int)m_CurrentSelectionIdx);
                     HandleTypeDetails(type, out summary);
+                    break;
+                case MemorySampleSelectionType.Group:
+                    HandleGroupDetails(memorySampleSelection.Title, memorySampleSelection.Description);
+                    summary = memorySampleSelection.Description;
                     break;
                 default:
                     summary = null;
@@ -317,6 +322,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_UI.SetManagedObjectInspector(selectedUnityObject.ManagedObjectData);
             }
+        }
+
+        internal void HandleGroupDetails(string title, string description)
+        {
+            m_UI.SetItemName(title);
+            m_UI.SetDescription(description);
         }
 
         void UpdateStatusAndHint(UnifiedUnityObjectInfo m_SelectedUnityObject, out string statusSummary)

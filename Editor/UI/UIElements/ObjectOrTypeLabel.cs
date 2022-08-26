@@ -373,6 +373,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case MemorySampleSelectionType.Connection:
                 case MemorySampleSelectionType.HighlevelBreakdownElement:
                 case MemorySampleSelectionType.Symbol:
+                case MemorySampleSelectionType.Group:
                     SetToNoObjectSelected();
                     break;
                 default:

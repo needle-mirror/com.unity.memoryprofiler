@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.0.0-pre.3",
+  "version": "1.0.0",
   "unity": "2022.2",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -16,17 +16,14 @@
     "com.unity.editorcoroutines": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.0.0-pre.3"
-  },
-  "_upm": {
-    "changelog": "### Added\n- All Of Memory Comparison functionality.\n- Added the ability to sort by multiple columns on Unity Objects, All Of Memory, Unity Objects Comparison, and All Of Memory Comparison table column headers. CTRL-click a table column header to add it as an additional (secondary, tertiary etc.) sorting column.\n- List of executables and mapped files if snapshot is made with Unity 2022.2 or newer.\n\n### Changed\n- Close a snapshot by clicking the new 'Close' button, instead of selecting an open snapshot.\n- Remove A/B snapshot colors.\n- Remove Swap Snapshots button.\n\n### Fixed\n- Renaming a snapshot no longer allows duplicate file names with different casing, which naturally caused file system errors.\n- Fixed detail panel reference view not showing all the references for selected object."
+    "com.unity.memoryprofiler.tests": "1.0.0"
   },
   "upmCi": {
-    "footprint": "65873fc5d6426679a71a0b43dcd23764bd9cf444"
+    "footprint": "3c9a2eaaa46a66a4d80786ae55a2fa65998754a1"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "728ba93d5d05e91f1650f36b91c57aa38de3379d"
+    "revision": "abbd964f85ded6b5cd5296c4a2d4d3f393950ac1"
   }
 }

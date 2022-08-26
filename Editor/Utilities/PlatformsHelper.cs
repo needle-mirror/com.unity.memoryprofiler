@@ -95,7 +95,11 @@ namespace Unity.MemoryProfiler.Editor
                     break;
 #endif
                 case CloudRendering:
+#if UNITY_2023_1_OR_NEWER
+                    buildTarget = BuildTarget.LinuxHeadlessSimulation;
+#else
                     buildTarget = BuildTarget.CloudRendering;
+#endif
                     break;
                 default:
                     // Unknown target

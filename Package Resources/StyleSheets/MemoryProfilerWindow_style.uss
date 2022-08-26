@@ -108,7 +108,6 @@ Image.optionButtonIcon {
 }
 
 .project-or-session-name-text {
-    color: rgb(134, 134, 134);
     -unity-font-style: italic;
 }
 
@@ -328,7 +327,6 @@ Image.history-button__Icon {
 
 .seession-list__item__foldout .unity-toggle__text {
     -unity-text-align: middle-left;
-    color: rgb(134, 134, 134);
     flex-grow: 1;
     overflow: hidden;
     text-overflow: ellipsis;

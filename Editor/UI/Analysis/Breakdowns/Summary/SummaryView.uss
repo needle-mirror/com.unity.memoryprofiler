@@ -1,3 +1,15 @@
+.summary-view__dark:root
+{
+  --memory-usage-summary__unavailable__color: #bdbdbd;
+  --memory-usage-summary__unavailable__background-color: #464646;
+}
+
+.summary-view__light:root
+{
+  --memory-usage-summary__unavailable__color: #090909;
+  --memory-usage-summary__unavailable__background-color: #CBCBCB;
+}
+
 #summary-view
 {
     margin-top: 8px;
@@ -56,8 +68,8 @@
     border-radius: 3px;
     border-color: rgb(35, 35, 35);
 
-    color: rgb(189, 189, 189);
-    background-color: rgba(96, 96, 96, 0.2);
+    color: var(--memory-usage-summary__unavailable__color);
+    background-color: var(--memory-usage-summary__unavailable__background-color);
 }
 
 #memory-usage-summary__unavailable__icon {

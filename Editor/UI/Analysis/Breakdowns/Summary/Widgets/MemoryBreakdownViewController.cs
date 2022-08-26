@@ -7,6 +7,8 @@ namespace Unity.MemoryProfiler.Editor.UI
     internal class MemoryBreakdownViewController : ViewController, IMemoryBreakdownViewController
     {
         const string k_UxmlAssetGuid = "e0fa9dca4a493bf47b10175e110cac37";
+        const string k_UssClass_Dark = "memory-usage-breakdown__dark";
+        const string k_UssClass_Light = "memory-usage-breakdown__light";
 
         const string k_UxmlHeaderTitle = "memory-usage-breakdown__header__title";
         const string k_UxmlHeaderInspectButton = "memory-usage-breakdown__header__inspect-button";
@@ -107,6 +109,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             var view = ViewControllerUtility.LoadVisualTreeFromUxml(k_UxmlAssetGuid);
             if (view == null)
                 throw new InvalidOperationException("Unable to create view from Uxml. Uxml must contain at least one child element.");
+
+            var themeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
+            view.AddToClassList(themeUssClass);
 
             return view;
         }

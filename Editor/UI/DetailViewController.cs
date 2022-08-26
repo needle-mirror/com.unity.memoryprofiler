@@ -176,6 +176,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case MemorySampleSelectionType.Connection:
                 case MemorySampleSelectionType.HighlevelBreakdownElement:
                 case MemorySampleSelectionType.Symbol:
+                case MemorySampleSelectionType.Group:
                     return false;
                 default:
                     // Check with the type author and add to the selection above

@@ -16,6 +16,21 @@ namespace Unity.MemoryProfiler.Editor
     {
         public struct Findings
         {
+            public Findings(Object FoundObject, int DegreeOfCertainty, Texture PreviewImage)
+                : this(FoundObject, DegreeOfCertainty, PreviewImage, true)
+            {
+            }
+
+            public Findings(Object FoundObject, int DegreeOfCertainty, Texture PreviewImage, bool PreviewImageNeedsCleanup)
+            {
+                this.FoundObject = FoundObject;
+                this.DegreeOfCertainty = DegreeOfCertainty;
+                this.PreviewImage = PreviewImage;
+                // Do not destroy preview image if is corresponds to the real asset in the AssedDatabase.
+                this.PreviewImageNeedsCleanup = PreviewImageNeedsCleanup && (PreviewImage != null && !AssetDatabase.Contains(PreviewImage));
+                FailReason = SearchFailReason.Found;
+            }
+
             public Object FoundObject;
             public int DegreeOfCertainty;
             public SearchFailReason FailReason;
@@ -125,6 +140,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public static Findings FindObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
+            // If the object belongs to the same session there is a chance that it is still loaded and can be used based on the InstanceID
+            // (e.g. Texture)
             if (snapshot.MetaData.SessionGUID == CurrentSessionId)
             {
                 var findings = FindByInstanceID(snapshot, unifiedUnityObjectInfo);
@@ -168,9 +185,10 @@ namespace Unity.MemoryProfiler.Editor
                     // maybe use Undo for this
                     Selection.instanceIDs = oldSelection;
                     Selection.activeInstanceID = oldActiveSelection;
-                    bool previewImageNeedsCleanup;
-                    var previewImage = TryObtainingPreview(obj, out previewImageNeedsCleanup);
-                    return new Findings() { FoundObject = obj, DegreeOfCertainty = 100, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup };
+                    var previewImage = TryObtainingPreviewForDynamicObject(obj, out var previewImageNeedsCleanup);
+                    // If preview image could not be loaded we report SearchFailReason.NotFound
+                    if (previewImage != null)
+                        return new Findings(obj, 100, previewImage, previewImageNeedsCleanup);
                 }
             }
             Selection.instanceIDs = oldSelection;
@@ -277,18 +295,12 @@ namespace Unity.MemoryProfiler.Editor
 
             if (failReason == SearchFailReason.Found && foundObject != null && succesfulContext != null)
             {
-                bool previewImageNeedsCleanup;
-                var previewImage = TryObtainingPreview(foundObject, out previewImageNeedsCleanup);
+                var previewImage = TryObtainingPreviewWithEditor(foundObject);
                 if (previewImage == null)
-                {
                     previewImage = searchItem.GetPreview(succesfulContext, new Vector2(500, 500), FetchPreviewOptions.Large);
-                    previewImageNeedsCleanup = previewImage == null || !previewImage.hideFlags.HasFlag(HideFlags.NotEditable);
-                }
+
                 succesfulContext.Dispose();
-                return new Findings() {
-                    FoundObject = foundObject, DegreeOfCertainty = 80,
-                    PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup
-                };
+                return new Findings(foundObject, 80, previewImage);
             }
             return new Findings() { FailReason = failReason };
         }
@@ -308,9 +320,8 @@ namespace Unity.MemoryProfiler.Editor
                     var foundObj = AssetDatabase.LoadAssetAtPath(path, assetType);
                     // this is a guesstimate, don't trust this too much
 
-                    bool previewImageNeedsCleanup;
-                    var previewImage = TryObtainingPreview(foundObj, out previewImageNeedsCleanup);
-                    return new Findings() { FoundObject = foundObj, DegreeOfCertainty = 70, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup };
+                    var previewImage = TryObtainingPreviewWithEditor(foundObj);
+                    return new Findings(foundObj, 70, previewImage);
                 }
             }
             return new Findings() { FailReason = foundAssets.Length == 0 ? SearchFailReason.TypeIssues : SearchFailReason.FoundTooMany };
@@ -345,17 +356,10 @@ namespace Unity.MemoryProfiler.Editor
                         }
                         if (foundObject != null && !CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
                         {
-                            bool previewImageNeedsCleanup;
-                            var previewImage = TryObtainingPreview(foundObject, out previewImageNeedsCleanup);
+                            var previewImage = TryObtainingPreviewWithEditor(foundObject);
                             if (previewImage == null)
-                            {
                                 previewImage = search[0].GetPreview(context, new Vector2(500, 500));
-                                previewImageNeedsCleanup = previewImage == null || !previewImage.hideFlags.HasFlag(HideFlags.NotEditable);
-                            }
-                            return new Findings() {
-                                FoundObject = foundObject, DegreeOfCertainty = 80,
-                                PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup
-                            };
+                            return new Findings(foundObject, 80, previewImage);
                         }
                     }
                 }
@@ -397,9 +401,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 if (foundCandidate)
                 {
-                    bool previewImageNeedsCleanup;
-                    var previewImage = TryObtainingPreview(foundCandidate, out previewImageNeedsCleanup);
-                    return new Findings() { FoundObject = foundCandidate, DegreeOfCertainty = 70, PreviewImage = previewImage, PreviewImageNeedsCleanup = previewImageNeedsCleanup };
+                    var previewImage = TryObtainingPreviewWithEditor(foundCandidate);
+                    return new Findings(foundObject, 70, previewImage);
                 }
             }
             return new Findings() { FailReason = SearchFailReason.NotFound };
@@ -407,15 +410,22 @@ namespace Unity.MemoryProfiler.Editor
 
 #endif
 
-        static Texture TryObtainingPreview(Object obj, out bool previewImageNeedsCleanup)
+        static Texture TryObtainingPreviewForDynamicObject(Object obj, out bool previewImageNeedsCleanup)
         {
+            previewImageNeedsCleanup = false;
             if (obj is Texture2D || obj is RenderTexture)
             {
-                previewImageNeedsCleanup = false;
                 if (obj is RenderTexture && (obj as RenderTexture).antiAliasing > 1)
                     return null;
                 return obj as Texture;
             }
+
+            previewImageNeedsCleanup = true;
+            return TryObtainingPreviewWithEditor(obj);
+        }
+
+        static Texture TryObtainingPreviewWithEditor(Object obj)
+        {
             var editor = UnityEditor.Editor.CreateEditor(obj);
             string guid;
             long fileId;
@@ -430,7 +440,6 @@ namespace Unity.MemoryProfiler.Editor
                 preview = editor.RenderStaticPreview(assetPath, new Object[] { obj }, 500, 500);
             }
             Object.DestroyImmediate(editor);
-            previewImageNeedsCleanup = preview == null || !preview.hideFlags.HasFlag(HideFlags.NotEditable);
             return preview;
         }
 

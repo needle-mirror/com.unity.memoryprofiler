@@ -186,3 +186,13 @@ Label.snapshot--in-view {
 #object-or-type-label__menu-button:hover {
     background-color: rgb(85, 85, 85);
 }
+
+.seession-list__item__foldout .unity-toggle__text
+{
+    color: #868686;
+}
+
+.project-or-session-name-text
+{
+    color: #868686;
+}

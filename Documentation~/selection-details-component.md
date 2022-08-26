@@ -1,20 +1,31 @@
 # Selection Details
 
-This component displays detailed information about an item you select in either the [Main component](main-component.md) or the [References component](references-component.md). The contents of this component change dynamically based on the selected object. The __Selection Details__ component can contextually display the following groups of data:
+This component displays detailed information about an item you select in either the [Main component](main-component.md) or the [References component](references-component.md). The contents of this component change dynamically based on the selected object.
 
-* Basic - displays high level information about any selected object.
-* Help - displays text to explain the status of the object in more detail.
-* Advanced - displays more detailed information about the object than the Basic group. The Selection Details panel doesn't display this group for all types of objects.
-* Preview - displays a preview of how an object appears in the Editor or your application e.g. Shaders.
-* Managed Fields - displays a table including any managed fields the selected object contains and information about those fields.
+![](images/selection-details.png)</br>
+The __Selection Details__ component
+
+The __Selection Details__ component displays three buttons to interact with and multiple contextual data groups to describe the currently selected obeject. The three available buttons are:
+
+* __Select in Editor__ - Select the object inside the Editor, if possible. This option is disabled for any objects that Unity generates at runtime.
+* __Search In Project__ - Use Unity's legacy search to highlight the object in the project browser. For more information about the legacy search, see [Search in the Editor.](https://docs.unity3d.com/Manual/Searching.html)
+* __Open in Search__ - Search for the object in the [Unity Search](https://docs.unity3d.com/Manual/search-overview.html) window.
+
+Th Selection Details component also provides information about the object through the following data groups:
+
+* A: [Basic](#basic) - displays high level information about any selected object.
+* B: [Help](#help) - displays text to explain the status of the object in more detail.
+* C: [Advanced](#advanced) - displays more detailed information about the object than the Basic group. The Selection Details panel doesn't display this group for all types of objects.
+* D: [Preview](#preview) - displays a preview of how an object appears in the Editor or your application e.g. Shaders.
+* E: [Managed Fields](#managed-fields) - displays a table including any managed fields the selected object contains and information about those fields.
 
 ## Basic
 
 This data group contains three entries:
 
-* The **Size** entry displays the size of the object in memory, and how much of that total is native or managed memory.
-* The **Referenced By** entry displays how many other objects reference the selected object and how many self-references the object has. The [References component](references-component.md) provides more details about these references.
-* The **Status** entry displays the type of object selected, whether or not it's used anywhere in the application and, if applicable, how it's used.
+* The __Size__ entry displays the size of the object in memory, and how much of that total is native or managed memory.
+* The __Referenced By__ entry displays how many other objects reference the selected object and how many self-references the object has. The [References component](references-component.md) provides more details about these references.
+* The __Status__ entry displays the type of object selected, whether or not it's used anywhere in the application and, if applicable, how it's used.
 
 ## Help
 
@@ -42,7 +53,7 @@ This data group displays a preview of how some objects appear in the application
 
 ## Managed Fields
 
-This data group displays a table containing any fields in managed memory that the selected object contains. Some entries may involved hierarchies; select the parent entry to expand or hide sub-entries. The table displays the following columns:
+This data group displays a table containing any fields in managed memory that the selected object contains. Some entries might involve hierarchies; select the parent entry to expand or hide sub-entries. The table displays the following columns:
 
 * Name - the name of the field.
 * Value - the current value of the field when the snapshot was captured.

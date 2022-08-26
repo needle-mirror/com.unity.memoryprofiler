@@ -333,18 +333,6 @@ namespace Unity.MemoryProfiler.Editor
                 return;
 
             var currentViewName = "Unknown";
-            if (currentViewPane is UI.TreeMapPane)
-            {
-                currentViewName = "TreeMap";
-            }
-            else if (currentViewPane is UI.MemoryMapPane)
-            {
-                currentViewName = "MemoryMap";
-            }
-            else if (currentViewPane is UI.SpreadsheetPane)
-            {
-                currentViewName = (currentViewPane as UI.SpreadsheetPane).TableDisplayName;
-            }
             MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.DiffToggledEvent>();
 
             var oldMode = m_UIState.CurrentViewMode;
