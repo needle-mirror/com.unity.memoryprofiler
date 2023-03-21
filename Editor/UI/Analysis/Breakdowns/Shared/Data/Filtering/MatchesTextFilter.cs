@@ -5,12 +5,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     class MatchesTextFilter : ITextFilter
     {
-        string Text { get; }
+        readonly string m_Text;
+        public string Value => m_Text;
 
         MatchesTextFilter(string text)
         {
-            Text = text;
+            m_Text = text;
         }
+
 
         public static MatchesTextFilter Create(string text)
         {
@@ -21,13 +23,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             return new MatchesTextFilter(text);
         }
 
-        // Test if the provided 'text' passes the filter. Returns true if 'text' is equal to the filter's 'Text', according to an ordinal, case-insensitive comparison. If 'text' is null, returns true if the filter's 'Text' is an empty string. Otherwise, returns false.
-        public bool TextPasses(string text)
+        /// <summary>
+        /// Test if the provided '<paramref name="text"/>' passes the filter.
+        /// </summary>
+        /// <param name="text"></param>
+        /// <returns>
+        /// Returns true if '<paramref name="text"/>' is equal to the filter's 'Text', according to an ordinal, case-insensitive comparison.
+        /// If '<paramref name="text"/>' is null, returns true if the filter's 'Text' is an empty string.
+        /// Otherwise, returns false.</returns>
+        public bool Passes(string text, CachedSnapshot cachedSnapshot = null)
         {
             if (text == null)
-                return string.IsNullOrEmpty(Text);
+                return string.IsNullOrEmpty(m_Text);
 
-            return text.Equals(Text, StringComparison.OrdinalIgnoreCase);
+            return text.Equals(m_Text, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

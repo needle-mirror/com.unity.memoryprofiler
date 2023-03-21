@@ -332,22 +332,22 @@ namespace Unity.MemoryProfiler.Editor
             SamePlatformAsDiff = 1 << 10,
         }
 
-        internal static SnapshotProjectAndUnityVersionDetails GetSnapshotProjectAndUnityVersionDetails(SnapshotFileData snapshot)
+        internal static SnapshotProjectAndUnityVersionDetails GetSnapshotProjectAndUnityVersionDetails(CachedSnapshot snapshot)
         {
             var snapshotDetails = MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.None;
-            if (snapshot.GuiData.SessionId == EditorAssetFinderUtility.CurrentSessionId)
+            if (snapshot.MetaData.SessionGUID == EditorAssetFinderUtility.CurrentSessionId)
                 snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SameSession;
-            if (snapshot.GuiData.ProductName == Application.productName)
+            if (snapshot.MetaData.ProductName == Application.productName)
                 snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SameProject;
-            if (snapshot.GuiData.UnityVersion == Application.unityVersion)
+            if (snapshot.MetaData.UnityVersion == Application.unityVersion)
                 snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SameUnityVersion;
             else
             {
-                if (string.Compare(snapshot.GuiData.UnityVersion, Application.unityVersion) > 0)
+                if (string.Compare(snapshot.MetaData.UnityVersion, Application.unityVersion) > 0)
                     snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SnapshotFromNewerUnityVersion;
                 else
                     snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SnapshotFromOlderUnityVersion;
-                var snapshotVersion = snapshot.GuiData.UnityVersion.Split('.');
+                var snapshotVersion = snapshot.MetaData.UnityVersion.Split('.');
                 var editorVersion = Application.unityVersion.Split('.');
                 if (snapshotVersion != null && editorVersion != null && snapshotVersion.Length >= 3 && editorVersion.Length >= 3)
                 {
@@ -359,14 +359,16 @@ namespace Unity.MemoryProfiler.Editor
                         snapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.PatchVersionJump;
                 }
             }
-            if (PlatformsHelper.RuntimePlatformIsEditorPlatform(snapshot.GuiData.RuntimePlatform))
+
+            var platform = PlatformsHelper.GetRuntimePlatform(snapshot.MetaData.Platform);
+            if (PlatformsHelper.RuntimePlatformIsEditorPlatform(platform))
             {
                 snapshotDetails |= SnapshotProjectAndUnityVersionDetails.EditorSnapshot;
                 snapshotDetails |= SnapshotProjectAndUnityVersionDetails.SamePlatformAsEditor;
             }
             else
             {
-                if (PlatformsHelper.SameRuntimePlatformAsEditorPlatform(snapshot.GuiData.RuntimePlatform))
+                if (PlatformsHelper.SameRuntimePlatformAsEditorPlatform(platform))
                     snapshotDetails |= SnapshotProjectAndUnityVersionDetails.SamePlatformAsEditor;
             }
             return snapshotDetails;
@@ -406,6 +408,7 @@ namespace Unity.MemoryProfiler.Editor
             public string fileName;
             public string unityVersionOfSnapshot { set => fileName = value; }
         }
+
         [Serializable]
         internal struct ImportedSnapshotEvent : IMemoryProfilerAnalyticsEvent
         {
@@ -878,14 +881,19 @@ namespace Unity.MemoryProfiler.Editor
 #endif
         {
             var type = typeof(TEvent);
-            if (s_EnableAnalytics && s_PendingEvents.ContainsKey(type))
+            if (s_EnableAnalytics)
             {
-                var e = (s_PendingEventsWithMetadata[typeof(TEvent)] as IInteractionCounterEvent<TEnum>);
-                if (e != null)
-                    e.AddInteraction(eventType);
+                if (s_PendingEvents.ContainsKey(type) && s_PendingEventsWithMetadata.ContainsKey(typeof(TEvent)))
+                {
+                    var e = s_PendingEventsWithMetadata[typeof(TEvent)] as IInteractionCounterEvent<TEnum>;
+                    if (e != null)
+                    {
+                        e.AddInteraction(eventType);
+                        return;
+                    }
+                }
 #if DEBUG_VALIDATION
-                else
-                    Debug.LogError($"Event of type {typeof(TEvent)} is not pending and therefore can't collect an interaction event of type {typeof(TEnum)} {eventType}");
+                Debug.LogError($"Event of type {typeof(TEvent)} is not pending and therefore can't collect an interaction event of type {typeof(TEnum)} {eventType}");
 #endif
             }
         }

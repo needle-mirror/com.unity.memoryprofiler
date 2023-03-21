@@ -1,0 +1,260 @@
+.memory-profiler__light:root
+{
+    --button-background-color-normal-hover: rgb(177, 177, 177);
+    --button-background-color-checked-hover: rgb(219, 219, 219);
+    --button-arrow-background-color-normal: rgb(144, 144, 141);
+    --button-arrow-background-color-normal-hover: rgb(131, 131, 128);
+    --button-arrow-background-color-checked: rgb(162, 162, 159);
+    --button-arrow-background-color-checked-hover: rgb(152, 152, 149);
+}
+
+.memory-profiler__dark:root
+{
+    --button-background-color-normal-hover: rgb(85, 85, 85);
+    --button-background-color-checked-hover: rgb(94, 94, 94);
+    --button-arrow-background-color-normal: rgb(40, 40, 40);
+    --button-arrow-background-color-normal-hover: rgb(53, 53, 53);
+    --button-arrow-background-color-checked: rgb(50, 50, 50);
+    --button-arrow-background-color-checked-hover: rgb(57, 57, 57);
+}
+
+#memory-profiler-view__toolbar
+{
+    flex-grow: 1;
+    justify-content: space-between;
+}
+
+#memory-profiler-view__toolbar ToolbarToggle
+{
+    -unity-text-align: middle-left;
+}
+
+
+#memory-profiler-view__toolbar__left-side
+{
+    flex-direction: row;
+}
+
+#memory-profiler-view__toolbar__right-side
+{
+    flex-direction: row;
+    justify-content: flex-end;
+}
+
+.memory-profiler__toolbar__drop-down__arrow
+{
+    margin-top: -1px;
+}
+
+.memory-profiler__toolbar__drop-down-button
+{
+    flex-direction: row;
+}
+
+.snapshot-list__item__open-snapshot__compare-tag__spacer
+{
+    width: 20px;
+}
+
+.snapshot-list__item__open-snapshot__compare-tag
+{
+    position: absolute;
+    right: 10px;
+    top: 2px;
+}
+
+.square-icon-button
+{
+    flex-shrink: 0;
+}
+
+.guidance-text
+{
+    white-space: normal;
+}
+
+.unity-toolbar-menu
+{
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.unity-toolbar-menu > Label
+{
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drop-down-button
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    margin-right: 0;
+    padding-right: 0;
+}
+
+.drop-down-button__icon
+{
+    margin-right: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-left: 2px;
+    flex-shrink: 0;
+}
+
+.drop-down-button__text
+{
+    flex-shrink: 0;
+}
+
+.drop-down-button__drop-down-part
+{
+    width: 18px;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+
+    margin-left: 3px;
+    margin-right: -1px;
+    margin-top: -1px;
+    margin-bottom: -1px;
+    padding: 0;
+
+    border-width: 0;
+    border-radius: 0;
+
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.drop-down-button__drop-down-part__arrow-icon
+{
+    margin-left: 3px;
+    margin-right: 5px;
+    padding-left: 3px;
+    border-left-width: 1px;
+}
+
+.drop-down-toggle
+{
+    flex-direction: row;
+    margin-right: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-left: 2px;
+    flex-shrink: 0;
+}
+
+.drop-down-toggle__drop-down-part
+{
+    width: 18px;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+
+    padding: 0;
+    margin-left: 3px;
+    margin-right: -1px;
+
+    border-width: 0;
+    border-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon
+{
+    margin-left: 3px;
+    margin-right: 5px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+    padding-left: 3px;
+    border-left-width: 1px;
+}
+
+.drop-down-toggle > Label
+{
+    margin-top: 1px;
+    padding-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+ToolbarButton.icon-button
+{
+    background-image: none;
+    width: 28px;
+}
+
+.drop-down-button__drop-down-part:hover
+{
+    background-color: var(--button-background-color-normal-hover);
+}
+
+.drop-down-button__drop-down-part:checked:hover
+{
+    background-color: var(--button-background-color-checked-hover);
+}
+
+.drop-down-button__drop-down-part__arrow-icon
+{
+    border-left-color: var(--button-arrow-background-color-normal);
+}
+
+.drop-down-button__drop-down-part__arrow-icon:hover
+{
+    border-left-color: var(--button-arrow-background-color-normal-hover);
+}
+
+.drop-down-button__drop-down-part__arrow-icon:checked
+{
+    border-left-color: var(--button-arrow-background-color-checked);
+}
+
+.drop-down-button__drop-down-part__arrow-icon:checked:hover
+{
+    border-left-color: var(--button-arrow-background-color-checked-hover);
+}
+
+.drop-down-toggle__drop-down-part:hover
+{
+    background-color: var(--button-background-color-normal-hover);
+}
+
+.drop-down-toggle__drop-down-part:checked:hover
+{
+    background-color: var(--button-background-color-checked-hover);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon
+{
+    border-left-color: var(--button-arrow-background-color-normal);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon:hover
+{
+    border-left-color: var(--button-arrow-background-color-normal-hover);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon:checked
+{
+    border-left-color: var(--button-arrow-background-color-checked);
+}
+
+.drop-down-toggle__drop-down-part__arrow-icon:checked:hover
+{
+    border-left-color: var(--button-arrow-background-color-checked-hover);
+}
+
+ToolbarButton.icon-button
+{
+    background-image: none;
+    width: 28px;
+}
+
+ToolbarButton.square-icon-button
+{
+    padding-top: 0;
+}

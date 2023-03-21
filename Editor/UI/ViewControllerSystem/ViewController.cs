@@ -18,15 +18,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             get
             {
-                if (m_View == null)
-                {
-                    m_View = LoadView();
-                    if (m_View == null)
-                        throw new InvalidOperationException($"View controller did not create a view. Ensure your view controller's LoadView method returns a non-null VisualElement.");
-
-                    ViewLoaded();
-                }
-
+                EnsureLoaded();
                 return m_View;
             }
         }
@@ -42,6 +34,19 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             Dispose(true);
             GC.SuppressFinalize(this);
+        }
+
+        // Ensures that if the view does not exist when this method is called, it will be created.
+        public void EnsureLoaded()
+        {
+            if (m_View == null)
+            {
+                m_View = LoadView();
+                if (m_View == null)
+                    throw new InvalidOperationException($"View controller did not create a view. Ensure your view controller's LoadView method returns a non-null VisualElement.");
+
+                ViewLoaded();
+            }
         }
 
         // LoadView is called the first time the view controller's view is requested for display. Override this method to create the view controller's view.

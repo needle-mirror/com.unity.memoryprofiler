@@ -1,6 +1,6 @@
 {
     "name": "Unity.MemoryProfiler",
-    "rootNamespace": "",
+    "rootNamespace": "Unity.MemoryProfiler",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],

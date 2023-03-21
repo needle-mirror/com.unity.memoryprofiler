@@ -1,9 +1,3 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -11,19 +5,31 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class BackgroundPattern : VisualElement
     {
-        public float Scale { get; set; }
+        static readonly ushort[] k_Indices = new ushort[] { 0, 1, 2, 1, 3, 2, };
+        static readonly CustomStyleProperty<Texture2D> s_PatternProperty = new CustomStyleProperty<Texture2D>("--unity-pattern");
 
+        float m_Scale;
         Texture2D m_Texture;
 
-        static readonly ushort[] k_Indices = new ushort[]
+        public BackgroundPattern()
         {
-            0, 1, 2,
-            1, 3, 2,
-        };
+            m_Scale = 1;
 
-        public BackgroundPattern() : base()
+            generateVisualContent += GenerateVisualContent;
+            RegisterCallback<CustomStyleResolvedEvent>(OnCustomStyleResolved);
+        }
+
+        public float Scale
         {
-            generateVisualContent = GenerateVisualContent;
+            get => m_Scale;
+            set
+            {
+                if (m_Scale == value)
+                    return;
+
+                m_Scale = value;
+                MarkDirtyRepaint();
+            }
         }
 
         void Init(float scale)
@@ -31,19 +37,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             Scale = scale;
         }
 
-        void GenerateVisualContent(MeshGenerationContext obj)
+        void GenerateVisualContent(MeshGenerationContext mgc)
         {
             if (m_Texture == null)
-            {
-#if UNITY_2020_1_OR_NEWER
-                m_Texture = resolvedStyle.backgroundImage.texture;
-#else
-                m_Texture = EditorGUIUtility.Load("Packages/com.unity.memoryprofiler/Package Resources/Icons/Profiler.UnknownMemoryBackground.png") as Texture2D;
-#endif
-            }
-            if (m_Texture == null)
                 return;
-            TiledQuads(new Vector2(0, 0), localBound.size, Color.white, Scale, m_Texture, obj);
+
+            TiledQuads(new Vector2(0, 0), localBound.size, Color.white, Scale, m_Texture, mgc);
+        }
+
+        private void OnCustomStyleResolved(CustomStyleResolvedEvent e)
+        {
+            if (customStyle.TryGetValue(s_PatternProperty, out var textureValue))
+                m_Texture = textureValue;
         }
 
         void TiledQuads(Vector2 pos, Vector2 size, Color color, float scale, Texture2D texture2D, MeshGenerationContext context)
@@ -122,29 +127,35 @@ namespace Unity.MemoryProfiler.Editor.UI
             var x1 = pos.x + size.x;
             var y1 = pos.y + size.y;
 
+#if UNITY_2022_2_OR_NEWER
+            Rect uvRegion = new Rect(0, 0, 1, 1);
+#else
+            Rect uvRegion = mesh.uvRegion;
+#endif
+
             mesh.SetNextVertex(new Vertex()
             {
                 position = new Vector3(x0, y0, Vertex.nearZ),
                 tint = color,
-                uv = new Vector2(0, 1) * uvSize * mesh.uvRegion.size + mesh.uvRegion.position
+                uv = new Vector2(0, 1) * uvSize * uvRegion.size + uvRegion.position
             });
             mesh.SetNextVertex(new Vertex()
             {
                 position = new Vector3(x1, y0, Vertex.nearZ),
                 tint = color,
-                uv = new Vector2(1, 1) * uvSize * mesh.uvRegion.size + mesh.uvRegion.position
+                uv = new Vector2(1, 1) * uvSize * uvRegion.size + uvRegion.position
             });
             mesh.SetNextVertex(new Vertex()
             {
                 position = new Vector3(x0, y1, Vertex.nearZ),
                 tint = color,
-                uv = new Vector2(0, uvOffset.y) * uvSize * mesh.uvRegion.size + mesh.uvRegion.position
+                uv = new Vector2(0, uvOffset.y) * uvSize * uvRegion.size + uvRegion.position
             });
             mesh.SetNextVertex(new Vertex()
             {
                 position = new Vector3(x1, y1, Vertex.nearZ),
                 tint = color,
-                uv = new Vector2(1, uvOffset.y) * uvSize * mesh.uvRegion.size + mesh.uvRegion.position
+                uv = new Vector2(1, uvOffset.y) * uvSize * uvRegion.size + uvRegion.position
             });
 
             for (int i = 0; i < k_Indices.Length; i++)
@@ -164,11 +175,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         public new class UxmlTraits : VisualElement.UxmlTraits
         {
             UxmlFloatAttributeDescription m_Scale = new UxmlFloatAttributeDescription { name = "scale", defaultValue = 1f };
-
-            public override IEnumerable<UxmlChildElementDescription> uxmlChildElementsDescription
-            {
-                get { yield break; }
-            }
 
             public override void Init(VisualElement ve, IUxmlAttributes bag, CreationContext cc)
             {

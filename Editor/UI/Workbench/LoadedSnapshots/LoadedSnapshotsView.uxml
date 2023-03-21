@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profiler-loaded-snapshots">
+        <Style src="LoadedSnapshotsView.uss" />
+
+        <engine:VisualElement name="memory-profiler-loaded-snapshots__container">
+            <Unity.MemoryProfiler.Editor.UI.Ribbon name="memory-profiler-loaded-snapshots__ribbon" show-help-button="true" show-menu-button="false">
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Single Snapshot" />
+                <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Compare Snapshots" />
+            </Unity.MemoryProfiler.Editor.UI.Ribbon>
+
+            <engine:VisualElement name="memory-profiler-loaded-snapshots__item__base" class="memory-profiler-loaded-snapshots__item" />
+
+            <engine:VisualElement class="memory-profiler-loaded-snapshots__separator" />
+
+            <engine:VisualElement name="memory-profiler-loaded-snapshots__item__compare" class="memory-profiler-loaded-snapshots__item" />
+
+            <engine:VisualElement class="memory-profiler-loaded-snapshots__separator" />
+        </engine:VisualElement>
+    </engine:VisualElement>
+</engine:UXML>

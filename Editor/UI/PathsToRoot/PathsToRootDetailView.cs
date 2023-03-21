@@ -8,7 +8,6 @@ using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEngine.UIElements;
-using Debug = UnityEngine.Debug;
 using TreeView = UnityEditor.IMGUI.Controls.TreeView;
 
 namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
@@ -37,7 +36,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         int m_ProcessingStackSize = 0;
         int m_ObjectsProcessed = 0;
 
-        public event Action<MemorySampleSelection> SelectionChangedEvt = delegate { };
+        public event Action<CachedSnapshot.SourceIndex> SelectionChangedEvt;
         bool truncateTypeNames = MemoryProfilerSettings.MemorySnapshotTruncateTypes;
 
         enum PathsToRootViewColumns
@@ -60,7 +59,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         }
 
         PathsToRootViewGUIState m_GUIState;
-        IUIStateHolder m_UIStateHolder;
+        SnapshotDataService m_SnapshotDataService;
 
         CachedSnapshot m_CachedSnapshot;
         ActiveTree m_ActiveTree;
@@ -84,10 +83,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         BackGroundThreadState m_BackgroundThreadState;
 
-        public PathsToRootDetailView(IUIStateHolder uiStateHolder, TreeViewState state, MultiColumnHeaderWithTruncateTypeName multiColumnHeaderWithTruncateTypeName, Ribbon ribbon)
+        public PathsToRootDetailView(TreeViewState state, MultiColumnHeaderWithTruncateTypeName multiColumnHeaderWithTruncateTypeName, Ribbon ribbon)
             : base(state, multiColumnHeaderWithTruncateTypeName)
         {
-            m_UIStateHolder = uiStateHolder;
             columnIndexForTreeFoldouts = 0;
             showAlternatingRowBackgrounds = true;
             showBorder = true;
@@ -121,17 +119,15 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         void RibbonClicked(int idx)
         {
             m_ActiveTree = (ActiveTree)idx;
+
             // end any pending Interaction event
             MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
-            var startAnalyitcs = m_UIStateHolder.UIState.CurrentViewMode != UIState.ViewMode.ShowNone;
-            if (startAnalyitcs)
-            {
-                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInReferencesPanel>(new MemoryProfilerAnalytics.InteractionsInReferencesPanel() { viewName = m_ActiveTree.ToString() });
-                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-            }
+            MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInReferencesPanel>(new MemoryProfilerAnalytics.InteractionsInReferencesPanel() { viewName = m_ActiveTree.ToString() });
+            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
+
             Reload();
-            if (startAnalyitcs)
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = m_ActiveTree.ToString() });
+
+            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = m_ActiveTree.ToString() });
         }
 
         void OnTruncateStateChanged()
@@ -165,59 +161,26 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             public CachedSnapshot CachedSnapshot;
         }
 
-        public void UpdateRootObjects(MemorySampleSelection selection)
+        public void SetRoot(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source)
         {
-            // Get the appropriate snapshot
-            m_CachedSnapshot = selection.GetSnapshotItemIsPresentIn(m_UIStateHolder.UIState);
+            m_CachedSnapshot = snapshot;
+            if (m_CachedSnapshot == null)
+                return;
 
-            if (m_CachedSnapshot != null)
+            switch (source.Id)
             {
-                // Path To/From Roots displays the roots based on the main selection.
-                // The Secondary selection is solely for selecting items in the path.
-                if (selection.Rank == MemorySampleSelectionRank.MainSelection)
-                {
-                    switch (selection.Type)
-                    {
-                        case MemorySampleSelectionType.NativeObject:
-                            UpdateRootObjects(m_CachedSnapshot.NativeObjectIndexToUnifiedObjectIndex((long)selection.ItemIndex));
-                            break;
-                        case MemorySampleSelectionType.ManagedObject:
-                            var unifiedIndex = m_CachedSnapshot.ManagedObjectIndexToUnifiedObjectIndex((long)selection.ItemIndex);
-                            if (unifiedIndex >= 0)
-                            {
-                                if (m_CachedSnapshot.CrawledData.ManagedObjects[selection.ItemIndex].IsValid())
-                                    UpdateRootObjects(unifiedIndex);
-                            }
-                            break;
-                        case MemorySampleSelectionType.UnifiedObject:
-                            UpdateRootObjects((long)selection.ItemIndex);
-                            break;
-                        case MemorySampleSelectionType.Allocation:
-                            UpdateToAllocation(selection.ItemIndex);
-                            break;
-                        case MemorySampleSelectionType.AllocationSite:
-                        case MemorySampleSelectionType.Symbol:
-                        case MemorySampleSelectionType.NativeRegion:
-                        case MemorySampleSelectionType.ManagedRegion:
-                        case MemorySampleSelectionType.Allocator:
-                        case MemorySampleSelectionType.Label:
-                        case MemorySampleSelectionType.ManagedType:
-                        case MemorySampleSelectionType.NativeType:
-                        case MemorySampleSelectionType.Connection:
-                        case MemorySampleSelectionType.None:
-                        default:
-                            UpdateRootObjects(-1);
-                            break;
-                    }
-                }
-                else if (selection.Rank == MemorySampleSelectionRank.SecondarySelection)
-                {
-                    // TODO: Restore secondary selection by selecting this item within the Root tree.
-                    // TODO: even before that, make sure Secondary Selection events are even registered
-                }
+                case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                    UpdateRootObjects(m_CachedSnapshot.NativeObjectIndexToUnifiedObjectIndex(source.Index));
+                    break;
+                case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                    var unifiedIndex = m_CachedSnapshot.ManagedObjectIndexToUnifiedObjectIndex(source.Index);
+                    if (unifiedIndex >= 0)
+                        UpdateRootObjects(unifiedIndex);
+                    break;
+                default:
+                    UpdateRootObjects(-1);
+                    break;
             }
-            else
-                UpdateRootObjects(-1);
         }
 
         public void UpdateToAllocation(long item)
@@ -967,11 +930,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         protected override void SelectionChanged(IList<int> selectedIds)
         {
             var item = this.FindRows(selectedIds);
-            var objIdx = ((PathsToRootDetailTreeViewItem)item[0]).Data.displayObject.GetUnifiedObjectIndex(m_CachedSnapshot);
+            var source = ((PathsToRootDetailTreeViewItem)item[0]).Data.displayObject.GetSourceLink(m_CachedSnapshot);
+
             // invalid index means the no object selected object was selected making it safe to ignore the event.
-            if (objIdx == -1)
+            if (source.Id == CachedSnapshot.SourceIndex.SourceId.None)
                 return;
-            SelectionChangedEvt(new MemorySampleSelection(m_UIStateHolder.UIState, objIdx, item[0].id, m_CachedSnapshot));
+
+            SelectionChangedEvt?.Invoke(source);
 
             MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
                 MemoryProfilerAnalytics.ReferencePanelInteractionType.SelectionInTableWasUsed);
@@ -999,7 +964,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public void ClearSecondarySelection()
         {
             SetSelection(new List<int>());
-            SelectionChangedEvt(MemorySampleSelection.InvalidSecondarySelection);
         }
     }
 }

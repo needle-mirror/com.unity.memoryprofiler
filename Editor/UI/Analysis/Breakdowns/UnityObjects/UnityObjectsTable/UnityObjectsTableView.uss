@@ -40,11 +40,21 @@
     margin: 0px 8px;
 }
 
-.size-bar-cell
+#unity-objects-table-view .size-bar-cell
 {
-    background-color: rgba(255, 255, 255, 0.1);
+    margin-top: 3px;
+    margin-bottom: 3px;
+    background-color: rgb(83, 83, 83);
     flex-grow: 1;
-    margin: 8px;
+}
+
+#unity-objects-table-view .memory-bar-element
+{
+    flex-grow: 1;
+    border-width: 1px;
+    border-color: rgb(83, 83, 83);
+
+    min-width: 6px;
 }
 
 .size-bar-cell .progress-bar__fill
@@ -102,7 +112,7 @@
 
 #unity-objects-table-view__loading-overlay ActivityIndicator
 {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Loading.png');
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Loading.png');
     height: 16px;
     width: 16px;
 }

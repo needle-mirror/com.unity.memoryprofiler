@@ -1,0 +1,97 @@
+.memory-profiler__light:root
+{
+  --memory-profiler-ribbon__button__border-color: rgb(176, 176, 176);
+  --memory-profiler-ribbon__button__border-hover-color: rgb(34, 34, 34);
+}
+
+.memory-profiler__dark:root
+{
+  --memory-profiler-ribbon__button__border-color: rgb(40, 40, 40);
+  --memory-profiler-ribbon__button__border-hover-color: rgb(204, 204, 204);
+}
+
+.ribbon__container
+{
+    flex-grow: 1;
+    flex-direction: row;
+}
+
+.ribbon__container--centered
+{
+    flex-direction: row;
+    justify-content: center;
+    flex-grow: 1;
+}
+
+.ribbon--centered
+{
+    flex-direction: row;
+    justify-content: center;
+    flex-grow: 1;
+}
+
+.ribbon__container--left-aligned
+{
+    justify-content: flex-start;
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+.ribbon--left-aligned
+{
+    flex-direction: row;
+    justify-content: flex-start;
+    flex-grow: 1;
+}
+
+.ribbon__button
+{
+    background-color: rgba(0, 0, 0, 0);
+
+    border-radius: 0;
+    border-width: 0;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--memory-profiler-ribbon__button__border-color);
+
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 10px;
+
+    padding-left: 8px;
+    padding-right: 9px;
+    padding-bottom: 4px;
+}
+
+.ribbon__button:hover
+{
+    padding-bottom: 3px;
+    border-bottom-width: 2px;
+    border-bottom-color: var(--memory-profiler-ribbon__button__border-hover-color);
+}
+
+.ribbon__button--toggled
+{
+    padding-bottom: 3px;
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(14, 129, 193);
+}
+
+.ribbon__button--toggled:hover
+{
+    padding-bottom: 3px;
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(14, 129, 193);
+}
+
+.ribbon__options-and-info
+{
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    margin-right: 5px;
+}
+
+.icon-button__help-icon, .icon-button__menu-icon
+{
+    flex-shrink: 0;
+}

@@ -11,6 +11,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Load Uxml template from disk.
             var uxmlAssetPath = AssetDatabase.GUIDToAssetPath(uxmlAssetGuid);
             var uxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlAssetPath);
+            if (uxml == null)
+                return null;
+
 #if UNITY_2020_3_OR_NEWER
             var template = uxml.Instantiate();
 #else

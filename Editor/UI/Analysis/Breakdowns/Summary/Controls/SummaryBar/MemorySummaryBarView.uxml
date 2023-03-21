@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd"
+    xsi:schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd">
+
+    <VisualElement>
+        <VisualElement name="memory-summary__bar__container-a" class="memory-summary__bar__container">
+            <VisualElement class="memory-summary__bar__row">
+                <Label name="memory-summary__bar__tag" class="memory-profile-snapshotfile__tag__label" text="A"/>
+
+                <VisualElement name="memory-summary__bar"/>
+            </VisualElement>
+
+            <Label name="memory-summary__bar__total-value" text="Total: 150MB" display-tooltip-when-elided="true" />
+        </VisualElement>
+
+        <VisualElement name="memory-summary__bar__container-b" class="memory-summary__bar__container">
+            <VisualElement class="memory-summary__bar__row">
+                <Label name="memory-summary__bar__tag" class="memory-profile-snapshotfile__tag__label" text="B"/>
+
+                <VisualElement name="memory-summary__bar"/>
+            </VisualElement>
+
+            <Label name="memory-summary__bar__total-value" text="Total: 150MB" display-tooltip-when-elided="true" />
+        </VisualElement>
+    </VisualElement>
+
+</UXML>

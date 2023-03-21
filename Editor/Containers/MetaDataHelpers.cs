@@ -64,17 +64,19 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             Texture2D,
             Mesh,
-            Texture
+            Texture,
+            RenderTexture,
         }
 
         static Dictionary<string, AvailableMetaDataTypes> s_TypeNameToEnum = new()
         {
             { "Texture2D", AvailableMetaDataTypes.Texture2D },
             { "Mesh", AvailableMetaDataTypes.Mesh },
-            { "Texture", AvailableMetaDataTypes.Texture }
+            { "Texture", AvailableMetaDataTypes.Texture },
+            { "RenderTexture", AvailableMetaDataTypes.RenderTexture },
         };
 
-        static List<(string, string)> MetaDataStringFactory(Byte[] bytes, AvailableMetaDataTypes key, CachedSnapshot cs)
+        static List<(string, string)> MetaDataStringFactory(DynamicArray<byte> bytes, AvailableMetaDataTypes key, CachedSnapshot cs)
         {
             switch (key)
             {
@@ -84,6 +86,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
                     return new MeshMetaData(bytes).GenerateInfoStrings(cs);
                 case AvailableMetaDataTypes.Texture:
                     return new TextureMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.RenderTexture:
+                    return new RenderTextureMetaData(bytes).GenerateInfoStrings(cs);
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -153,20 +157,18 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return version == kPackageFormatVersion;
         }
 
-        public unsafe TextureMetaData(Byte[] bytes)
+        public unsafe TextureMetaData(DynamicArray<byte> bytes)
         {
-            fixed (Byte* ptr = bytes)
-            {
-                int pos = 0;
-                version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                textureFormat = (TextureFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                graphicsFormat = (GraphicsFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                width = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                height = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                MipMapCount = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                var byteArray = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, 3);
-                isReadable = byteArray[(int)ByteIndicies.IsReadable];
-            }
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+            version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            textureFormat = (TextureFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            graphicsFormat = (GraphicsFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            width = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            height = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            MipMapCount = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            var byteArray = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, 3);
+            isReadable = byteArray[(int)ByteIndicies.IsReadable];
         }
 
         public List<(string, string)> GenerateInfoStrings(CachedSnapshot cs)
@@ -178,7 +180,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
             infoStrings.Add(("Width", width.ToString()));
             infoStrings.Add(("Height", height.ToString()));
-            infoStrings.Add(("Read/Write Enabled", ReadWriteEnabled.ToString()));
+            infoStrings.Add(("Read/Write", ReadWriteEnabled ? "Enabled" : "Disabled"));
             infoStrings.Add(("CPU Format", textureFormat.ToString()));
             infoStrings.Add(("GPU Format", graphicsFormat.ToString()));
             infoStrings.Add(("MipMap Count", MipMapCount.ToString()));
@@ -214,25 +216,23 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public int streamingInfoSize;
         public string streamingPath;
 
-        public unsafe Texture2DMetaData(Byte[] bytes)
+        public unsafe Texture2DMetaData(DynamicArray<byte> bytes)
         {
-            fixed (Byte* ptr = bytes)
-            {
-                int pos = 0;
-                version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                TextureFormat = (TextureFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                GraphicsTextureFormat = (GraphicsFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                Width = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                Height = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                MipMapCount = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                var byteArray = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, 3);
-                isReadable = byteArray[(int)ByteIndicies.IsReadable];
-                mipStreaming = byteArray[(int)ByteIndicies.MipStreaming];
-                loadedMipLevel = byteArray[(int)ByteIndicies.LoadedMipLevel];
-                streamingInfoSize = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                streamingInfoOffset = ByteBufferReader.ReadValue<UInt64>(ref pos, ptr);
-                streamingPath = ByteBufferReader.ReadString(ref pos, ptr);
-            }
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+            version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            TextureFormat = (TextureFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            GraphicsTextureFormat = (GraphicsFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            Width = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            Height = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            MipMapCount = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            var byteArray = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, 3);
+            isReadable = byteArray[(int)ByteIndicies.IsReadable];
+            mipStreaming = byteArray[(int)ByteIndicies.MipStreaming];
+            loadedMipLevel = byteArray[(int)ByteIndicies.LoadedMipLevel];
+            streamingInfoSize = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            streamingInfoOffset = ByteBufferReader.ReadValue<UInt64>(ref pos, ptr);
+            streamingPath = ByteBufferReader.ReadString(ref pos, ptr);
         }
 
         public List<(string, string)> GenerateInfoStrings(CachedSnapshot cachedSnapshot)
@@ -245,13 +245,13 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
             infoStrings.Add(("Width", Width.ToString()));
             infoStrings.Add(("Height", Height.ToString()));
-            infoStrings.Add(("Read/Write Enabled", ReadWriteEnabled.ToString()));
+            infoStrings.Add(("Read/Write", ReadWriteEnabled ? "Enabled" : "Disabled"));
             infoStrings.Add(("CPU Format", TextureFormat.ToString()));
             infoStrings.Add(("GPU Format", GraphicsTextureFormat.ToString()));
             infoStrings.Add(("MipMap Count", MipMapCount.ToString()));
-            infoStrings.Add(("MipMap Streaming", MipMapStreamingEnabled.ToString()));
+            infoStrings.Add(("MipMap Streaming", MipMapStreamingEnabled ? "Enabled" : "Disabled"));
             infoStrings.Add(("Loaded MipMap", LoadedMipMapLevel.ToString()));
-            if (!cachedSnapshot.MetaData.Platform.Contains("Editor"))
+            if (!cachedSnapshot.MetaData.IsEditorCapture)
             {
                 infoStrings.Add(("Streaming Info Offset", streamingInfoOffset.ToString()));
                 infoStrings.Add(("Streaming Info Size", streamingInfoSize.ToString()));
@@ -301,24 +301,22 @@ namespace Unity.MemoryProfiler.Editor.Containers
         Byte[] channeldimensions;
         Byte[] channelStreams;
 
-        public unsafe MeshMetaData(Byte[] bytes)
+        public unsafe MeshMetaData(DynamicArray<byte> bytes)
         {
-            fixed (Byte* ptr = bytes)
-            {
-                int pos = 0;
-                version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                VertexCount = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                IndexCount = ByteBufferReader.ReadValue<UInt64>(ref pos, ptr);
-                SubMeshCount = ByteBufferReader.ReadValue<UInt64>(ref pos, ptr);
-                Bones = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
-                var byteArray = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, 3);
-                indexFormat = byteArray[(int)ByteIndicies.IndexFormat];
-                bonesPerVertex = byteArray[(int)ByteIndicies.BonesPerVertex];
-                isReadable = byteArray[(int)ByteIndicies.IsReadable];
-                channelformats = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, kNumberOfVertexAttributes);
-                channeldimensions = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, kNumberOfVertexAttributes);
-                channelStreams = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, kNumberOfVertexAttributes);
-            }
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+            version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            VertexCount = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            IndexCount = ByteBufferReader.ReadValue<UInt64>(ref pos, ptr);
+            SubMeshCount = ByteBufferReader.ReadValue<UInt64>(ref pos, ptr);
+            Bones = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            var byteArray = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, 3);
+            indexFormat = byteArray[(int)ByteIndicies.IndexFormat];
+            bonesPerVertex = byteArray[(int)ByteIndicies.BonesPerVertex];
+            isReadable = byteArray[(int)ByteIndicies.IsReadable];
+            channelformats = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, kNumberOfVertexAttributes);
+            channeldimensions = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, kNumberOfVertexAttributes);
+            channelStreams = ByteBufferReader.ReadArray<Byte>(ref pos, ptr, kNumberOfVertexAttributes);
         }
 
         public VertexAttributeFormat GetChannelFormat(VertexAttribute channel)
@@ -354,10 +352,185 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 }
             }
             infoStrings.Add(("Indices", $"{IndexCount}, {IndexFormat}"));
-            infoStrings.Add(("Read/Write Enabled", ReadWriteEnabled.ToString()));
+            infoStrings.Add(("Read/Write", ReadWriteEnabled ? "Enabled" : "Disabled"));
             infoStrings.Add(("Bones", Bones.ToString()));
             infoStrings.Add(("Max Bones/Vertex", bonesPerVertex.ToString()));
             infoStrings.Add(("SubMesh Count", SubMeshCount.ToString()));
+            return infoStrings;
+        }
+
+        public int SnapshotFormatVersion => version;
+        public int PackageFormatVersion => kPackageFormatVersion;
+
+        public bool VersionMatches()
+        {
+            return version == kPackageFormatVersion;
+        }
+    }
+
+    internal struct RenderTextureMetaData : IMetaDataBuffer
+    {
+        // TODO: record "original" mip count: UUM-11336
+
+        const int kPackageFormatVersion = 3;
+        public int version;
+
+        public int Width;
+        public int Height;
+        public int ScaledWidth;
+        public int ScaledHeight;
+        public GraphicsFormat ColorFormat;
+        public GraphicsFormat DepthStencilFormat;
+        public int MipMapCount;
+        public RenderTextureMemoryless MemoryLessMode;
+        public FilterMode TexFilterMode;
+        public int AnisoLevel;
+        public int AntiAliasing;
+        public TextureDimension TexDimension;
+        public TextureWrapMode WrapModeU;
+        public TextureWrapMode WrapModeV;
+        public TextureWrapMode WrapModeW;
+        public bool RandomWriteEnabled;
+        public bool AutoGenerateMips;
+        public bool UseDynamicScaling;
+        public bool UseResolveColorSurface;
+        public bool UseResolveDepthSurface;
+
+        [Flags]
+        enum BitIndices : byte
+        {
+            RandomWriteEnabled = 1 << 0,
+            AutoGenerateMips = 1 << 1,
+            UseDynamicScaling = 1 << 2,
+            UseResolveColorSurface = 1 << 3,
+            UseResolveDepthSurface = 1 << 4,
+        }
+
+        struct MetaDataPackedV2
+        {
+            public int Width;
+            public int Height;
+            public short colorFormat;
+            public short depthStencilFormat;
+            public sbyte mipmapCount;
+            public sbyte memorylessMode;
+            public sbyte anisoFilteringMode;
+            public sbyte anisoFilteringLevel;
+            public sbyte antiAliasingLevel;
+            public sbyte texDimensionality;
+            public sbyte wrapModeU;
+            public sbyte wrapModeV;
+            public sbyte wrapModeW;
+            public BitIndices boolFlags;
+        }
+
+        public unsafe RenderTextureMetaData(DynamicArray<byte> bytes)
+        {
+            ScaledWidth = ScaledHeight = 0;
+
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+            version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+
+            if (version == 1)
+            {
+                // Version 1 is just the base class Texture, so limited info.
+                pos += 4; // Skip format info that doesn't apply to RTs
+
+                ColorFormat = (GraphicsFormat)ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+                Width = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+                Height = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+                MipMapCount = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+
+                // Unused in v1, but need setting
+                DepthStencilFormat = 0;
+                MemoryLessMode = 0;
+                TexFilterMode = 0;
+                AnisoLevel = AntiAliasing = 0;
+                TexDimension = 0;
+                WrapModeU = WrapModeV = WrapModeW = 0;
+                RandomWriteEnabled = AutoGenerateMips = UseDynamicScaling = UseResolveColorSurface = UseResolveDepthSurface = false;
+            }
+            else
+            {
+                MetaDataPackedV2 metaData = ByteBufferReader.ReadValue<MetaDataPackedV2>(ref pos, ptr);
+                Width = metaData.Width;
+                Height = metaData.Height;
+                ColorFormat = (GraphicsFormat)metaData.colorFormat;
+                DepthStencilFormat = (GraphicsFormat)metaData.depthStencilFormat;
+                MipMapCount = metaData.mipmapCount;
+                MemoryLessMode = (RenderTextureMemoryless)metaData.memorylessMode;
+                TexFilterMode = (FilterMode)metaData.anisoFilteringMode;
+                AnisoLevel = metaData.anisoFilteringLevel;
+                AntiAliasing = metaData.antiAliasingLevel;
+                TexDimension = (TextureDimension)metaData.texDimensionality;
+                WrapModeU = (TextureWrapMode)metaData.wrapModeU;
+                WrapModeV = (TextureWrapMode)metaData.wrapModeV;
+                WrapModeW = (TextureWrapMode)metaData.wrapModeW;
+                RandomWriteEnabled = metaData.boolFlags.HasFlag(BitIndices.RandomWriteEnabled);
+                AutoGenerateMips = metaData.boolFlags.HasFlag(BitIndices.AutoGenerateMips);
+                UseDynamicScaling = metaData.boolFlags.HasFlag(BitIndices.UseDynamicScaling);
+                UseResolveColorSurface = metaData.boolFlags.HasFlag(BitIndices.UseResolveColorSurface);
+                UseResolveDepthSurface = metaData.boolFlags.HasFlag(BitIndices.UseResolveDepthSurface);
+            }
+        }
+
+        public List<(string, string)> GenerateInfoStrings(CachedSnapshot cachedSnapshot)
+        {
+            List<(string, string)> infoStrings = new List<(string, string)>();
+            if (!VersionMatches())
+            {
+                infoStrings.Add(("Warning", MetaDataHelpers.GenerateVersionMismatchWarning(version, kPackageFormatVersion)));
+            }
+
+            infoStrings.Add(("Width", Width.ToString()));
+            infoStrings.Add(("Height", Height.ToString()));
+
+            if (version > 1)
+            {
+                infoStrings.Add(("Dynamic Scaling", UseDynamicScaling ? "Enabled" : "Disabled"));
+                if (UseDynamicScaling)
+                {
+                    ScaledWidth = (int)Math.Ceiling(Width * cachedSnapshot.MetaData.TargetInfo.Value.ScalableBufferManagerWidth);
+                    ScaledHeight = (int)Math.Ceiling(Height * cachedSnapshot.MetaData.TargetInfo.Value.ScalableBufferManagerHeight);
+
+                    infoStrings.Add(("Scaled Width", ScaledWidth.ToString()));
+                    infoStrings.Add(("Scaled Height", ScaledHeight.ToString()));
+                }
+            }
+
+            infoStrings.Add(("Color Format", ColorFormat.ToString()));
+            if (version > 1)
+            {
+                infoStrings.Add(("Depth Stencil Format", DepthStencilFormat.ToString()));
+                infoStrings.Add(("Generate MipMaps", AutoGenerateMips ? "Automatic" : "Manual"));
+            }
+
+            infoStrings.Add(("MipMaps", MipMapCount.ToString()));
+            if (version > 1)
+            {
+                infoStrings.Add(("Memoryless Mode", MemoryLessMode.ToString()));
+                infoStrings.Add(("Texture Filtering", TexFilterMode.ToString()));
+                infoStrings.Add(("Anisotropic Filtering", AnisoLevel.ToString()));
+                infoStrings.Add(("Anti-aliasing Level", AntiAliasing.ToString()));
+                infoStrings.Add(("Dimensionality", TexDimension.ToString()));
+
+                infoStrings.Add(("Texture Wrapping U", WrapModeU.ToString()));
+                infoStrings.Add(("Texture Wrapping V", WrapModeV.ToString()));
+                infoStrings.Add(("Texture Wrapping W", WrapModeW.ToString()));
+
+                infoStrings.Add(("Random Write", RandomWriteEnabled ? "Enabled" : "Disabled"));
+            }
+
+            if (version > 2)
+            {
+                string colour = UseResolveColorSurface ? "Color" : "";
+                string depth = UseResolveDepthSurface ? "Depth" : "";
+                string comma = (UseResolveColorSurface && UseResolveDepthSurface) ? ", " : "";
+                string resolveSurfaces =
+                    (UseResolveColorSurface || UseResolveDepthSurface) ? colour + comma + depth : "None";
+                infoStrings.Add(("Resolve Surface(s)", resolveSurfaces));
+            }
             return infoStrings;
         }
 

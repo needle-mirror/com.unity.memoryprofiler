@@ -159,7 +159,7 @@ namespace Unity.MemoryProfiler.Editor
 
             if (od.hostManagedObjectPtr != 0)
             {
-                var arrayInfo = ArrayTools.GetArrayInfo(m_Snapshot, od.managedObjectData, od.managedTypeIndex);
+                var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(m_Snapshot, od.managedObjectData, od.managedTypeIndex);
                 switch (arrayInfo.rank.Length)
                 {
                     case 1:

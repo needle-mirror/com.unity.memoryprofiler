@@ -107,6 +107,33 @@ namespace Unity.MemoryProfiler.Containers
             /// <remarks>
             /// ~10% slower than it's counterpart when using Mono 3.5, and 10% faster when using Mono 4.x
             /// </remarks>
+            public static void IntrospectiveSort<T>(DynamicArray<T> array, int startIndex, long length) where T : unmanaged, IComparable<T>
+            {
+                if (length < 0 || length > array.Count)
+                    throw new ArgumentOutOfRangeException("length should be in the range [0, array.Length].");
+                if (startIndex < 0 || startIndex > length - 1)
+                    throw new ArgumentOutOfRangeException("startIndex should in the range [0, length).");
+
+                if (length < 2)
+                    return;
+
+                unsafe
+                {
+                    NativeArrayData<T> data = new NativeArrayData<T>(array.GetUnsafeTypedPtr());
+                    IntroSortInternal(ref data, startIndex, length + startIndex - 1, GetMaxDepth(array.Count), GetPartitionThreshold());
+                }
+            }
+
+            /// <summary>
+            /// Port of MSDN's internal method for QuickSort, can work with native array containers inside a jobified environment.
+            /// </summary>
+            /// <typeparam name="T"></typeparam>
+            /// <param name="array"></param>
+            /// <param name="startIndex"></param>
+            /// <param name="length"></param>
+            /// <remarks>
+            /// ~10% slower than it's counterpart when using Mono 3.5, and 10% faster when using Mono 4.x
+            /// </remarks>
             public static void IntrospectiveSort<T>(NativeArray<T> array, int startIndex, int length) where T : unmanaged, IComparable<T>
             {
                 if (length < 0 || length > array.Length)
@@ -139,11 +166,11 @@ namespace Unity.MemoryProfiler.Containers
                 }
             }
 
-            static void IntroSortInternal<T>(ref NativeArrayData<T> array, int low, int high, int depth, int partitionThreshold) where T : unmanaged, IComparable<T>
+            static void IntroSortInternal<T>(ref NativeArrayData<T> array, long low, long high, long depth, int partitionThreshold) where T : unmanaged, IComparable<T>
             {
                 while (high > low)
                 {
-                    int partitionSize = high - low + 1;
+                    var partitionSize = high - low + 1;
                     if (partitionSize <= partitionThreshold)
                     {
                         switch (partitionSize)
@@ -168,21 +195,21 @@ namespace Unity.MemoryProfiler.Containers
                     }
                     --depth;
 
-                    int pivot = PartitionRangeAndPlacePivot(ref array, low, high);
+                    var pivot = PartitionRangeAndPlacePivot(ref array, low, high);
                     IntroSortInternal(ref array, pivot + 1, high, depth, partitionThreshold);
                     high = pivot - 1;
                 }
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            static void Heapsort<T>(ref NativeArrayData<T> array, int low, int high) where T : unmanaged, IComparable<T>
+            static void Heapsort<T>(ref NativeArrayData<T> array, long low, long high) where T : unmanaged, IComparable<T>
             {
-                int rangeSize = high - low + 1;
-                for (int i = rangeSize / 2; i >= 1; --i)
+                var rangeSize = high - low + 1;
+                for (var i = rangeSize / 2; i >= 1; --i)
                 {
                     DownHeap(ref array, i, rangeSize, low);
                 }
-                for (int i = rangeSize; i > 1; --i)
+                for (var i = rangeSize; i > 1; --i)
                 {
                     Swap(ref array, low, low + i - 1);
 
@@ -190,12 +217,12 @@ namespace Unity.MemoryProfiler.Containers
                 }
             }
 
-            unsafe static void DownHeap<T>(ref NativeArrayData<T> array, int i, int n, int low) where T : unmanaged, IComparable<T>
+            unsafe static void DownHeap<T>(ref NativeArrayData<T> array, long i, long n, long low) where T : unmanaged, IComparable<T>
             {
                 var typeSize = UnsafeUtility.SizeOf<T>();
                 array.aux_first = *(array.ptr + (low + i - 1));
 
-                int child;
+                long child;
                 while (i <= n / 2)
                 {
                     child = 2 * i;
@@ -221,9 +248,9 @@ namespace Unity.MemoryProfiler.Containers
                 *(array.ptr + (low + i - 1)) = array.aux_first;
             }
 
-            unsafe static void InsertionSort<T>(ref NativeArrayData<T> array, int low, int high) where T : unmanaged, IComparable<T>
+            unsafe static void InsertionSort<T>(ref NativeArrayData<T> array, long low, long high) where T : unmanaged, IComparable<T>
             {
-                int i, j;
+                long i, j;
                 var typeSize = UnsafeUtility.SizeOf<T>();
 
                 for (i = low; i < high; ++i)
@@ -241,9 +268,9 @@ namespace Unity.MemoryProfiler.Containers
                 }
             }
 
-            unsafe static int PartitionRangeAndPlacePivot<T>(ref NativeArrayData<T> array, int low, int high) where T : unmanaged, IComparable<T>
+            unsafe static long PartitionRangeAndPlacePivot<T>(ref NativeArrayData<T> array, long low, long high) where T : unmanaged, IComparable<T>
             {
-                int mid = low + (high - low) / 2;
+                var mid = low + (high - low) / 2;
 
                 // Sort low/high/mid in order to have the correct pivot.
                 SwapSortAscending(ref array, low, mid, high);
@@ -251,7 +278,7 @@ namespace Unity.MemoryProfiler.Containers
                 array.aux_second = *(array.ptr + mid);
 
                 Swap(ref array, mid, high - 1);
-                int left = low, right = high - 1;
+                long left = low, right = high - 1;
 
                 while (left < right)
                 {
@@ -271,7 +298,7 @@ namespace Unity.MemoryProfiler.Containers
                 return left;
             }
 
-            unsafe static void SwapSortAscending<T>(ref NativeArrayData<T> array, int left, int mid, int right) where T : unmanaged, IComparable<T>
+            unsafe static void SwapSortAscending<T>(ref NativeArrayData<T> array, long left, long mid, long right) where T : unmanaged, IComparable<T>
             {
                 var typeSize = UnsafeUtility.SizeOf<T>();
                 T* leftAddr = array.ptr + left;
@@ -321,7 +348,7 @@ namespace Unity.MemoryProfiler.Containers
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            unsafe static void SwapIfGreater<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : unmanaged, IComparable<T>
+            unsafe static void SwapIfGreater<T>(ref NativeArrayData<T> array, long lhs, long rhs) where T : unmanaged, IComparable<T>
             {
                 if (lhs != rhs)
                 {
@@ -338,7 +365,7 @@ namespace Unity.MemoryProfiler.Containers
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            unsafe static void Swap<T>(ref NativeArrayData<T> array, int lhs, int rhs) where T : unmanaged, IComparable<T>
+            unsafe static void Swap<T>(ref NativeArrayData<T> array, long lhs, long rhs) where T : unmanaged, IComparable<T>
             {
                 T* leftAddr = array.ptr + lhs;
                 T* rightAddr = array.ptr + rhs;
@@ -348,7 +375,7 @@ namespace Unity.MemoryProfiler.Containers
                 *rightAddr = array.aux_first;
             }
 
-            static int GetMaxDepth(int length)
+            static long GetMaxDepth(long length)
             {
                 return 2 * UnityEngine.Mathf.FloorToInt((float)Math.Log(length, 2));
             }

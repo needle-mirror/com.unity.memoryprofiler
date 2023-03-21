@@ -1,16 +1,16 @@
-using System.Collections;
-using System.Collections.Generic;
+using System;
+using System.IO;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
-using System.IO;
-using System;
-using System.Text;
-using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.MemoryProfiler.Editor.UI;
+using Unity.Profiling.Memory;
+
 #if UNITY_2021_2_OR_NEWER
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.MemoryProfilerModule")]
 #endif
+
 namespace Unity.MemoryProfiler.Editor
 {
     internal static class MemoryProfilerSettings
@@ -24,8 +24,16 @@ namespace Unity.MemoryProfiler.Editor
         const string k_DefaultPath = "./MemoryCaptures";
         const string k_TruncateTypes = "Unity.MemoryProfiler.Editor.MemoryProfilerTruncateTypes";
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
+        const string k_ShowReservedMemoryBreakdown = "Unity.MemoryProfiler.Editor.ShowReservedMemoryBreakdown";
+        const string k_ShowMemoryMapView = "Unity.MemoryProfiler.Editor.ShowMemoryMapView";
+        const string k_SnapshotCaptureFlagsKey = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureFlags";
+        const string k_SnapshotCaptureCaptureWithScreenshot = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureWithScreenshot";
+        const string k_SnapshotGCCollectWhenCapturingEditor = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotGCCollectWhenCapturingEditor";
+        const string k_CloseSnapshotsWhenCapturingEditor = "Unity.MemoryProfiler.Editor.MemoryProfilerCloseSnapshotsWhenCapturingEditor";
+        const string k_ObjectDetailsReferenceSectionVisibleKey = "Unity.MemoryProfiler.Editor.MemoryProfilerObjectDetailsReferenceSectionVisibility";
+        const string k_ObjectDetailsReferenceSectionSizeKey = "Unity.MemoryProfiler.Editor.MemoryProfilerObjectDetailsReferenceSectionSize";
 
-        public static event Action TruncateStateChanged = delegate { };
+        public static event Action TruncateStateChanged;
 
         internal static class FeatureFlags
         {
@@ -146,6 +154,34 @@ namespace Unity.MemoryProfiler.Editor
         }
         public static event Action InstallUIOverride = delegate {};
         public static event Action UninstallUIOverride = delegate {};
+
+        public static bool ShowReservedMemoryBreakdown
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_ShowReservedMemoryBreakdown, false);
+            }
+            set
+            {
+                if (value == ShowReservedMemoryBreakdown)
+                    return;
+                EditorPrefs.SetBool(k_ShowReservedMemoryBreakdown, value);
+            }
+        }
+
+        public static bool ShowMemoryMapView
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_ShowMemoryMapView, false);
+            }
+            set
+            {
+                if (value == ShowMemoryMapView)
+                    return;
+                EditorPrefs.SetBool(k_ShowMemoryMapView, value);
+            }
+        }
 #endif
 
         public static void ResetMemorySnapshotStoragePathToDefault()
@@ -161,137 +197,79 @@ namespace Unity.MemoryProfiler.Editor
         public static void ToggleTruncateTypes()
         {
             EditorPrefs.SetBool(k_TruncateTypes, !MemorySnapshotTruncateTypes);
-            TruncateStateChanged.Invoke();
+            TruncateStateChanged?.Invoke();
         }
-    }
 
-    internal class MemoryProfilerSettingsEditor
-    {
-        public const string SettingsPath = "Preferences/Analysis/Memory Profiler";
-        class Content
+        public static CaptureFlags MemoryProfilerCaptureFlags
         {
-            public static readonly GUIContent SnapshotPathLabel = EditorGUIUtility.TrTextContent("Memory Snapshot Storage Path");
-            public static readonly string OnlyRelativePaths = L10n.Tr("Only relative paths are allowed");
-            public static readonly string OKButton = L10n.Tr("OK");
-            public static readonly string InvalidPathWindow = L10n.Tr("Invalid Path");
-            public static readonly string MemoryProfilerPackageOverridesMemoryModuleUI = L10n.Tr("Replace Memory UI in Profiler Window", "If set to true, the Memory Profiler Module UI in the Profiler Window will be replaced with UI from the Memory Profiler package.");
-
-            public static readonly GUIContent TitleSettingsIcon = EditorGUIUtility.TrIconContent("_Popup", "Settings");
-            public static readonly GUIContent HelpIcon = EditorGUIUtility.TrIconContent("_Help", "Open Documentation");
-            public static readonly GUIContent ResetSettings = EditorGUIUtility.TrTextContent("Revert to default settings");
-
-            public static readonly GUIContent ResetOptOutDialogsButton = EditorGUIUtility.TrTextContent("Reset Opt-Out settings for dialog prompts", "All dialogs that you have previously opted out of will show up again when they get triggered.");
-        }
-        static class Style
-        {
-            public static readonly GUIStyle IconButton = new GUIStyle("IconButton");
-        }
-        const string k_RootPathSignifier = "./";
-        const string k_PathOneUpSignifier = "../";
-
-        [SettingsProvider()]
-        static SettingsProvider CreateSettingsProvider()
-        {
-            var provider = new SettingsProvider(SettingsPath, SettingsScope.User)
+            get
             {
-                guiHandler = searchConext =>
-                {
-                    PreferencesGUI();
-                },
-
-                titleBarGuiHandler = TitleBarGUI,
-            };
-            provider.PopulateSearchKeywordsFromGUIContentProperties<Content>();
-            return provider;
-        }
-
-        static void TitleBarGUI()
-        {
-            GUILayout.FlexibleSpace();
-            GUILayout.BeginVertical();
-            GUILayout.Space(5);
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Content.HelpIcon, Style.IconButton))
-                Application.OpenURL(MemoryProfiler.Editor.UIContentData.DocumentationUrls.LatestPackageVersionUrl);
-            GUILayout.Space(2);
-            if (GUILayout.Button(Content.TitleSettingsIcon, Style.IconButton))
-            {
-                var menu = new GenericMenu();
-                menu.AddItem(Content.ResetSettings, false, () =>
-                {
-                    MemoryProfilerSettings.ResetMemorySnapshotStoragePathToDefault();
-                });
-                var position = new Rect(Event.current.mousePosition, Vector2.zero);
-                menu.DropDown(position);
+                return (CaptureFlags)EditorPrefs.GetInt(k_SnapshotCaptureFlagsKey, (int)(CaptureFlags.ManagedObjects | CaptureFlags.NativeObjects | CaptureFlags.NativeAllocations));
             }
-            GUILayout.EndHorizontal();
-            GUILayout.EndVertical();
-            //var fieldRect = GUILayoutUtility.GetLastRect();
-            //var helpButtonRect = fieldRect;
-            ////helpButtonRect.y -= EditorGUIUtility.singleLineHeight;
-            //helpButtonRect.xMin += helpButtonRect.width - 16;
-            ////helpButtonRect.width = 16;
-            //helpButtonRect.height = 16;
-            //GUI.Button(helpButtonRect, "?");
+            set
+            {
+                EditorPrefs.SetInt(k_SnapshotCaptureFlagsKey, (int)value);
+            }
         }
 
-        static void PreferencesGUI()
+        public static bool CaptureWithScreenshot
         {
-            float layoutMaxWidth = 500;
-            float s_DefaultLabelWidth = 250;
-            float m_LabelWidth = EditorGUIUtility.labelWidth;
-            EditorGUIUtility.labelWidth = s_DefaultLabelWidth;
-            GUILayout.BeginHorizontal(GUILayout.MaxWidth(layoutMaxWidth));
-            GUILayout.Space(10);
-            GUILayout.BeginVertical();
-            GUILayout.Space(10);
+            get
             {
-                EditorGUI.BeginChangeCheck();
-                var prevControl = GUI.GetNameOfFocusedControl();
-                var val = EditorGUILayout.DelayedTextField(Content.SnapshotPathLabel, MemoryProfilerSettings.MemorySnapshotStoragePath);
-
-                if (EditorGUI.EndChangeCheck())
-                {
-                    if (!(val.StartsWith(k_RootPathSignifier) || val.StartsWith(k_PathOneUpSignifier)))
-                    {
-                        if (EditorUtility.DisplayDialog(Content.InvalidPathWindow, Content.OnlyRelativePaths, Content.OKButton))
-                        {
-                            GUI.FocusControl(prevControl);
-                            var currentlySavedPath = MemoryProfilerSettings.MemorySnapshotStoragePath;
-                            // in case this faulty path has actually been saved, fix it back to default
-                            if (!(currentlySavedPath.StartsWith(k_RootPathSignifier) || currentlySavedPath.StartsWith(k_PathOneUpSignifier)))
-                                MemoryProfilerSettings.ResetMemorySnapshotStoragePathToDefault();
-                        }
-                    }
-                    else
-                    {
-                        MemoryProfilerSettings.MemorySnapshotStoragePath = val;
-                        var collectionPath = MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath;
-                        var info = new DirectoryInfo(collectionPath);
-                        if (!info.Exists)
-                        {
-                            info = Directory.CreateDirectory(collectionPath);
-                            if (!info.Exists)
-                                throw new UnityException("Failed to create directory, with provided preferences path: " + collectionPath);
-                        }
-                    }
-                }
-#if UNITY_2021_2_OR_NEWER
-                MemoryProfilerSettings.MemoryProfilerPackageOverridesMemoryModuleUI = EditorGUILayout.Toggle(Content.MemoryProfilerPackageOverridesMemoryModuleUI, MemoryProfilerSettings.MemoryProfilerPackageOverridesMemoryModuleUI);
-#endif
-                if (GUILayout.Button(Content.ResetOptOutDialogsButton))
-                {
-                    MemoryProfilerSettings.ResetAllOptOutModalDialogSettings();
-                }
-                var newTruncateValue = EditorGUILayout.Toggle(new GUIContent(TextContent.TruncateTypeName), MemoryProfilerSettings.MemorySnapshotTruncateTypes);
-                if (newTruncateValue != MemoryProfilerSettings.MemorySnapshotTruncateTypes)
-                {
-                    MemoryProfilerSettings.ToggleTruncateTypes();
-                }
+                return EditorPrefs.GetBool(k_SnapshotCaptureCaptureWithScreenshot, true);
             }
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-            EditorGUIUtility.labelWidth = m_LabelWidth;
+            set
+            {
+                EditorPrefs.SetBool(k_SnapshotCaptureCaptureWithScreenshot, value);
+            }
+        }
+
+        public static bool GCCollectWhenCapturingEditor
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_SnapshotGCCollectWhenCapturingEditor, true);
+            }
+            set
+            {
+                EditorPrefs.SetBool(k_SnapshotGCCollectWhenCapturingEditor, value);
+            }
+        }
+
+        public static bool CloseSnapshotsWhenCapturingEditor
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_CloseSnapshotsWhenCapturingEditor, true);
+            }
+            set
+            {
+                EditorPrefs.SetBool(k_CloseSnapshotsWhenCapturingEditor, value);
+            }
+        }
+
+        public static bool ObjectDetailsReferenceSectionVisible
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_ObjectDetailsReferenceSectionVisibleKey, true);
+            }
+            set
+            {
+                EditorPrefs.SetBool(k_ObjectDetailsReferenceSectionVisibleKey, value);
+            }
+        }
+
+        public static float ObjectDetailsReferenceSectionSize
+        {
+            get
+            {
+                return EditorPrefs.GetFloat(k_ObjectDetailsReferenceSectionSizeKey, float.NaN);
+            }
+            set
+            {
+                EditorPrefs.SetFloat(k_ObjectDetailsReferenceSectionSizeKey, value);
+            }
         }
     }
 }

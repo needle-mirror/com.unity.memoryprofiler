@@ -83,7 +83,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void GatherIssuesSingle(List<SnapshotIssuesModel.Issue> results, CachedSnapshot snapshot)
         {
-            if (snapshot.MetaData.Platform.Contains("Editor"))
+            if (snapshot.MetaData.IsEditorCapture)
                 AddIssue(results, kEditorHint, kEditorHintDetails, SnapshotIssuesModel.IssueLevel.Warning);
 
             if (!snapshot.HasTargetAndMemoryInfo)
@@ -98,14 +98,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         void GatherIssuesCompare(List<SnapshotIssuesModel.Issue> results, CachedSnapshot snapshotA, CachedSnapshot snapshotB)
         {
             // Check snapshot source - warn if it's Editor
-            if (snapshotA.MetaData.Platform.Contains("Editor"))
+            if (snapshotA.MetaData.IsEditorCapture)
             {
-                if (snapshotB.MetaData.Platform.Contains("Editor"))
+                if (snapshotB.MetaData.IsEditorCapture)
                     AddIssue(results, kEditorHintDiffBoth, kEditorHintDetails, SnapshotIssuesModel.IssueLevel.Warning);
                 else
                     AddIssue(results, kEditorHintDiffOne, kEditorHintDiffOneDetails, SnapshotIssuesModel.IssueLevel.Warning);
             }
-            else if (snapshotB.MetaData.Platform.Contains("Editor"))
+            else if (snapshotB.MetaData.IsEditorCapture)
                 AddIssue(results, kEditorHintDiffOne, kEditorHintDiffOneDetails, SnapshotIssuesModel.IssueLevel.Warning);
 
             // Compare capture flags

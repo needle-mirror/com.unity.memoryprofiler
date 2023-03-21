@@ -55,7 +55,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ulong totalSizeInB,
                 uint countInA,
                 uint countInB,
-                Action selectionProcessor)
+                List<string> itemPath)
             {
                 Name = name;
                 SizeDelta = Convert.ToInt64(totalSizeInB) - Convert.ToInt64(totalSizeInA);
@@ -65,7 +65,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 CountInB = countInB;
                 CountDelta = Convert.ToInt32(countInB) - Convert.ToInt32(countInA);
                 HasChanged = TotalSizeInA != TotalSizeInB || CountInA != CountInB;
-                SelectionProcessor = selectionProcessor;
+                ItemPath = itemPath;
             }
 
             // The name of this item.
@@ -92,8 +92,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Has this item or any of its children changed?
             public bool HasChanged { get; }
 
-            // A callback to process the selection of this item.
-            public Action SelectionProcessor { get; }
+            // Item path.
+            public List<string> ItemPath { get; }
         }
     }
 }

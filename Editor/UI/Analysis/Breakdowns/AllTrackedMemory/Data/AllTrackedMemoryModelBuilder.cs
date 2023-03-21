@@ -1,7 +1,11 @@
 #if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.UIContentData;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using Unity.MemoryProfiler.Editor.Extensions;
+using Unity.Profiling;
+using UnityEngine;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
@@ -10,721 +14,1064 @@ namespace Unity.MemoryProfiler.Editor.UI
     // Builds an AllTrackedMemoryModel.
     class AllTrackedMemoryModelBuilder
     {
+        // These markers are used in Performance tests. If their usage changes, adjust the performance tests accordingly
+        public const string BuildMarkerName = "AllTrackedMemoryModelBuilder.Build";
+        public const string IterateHierarchyMarkerName = "AllTrackedMemoryModelBuilder.IterateHierarchy";
+        public const string GenerateTreeMarkerName = "AllTrackedMemoryModelBuilder.GenerateTree";
+
+        static readonly ProfilerMarker k_BuildMarker = new ProfilerMarker(BuildMarkerName);
+        static readonly ProfilerMarker k_IterateHierarchyMarker = new ProfilerMarker(IterateHierarchyMarkerName);
+        static readonly ProfilerMarker k_GenerateTreeMarker = new ProfilerMarker(GenerateTreeMarkerName);
+
+        const string k_NativeGroupName = "Native";
+        const string k_NativeObjectsGroupName = "Native Objects";
+        const string k_NativeSubsystemsGroupName = "Unity Subsystems";
+
+        const string k_ManagedGroupName = "Managed";
+        const string k_ManagedObjectsGroupName = "Managed Objects";
+        const string k_ManagedVMGroupName = "Virtual Machine";
+
+        public const string GraphicsGroupName = SummaryTextContent.kAllMemoryCategoryGraphics;
+        public const string UntrackedGroupName = "Untracked";
+        const string k_UntrackedEstimatedGroupName = SummaryTextContent.kAllMemoryCategoryUntrackedEstimated;
+        const string k_ExecutablesGroupName = "Executables & Mapped";
+
+        const string k_AndroidRuntime = "Android Runtime";
+
+        const string k_InvalidItemName = "Unknown";
+        const string k_ReservedItemName = "Reserved";
+
         int m_ItemId;
+
+        public AllTrackedMemoryModelBuilder()
+        {
+            m_ItemId = (int)IAnalysisViewSelectable.Category.FirstDynamicId;
+        }
 
         public AllTrackedMemoryModel Build(CachedSnapshot snapshot, in BuildArgs args)
         {
+            using var _ = k_BuildMarker.Auto();
+
             if (!CanBuildBreakdownForSnapshot(snapshot))
                 throw new UnsupportedSnapshotVersionException(snapshot);
 
             var tree = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+            var totalMemory = new MemorySize();
             if (!args.ExcludeAll)
             {
-                tree = BuildAllTrackedMemoryBreakdown(snapshot, args);
+                tree = BuildAllMemoryBreakdown(snapshot, args, out totalMemory);
                 if (args.PathFilter != null)
                     tree = BuildItemsAtPathInTreeExclusively(args.PathFilter, tree);
             }
 
-            var totalSnapshotMemorySize = snapshot.MetaData.TargetMemoryStats.Value.TotalVirtualMemory;
-            var model = new AllTrackedMemoryModel(tree, totalSnapshotMemorySize);
+            var model = new AllTrackedMemoryModel(tree, totalMemory, args.SelectionProcessor);
             return model;
         }
 
         bool CanBuildBreakdownForSnapshot(CachedSnapshot snapshot)
         {
-            // TargetAndMemoryInfo is required to obtain the total snapshot memory size and reserved sizes.
             if (!snapshot.HasTargetAndMemoryInfo)
                 return false;
 
             return true;
         }
 
-        List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> BuildAllTrackedMemoryBreakdown(
-            CachedSnapshot snapshot,
-            in BuildArgs args)
+        class BuildContext
         {
+            public MemorySize Total { get; set; }
+
+            /// Native memory groups
+            // Index in CachedSnapshot.NativeObjects <-> size
+            public Dictionary<SourceIndex, MemorySize> NativeObjectIndex2SizeMap { get; private set; }
+
+            // Index in CachedSnapshot.NativeRootReferences <-> size
+            public Dictionary<SourceIndex, MemorySize> NativeRootReference2SizeMap { get; private set; }
+
+            // All native regions not known to be used by any object or allocation (reserved memory)
+            // Index of CachedSnapshot.NativeMemoryRegions <-> size
+            public Dictionary<SourceIndex, MemorySize> NativeRegionName2SizeMap { get; private set; }
+
+
+            /// Managed memory groups
+            // All managed objects grouped by type
+            // Type source <-> list of objects of that type
+            public Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> ManagedTypeName2ObjectsTreeMap { get; private set; }
+
+            // All managed objects grouped by type and native Object Name
+            // Type name <-> NativeObjectName <-> list of objects of that type
+            public Dictionary<SourceIndex, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> ManagedTypeName2NativeName2ObjectsTreeMap { get; private set; }
+
+            // Sum of all memory allocated in managed sections marked as virtual machine
+            public MemorySize ManagedMemoryVM { get; set; }
+
+            // Sum of all memory allocated in managed sections to GC heap and not used by any managed object
+            public MemorySize ManagedMemoryReserved { get; set; }
+
+            /// Graphics memory group
+            public MemorySize UntrackedGraphicsResources { get; set; }
+            public Dictionary<SourceIndex, MemorySize> GfxObjectIndex2SizeMap { get; private set; }
+
+            /// System memory regions
+            // Executables
+            public Dictionary<string, MemorySize> ExecutablesName2SizeMap { get; private set; }
+
+            /// Untracked. All memory we don't know anything useful about
+            public Dictionary<string, MemorySize> UntrackedRegionsName2SizeMap { get; private set; }
+
+            /// Android platform specific (total)
+            public MemorySize AndroidRuntime { get; set; }
+
+            public BuildContext()
+            {
+                NativeObjectIndex2SizeMap = new Dictionary<SourceIndex, MemorySize>();
+                NativeRootReference2SizeMap = new Dictionary<SourceIndex, MemorySize>();
+                NativeRegionName2SizeMap = new Dictionary<SourceIndex, MemorySize>();
+
+                ManagedTypeName2ObjectsTreeMap = new Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>();
+                ManagedTypeName2NativeName2ObjectsTreeMap = new Dictionary<SourceIndex, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>>();
+
+                GfxObjectIndex2SizeMap = new Dictionary<SourceIndex, MemorySize>();
+
+                ExecutablesName2SizeMap = new Dictionary<string, MemorySize>();
+                UntrackedRegionsName2SizeMap = new Dictionary<string, MemorySize>();
+            }
+        }
+
+        /// <summary>
+        /// Takes MemoryEntriesHierarchy and builds hierarchy tree out of it
+        /// </summary>
+        List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> BuildAllMemoryBreakdown(
+            CachedSnapshot snapshot,
+            in BuildArgs args,
+            out MemorySize total)
+        {
+            var context = BuildAllMemoryContext(snapshot, args);
+
+            // Build hierarchy out of pre-built data structures
             var rootItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+            using (k_GenerateTreeMarker.Auto())
+            {
+                if (BuildNativeTree(snapshot, args, context.NativeObjectIndex2SizeMap, context.NativeRootReference2SizeMap, context.NativeRegionName2SizeMap, out var nativeMemoryTree))
+                    rootItems.Add(nativeMemoryTree);
 
-            if (TryBuildNativeMemoryTree(snapshot, args, out var nativeMemoryTree))
-                rootItems.Add(nativeMemoryTree);
+                if (BuildManagedTree(snapshot, args, context.ManagedTypeName2ObjectsTreeMap, context.ManagedTypeName2NativeName2ObjectsTreeMap, context.ManagedMemoryVM, context.ManagedMemoryReserved, out var managedMemoryTree))
+                    rootItems.Add(managedMemoryTree);
 
-            if (TryBuildScriptingMemoryTree(snapshot, args, out var scriptingMemoryTree))
-                rootItems.Add(scriptingMemoryTree);
+                if (BuildTreeFromGroupByNameMap(k_ExecutablesGroupName, (int)IAnalysisViewSelectable.Category.ExecutablesAndMapped, context.ExecutablesName2SizeMap, out var executablesTree))
+                    rootItems.Add(executablesTree);
 
-            if (TryBuildGraphicsMemoryTree(snapshot, args, out var graphicsMemoryTree))
-                rootItems.Add(graphicsMemoryTree);
+                // When we include Gfx resources we alter Untracked group to match the total size and need to make it clear in the table
+                var untrackedName = args.BreakdownGfxResources ? k_UntrackedEstimatedGroupName : UntrackedGroupName;
+                var selectionCategory = args.BreakdownGfxResources ? (int)IAnalysisViewSelectable.Category.UnknownEstimated : (int)IAnalysisViewSelectable.Category.Unknown;
+                if (BuildTreeFromGroupByNameMap(untrackedName, selectionCategory, context.UntrackedRegionsName2SizeMap, out var unaccountedRegionsTree))
+                    rootItems.Add(unaccountedRegionsTree);
 
-            if (TryBuildExecutableAndDllsTree(snapshot, args, out var codeTree))
-                rootItems.Add(codeTree);
+                if (BuildGraphicsMemoryTree(snapshot, args, context.GfxObjectIndex2SizeMap, out var graphicsTree))
+                    rootItems.Add(graphicsTree);
+
+                if (BuildAndroidRuntimeTree(args, context.AndroidRuntime, out var androidTree))
+                    rootItems.Add(androidTree);
+            }
+
+            total = context.Total;
 
             return rootItems;
         }
 
-        bool TryBuildNativeMemoryTree(
+        BuildContext BuildAllMemoryContext(
             CachedSnapshot snapshot,
-            in BuildArgs args,
-            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+            in BuildArgs args)
         {
-            var accountedSize = 0UL;
-            List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> nativeItems = null;
+            using var _ = k_IterateHierarchyMarker.Auto();
 
-            // Native Objects and Allocation Roots.
+            var context = new BuildContext();
+
+            var disambiguateUnityObjects = args.DisambiguateUnityObjects;
+
+            // Extract all objects from the hierarchy and build group specific maps
+            var filterArgs = args;
+            snapshot.EntriesMemoryMap.ForEachFlatWithResidentSize((index, address, size, residentSize, source) =>
             {
-                var nativeRootReferences = snapshot.NativeRootReferences;
-                BuildNativeObjectsAndRootsTreeItems(snapshot,
-                    args,
-                    out accountedSize,
-                    (long rootId) =>
+                var memorySize = new MemorySize(size, residentSize);
+
+                context.Total += memorySize;
+
+                // Add items to respective group container
+                switch (source.Id)
                 {
-                    return nativeRootReferences.IdToIndex.TryGetValue(rootId, out var rootIndex) ? nativeRootReferences.AccumulatedSize[rootIndex] : 0;
-                }, ref nativeItems);
+                    case SourceIndex.SourceId.NativeObject:
+                        ProcessNativeObject(snapshot, source, memorySize, filterArgs, context.NativeObjectIndex2SizeMap);
+                        break;
+                    case SourceIndex.SourceId.NativeAllocation:
+                        ProcessNativeAllocation(snapshot, source, memorySize, filterArgs, context.NativeObjectIndex2SizeMap, context.NativeRootReference2SizeMap);
+                        break;
+                    case SourceIndex.SourceId.NativeMemoryRegion:
+                        ProcessNativeRegion(snapshot, source, memorySize, filterArgs, context.NativeRegionName2SizeMap);
+                        break;
+                    case SourceIndex.SourceId.ManagedObject:
+                        ProcessManagedObject(snapshot, source, memorySize, filterArgs, context.ManagedTypeName2ObjectsTreeMap, disambiguateUnityObjects ? context.ManagedTypeName2NativeName2ObjectsTreeMap : null);
+                        break;
+                    case SourceIndex.SourceId.ManagedHeapSection:
+                        ProcessManagedHeap(snapshot, source, memorySize, filterArgs, context);
+                        break;
+
+                    case SourceIndex.SourceId.SystemMemoryRegion:
+                        ProcessSystemRegion(snapshot, source, memorySize, filterArgs, context);
+                        break;
+
+                    default:
+                        Debug.Assert(false, $"Unknown memory region source id ({source.Id}), please report a bug");
+                        break;
+                }
+            });
+
+            // [Legacy] If we don't have SystemMemoryRegionsInfo, take the total value from legacy memory stats
+            // Nb! If you change this, change similar code in AllTrackedMemoryModelBuilder / UnityObjectsModelBuilder / AllMemorySummaryModelBuilder
+            var memoryStats = snapshot.MetaData.TargetMemoryStats;
+            if (memoryStats.HasValue && !snapshot.HasSystemMemoryRegionsInfo && (memoryStats.Value.TotalVirtualMemory > 0))
+            {
+                context.UntrackedRegionsName2SizeMap[UntrackedGroupName] = new MemorySize(memoryStats.Value.TotalVirtualMemory - context.Total.Committed, 0);
+                context.Total = new MemorySize(memoryStats.Value.TotalVirtualMemory, 0);
             }
 
-            // Native Temporary Allocators.
+            // Add graphics resources to context separately, as we don't have them in memory map.
+            // We compile different sources, trying to come with reasonable results:
+            // - Platform-specific reported usage (memoryStats.Value.GraphicsUsedMemory)
+            // - Sum of all system regions identified to be possible graphics resource mapping
+            // - Estimated size of all tracked graphics resources created
+            // after that we reassign "untracked" memory to the estimated graphics resources size
             {
-                // They represent native heap which is not associated with any Unity object or native root
-                // and thus can be represented in isolation.
-                // Currently all temp allocators has "TEMP" string in their names.
+                // Compensate if system regions graphics regions are smaller than platform-reported value
+                var untrackedToReassign = new MemorySize();
+                if (args.BreakdownGfxResources && (context.UntrackedGraphicsResources.Committed < memoryStats.Value.GraphicsUsedMemory))
+                {
+                    untrackedToReassign = new MemorySize(memoryStats.Value.GraphicsUsedMemory - context.UntrackedGraphicsResources.Committed, 0);
+                    context.UntrackedGraphicsResources = new MemorySize(memoryStats.Value.GraphicsUsedMemory, 0);
+                }
+
+                // Add estimated resources
                 if (snapshot.HasGfxResourceReferencesAndAllocators)
                 {
-                    var nativeAllocatorsTotalSize = 0UL;
+                    // Add estimated graphics resources
+                    ProcessGraphicsResources(snapshot, args, context.GfxObjectIndex2SizeMap, out var totalEstimatedGraphicsMemory);
 
-                    var nativeAllocators = snapshot.NativeAllocators;
-                    var nativeAllocatorItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
-
-                    for (int i = 0; i != nativeAllocators.Count; ++i)
+                    // If accounted "untracked" graphics memory is less than estimated, reassign untracked memory
+                    // to graphics resources. Otherwise, if we have more regions than estimated, just create "untracked" entity
+                    if (totalEstimatedGraphicsMemory.Committed > context.UntrackedGraphicsResources.Committed)
                     {
-                        string allocatorName = nativeAllocators.AllocatorName[i];
-                        if (!allocatorName.Contains("TEMP"))
-                            continue;
-
-                        // Filter by Native Allocator name. Skip objects that don't pass the name filter.
-                        if (args.NameFilter != null && !args.NameFilter.TextPasses(allocatorName))
-                            continue;
-
-                        var size = nativeAllocators.ReservedSize[i];
-                        var allocatorItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                            m_ItemId++,
-                            new AllTrackedMemoryModel.ItemData(
-                                allocatorName,
-                                size)
-                            );
-                        nativeAllocatorItems.Add(allocatorItem);
-
-                        nativeAllocatorsTotalSize += size;
+                        untrackedToReassign += totalEstimatedGraphicsMemory - context.UntrackedGraphicsResources;
+                        context.UntrackedGraphicsResources = new MemorySize();
                     }
-
-                    accountedSize += nativeAllocatorsTotalSize;
-
-                    if (nativeAllocatorItems.Count > 0)
+                    else
                     {
-                        var nativeAllocatorsItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                            m_ItemId++,
-                            new AllTrackedMemoryModel.ItemData(
-                                "Native Temporary Allocators",
-                                nativeAllocatorsTotalSize,
-                                childCount: nativeAllocatorItems.Count),
-                            nativeAllocatorItems);
-                        nativeItems.Add(nativeAllocatorsItem);
+                        context.UntrackedGraphicsResources -= totalEstimatedGraphicsMemory;
                     }
                 }
+
+                // Add untracked graphics resources to map
+                if (context.UntrackedGraphicsResources.Committed > 0)
+                    AddItemSizeToMap(context.GfxObjectIndex2SizeMap, new SourceIndex(), context.UntrackedGraphicsResources);
+
+                // Reduce untracked
+                if (untrackedToReassign.Committed > 0)
+                    ReduceUntrackedByGraphicsResourcesSize(snapshot, context.UntrackedRegionsName2SizeMap, untrackedToReassign);
             }
 
-            // Reserved
-            {
-                // Only add 'Reserved' item if not applying a filter.
-                if (args.NameFilter == null)
-                {
-                    var memoryStats = snapshot.MetaData.TargetMemoryStats.Value;
-                    var totalSize = memoryStats.TotalReservedMemory - memoryStats.GraphicsUsedMemory - memoryStats.GcHeapReservedMemory;
-                    if (totalSize > accountedSize)
-                    {
-                        var remainingNativeMemory = totalSize - accountedSize;
-                        var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                            m_ItemId++,
-                            new AllTrackedMemoryModel.ItemData(
-                                "Reserved",
-                                remainingNativeMemory)
-                        );
-                        nativeItems.Add(item);
-
-                        accountedSize += remainingNativeMemory;
-                    }
-                }
-            }
-
-            // Total Native Heap.
-            if (nativeItems.Count > 0)
-            {
-                var groupSelectorProcessor = args.GroupSelectionProcessor;
-                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                    m_ItemId++,
-                    new AllTrackedMemoryModel.ItemData(
-                        "Native Memory",
-                        accountedSize,
-                        () => groupSelectorProcessor?.Invoke(TextContent.NativeDescription)),
-                    nativeItems);
-                return true;
-            }
-
-            tree = default;
-            return false;
+            return context;
         }
 
-        void BuildNativeObjectsAndRootsTreeItems(
-            CachedSnapshot snapshot,
-            in BuildArgs args,
-            out ulong totalHeapSize,
-            Func<long, ulong> rootIdToSizeFunc,
-            ref List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> nativeItems)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void AddItemSizeToMap<TKey>(Dictionary<TKey, MemorySize> map, TKey key, MemorySize itemSize)
         {
-            totalHeapSize = 0UL;
-            if (nativeItems == null)
-                nativeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
-            var cachedAccountedNativeObjects = new Dictionary<long, long>();
-
-            // Native Objects grouped by Native Type.
-            {
-                // Build type-index to type-objects map.
-                var typeIndexToTypeObjectsMap = new Dictionary<int, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>();
-                var nativeObjectsTotalSize = 0UL;
-                var nativeObjects = snapshot.NativeObjects;
-                var nativeObjectsCountInt32 = Convert.ToInt32(nativeObjects.Count);
-                cachedAccountedNativeObjects.EnsureCapacity(nativeObjectsCountInt32);
-                for (var i = 0L; i < nativeObjects.Count; i++)
-                {
-                    // Mark this object as visited for later roots iteration.
-                    var rootId = nativeObjects.RootReferenceId[i];
-                    cachedAccountedNativeObjects.Add(rootId, i);
-                    ulong size = rootIdToSizeFunc(rootId);
-                    // Ignore empty objects.
-                    if (size == 0)
-                        continue;
-
-                    // Filter by Native Object name. Skip objects that don't pass the name filter.
-                    var name = nativeObjects.ObjectName[i];
-                    if (args.NameFilter != null && !args.NameFilter.TextPasses(name))
-                        continue;
-
-                    // Create selection processor.
-                    var nativeObjectIndex = i;
-                    var nativeObjectSelectionProcessor = args.NativeObjectSelectionProcessor;
-                    void ProcessNativeObjectSelection()
-                    {
-                        nativeObjectSelectionProcessor?.Invoke(nativeObjectIndex);
-                    }
-
-                    // Create item for native object.
-                    var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            name,
-                            size,
-                            ProcessNativeObjectSelection)
-                    );
-
-                    // Add object to corresponding type entry in map.
-                    var typeIndex = nativeObjects.NativeTypeArrayIndex[i];
-                    if (typeIndexToTypeObjectsMap.TryGetValue(typeIndex, out var typeObjects))
-                        typeObjects.Add(item);
-                    else
-                        typeIndexToTypeObjectsMap.Add(typeIndex, new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>() { item });
-                }
-
-                // Build type-objects tree from map.
-                var nativeTypes = snapshot.NativeTypes;
-                var nativeTypeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(typeIndexToTypeObjectsMap.Count);
-                foreach (var kvp in typeIndexToTypeObjectsMap)
-                {
-                    var typeIndex = kvp.Key;
-                    var typeObjects = kvp.Value;
-
-                    // Calculate type size from all its objects.
-                    var typeSize = 0UL;
-                    foreach (var typeObject in typeObjects)
-                        typeSize += typeObject.data.Size;
-
-                    // Ignore empty types.
-                    if (typeSize == 0)
-                        continue;
-
-                    // Create selection processor.
-                    var nativeTypeSelectionProcessor = args.NativeTypeSelectionProcessor;
-                    void ProcessNativeTypeSelection()
-                    {
-                        nativeTypeSelectionProcessor?.Invoke(typeIndex);
-                    }
-
-                    var typeName = nativeTypes.TypeName[typeIndex];
-                    var typeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            typeName,
-                            typeSize,
-                            ProcessNativeTypeSelection,
-                            typeObjects.Count),
-                        typeObjects);
-                    nativeTypeItems.Add(typeItem);
-
-                    // Accumulate type's size into total size of native objects.
-                    nativeObjectsTotalSize += typeSize;
-                }
-
-                totalHeapSize += nativeObjectsTotalSize;
-
-                if (nativeTypeItems.Count > 0)
-                {
-                    var groupSelectorProcessor = args.GroupSelectionProcessor;
-                    var nativeObjectsItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            "Unity Objects",
-                            nativeObjectsTotalSize,
-                            () => groupSelectorProcessor?.Invoke(TextContent.ManagedObjectsDescription),
-                            childCount: nativeTypeItems.Count),
-                        nativeTypeItems);
-                    nativeItems.Add(nativeObjectsItem);
-                }
-            }
-
-            // Native Roots
-            {
-                var nativeRootsTotalSize = 0UL;
-                var nativeRootReferences = snapshot.NativeRootReferences;
-                var nativeRootAreaItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
-
-                // Get indices of all roots grouped by area.
-                var rootAreas = new Dictionary<string, List<long>>();
-                // Start from index 1 as 0 is executable and dll size!
-                for (var i = 1; i < nativeRootReferences.Count; ++i)
-                {
-                    var accounted = cachedAccountedNativeObjects.TryGetValue(nativeRootReferences.Id[i], out _);
-                    if (accounted)
-                        continue;
-
-                    var rootAreaName = nativeRootReferences.AreaName[i];
-                    if (rootAreas.TryGetValue(rootAreaName, out var rootIndices))
-                        rootIndices.Add(i);
-                    else
-                        rootAreas.Add(rootAreaName, new List<long>() { i });
-                }
-
-                // Build tree for roots per area.
-                foreach (var kvp in rootAreas)
-                {
-                    var nativeRootAreaTotalSize = 0UL;
-                    var rootAreaItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
-                    var rootIndices = kvp.Value;
-                    foreach (var index in rootIndices)
-                    {
-                        var size = rootIdToSizeFunc(nativeRootReferences.Id[index]);
-                        // Ignore empty roots.
-                        if (size == 0)
-                            continue;
-
-                        // Filter by Native Root Reference object name. Skip objects that don't pass the name filter.
-                        var objectName = nativeRootReferences.ObjectName[index];
-                        if (args.NameFilter != null && !args.NameFilter.TextPasses(objectName))
-                            continue;
-
-                        var nativeRootItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                            m_ItemId++,
-                            new AllTrackedMemoryModel.ItemData(
-                                objectName,
-                                size)
-                            );
-                        rootAreaItems.Add(nativeRootItem);
-
-                        // Accumulate the root's size in its area's total.
-                        nativeRootAreaTotalSize += size;
-                    }
-
-                    // Ignore empty areas.
-                    if (nativeRootAreaTotalSize == 0)
-                        continue;
-
-                    var nativeRootAreaName = kvp.Key;
-                    var nativeRootAreaItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            nativeRootAreaName,
-                            nativeRootAreaTotalSize,
-                            childCount: rootAreaItems.Count),
-                        rootAreaItems);
-                    nativeRootAreaItems.Add(nativeRootAreaItem);
-
-                    nativeRootsTotalSize += nativeRootAreaTotalSize;
-                }
-
-                if (nativeRootAreaItems.Count > 0)
-                {
-                    var groupSelectorProcessor = args.GroupSelectionProcessor;
-                    var nativeRootsItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            "Unity Subsystems",
-                            nativeRootsTotalSize,
-                            () => groupSelectorProcessor?.Invoke(TextContent.UnitySubsystemsDescription),
-                            childCount: nativeRootAreaItems.Count),
-                        nativeRootAreaItems);
-                    nativeItems.Add(nativeRootsItem);
-                }
-
-                totalHeapSize += nativeRootsTotalSize;
-            }
+            if (map.TryGetValue(key, out var itemTotals))
+                map[key] = itemTotals + itemSize;
+            else
+                map.Add(key, itemSize);
         }
 
-        bool TryBuildScriptingMemoryTree(
-            CachedSnapshot snapshot,
-            in BuildArgs args,
-            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        bool NameFilter(in BuildArgs args, in string name)
         {
-            var accountedSize = 0UL;
-            var scriptingItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
-
-            // Empty Heap Space
-            {
-                const string k_EmptyHeapSpaceName = "Empty Heap Space";
-                if (args.NameFilter != null && args.NameFilter.TextPasses(k_EmptyHeapSpaceName))
-                {
-                    var emptyHeapSpace = snapshot.ManagedHeapSections.ManagedHeapMemoryReserved - snapshot.CrawledData.ManagedObjectMemoryUsage;
-                    var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            k_EmptyHeapSpaceName,
-                            emptyHeapSpace)
-                        );
-                    scriptingItems.Add(item);
-
-                    accountedSize += emptyHeapSpace;
-                }
-            }
-
-            // Virtual Machine
-            {
-                var virtualMachineMemoryName = UIContentData.TextContent.DefaultVirtualMachineMemoryCategoryLabel;
-                if (snapshot.MetaData.TargetInfo.HasValue)
-                {
-                    switch (snapshot.MetaData.TargetInfo.Value.ScriptingBackend)
-                    {
-                        case UnityEditor.ScriptingImplementation.Mono2x:
-                            virtualMachineMemoryName = UIContentData.TextContent.MonoVirtualMachineMemoryCategoryLabel;
-                            break;
-
-                        case UnityEditor.ScriptingImplementation.IL2CPP:
-                            virtualMachineMemoryName = UIContentData.TextContent.IL2CPPVirtualMachineMemoryCategoryLabel;
-                            break;
-
-                        case UnityEditor.ScriptingImplementation.WinRTDotNET:
-                        default:
-                            break;
-                    }
-                }
-
-                if (args.NameFilter != null && args.NameFilter.TextPasses(virtualMachineMemoryName))
-                {
-                    var virtualMachineMemoryReserved = snapshot.ManagedHeapSections.VirtualMachineMemoryReserved;
-                    var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            virtualMachineMemoryName,
-                            virtualMachineMemoryReserved)
-                        );
-                    scriptingItems.Add(item);
-
-                    accountedSize += virtualMachineMemoryReserved;
-                }
-            }
-
-            // Objects (Grouped By Type).
-            {
-                // Build type-index to type-objects map.
-                var managedObjectsTotalSize = 0UL;
-                var managedObjects = snapshot.CrawledData.ManagedObjects;
-                var typeIndexToTypeObjectsMap = new Dictionary<int, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>();
-                for (var i = 0L; i < managedObjects.Count; i++)
-                {
-                    var size = Convert.ToUInt64(managedObjects[i].Size);
-
-                    // Use native object name if possible.
-                    var name = string.Empty;
-                    var nativeObjectIndex = managedObjects[i].NativeObjectIndex;
-                    if (nativeObjectIndex > 0)
-                        name = snapshot.NativeObjects.ObjectName[nativeObjectIndex];
-
-                    // Filter by Native Object name. Skip objects that don't pass the name filter.
-                    if (args.NameFilter != null && !args.NameFilter.TextPasses(name))
-                        continue;
-
-                    // Create selection processor.
-                    var managedObjectIndex = i;
-                    var managedObjectSelectionProcessor = args.ManagedObjectSelectionProcessor;
-                    void ProcessManagedObjectSelection()
-                    {
-                        managedObjectSelectionProcessor?.Invoke(managedObjectIndex);
-                    }
-
-                    // Create item for managed object.
-                    var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            name,
-                            size,
-                            ProcessManagedObjectSelection)
-                    );
-
-                    // Add object to corresponding type entry in map.
-                    var typeIndex = managedObjects[i].ITypeDescription;
-                    if (typeIndex < 0)
-                        continue;
-
-                    if (typeIndexToTypeObjectsMap.TryGetValue(typeIndex, out var typeObjects))
-                        typeObjects.Add(item);
-                    else
-                        typeIndexToTypeObjectsMap.Add(typeIndex, new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>() { item });
-                }
-
-                // Build type-objects tree from map.
-                var managedTypes = snapshot.TypeDescriptions;
-                var managedTypeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(typeIndexToTypeObjectsMap.Count);
-                foreach (var kvp in typeIndexToTypeObjectsMap)
-                {
-                    var typeIndex = kvp.Key;
-                    var typeObjects = kvp.Value;
-
-                    // Calculate type size from all its objects.
-                    var typeSize = 0UL;
-                    foreach (var typeObject in typeObjects)
-                        typeSize += typeObject.data.Size;
-
-                    // Create selection processor.
-                    var managedTypeSelectionProcessor = args.ManagedTypeSelectionProcessor;
-                    void ProcessManagedTypeSelection()
-                    {
-                        managedTypeSelectionProcessor?.Invoke(typeIndex);
-                    }
-
-                    var typeName = managedTypes.TypeDescriptionName[typeIndex];
-                    var typeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            typeName,
-                            typeSize,
-                            ProcessManagedTypeSelection,
-                            typeObjects.Count),
-                        typeObjects);
-                    managedTypeItems.Add(typeItem);
-
-                    // Accumulate type's size into total size of managed objects.
-                    managedObjectsTotalSize += typeSize;
-                }
-
-                if (managedTypeItems.Count > 0)
-                {
-                    var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            "Managed Objects",
-                            managedObjectsTotalSize,
-                            childCount: managedTypeItems.Count),
-                        managedTypeItems);
-                    scriptingItems.Add(item);
-                }
-
-                accountedSize += managedObjectsTotalSize;
-            }
-
-            // Reserved (Unused)
-            {
-                // Only add 'Reserved' item if not applying a filter.
-                if (args.NameFilter == null)
-                {
-                    var memoryStats = snapshot.MetaData.TargetMemoryStats.Value;
-                    var reservedUnusedSize = memoryStats.GcHeapReservedMemory - memoryStats.GcHeapUsedMemory;
-                    var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            "Reserved (Unused)",
-                            reservedUnusedSize)
-                        );
-                    scriptingItems.Add(item);
-
-                    accountedSize += reservedUnusedSize;
-                }
-            }
-
-            if (scriptingItems.Count > 0)
-            {
-                var groupSelectorProcessor = args.GroupSelectionProcessor;
-                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                    m_ItemId++,
-                    new AllTrackedMemoryModel.ItemData(
-                        "Scripting Memory",
-                        accountedSize,
-                        () => groupSelectorProcessor?.Invoke(TextContent.ManagedDescription)),
-                    scriptingItems);
-                return true;
-            }
-
-            tree = default;
-            return false;
+            return args.NameFilter?.Passes(name) ?? true;
         }
 
-        bool TryBuildGraphicsMemoryTree(
-            CachedSnapshot snapshot,
-            in BuildArgs args,
-            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        bool SearchFilter(in BuildArgs args, in string scope, in string name = null)
         {
-            const string k_GraphicsMemoryName = "Graphics Memory";
-            var graphicsItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+            using var mainGroupFilter = args.SearchFilter?.OpenScope(scope);
+            if (name == null)
+                return mainGroupFilter?.ScopePasses ?? true;
 
-            if (snapshot.HasGfxResourceReferencesAndAllocators)
+            return mainGroupFilter?.Passes(name) ?? true;
+        }
+
+        void ProcessNativeObject(
+            CachedSnapshot snapshot,
+            SourceIndex source,
+            MemorySize size,
+            in BuildArgs args,
+            Dictionary<SourceIndex, MemorySize> nativeObjectIndex2TotalMap)
+        {
+            var name = source.GetName(snapshot);
+
+            // Apply name filter.
+            if (!NameFilter(args, name))
+                return;
+
+            AddItemSizeToMap(nativeObjectIndex2TotalMap, source, size);
+        }
+
+        // Native allocation might be associated with an object or Unity "subsystem"
+        // ProcessNativeAllocation should be able to register either in objects or allocations
+        void ProcessNativeAllocation(
+            CachedSnapshot snapshot,
+            SourceIndex source,
+            MemorySize size,
+            in BuildArgs args,
+            Dictionary<SourceIndex, MemorySize> nativeObjectIndex2TotalMap,
+            Dictionary<SourceIndex, MemorySize> nativeRootReference2TotalMap)
+        {
+            var nativeAllocations = snapshot.NativeAllocations;
+            var rootReferenceId = nativeAllocations.RootReferenceId[source.Index];
+
+            string name = k_InvalidItemName;
+            SourceIndex groupSource = new SourceIndex();
+            if (rootReferenceId > 0)
             {
-                var accountedSize = 0UL;
-
-                var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
-                BuildNativeObjectsAndRootsTreeItems(snapshot,
-                    args,
-                    out accountedSize,
-                    (long rootId) =>
+                // Is this allocation associated with a native object?
+                if (snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
                 {
-                    return nativeGfxResourceReferences.RootIdToGfxSize.TryGetValue(rootId, out var size) ? size : 0;
-                }, ref graphicsItems);
-
-                // Only add 'Reserved' item if not applying a filter.
-                if (args.NameFilter == null)
-                {
-                    var totalSize = snapshot.MetaData.TargetMemoryStats.Value.GraphicsUsedMemory;
-                    if (totalSize > accountedSize)
-                    {
-                        var remainingGraphicsMemory = totalSize - accountedSize;
-                        var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                            m_ItemId++,
-                            new AllTrackedMemoryModel.ItemData(
-                                "Reserved",
-                                remainingGraphicsMemory)
-                            );
-                        graphicsItems.Add(item);
-
-                        accountedSize += remainingGraphicsMemory;
-                    }
+                    var nativeSource = new SourceIndex(SourceIndex.SourceId.NativeObject, objectIndex);
+                    ProcessNativeObject(snapshot, nativeSource, size, args, nativeObjectIndex2TotalMap);
+                    return;
                 }
 
-                if (graphicsItems.Count > 0)
+                // Extract name and type.
+                if (snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out long groupIndex))
                 {
-                    var groupSelectorProcessor = args.GroupSelectionProcessor;
-                    tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            k_GraphicsMemoryName,
-                            accountedSize,
-                            () => groupSelectorProcessor?.Invoke(TextContent.GraphicsDescription)),
-                        graphicsItems);
-                    return true;
+                    groupSource = new SourceIndex(SourceIndex.SourceId.NativeRootReference, groupIndex);
+                    name = groupSource.GetName(snapshot);
                 }
+            }
+
+            // Apply name filter.
+            if (!NameFilter(args, name))
+                return;
+
+            AddItemSizeToMap(nativeRootReference2TotalMap, groupSource, size);
+        }
+
+        void ProcessNativeRegion(
+            CachedSnapshot snapshot,
+            SourceIndex source,
+            MemorySize size,
+            in BuildArgs args,
+            Dictionary<SourceIndex, MemorySize> regionsTotalMap)
+        {
+            var name = source.GetName(snapshot);
+
+            // Apply name filter (only if don't collapse reserved)
+            if (args.BreakdownNativeReserved && !NameFilter(args, name))
+                return;
+
+            AddItemSizeToMap(regionsTotalMap, source, size);
+        }
+
+        void ProcessManagedObject(
+            CachedSnapshot snapshot,
+            SourceIndex source,
+            MemorySize size,
+            in BuildArgs args,
+            Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> typeObjectsMap,
+            Dictionary<SourceIndex, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> type2Name2ObjectsMap = null)
+        {
+            var name = source.GetName(snapshot);
+
+            // Apply name filter.
+            if (!NameFilter(args, name))
+                return;
+
+            var managedObject = snapshot.CrawledData.ManagedObjects[source.Index];
+            var nativeObjectIndex = managedObject.NativeObjectIndex;
+            string id = null;
+            if (type2Name2ObjectsMap != null && nativeObjectIndex > 0)
+            {
+                id = NativeObjectTools.ProduceNativeObjectId(nativeObjectIndex, snapshot);
+            }
+
+            // to add the object to corresponding type entry in the map, we need a valid type.
+            var managedTypeIndex = managedObject.ITypeDescription;
+            if (managedTypeIndex < 0)
+                return;
+
+            var groupSource = new SourceIndex(SourceIndex.SourceId.ManagedType, managedTypeIndex);
+
+            if(args.SearchFilter != null)
+            {
+                using var outerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedGroupName);
+                using var innerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
+                // optimization, don't generate managed type name if the scope already passes
+                if (!innerGroupNameFilter.ScopePasses)
+                {
+                    using var managedTypeNameFilter = args.SearchFilter.OpenScope(groupSource.GetName(snapshot));
+                    using var managedNameFilter = args.SearchFilter.OpenScope(name);
+                    // if id == null, this just checks if a parent scope passed
+                    if (!managedNameFilter.Passes(id))
+                        return;
+                }
+            }
+
+            // Create item for managed object.
+            var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                m_ItemId++,
+                new AllTrackedMemoryModel.ItemData(
+                    id ?? name,
+                    size,
+                    source)
+            );
+
+            //  add it to the map
+            if(id != null)
+            {
+                var namedObjectsOfThisType = type2Name2ObjectsMap.GetOrAdd(groupSource);
+                var objects = namedObjectsOfThisType.GetOrAdd(name);
+                objects.Add(treeItem);
             }
             else
             {
-                // We don't have graphics allocator data, so display the graphics used memory on the root item.
-                if (args.NameFilter != null && args.NameFilter.TextPasses(k_GraphicsMemoryName))
+                var typeObjects = typeObjectsMap.GetOrAdd(groupSource);
+                typeObjects.Add(treeItem);
+            }
+        }
+
+        void ProcessManagedHeap(
+            CachedSnapshot snapshot,
+            SourceIndex source,
+            MemorySize size,
+            in BuildArgs args,
+            BuildContext context)
+        {
+            // Apply name filter.
+            var name = source.GetName(snapshot);
+            if (!NameFilter(args, name))
+                return;
+
+            var managedHeaps = snapshot.ManagedHeapSections;
+            var sectionType = managedHeaps.SectionType[source.Index];
+            switch(sectionType)
+            {
+                case MemorySectionType.VirtualMachine:
+                    context.ManagedMemoryVM += size;
+                    break;
+                case MemorySectionType.GarbageCollector:
+                    context.ManagedMemoryReserved += size;
+                    break;
+                default:
+                    Debug.Assert(false, $"Unknown managed memory section type ({sectionType}), plese report a bug.");
+                    break;
+            }
+        }
+
+        void ProcessSystemRegion(
+            CachedSnapshot snapshot,
+            SourceIndex source,
+            MemorySize size,
+            in BuildArgs args,
+            BuildContext context)
+        {
+            // Apply name filter.
+            var name = source.GetName(snapshot);
+            if (!NameFilter(args, name))
+                return;
+
+            var regionType = snapshot.EntriesMemoryMap.GetPointType(source);
+            switch (regionType)
+            {
+                case EntriesMemoryMapCache.PointType.Mapped:
                 {
-                    var graphicsUsedMemory = snapshot.MetaData.TargetMemoryStats.Value.GraphicsUsedMemory;
-                    tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        m_ItemId++,
-                        new AllTrackedMemoryModel.ItemData(
-                            k_GraphicsMemoryName,
-                            graphicsUsedMemory),
-                        graphicsItems);
-                    return true;
+                    if (SearchFilter(args, k_ExecutablesGroupName, name))
+                        AddItemSizeToMap(context.ExecutablesName2SizeMap, name, size);
+                    break;
                 }
+                case EntriesMemoryMapCache.PointType.Shared:
+                case EntriesMemoryMapCache.PointType.Untracked:
+                {
+                    if (SearchFilter(args, UntrackedGroupName, name))
+                        AddItemSizeToMap(context.UntrackedRegionsName2SizeMap, name, size);
+                    break;
+                }
+                case EntriesMemoryMapCache.PointType.Device:
+                {
+                    // Keep graphics in untracked if we don't detalize graphics resources
+                    if (!args.BreakdownGfxResources)
+                    {
+                        if (SearchFilter(args, UntrackedGroupName, name))
+                            AddItemSizeToMap(context.UntrackedRegionsName2SizeMap, name, size);
+                    }
+                    else
+                        context.UntrackedGraphicsResources += size;
+                    break;
+                }
+                case EntriesMemoryMapCache.PointType.AndroidRuntime:
+                {
+                    context.AndroidRuntime += size;
+                    break;
+                }
+
+                default:
+                    Debug.Assert(false, $"Unknown memory region type ({regionType}), plese report a bug.");
+                    break;
+            }
+        }
+
+        void ProcessGraphicsResources(
+            CachedSnapshot snapshot,
+            in BuildArgs args,
+            Dictionary<SourceIndex, MemorySize> graphicsResourcesMap,
+            out MemorySize totalGraphicsMemory)
+        {
+            totalGraphicsMemory = new MemorySize(0, 0);
+
+            var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
+            for (var i = 0; i < nativeGfxResourceReferences.Count; i++)
+            {
+                var source = new SourceIndex(SourceIndex.SourceId.GfxResource, i);
+
+                var name = source.GetName(snapshot);
+                if (!NameFilter(args, name))
+                    continue;
+
+                var size = 0UL;
+                if (args.BreakdownGfxResources)
+                {
+                    size = nativeGfxResourceReferences.GfxSize[i];
+                    if (size == 0)
+                        continue;
+                }
+
+                var memorySize = new MemorySize(size, 0);
+                AddItemSizeToMap(graphicsResourcesMap, source, memorySize);
+
+                totalGraphicsMemory += memorySize;
+            }
+        }
+
+        void ReduceUntrackedByGraphicsResourcesSize(CachedSnapshot snapshot, Dictionary<string, MemorySize> untrackedMap, MemorySize graphicsMemorySize)
+        {
+            var systemRegions = snapshot.SystemMemoryRegions;
+
+            // Sort by size, biggest first
+            var untrackedMem = untrackedMap.ToList();
+            untrackedMem.Sort((l, r) => -l.Value.Committed.CompareTo(r.Value.Committed));
+            for (int i = 0; i < untrackedMem.Count; i++)
+            {
+                var item = untrackedMem[i];
+                if (item.Value.Committed > graphicsMemorySize.Committed)
+                {
+                    untrackedMap[item.Key] = new MemorySize(item.Value.Committed - graphicsMemorySize.Committed, 0);
+                    return;
+                }
+
+                graphicsMemorySize -= item.Value;
+                untrackedMap.Remove(item.Key);
+            }
+        }
+
+        MemorySize SumListMemorySize(List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> tree)
+        {
+            var total = new MemorySize();
+            foreach (var item in tree)
+                total += item.data.Size;
+
+            return total;
+        }
+
+        bool BuildNativeTree(
+            CachedSnapshot snapshot,
+            in BuildArgs args,
+            Dictionary<SourceIndex, MemorySize> nativeObjectIndex2TotalMap,
+            Dictionary<SourceIndex, MemorySize> nativeRootReference2TotalMap,
+            Dictionary<SourceIndex, MemorySize> nativeRegionIndex2TotalMap,
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        {
+            var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+
+            using var mainGroupNameFilter = args.SearchFilter?.OpenScope(k_NativeGroupName);
+            // Build Native Objects tree
+            {
+                using var subGroupNameFilter = args.SearchFilter?.OpenScope(k_NativeObjectsGroupName);
+                SourceIndex NativeObjectIndex2GroupKey(SourceIndex x) => new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeObjects.NativeTypeArrayIndex[x.Index]);
+
+                string NativeObjectIndex2Name(SourceIndex x) => x.GetName(snapshot);
+
+                string GroupKey2Name(SourceIndex x) => x.GetName(snapshot);
+                SourceIndex GroupKey2Index(SourceIndex x) => x;
+
+                if(args.DisambiguateUnityObjects)
+                {
+                    string NativeObjectIndex2InstanceId(SourceIndex x) => NativeObjectTools.ProduceNativeObjectId(x.Index, snapshot);
+
+                    GroupItemsNested(nativeObjectIndex2TotalMap, NativeObjectIndex2InstanceId, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, args.SearchFilter);
+                    if (BuildTreeFromGroupByIdMap(k_NativeObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeObjectsGroupName2TreeMap, out var unityObjectsRoot))
+                        treeItems.Add(unityObjectsRoot);
+                }
+                else
+                {
+                    GroupItems(nativeObjectIndex2TotalMap, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, args.SearchFilter);
+                    if (BuildTreeFromGroupByIdMap(k_NativeObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeObjectsGroupName2TreeMap, out var unityObjectsRoot))
+                        treeItems.Add(unityObjectsRoot);
+                }
+            }
+
+            // Build Unity Subsystems tree
+            {
+                using var subGroupNameFilter = args.SearchFilter?.OpenScope(k_NativeSubsystemsGroupName);
+                string NativeRootReference2Name(SourceIndex x) => x.Id != SourceIndex.SourceId.NativeRootReference ? k_InvalidItemName : snapshot.NativeRootReferences.ObjectName[x.Index];
+                string NativeRootReefence2GroupKey(SourceIndex x) => x.Id != SourceIndex.SourceId.NativeRootReference ? k_InvalidItemName : snapshot.NativeRootReferences.AreaName[x.Index];
+                string GroupKey2Name(string x) => x;
+
+                GroupItems(nativeRootReference2TotalMap, NativeRootReference2Name, NativeRootReefence2GroupKey, GroupKey2Name, false, out var nativeRootReefenceGroupName2TreeMap, args.SearchFilter);
+
+                SourceIndex GroupKey2Index(string x) => new SourceIndex();
+                if (BuildTreeFromGroupByIdMap(k_NativeSubsystemsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeRootReefenceGroupName2TreeMap, out var unitySubsystemsRoot))
+                    treeItems.Add(unitySubsystemsRoot);
+            }
+
+            // Build Native Memory Regions tree, which are "Reserved" memory
+            {
+                using var subGroupNameFilter = args.SearchFilter?.OpenScope(k_ReservedItemName);
+                string NativeRootRegion2Name(SourceIndex x) => x.GetName(snapshot);
+                SourceIndex NativeRootRegion2GroupKey(SourceIndex x) => new SourceIndex(SourceIndex.SourceId.NativeMemoryRegion, snapshot.NativeMemoryRegions.ParentIndex[x.Index]);
+
+                string GroupIndex2Name(SourceIndex x) => x.GetName(snapshot);
+                GroupItems(nativeRegionIndex2TotalMap, NativeRootRegion2Name, NativeRootRegion2GroupKey, GroupIndex2Name, false, out var nativeRegionName2TreeMap, args.SearchFilter);
+                if (args.BreakdownNativeReserved)
+                {
+                    SourceIndex GroupKey2Index(SourceIndex x) => x;
+                    if (BuildTreeFromGroupByIdMap(k_ReservedItemName, (int)IAnalysisViewSelectable.Category.NativeReserved, false, GroupIndex2Name, GroupKey2Index, nativeRegionName2TreeMap, out var unityRegionsRoot))
+                        treeItems.Add(unityRegionsRoot);
+                }
+                else
+                {
+                    if (BuildSingleFromGroupByIdMap(args, k_ReservedItemName, (int)IAnalysisViewSelectable.Category.NativeReserved, nativeRegionName2TreeMap, out var unityRegionsRoot))
+                        treeItems.Add(unityRegionsRoot);
+                }
+            }
+
+            // Add root item
+            if (treeItems.Count > 0)
+            {
+                var totals = SumListMemorySize(treeItems);
+
+                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    (int)IAnalysisViewSelectable.Category.Native,
+                    new AllTrackedMemoryModel.ItemData(
+                        k_NativeGroupName,
+                        totals,
+                        new SourceIndex()),
+                    treeItems);
+                return true;
             }
 
             tree = default;
             return false;
         }
 
-        bool TryBuildExecutableAndDllsTree(
+        bool BuildManagedTree(
             CachedSnapshot snapshot,
             in BuildArgs args,
+            Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> managedObjectsMap,
+            Dictionary<SourceIndex, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> managedObjectTypes2NativeNames2ObjectsMap,
+            MemorySize managedMemoryVM,
+            MemorySize managedMemoryReserved,
             out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
         {
-            const string k_ExecutablesName = "Executables & Mapped";
+            var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
 
-            // Legacy file, create just root with total size calculated from memory label
-            if (snapshot.MemoryEntriesHierarchy == null)
+            // Build managed objects tree
+            string GroupKey2Name(SourceIndex x) => x.GetName(snapshot);
+            SourceIndex GroupKey2Index(SourceIndex x) => x;
+            if (args.DisambiguateUnityObjects)
             {
-                if (args.NameFilter != null && !args.NameFilter.TextPasses(k_ExecutablesName))
-                {
-                    tree = default;
-                    return false;
-                }
+                if (BuildTreeFromGroupByIdMap(k_ManagedObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, managedObjectTypes2NativeNames2ObjectsMap, out var managedObjectsRoot, managedObjectsMap))
+                    treeItems.Add(managedObjectsRoot);
+            }
+            else if (BuildTreeFromGroupByIdMap(k_ManagedObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, managedObjectsMap, out var managedObjectsRoot))
+                treeItems.Add(managedObjectsRoot);
+
+            // SearchFilter doesn't have to be applied to the managed objects, as their Tree is already fully build by the context builder and filtered right there
+            using var mainGroupNameFilter = args.SearchFilter?.OpenScope(k_ManagedGroupName);
+            // Add "VM"
+            if (SearchFilter(args, k_ManagedVMGroupName) && NameFilter(args, k_ManagedVMGroupName))
+            {
+                treeItems.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                m_ItemId++,
+                new AllTrackedMemoryModel.ItemData(
+                    k_ManagedVMGroupName,
+                    managedMemoryVM,
+                    new SourceIndex())));
+            }
+
+            // Add "Reserved"
+            if (SearchFilter(args, k_ReservedItemName) && NameFilter(args, k_ReservedItemName))
+            {
+                treeItems.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    (int)IAnalysisViewSelectable.Category.ManagedReserved,
+                    new AllTrackedMemoryModel.ItemData(
+                        k_ReservedItemName,
+                        managedMemoryReserved,
+                        new SourceIndex())));
+            }
+
+            // Add root item
+            if (treeItems.Count > 0)
+            {
+                var totals = SumListMemorySize(treeItems);
 
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                    m_ItemId++,
+                    (int)IAnalysisViewSelectable.Category.Managed,
                     new AllTrackedMemoryModel.ItemData(
-                        k_ExecutablesName,
-                        snapshot.NativeRootReferences.ExecutableAndDllsReportedValue)
-                    );
+                        k_ManagedGroupName,
+                        totals,
+                        new SourceIndex()),
+                    treeItems);
                 return true;
             }
 
-            // Build dictionary of all "mapped" regions
-            var executablesMap = new Dictionary<string, ulong>();
-            snapshot.MemoryEntriesHierarchy.ForEachFlat((address, size, childrenCount, type, source) =>
+            tree = default;
+            return false;
+        }
+
+        bool BuildGraphicsMemoryTree(
+            CachedSnapshot snapshot,
+            in BuildArgs args,
+            Dictionary<SourceIndex, MemorySize> objectIndex2TotalMap,
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        {
+            var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+
+            using var mainGroupNameFilter = args.SearchFilter?.OpenScope(GraphicsGroupName);
+
+            var nativeObjects = snapshot.NativeObjects;
+            var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
+
+            // Accessors
+            SourceIndex ObjectIndex2GroupKey(SourceIndex x)
             {
-                if (source.Id != SourceLink.SourceId.SystemMemoryRegion)
-                    return;
+                if (x.Id == SourceIndex.SourceId.None)
+                    return new SourceIndex();
 
-                if (type != MemoryEntriesHierarchyCache.RegionType.Mapped)
-                    return;
+                var rootReferenceId = nativeGfxResourceReferences.RootId[x.Index];
+                if (nativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var nativeObjectIndex))
+                    return new SourceIndex(SourceIndex.SourceId.NativeType, nativeObjects.NativeTypeArrayIndex[nativeObjectIndex]);
+                return new SourceIndex();
+            }
+            string ObjectIndex2Name(SourceIndex x) => x.GetName(snapshot);
+            string GroupKey2Name(SourceIndex x) => x.GetName(snapshot);
+            SourceIndex GroupKey2Index(SourceIndex x) => x;
 
-                var name = snapshot.SystemMemoryRegions.RegionName[source.Index];
-
-                if (executablesMap.TryGetValue(name, out var currentValue))
-                    executablesMap[name] = currentValue + size;
-                else
-                    executablesMap[name] = size;
-            });
-
-            // Add "mapped" regions to the tree node of executables & mapped
-            ulong executableTotalValue = 0;
-            var executablesItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
-            foreach(var item in executablesMap)
+            // Build graphics resources tree
+            // Mark items as "unreliable" if we building without
+            // including detailed resource information (it's done
+            // when we want to keep real untracked).
+            bool unreliable = !args.BreakdownGfxResources;
+            if (args.DisambiguateUnityObjects)
             {
-                if (args.NameFilter != null && !args.NameFilter.TextPasses(item.Key))
-                    continue;
+                string NativeObjectIndex2InstanceId(SourceIndex x) => NativeObjectTools.ProduceNativeObjectId(x.Index, snapshot);
 
-                var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                    m_ItemId++,
-                    new AllTrackedMemoryModel.ItemData(
-                        item.Key,
-                        item.Value)
-                );
-                executablesItems.Add(treeItem);
+                GroupItemsNested(objectIndex2TotalMap, NativeObjectIndex2InstanceId, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, unreliable, out var nestedObjectsGroupName2TreeMap, args.SearchFilter);
+                return BuildTreeFromGroupByIdMap(GraphicsGroupName, (int)IAnalysisViewSelectable.Category.Graphics, unreliable, GroupKey2Name, GroupKey2Index, nestedObjectsGroupName2TreeMap, out tree);
+            }
+            else
+            {
+                GroupItems(objectIndex2TotalMap, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Name, unreliable, out var objectsGroupName2TreeMap, args.SearchFilter);
 
-                executableTotalValue += item.Value;
+                var selectionCategory = unreliable ? (int)IAnalysisViewSelectable.Category.GraphicsDisabled : (int)IAnalysisViewSelectable.Category.Graphics;
+                return BuildTreeFromGroupByIdMap(GraphicsGroupName, selectionCategory, unreliable, GroupKey2Name, GroupKey2Index, objectsGroupName2TreeMap, out tree);
+            }
+        }
+
+        bool BuildAndroidRuntimeTree(in BuildArgs args,
+            MemorySize androidRuntimeSize,
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        {
+            if (NameFilter(args, k_AndroidRuntime) && SearchFilter(args, k_AndroidRuntime) && (androidRuntimeSize.Committed > 0))
+            {
+                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    (int)IAnalysisViewSelectable.Category.AndroidRuntime,
+                    new AllTrackedMemoryModel.ItemData(k_AndroidRuntime, androidRuntimeSize, new SourceIndex()));
+                return true;
             }
 
-            // Don't show high-level group if all items are filtered out
-            if ((args.NameFilter != null) && (executablesItems.Count <= 0))
+            tree = default;
+            return false;
+        }
+
+        void GroupItems<T>(
+            Dictionary<SourceIndex, MemorySize> itemIndex2SizeMap,
+            Func<SourceIndex, string> itemIndex2ItemName,
+            Func<SourceIndex, T> itemIndex2GroupKey,
+            Func<T, string> groupKey2GroupName,
+            bool unreliable,
+            out Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> group2itemsMap,
+            IScopedFilter<string> searchFilter)
+        {
+            group2itemsMap = new Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>();
+            foreach (var item in itemIndex2SizeMap)
+            {
+                var itemName = itemIndex2ItemName(item.Key);
+                var itemGroupKey = itemIndex2GroupKey(item.Key);
+
+                // optimization, don't generate group names if the scope already passes
+                if(!(searchFilter?.CurrentScopePasses ?? true))
+                {
+                    using var groupNameFilter = searchFilter?.OpenScope(groupKey2GroupName(itemGroupKey));
+                    if (!(groupNameFilter?.Passes(itemName) ?? true))
+                        continue;
+                }
+
+                // Create item for native object.
+                var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    m_ItemId++,
+                    new AllTrackedMemoryModel.ItemData(itemName, item.Value, item.Key) { Unreliable = unreliable }
+                );
+
+                // Add object to corresponding type entry in map.
+                var groupItemsList = group2itemsMap.GetOrAdd(itemGroupKey);
+                groupItemsList.Add(treeItem);
+            }
+        }
+
+        void GroupItemsNested<T>(
+            Dictionary<T, MemorySize> itemIndex2SizeMap,
+            Func<T, string> itemIndex2ItemID,
+            Func<T, string> itemIndex2ItemName,
+            Func<T, T> itemIndex2GroupId,
+            Func<T, SourceIndex> itemIndex2Index,
+            Func<T, string> groupKey2GroupName,
+            bool unreliable,
+            out Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> typeGroup2NameGroup2ItemsMap,
+            IScopedFilter<string> searchFilter)
+        {
+            typeGroup2NameGroup2ItemsMap = new Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>>();
+            foreach (var item in itemIndex2SizeMap)
+            {
+                var itemID = itemIndex2ItemID(item.Key);
+                var itemName = itemIndex2ItemName(item.Key);
+                var itemGroupId = itemIndex2GroupId(item.Key);
+                var itemIndex = itemIndex2Index(item.Key);
+
+                // optimization, don't generate group names if the scope already passes
+                if(!(searchFilter?.CurrentScopePasses ?? true))
+                {
+                    using var groupNameFilter = searchFilter?.OpenScope(groupKey2GroupName(itemGroupId));
+                    using var itemNameFilter = searchFilter?.OpenScope(itemName);
+                    if (!(itemNameFilter?.Passes(itemID) ?? true))
+                        continue;
+                }
+
+                // Create item for native object.
+                var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    m_ItemId++,
+                    new AllTrackedMemoryModel.ItemData(itemID, item.Value, itemIndex) { Unreliable = unreliable }
+                );
+                // Add object to corresponding type entry in map.
+                var itemNameGroup = typeGroup2NameGroup2ItemsMap.GetOrAdd(itemGroupId);
+                var groupItemsList = itemNameGroup.GetOrAdd(itemName);
+                groupItemsList.Add(treeItem);
+            }
+        }
+
+        bool BuildTreeFromGroupByIdMap<T>(
+            string groupName,
+            int groupId,
+            bool unreliable,
+            Func<T, string> groupKey2Name,
+            Func<T, SourceIndex> groupKey2Index,
+            Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> typeGroup2NameGroup2ItemsMap,
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree,
+            Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> typeGroup2itemsMap = null)
+        {
+            var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(typeGroup2NameGroup2ItemsMap.Count);
+            string nameGroupKey2Name(string nameGroupName) => nameGroupName;
+            SourceIndex nameGroupKey2Index(string nameGroupName) => new SourceIndex();
+            foreach (var group in typeGroup2NameGroup2ItemsMap)
+            {
+                var itemsGroupKey = group.Key;
+                var itemsTree = group.Value;
+
+                BuildTreeFromGroupByIdMap(groupKey2Name(itemsGroupKey), m_ItemId++, unreliable, nameGroupKey2Name, nameGroupKey2Index, itemsTree, out var groupRoot);
+
+                // Merge items that are directly in this group with the ones in a subgroup (build up above) if there is a mix of both for this group.
+                if(typeGroup2itemsMap != null && typeGroup2itemsMap.TryGetValue(itemsGroupKey, out var groupedItems))
+                {
+                    var groupItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(groupRoot.children);
+                    groupItems.AddRange(groupedItems);
+
+                    var itemsTreeSize = SumListMemorySize(groupItems);
+                    groupRoot = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                        groupRoot.id,
+                        new AllTrackedMemoryModel.ItemData(
+                            groupRoot.data.Name,
+                            itemsTreeSize,
+                            groupKey2Index(itemsGroupKey),
+                            childCount: groupItems.Count),
+                        groupItems);
+
+                    // Remove this group so all remaining groups without mixed grouping can be added later.
+                    typeGroup2itemsMap.Remove(itemsGroupKey);
+                }
+                treeItems.Add(groupRoot);
+            }
+
+            if(typeGroup2itemsMap != null && typeGroup2itemsMap.Count > 0)
+            {
+                BuildTreeFromGroupByIdMap(groupName, m_ItemId++, unreliable, groupKey2Name, groupKey2Index, typeGroup2itemsMap, out var groupRoot);
+                treeItems.AddRange(groupRoot.children);
+            }
+
+            // Add root item
+            if (treeItems.Count > 0)
+            {
+                var totalSize = SumListMemorySize(treeItems);
+
+                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    groupId,
+                    new AllTrackedMemoryModel.ItemData(
+                        groupName,
+                        totalSize,
+                        new SourceIndex(),
+                        childCount: treeItems.Count),
+                    treeItems);
+
+                return true;
+            }
+
+            tree = default;
+            return false;
+        }
+
+        bool BuildTreeFromGroupByIdMap<T>(
+            string groupName,
+            int groupId,
+            bool unreliable,
+            Func<T, string> groupKey2Name,
+            Func<T, SourceIndex> groupKey2Index,
+            Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> group2itemsMap,
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        {
+            var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(group2itemsMap.Count);
+            foreach (var group in group2itemsMap)
+            {
+                var itemsTree = group.Value;
+                var itemsGroupName = groupKey2Name(group.Key);
+
+                // Calculate type size from all its objects.
+                var itemsTreeSize = SumListMemorySize(itemsTree);
+
+                var typeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    m_ItemId++,
+                    new AllTrackedMemoryModel.ItemData(itemsGroupName, itemsTreeSize, groupKey2Index(group.Key), childCount: itemsTree.Count) { Unreliable = unreliable },
+                    itemsTree);
+                treeItems.Add(typeItem);
+            }
+
+            // Add root item
+            if (treeItems.Count > 0)
+            {
+                var totalSize = SumListMemorySize(treeItems);
+
+                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    groupId,
+                    new AllTrackedMemoryModel.ItemData(groupName, totalSize, new SourceIndex(), childCount: treeItems.Count) { Unreliable = unreliable },
+                    treeItems);
+
+                return true;
+            }
+
+            tree = default;
+            return false;
+        }
+
+        bool BuildTreeFromGroupByNameMap(
+            string groupName,
+            int groupId,
+            Dictionary<string, MemorySize> itemsMap,
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        {
+            var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(itemsMap.Count);
+            foreach (var kvp in itemsMap)
+            {
+                // Extract data
+                var name = kvp.Key;
+                var size = kvp.Value;
+
+                // Make tree view item
+                var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    m_ItemId++,
+                    new AllTrackedMemoryModel.ItemData(
+                        name,
+                        size,
+                        new SourceIndex()));
+                treeItems.Add(item);
+            }
+
+            // Add root item
+            if (treeItems.Count > 0)
+            {
+                var totalSize = SumListMemorySize(treeItems);
+
+                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    groupId,
+                    new AllTrackedMemoryModel.ItemData(
+                        groupName,
+                        totalSize,
+                        new SourceIndex(),
+                        childCount: treeItems.Count),
+                    treeItems);
+
+                return true;
+            }
+
+            tree = default;
+            return false;
+        }
+
+        bool BuildSingleFromGroupByIdMap(
+            in BuildArgs args,
+            string groupName,
+            int groupId,
+            Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> group2itemsMap,
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+        {
+            // As it's collapses in single item, it can be filtered out
+            if (!SearchFilter(args, groupName) || !NameFilter(args, groupName))
             {
                 tree = default;
                 return false;
             }
 
-            var groupSelectorProcessor = args.GroupSelectionProcessor;
+            // Add summary item if the group isn't empty
+            if (group2itemsMap.Count > 0)
+            {
+                var totalSize = new MemorySize();
+                foreach (var group in group2itemsMap)
+                    totalSize += SumListMemorySize(group.Value);
 
-            // Make a root node for executables & mapped branch
-            tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                m_ItemId++,
-                new AllTrackedMemoryModel.ItemData(
-                    k_ExecutablesName,
-                    executableTotalValue,
-                    () => groupSelectorProcessor?.Invoke(TextContent.ExecutablesAndMappedDescription)),
-                executablesItems
-                );
-            return true;
+                tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    groupId,
+                    new AllTrackedMemoryModel.ItemData(
+                        groupName,
+                        totalSize,
+                        new SourceIndex()));
+
+                return true;
+            }
+
+            tree = default;
+            return false;
         }
+
 
         // Returns all items in the tree that pass the provided filterPath. Each filter is applied at one level in the tree, starting at the root. Children will be removed.
         List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> BuildItemsAtPathInTreeExclusively(
@@ -740,9 +1087,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var found = false;
                 TreeViewItemData<AllTrackedMemoryModel.ItemData> itemOnPath = default;
                 var filter = filterPathQueue.Dequeue();
+                var sb = new System.Text.StringBuilder();
                 foreach (var item in items)
                 {
-                    if (filter.TextPasses(item.data.Name))
+                    if (filter.Passes(item.data.Name))
                     {
                         found = true;
                         itemOnPath = item;
@@ -754,7 +1102,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                             break;
                     }
                 }
-
                 // Search failed.
                 if (!found)
                     break;
@@ -779,24 +1126,29 @@ namespace Unity.MemoryProfiler.Editor.UI
         internal readonly struct BuildArgs
         {
             public BuildArgs(
-                ITextFilter nameFilter,
+                IScopedFilter<string> searchFilter,
+                ITextFilter nameFilter = null,
                 IEnumerable<ITextFilter> pathFilter = null,
                 bool excludeAll = false,
-                Action<long> nativeObjectSelectionProcessor = null,
-                Action<int> nativeTypeSelectionProcessor = null,
-                Action<long> managedObjectSelectionProcessor = null,
-                Action<int> managedTypeSelectionProcessor = null,
-                Action<string> groupSelectionProcessor = null)
+                bool breakdownNativeReserved = false,
+                bool disambiguateUnityObjects = false,
+                bool breakdownGfxResources = true,
+                Action<int, AllTrackedMemoryModel.ItemData> selectionProcessor = null)
             {
                 NameFilter = nameFilter;
+                SearchFilter = searchFilter;
                 PathFilter = pathFilter;
                 ExcludeAll = excludeAll;
-                NativeObjectSelectionProcessor = nativeObjectSelectionProcessor;
-                NativeTypeSelectionProcessor = nativeTypeSelectionProcessor;
-                ManagedObjectSelectionProcessor = managedObjectSelectionProcessor;
-                ManagedTypeSelectionProcessor = managedTypeSelectionProcessor;
-                GroupSelectionProcessor = groupSelectionProcessor;
+                BreakdownNativeReserved = breakdownNativeReserved;
+                SelectionProcessor = selectionProcessor;
+                DisambiguateUnityObjects = disambiguateUnityObjects;
+                BreakdownGfxResources = breakdownGfxResources;
             }
+
+            /// <summary>
+            /// Only leaf items that pass directly or as part of their parent scope will be included.
+            /// </summary>
+            public IScopedFilter<string> SearchFilter { get; }
 
             // Only items with a name that passes this filter will be included.
             public ITextFilter NameFilter { get; }
@@ -807,20 +1159,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             // If true, excludes all items. This is currently used by the All Of Memory Comparison functionality to show an empty table when particular comparison items (groups) are selected.
             public bool ExcludeAll { get; }
 
-            // Selection processor for a Native Object item. Argument is the index of the native object.
-            public Action<long> NativeObjectSelectionProcessor { get; }
+            // If true, breakdown into separate native allocators will be added for nativer reserved group
+            public bool BreakdownNativeReserved { get; }
 
-            // Selection processor for a Native Type item. Argument is the index of the native type.
-            public Action<int> NativeTypeSelectionProcessor { get; }
+            // Selection processor for an item. Argument is the selected item object.
+            public Action<int, AllTrackedMemoryModel.ItemData> SelectionProcessor { get; }
 
-            // Selection processor for a Managed Object item. Argument is the index of the managed object.
-            public Action<long> ManagedObjectSelectionProcessor { get; }
+            // If true, Unity Objects will be named after their Instance ID and grouped under the item which represents the name
+            public bool DisambiguateUnityObjects { get; }
 
-            // Selection processor for a Managed Type item. Argument is the index of the managed type.
-            public Action<int> ManagedTypeSelectionProcessor { get; }
-
-            // Selection processor for a Group item. Argument is the description of the group.
-            public Action<string> GroupSelectionProcessor { get; }
+            // If true, breakdown graphics resources into separate groups using estimated data
+            // As we don't know exact resources location, resource reassignment will be used
+            // what might introduce data inconsistencies and invalidates resident memory information
+            public bool BreakdownGfxResources { get; }
         }
     }
 }

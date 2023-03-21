@@ -91,3 +91,8 @@
 {
     flex-grow: 1
 }
+
+.analysis-view__text__information-unreliable-or-unavailable
+{
+    color: rgb(105, 105, 105);
+}

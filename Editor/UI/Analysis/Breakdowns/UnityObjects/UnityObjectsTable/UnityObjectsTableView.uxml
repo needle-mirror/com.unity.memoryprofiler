@@ -13,9 +13,11 @@
                 <engine:Columns reorderable="false">
                     <engine:Column name="unity-objects-table-view__tree-view__column__description" resizable="true" stretchable="false" optional="false"/>
                     <engine:Column name="unity-objects-table-view__tree-view__column__size" resizable="true" stretchable="true"/>
+                    <engine:Column name="unity-objects-table-view__tree-view__column__resident-size" resizable="true" stretchable="true"/>
                     <engine:Column name="unity-objects-table-view__tree-view__column__size-bar" resizable="true" stretchable="true"/>
                     <engine:Column name="unity-objects-table-view__tree-view__column__native-size" resizable="true" stretchable="true"/>
                     <engine:Column name="unity-objects-table-view__tree-view__column__managed-size" resizable="true" stretchable="true"/>
+                    <engine:Column name="unity-objects-table-view__tree-view__column__gpu-size" resizable="true" stretchable="true"/>
                 </engine:Columns>
                 <engine:SortColumnDescriptions>
                     <engine:SortColumnDescription column-name="unity-objects-table-view__tree-view__column__size" direction="descending"/>

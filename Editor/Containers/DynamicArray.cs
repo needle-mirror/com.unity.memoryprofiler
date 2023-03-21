@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -7,13 +9,14 @@ using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
-    unsafe struct DynamicArray<T> : IDisposable where T : unmanaged
+    unsafe struct DynamicArray<T> : IDisposable, IEnumerable<T> where T : unmanaged
     {
         void* m_Data;
         long m_Capacity;
-        Allocator m_Label;
-
         public long Count { get; private set; }
+
+        Allocator m_Allocator;
+        public Allocator Allocator => m_Allocator;
 
         public long Capacity
         {
@@ -27,24 +30,35 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public bool IsCreated { get; private set; }
 
-        public DynamicArray(Allocator label) : this(0, label) { }
+        public DynamicArray(Allocator allocator) : this(0, allocator) { }
 
-        public DynamicArray(long initialSize, Allocator label, bool memClear = false)
+        public DynamicArray(long initialSize, Allocator allocator, bool memClear = false)
         {
-            m_Label = label;
+            m_Allocator = allocator;
             Count = initialSize;
             m_Capacity = initialSize;
 
             if (initialSize != 0)
             {
                 var allocSize = initialSize * UnsafeUtility.SizeOf<T>();
-                m_Data = UnsafeUtility.Malloc(allocSize, UnsafeUtility.AlignOf<T>(), m_Label);
+                m_Data = UnsafeUtility.Malloc(allocSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
                 if (memClear)
                     UnsafeUtility.MemClear(m_Data, allocSize);
             }
             else
                 m_Data = null;
             IsCreated = true;
+        }
+
+        public static unsafe DynamicArray<T> ConvertExistingDataToNativeArray(T* dataPointer, long length, Allocator allocator)
+        {
+            return new DynamicArray<T>(allocator)
+            {
+                m_Data = dataPointer,
+                Count = length,
+                m_Capacity = length,
+                IsCreated = true,
+            };
         }
 
         public DynamicArray<U> Reinterpret<U>() where U : unmanaged
@@ -75,7 +89,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 IsCreated = true,
                 Count = uCount,
                 m_Capacity = uCap,
-                m_Label = m_Label
+                m_Allocator = m_Allocator
             };
         }
 
@@ -98,8 +112,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
             {
                 Checks.CheckEquals(true, IsCreated);
                 Checks.CheckIndexOutOfBoundsAndThrow(idx, Count);
-                //return UnsafeDataUtility.ReadArrayElement<T>(m_Data, idx);
-                var ptr = ((T*)m_Data) + idx;
                 return ((T*)m_Data)[idx];
             }
             set
@@ -111,6 +123,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
         }
 
         public void* GetUnsafePtr() { return m_Data; }
+
+        public T* GetUnsafeTypedPtr() { return (T*)m_Data; }
 
         [MethodImpl(256)]
         public T Back()
@@ -137,15 +151,17 @@ namespace Unity.MemoryProfiler.Editor.Containers
         [MethodImpl(256)]
         void ResizeInternalBuffer(long newCapacity, bool forceResize)
         {
-            if (newCapacity > m_Capacity || forceResize)
+            if (newCapacity > m_Capacity || (forceResize && newCapacity != m_Capacity))
             {
+                if (m_Allocator == Allocator.None)
+                    throw new NotSupportedException("Resizing a DynamicArray that acts as a slice of another DynamicArray is not allowed");
                 int elemSize = UnsafeUtility.SizeOf<T>();
-                void* newMem = UnsafeUtility.Malloc(newCapacity * elemSize, UnsafeUtility.AlignOf<T>(), m_Label);
+                void* newMem = UnsafeUtility.Malloc(newCapacity * elemSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
 
                 if (m_Data != null)
                 {
                     UnsafeUtility.MemCpy(newMem, m_Data, Count * elemSize);
-                    UnsafeUtility.Free(m_Data, m_Label);
+                    UnsafeUtility.Free(m_Data, m_Allocator);
                 }
 
                 m_Data = newMem;
@@ -186,15 +202,56 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public void Dispose()
         {
-            if (IsCreated && m_Data != null)
+            if (IsCreated && m_Data != null && m_Allocator > Allocator.None)
             {
-                UnsafeUtility.Free(m_Data, m_Label);
-                m_Data = null;
-                m_Capacity = 0;
-                Count = 0;
-                m_Label = Allocator.None;
+                UnsafeUtility.Free(m_Data, m_Allocator);
             }
+            m_Capacity = 0;
+            Count = 0;
+            m_Data = null;
+            m_Allocator = Allocator.Invalid;
             IsCreated = false;
+        }
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            return new DynamicArrayEnumerator(this);
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        struct DynamicArrayEnumerator : IEnumerator<T>
+        {
+            public T Current => nextIndex == 0 ? default : m_Array[nextIndex - 1];
+
+            object IEnumerator.Current => Current;
+
+            DynamicArray<T> m_Array;
+            long nextIndex;
+
+            public DynamicArrayEnumerator(DynamicArray<T> array)
+            {
+                m_Array = array;
+                nextIndex = 0;
+            }
+
+            public void Dispose()
+            {
+                m_Array = default;
+            }
+
+            public bool MoveNext()
+            {
+                return ++nextIndex < m_Array.Count;
+            }
+
+            public void Reset()
+            {
+                nextIndex = 0;
+            }
         }
     }
 }

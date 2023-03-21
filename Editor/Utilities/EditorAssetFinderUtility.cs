@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
@@ -14,29 +13,51 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal static class EditorAssetFinderUtility
     {
-        public struct Findings
+        public struct Findings : IDisposable
         {
-            public Findings(Object FoundObject, int DegreeOfCertainty, Texture PreviewImage)
-                : this(FoundObject, DegreeOfCertainty, PreviewImage, true)
+            public Findings(Object foundObject, int degreeOfCertainty, SearchItem searchItem, SearchContext searchContext, bool isDynamicObject = false)
             {
-            }
-
-            public Findings(Object FoundObject, int DegreeOfCertainty, Texture PreviewImage, bool PreviewImageNeedsCleanup)
-            {
-                this.FoundObject = FoundObject;
-                this.DegreeOfCertainty = DegreeOfCertainty;
-                this.PreviewImage = PreviewImage;
-                // Do not destroy preview image if is corresponds to the real asset in the AssedDatabase.
-                this.PreviewImageNeedsCleanup = PreviewImageNeedsCleanup && (PreviewImage != null && !AssetDatabase.Contains(PreviewImage));
+                FoundObject = foundObject;
+                DegreeOfCertainty = degreeOfCertainty;
                 FailReason = SearchFailReason.Found;
+                SearchItem = searchItem;
+                SearchContext = searchContext;
+                IsDynamicObject = isDynamicObject;
             }
 
             public Object FoundObject;
             public int DegreeOfCertainty;
             public SearchFailReason FailReason;
-            public Texture PreviewImage;
-            public bool PreviewImageNeedsCleanup;
+            public SearchItem SearchItem;
+            public SearchContext SearchContext;
+            public bool IsDynamicObject;
+
+            public void Dispose()
+            {
+                SearchContext?.Dispose();
+            }
         }
+
+        public struct PreviewImageResult : IDisposable
+        {
+            public readonly Texture PreviewImage;
+            public bool PreviewImageNeedsCleanup { get; private set; }
+
+            public PreviewImageResult(Texture previewImage, bool previewImageNeedsCleanup)
+            {
+                PreviewImage = previewImage;
+                // Do not destroy preview image if is corresponds to the real asset in the AssedDatabase.
+                PreviewImageNeedsCleanup = previewImageNeedsCleanup && (PreviewImage != null && !AssetDatabase.Contains(PreviewImage));
+            }
+
+            public void Dispose()
+            {
+                if (PreviewImage && PreviewImageNeedsCleanup && !PreviewImage.hideFlags.HasFlag(HideFlags.NotEditable))
+                    Object.DestroyImmediate(PreviewImage);
+                PreviewImageNeedsCleanup = false;
+            }
+        }
+
         public enum SearchFailReason
         {
             Found,
@@ -72,38 +93,30 @@ namespace Unity.MemoryProfiler.Editor
                 if (method.Name == "SetSearch")
                 {
                     var parameters = method.GetParameters();
-                    if (parameters.Length > 1)
-                        continue;
-                    foreach (var param in parameters)
+                    if (parameters.Length == 1 && parameters[0].ParameterType == typeof(string))
                     {
-                        if (param.ParameterType == typeof(string))
-                        {
-                            s_SetProjectSearch = method;
-                            break;
-                        }
-                    }
-                    if (s_SetProjectSearch != null)
+                        s_SetProjectSearch = method;
                         break;
+                    }
                 }
             }
 
-
-#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
             // Initialize quick search
             using var context = SearchService.CreateContext(providerIds: new[] { k_SearchProviderIdScene, k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
             using var search = SearchService.Request(context, SearchFlags.Synchronous);
-#endif
+        }
+
+        static EditorWindow GetProjectBrowserWindow(bool focusIt = false)
+        {
+            EditorWindow projectWindow = EditorWindow.GetWindow(s_ProjectBrowserWindowType);
+            if (focusIt)
+                projectWindow.Focus();
+            return projectWindow;
         }
 
         static void SetProjectSearch(string searchString)
         {
-            EditorUtility.FocusProjectWindow();
-            var projectWindow = EditorWindow.focusedWindow;
-            if (projectWindow == null || projectWindow.GetType() != s_ProjectBrowserWindowType)
-            {
-                projectWindow = EditorWindow.GetWindow(s_ProjectBrowserWindowType);
-                projectWindow.Focus();
-            }
+            var projectWindow = GetProjectBrowserWindow(true);
             s_SetProjectSearch.Invoke(projectWindow, new object[] { searchString });
         }
 
@@ -135,7 +148,7 @@ namespace Unity.MemoryProfiler.Editor
                 EditorGUIUtility.PingObject(instanceId);
             }
             else if (logWarning)
-                UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, sessionId, CurrentSessionId);
+                UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, CurrentSessionId, sessionId);
         }
 
         public static Findings FindObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
@@ -148,24 +161,24 @@ namespace Unity.MemoryProfiler.Editor
                 if (findings.FailReason != SearchFailReason.NotFound)
                     return findings;
             }
-            if (unifiedUnityObjectInfo.IsRuntimeCreated)
-            {
-                // no dice, if it was runtime created, and we couldn't find it as part of this session, there are no guarantees, not even close hits
-                return new Findings() { FailReason = SearchFailReason.NotFound };
-            }
             if (snapshot.HasTargetAndMemoryInfo && snapshot.MetaData.ProductName != PlayerSettings.productName)
             {
                 // Could be the Project have been renamed since the capture? Sure.
                 // But chances are, this is a different Project than the one the captured was made in so, don't risk sounding too sure.
                 return new Findings() { FailReason = SearchFailReason.NotFound };
             }
-            if (unifiedUnityObjectInfo.IsAsset && !string.IsNullOrEmpty(unifiedUnityObjectInfo.NativeObjectName))
-            {
-                return FindAsset(snapshot, unifiedUnityObjectInfo);
-            }
             if (unifiedUnityObjectInfo.IsSceneObject && !string.IsNullOrEmpty(unifiedUnityObjectInfo.NativeObjectName))
             {
                 return FindSceneObject(snapshot, unifiedUnityObjectInfo);
+            }
+            if (unifiedUnityObjectInfo.IsRuntimeCreated)
+            {
+                // no dice, if it was a runtime created asset, and we couldn't find it as part of this session, there are no guarantees, not even close hits
+                return new Findings() { FailReason = SearchFailReason.NotFound };
+            }
+            if (unifiedUnityObjectInfo.IsPersistentAsset && !string.IsNullOrEmpty(unifiedUnityObjectInfo.NativeObjectName))
+            {
+                return FindAsset(snapshot, unifiedUnityObjectInfo);
             }
             return new Findings() { FailReason = SearchFailReason.NotFound };
         }
@@ -185,10 +198,7 @@ namespace Unity.MemoryProfiler.Editor
                     // maybe use Undo for this
                     Selection.instanceIDs = oldSelection;
                     Selection.activeInstanceID = oldActiveSelection;
-                    var previewImage = TryObtainingPreviewForDynamicObject(obj, out var previewImageNeedsCleanup);
-                    // If preview image could not be loaded we report SearchFailReason.NotFound
-                    if (previewImage != null)
-                        return new Findings(obj, 100, previewImage, previewImageNeedsCleanup);
+                    return new Findings(obj, 100, null, null, isDynamicObject: true);
                 }
             }
             Selection.instanceIDs = oldSelection;
@@ -196,26 +206,25 @@ namespace Unity.MemoryProfiler.Editor
             return new Findings() { FailReason = SearchFailReason.NotFound };
         }
 
-#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE // conditionally depend on Quick search package
         static Findings FindAsset(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
-            var searchString = ConstructSearchString(unifiedUnityObjectInfo);
+            var searchString = ConstructSearchString(unifiedUnityObjectInfo, unifiedUnityObjectInfo.Type.IsSceneObjectType);
 
             var failReason = SearchFailReason.NotFound;
             Object foundObject = null;
             //maybe eventually join the contexts and filter later.
             SearchItem searchItem = null;
-            SearchContext succesfulContext = null;
-            var assetContext = SearchService.CreateContext(providerId: k_SearchProviderIdAsset, searchText: searchString);
-            using (var search = SearchService.Request(assetContext, SearchFlags.Synchronous))
+            SearchContext context = SearchService.CreateContext(
+                providerIds: new string[] { k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase },
+                searchText: searchString);
+            using (var search = SearchService.Request(context, SearchFlags.Synchronous))
             {
                 if (search.Count == 1)
                 {
-                    succesfulContext = assetContext;
                     searchItem = search[0];
                     if (searchItem != null)
                     {
-                        foundObject = searchItem.ToObject();
+                        foundObject = searchItem.ToObject(unifiedUnityObjectInfo);
                         if (!CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
                         {
                             failReason = SearchFailReason.Found;
@@ -231,19 +240,20 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         if (item != null)
                         {
-                            var obj = item.ToObject();
+                            var obj = item.ToObject(unifiedUnityObjectInfo);
                             if (obj != null && obj.name == unifiedUnityObjectInfo.NativeObjectName && !CheckTypeMismatch(obj, unifiedUnityObjectInfo, snapshot))
                             {
                                 if (foundObject == null && foundObject != obj)
-                                    ++likelyCandidateCount;
-                                foundObject = obj;
-                                searchItem = item;
+                                {
+                                    foundObject = obj;
+                                    searchItem = item;
+                                }
+                                ++likelyCandidateCount;
                             }
                         }
                     }
                     if (searchItem != null && foundObject != null && likelyCandidateCount == 1)
                     {
-                        succesfulContext = assetContext;
                         failReason = SearchFailReason.Found;
                     }
                     else
@@ -258,78 +268,19 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 else
                 {
-                    assetContext.Dispose();
+                    context.Dispose();
                     if (search.Count > 1)
                         failReason = SearchFailReason.FoundTooMany;
                 }
             }
 
-            if (failReason != SearchFailReason.Found)
+            if (failReason == SearchFailReason.Found && foundObject != null && context != null)
             {
-                var adbContext = SearchService.CreateContext(providerId: k_SearchProviderIdAssetDatabase, searchText: searchString);
-                using (var search = SearchService.Request(adbContext, SearchFlags.Synchronous))
-                {
-                    if (search.Count == 1)
-                    {
-                        if (succesfulContext != null)
-                            succesfulContext.Dispose();
-                        succesfulContext = adbContext;
-                        searchItem = search[0];
-                        if (searchItem != null)
-                        {
-                            foundObject = searchItem.ToObject();
-                            if (!CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
-                            {
-                                failReason = SearchFailReason.Found;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        adbContext.Dispose();
-                        if (search.Count > 1)
-                            failReason = SearchFailReason.FoundTooMany;
-                    }
-                }
-            }
-
-            if (failReason == SearchFailReason.Found && foundObject != null && succesfulContext != null)
-            {
-                var previewImage = TryObtainingPreviewWithEditor(foundObject);
-                if (previewImage == null)
-                    previewImage = searchItem.GetPreview(succesfulContext, new Vector2(500, 500), FetchPreviewOptions.Large);
-
-                succesfulContext.Dispose();
-                return new Findings(foundObject, 80, previewImage);
+                return new Findings(foundObject, 80, searchItem, context);
             }
             return new Findings() { FailReason = failReason };
         }
 
-#else
-        static Findings FindAsset(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
-        {
-            var searchString = ConstructSearchString(unifiedUnityObjectInfo);
-
-            var foundAssets = AssetDatabase.FindAssets(searchString);
-            var assetType = unifiedUnityObjectInfo.Type.GetManagedSystemType(snapshot);
-            if (assetType != null && foundAssets != null && foundAssets.Length == 1)
-            {
-                var path = AssetDatabase.GUIDToAssetPath(foundAssets[0]);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var foundObj = AssetDatabase.LoadAssetAtPath(path, assetType);
-                    // this is a guesstimate, don't trust this too much
-
-                    var previewImage = TryObtainingPreviewWithEditor(foundObj);
-                    return new Findings(foundObj, 70, previewImage);
-                }
-            }
-            return new Findings() { FailReason = foundAssets.Length == 0 ? SearchFailReason.TypeIssues : SearchFailReason.FoundTooMany };
-        }
-
-#endif
-
-#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
         static Findings FindSceneObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
             if (snapshot.HasSceneRootsAndAssetbundles)
@@ -337,7 +288,7 @@ namespace Unity.MemoryProfiler.Editor
                 // TODO: with captured Scene Roots changes, double check the open scene names
                 // if they mismatch, return;
             }
-            using (var context = SearchService.CreateContext(providerId: k_SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo, true)))
+            using (var context = SearchService.CreateContext(providerId: k_SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo)))
             {
                 using (var search = SearchService.Request(context, SearchFlags.Synchronous))
                 {
@@ -345,21 +296,10 @@ namespace Unity.MemoryProfiler.Editor
                         return new Findings() { FailReason = SearchFailReason.FoundTooMany };
                     if (search.Count == 1)
                     {
-                        var foundObject = search[0].ToObject();
-                        if (foundObject is GameObject && !unifiedUnityObjectInfo.IsGameObject)
-                        {
-                            var go = foundObject as GameObject;
-                            // Managed Type Name is more specific instead of e.g. MonoBehaviou, but it may fail
-                            foundObject = go.GetComponent(unifiedUnityObjectInfo.ManagedTypeName);
-                            if (foundObject == null) // try native type name in that case
-                                foundObject = go.GetComponent(unifiedUnityObjectInfo.NativeTypeName);
-                        }
+                        var foundObject = search[0].ToObject(unifiedUnityObjectInfo);
                         if (foundObject != null && !CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
                         {
-                            var previewImage = TryObtainingPreviewWithEditor(foundObject);
-                            if (previewImage == null)
-                                previewImage = search[0].GetPreview(context, new Vector2(500, 500));
-                            return new Findings(foundObject, 80, previewImage);
+                            return new Findings(foundObject, 80, search[0], context);
                         }
                     }
                 }
@@ -367,48 +307,34 @@ namespace Unity.MemoryProfiler.Editor
             return new Findings() { FailReason = SearchFailReason.NotFound };
         }
 
-#else
-
-        static Findings FindSceneObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
+        static Object ToObject(this SearchItem searchItem, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
-            if (snapshot.HasSceneRootsAndAssetbundles)
+            var obj = searchItem.ToObject();
+            if (unifiedUnityObjectInfo.Type.IsSceneObjectType && obj is GameObject && !unifiedUnityObjectInfo.IsGameObject)
             {
-                // TODO: with captured Scene Roots changes, double check the open scene names
-                // if they mismatch, return;
+                var go = obj as GameObject;
+                // Managed Type Name is more specific instead of e.g. MonoBehaviou, but it may fail
+                obj = go.GetComponent(unifiedUnityObjectInfo.ManagedTypeName);
+                if (obj == null) // try native type name in that case
+                    obj = go.GetComponent(unifiedUnityObjectInfo.NativeTypeName);
             }
-            var assetType = unifiedUnityObjectInfo.Type.GetManagedSystemType(snapshot);
-            if (assetType != null)
-            {
-#if UNITY_2020_1_OR_NEWER
-                var objs = Object.FindObjectsOfType(assetType, true);
-#else
-                var objs = Object.FindObjectsOfType(assetType);
-#endif
-
-                if (objs.Length > 10000) // nope, that's gonna take too long
-                    return new Findings() { FailReason = SearchFailReason.FoundTooManyToProcess };
-
-                Object foundCandidate = null;
-                foreach (var obj in objs)
-                {
-                    if (obj.name == unifiedUnityObjectInfo.NativeObjectName)
-                    {
-                        // TODO: Also check components on the same object and surrounding transforms for added certainty
-                        if (foundCandidate != null)
-                            return new Findings() { FailReason = SearchFailReason.FoundTooMany };
-                        foundCandidate = obj;
-                    }
-                }
-                if (foundCandidate)
-                {
-                    var previewImage = TryObtainingPreviewWithEditor(foundCandidate);
-                    return new Findings(foundObject, 70, previewImage);
-                }
-            }
-            return new Findings() { FailReason = SearchFailReason.NotFound };
+            return obj;
         }
 
-#endif
+        public static PreviewImageResult GetPreviewImage(Findings findings)
+        {
+            if (findings.IsDynamicObject)
+            {
+                return new PreviewImageResult(
+                    TryObtainingPreviewForDynamicObject(findings.FoundObject, out var previewImageNeedsCleanup),
+                    previewImageNeedsCleanup);
+            }
+
+            var previewImage = TryObtainingPreviewWithEditor(findings.FoundObject);
+            if (previewImage == null && findings.SearchItem != null)
+                previewImage = findings.SearchItem.GetPreview(findings.SearchContext, new Vector2(500, 500), FetchPreviewOptions.Large);
+            return new PreviewImageResult(previewImage, true);
+        }
 
         static Texture TryObtainingPreviewForDynamicObject(Object obj, out bool previewImageNeedsCleanup)
         {
@@ -426,6 +352,14 @@ namespace Unity.MemoryProfiler.Editor
 
         static Texture TryObtainingPreviewWithEditor(Object obj)
         {
+            if (obj == null)
+                return null;
+
+            // Prefab Importer fails in Awake when initialized via UnityEditor.Editor.CreateEditor
+            // there is also no preview for Asset Importers in general
+            if (obj is AssetImporter)
+                return null;
+
             var editor = UnityEditor.Editor.CreateEditor(obj);
             string guid;
             long fileId;
@@ -515,13 +449,9 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 return TextContent.SearchInSceneButton;
             }
-            if (selectedUnityObject.IsAsset)
+            if (selectedUnityObject.IsPersistentAsset)
                 return TextContent.SearchInProjectButton;
-#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
-            return new GUIContent("Search in Editor");
-#else
-            return null;
-#endif
+            return TextContent.SearchButtonCantSearch;
         }
 
         public static void SetEditorSearchFilterForObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
@@ -530,25 +460,19 @@ namespace Unity.MemoryProfiler.Editor
             {
                 SetSceneSearch(ConstructSearchString(selectedUnityObject));
             }
-            if (selectedUnityObject.IsAsset)
+            if (selectedUnityObject.IsPersistentAsset)
             {
                 SetProjectSearch(ConstructSearchString(selectedUnityObject));
-                //EditorWindow.GetWindow<ProjectBrowser>
             }
         }
 
-        public static void OpenQuickSearch(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
+        public static ISearchView OpenQuickSearch(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
         {
-#if UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE ?
-            // possible fall-back if Case 1400665 is never backported to 2021.1, or if we need something like this in earlier Unity versions with the package.
-            //var providerIds = selectedUnityObject.IsSceneObject? new[]{ k_SearchProviderIdScene } : new[]{ k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase };
-
-            var context = SearchService.CreateContext(/*providerIds: providerIds,*/ searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.IsSceneObject));
+            var context = SearchService.CreateContext(/*providerIds: providerIds,*/ searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.Type.IsSceneObjectType));
             var state = new SearchViewState(context);
             // Will only work once Case 1400665 is resolved and this trunk change-set landed: 25685e01ef1d
             state.group = selectedUnityObject.IsSceneObject ? "scene" : "asset";
-            SearchService.ShowWindow(state);
-#endif
+            return SearchService.ShowWindow(state);
         }
     }
 }

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profile-snapshotfile">
+        <Style src="LoadedSnapshotsItemView.uss" />
+
+        <engine:VisualElement name="memory-profile-snapshotfile__with-data">
+            <engine:VisualElement name="memory-profile-snapshotfile__image-and-meta-data__container">
+                <engine:VisualElement name="memory-profile-snapshotfile__preview-image__container">
+                    <engine:Image name="memory-profile-snapshotfile__preview-image">
+                        <engine:Image name="memory-profile-snapshotfile__preview-image__editor-icon" />
+                        <engine:Image name="memory-profile-snapshotfile__preview-image__platform-icon" />
+                    </engine:Image>
+                </engine:VisualElement>
+
+                <engine:VisualElement name="memory-profile-snapshotfile__meta-data__container">
+                    <engine:VisualElement name="memory-profile-snapshotfile__meta-data">
+                        <engine:Label text="No snapshot selected." display-tooltip-when-elided="true" name="memory-profile-snapshotfile__meta-data__nodata" class="memory-profile-snapshotfile__text-style" />
+                        <engine:Label text="Snapshot Name" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__meta-data__name" class="memory-profile-snapshotfile__text-style" />
+                        <engine:Label text="2021-02-09 14:08" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__meta-data__date" class="memory-profile-snapshotfile__text-style" />
+                        <engine:Label text="Session Name" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__meta-data__session-name" class="memory-profile-snapshotfile__text-style memory-profile-snapshotfile__text-style__project-session" />
+                        <engine:Label text="Project Name" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__meta-data__project-name" class="memory-profile-snapshotfile__text-style memory-profile-snapshotfile__text-style__project-session" />
+
+                        <engine:Label text="A" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__tag" class="memory-profile-snapshotfile__tag__label" />
+                    </engine:VisualElement>
+                </engine:VisualElement>
+            </engine:VisualElement>
+
+            <engine:VisualElement name="memory-profile-snapshotfile__bar__container">
+                <engine:VisualElement name="memory-profile-snapshotfile__bar">
+                    <engine:VisualElement name="memory-profile-snapshotfile__bar__allocated" />
+                </engine:VisualElement>
+                <engine:VisualElement name="memory-profile-snapshotfile__bar__subtext">
+                    <engine:Label text="N/A" name="memory-profile-snapshotfile__bar__not-available-label"/>
+                    <engine:VisualElement>
+                        <engine:Label name="memory-profile-snapshotfile__bar__allocated-label" text="Total Resident: --GB" display-tooltip-when-elided="true" />
+                        <engine:Label name="memory-profile-snapshotfile__bar__available-label" text="Hardware Resources: --GB" display-tooltip-when-elided="true" />
+                    </engine:VisualElement>
+                    <engine:Button name="memory-profile-snapshotfile__close" text="Close"/>
+                </engine:VisualElement>
+            </engine:VisualElement>
+        </engine:VisualElement>
+
+        <engine:VisualElement name="memory-profile-snapshotfile__no-data">
+            <engine:Label text="No snapshot selected." name="memory-profile-snapshotfile__no-data__label" />
+        </engine:VisualElement>
+    </engine:VisualElement>
+</engine:UXML>

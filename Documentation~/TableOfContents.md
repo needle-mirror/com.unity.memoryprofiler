@@ -17,3 +17,4 @@
   * [Inspect assets that use the most memory](inspect-assets-that-use-most-memory.md)
   * [Total memory use](total-memory-use.md)
   * [Find memory leaks](find-memory-leaks.md)
+  * [Managed Shell Objects](managed-shell-objects.md)

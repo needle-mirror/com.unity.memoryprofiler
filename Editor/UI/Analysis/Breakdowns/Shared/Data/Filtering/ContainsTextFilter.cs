@@ -5,29 +5,35 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     class ContainsTextFilter : ITextFilter
     {
-        string Text { get; }
+        public string Value { get; }
 
         ContainsTextFilter(string text)
         {
-            Text = text;
+            Value = text;
         }
 
+        /// <summary>
+        /// Cannot create a text filter with a null filter string or an empty filter string.
+        /// If this filter should match for any input, use <see cref="MatchesAllTextFilter"/> instead.
+        /// </summary>
+        /// <param name="text"></param>
+        /// <returns></returns>
         public static ContainsTextFilter Create(string text)
         {
             // Cannot create a text filter with a null filter string. Note that string.Empty is allowed, which will pass non-null strings (i.e. 'contains any text').
-            if (text == null)
+            if (string.IsNullOrEmpty(text))
                 return null;
 
             return new ContainsTextFilter(text);
         }
 
         // Test if the provided 'text' passes the filter. Returns true if 'text' is not null and contains the filter's 'Text', according to an ordinal, case-insensitive comparison. Otherwise, returns false.
-        public bool TextPasses(string text)
+        public bool Passes(string text, CachedSnapshot cachedSnapshot = null)
         {
             if (text == null)
                 return false;
 
-            if (!text.Contains(Text, StringComparison.OrdinalIgnoreCase))
+            if (!text.Contains(Value, StringComparison.OrdinalIgnoreCase))
                 return false;
 
             return true;

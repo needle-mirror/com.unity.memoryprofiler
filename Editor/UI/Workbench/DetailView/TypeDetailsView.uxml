@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profiler-type-details">
+        <Style src="TypeDetailsView.uss" />
+
+        <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="memory-profiler-type-details__title" style="-unity-font-style: bold;"/>
+
+        <engine:ScrollView name="memory-profiler-type-details__desc__scroll-area">
+            <engine:VisualElement name="memory-profiler-type-details__desc">
+                <engine:VisualElement class="memory-profiler-type-details__desc__group">
+                    <engine:Label text="Managed Type:" class="memory-profiler-type-details__desc__group-label"/>
+                    <engine:Label name="memory-profiler-type-details__desc__managed-type" class="memory-profiler-type-details__desc__group-label"/>
+                </engine:VisualElement>
+
+                <engine:VisualElement class="memory-profiler-type-details__desc__group">
+                    <engine:Label text="Native Type:" class="memory-profiler-type-details__desc__group-label"/>
+                    <engine:Label name="memory-profiler-type-details__desc__native-type" class="memory-profiler-type-details__desc__group-label"/>
+                </engine:VisualElement>
+
+                <engine:VisualElement class="memory-profiler-type-details__desc__group">
+                    <engine:Label text="Children Count:" class="memory-profiler-type-details__desc__group-label"/>
+                    <engine:Label name="memory-profiler-type-details__desc__children-count" class="memory-profiler-type-details__desc__group-label"/>
+                </engine:VisualElement>
+            </engine:VisualElement>
+        </engine:ScrollView>
+    </engine:VisualElement>
+</engine:UXML>

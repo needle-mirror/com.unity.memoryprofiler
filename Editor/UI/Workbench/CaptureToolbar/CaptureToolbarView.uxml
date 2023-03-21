@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <editor:Toolbar name="memory-profiler-view__toolbar">
+        <Style src="CaptureToolbarView.uss" />
+
+        <engine:VisualElement name="memory-profiler-view__toolbar__left-side">
+            <editor:ToolbarToggle focusable="false" name="memory-profiler-view__toolbar__snaphsot-window-toggle" value="true" />
+
+            <editor:ToolbarButton name="memory-profiler-view__toolbar__import-button" tooltip="Import old snapshot formats or just copy them into this project&apos;s Memory Snapshot folder." class="square-icon-button">
+                <engine:Image class="icon-button icon-button__import-icon square-button-icon" />
+            </editor:ToolbarButton>
+
+            <editor:ToolbarButton display-tooltip-when-elided="true" name="memory-profiler-view__toolbar__capture-button" class="drop-down-toggle">
+                <engine:Image tooltip="Take a new snapshot from the target specified in the drop-down to the left of this button." class="icon-button icon-button__camera-icon square-button-icon" />
+                <engine:Label text="Capture" tooltip="Take a new snapshot from the target specified in the drop-down to the left of this button." />
+                <editor:ToolbarButton display-tooltip-when-elided="true" name="memory-profiler-view__toolbar__capture-button__dropdown" tooltip="Choose Capture Flags" class="drop-down-toggle__drop-down-part">
+                    <engine:VisualElement class="drop-down-toggle__drop-down-part__arrow-icon">
+                        <engine:VisualElement class="unity-base-popup-field__arrow" />
+                    </engine:VisualElement>
+                </editor:ToolbarButton>
+            </editor:ToolbarButton>
+
+            <Unity.MemoryProfiler.Editor.UI.ToolbarDropDownButton tooltip="Target Selection drop-down. Choose which target to connect to." button-text="Editor" name="memory-profiler-view__toolbar__snaphsot-window-toggle__target-selection" class="unity-toolbar-menu" />
+        </engine:VisualElement>
+
+        <engine:VisualElement name="memory-profiler-view__toolbar__right-side">
+            <editor:ToolbarToggle focusable="false" name="memory-profiler-view__toolbar__details-toggle" value="true" tooltip="Show/Hide the details panel" />
+
+            <editor:ToolbarButton name="memory-profiler-view__toolbar__help-button" tooltip="Open manual" class="square-icon-button">
+                <engine:Image class="icon-button icon-button__help-icon square-button-icon" />
+            </editor:ToolbarButton>
+
+            <editor:ToolbarButton name="memory-profiler-view__toolbar__settings-button" tooltip="Further options" class="square-icon-button">
+                <engine:Image class="icon-button icon-button__menu-icon square-button-icon" />
+            </editor:ToolbarButton>
+        </engine:VisualElement>
+    </editor:Toolbar>
+</engine:UXML>

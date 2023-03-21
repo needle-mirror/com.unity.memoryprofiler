@@ -1,10 +1,8 @@
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEditor;
-using System;
 using UnityEngine.UIElements;
-using UnityEditor.UIElements;
+using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -102,6 +100,36 @@ namespace Unity.MemoryProfiler.Editor
 #else
             element.AddManipulator(new Clickable(callback));
 #endif
+        }
+
+        public static VisualTreeAsset LoadAssetByGUID(string uxmlAssetGuid)
+        {
+            var uxmlAssetPath = AssetDatabase.GUIDToAssetPath(uxmlAssetGuid);
+            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlAssetPath);
+        }
+
+        // Loads and instantiate the specified Uxml asset and returns its root VisualElement, discarding the Template container. If the Uxml specifies multiple roots, the first will be returned.
+        public static VisualElement InstantiateAssetByGUID(string uxmlAssetGuid)
+        {
+            var uxml = LoadAssetByGUID(uxmlAssetGuid);
+            if (uxml == null)
+                return null;
+
+#if UNITY_2020_3_OR_NEWER
+            var template = uxml.Instantiate();
+#else
+            var template = uxml.CloneTree();
+#endif
+
+            // Retrieve first child from template container.
+            VisualElement view = null;
+            using (var enumerator = template.Children().GetEnumerator())
+            {
+                if (enumerator.MoveNext())
+                    view = enumerator.Current;
+            }
+
+            return view;
         }
     }
 }

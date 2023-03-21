@@ -1,5 +1,5 @@
-using Unity.MemoryProfiler.Editor.Format;
-using Unity.MemoryProfiler.Editor.UIContentData;
+using System;
+using Unity.MemoryProfiler.Editor.UI;
 using UnityEditor;
 using UnityEngine;
 
@@ -18,6 +18,8 @@ namespace Unity.MemoryProfiler.Editor
         public const RuntimePlatform EmbeddedLinuxArm32 = (RuntimePlatform)40 /*RuntimePlatform.EmbeddedLinuxArm32*/;
         public const RuntimePlatform EmbeddedLinuxX64 = (RuntimePlatform)41 /*RuntimePlatform.EmbeddedLinuxX64*/;
         public const RuntimePlatform EmbeddedLinuxX86 = (RuntimePlatform)42 /*RuntimePlatform.EmbeddedLinuxX86*/;
+
+        static readonly RuntimePlatform[] k_PlatformsIgnoreResidentMemory = new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch };
 
         public static BuildTarget GetBuildTarget(this RuntimePlatform runtimePlatform)
         {
@@ -80,12 +82,14 @@ namespace Unity.MemoryProfiler.Editor
                 case RuntimePlatform.Switch:
                     buildTarget = BuildTarget.Switch;
                     break;
+#if !UNITY_2023_1_OR_NEWER
                 case RuntimePlatform.Lumin:
                     buildTarget = BuildTarget.Lumin;
                     break;
                 case RuntimePlatform.Stadia:
                     buildTarget = BuildTarget.Stadia;
                     break;
+#endif
 #if UNITY_2022_2_OR_NEWER
                 case RuntimePlatform.QNXArm32:
                 case RuntimePlatform.QNXArm64:
@@ -107,6 +111,14 @@ namespace Unity.MemoryProfiler.Editor
                     break;
             }
             return buildTarget;
+        }
+
+        public static RuntimePlatform GetRuntimePlatform(string platformName)
+        {
+            if (string.IsNullOrEmpty(platformName) || !Enum.IsDefined(typeof(RuntimePlatform), platformName))
+                return (RuntimePlatform)~0;
+
+            return (RuntimePlatform)Enum.Parse(typeof(RuntimePlatform), platformName);
         }
 
         public static bool RuntimePlatformIsEditorPlatform(RuntimePlatform runtimePlatform)
@@ -139,6 +151,61 @@ namespace Unity.MemoryProfiler.Editor
                 default:
                     return false;
             }
+        }
+
+        public static Texture GetPlatformIcon(RuntimePlatform platform)
+        {
+            Texture icon = null;
+
+            // Try to use builtin Editor icon.
+            var builtinIconName = GetPlatformIconName(platform);
+            if (builtinIconName != null)
+                icon = IconUtility.LoadBuiltInIconWithName(builtinIconName);
+
+            // Fallback to NoIcon.
+            if (icon == null)
+                icon = Icons.NoIcon;
+
+            return icon;
+        }
+
+        public static string GetPlatformIconName(RuntimePlatform platform)
+        {
+            string name;
+            switch (platform)
+            {
+#if UNITY_2021_2_OR_NEWER
+                case RuntimePlatform.LinuxServer:
+                case RuntimePlatform.OSXServer:
+                case RuntimePlatform.WindowsServer:
+                    name = "DedicatedServer";
+                    break;
+#endif
+                default:
+                {
+                    var buildTargetGroup = BuildPipeline.GetBuildTargetGroup(platform.GetBuildTarget());
+                    if (buildTargetGroup == BuildTargetGroup.Unknown)
+                        return null;
+
+                    switch (buildTargetGroup)
+                    {
+                        case BuildTargetGroup.WSA:
+                            name = "Metro";
+                            break;
+                        default:
+                            name = buildTargetGroup.ToString();
+                            break;
+                    }
+                }
+                break;
+            }
+
+            return "BuildSettings." + name + " On.png";
+        }
+
+        public static bool IsResidentMemoryBlacklistedPlatform(RuntimePlatform platform)
+        {
+            return Array.IndexOf(k_PlatformsIgnoreResidentMemory, platform) != -1;
         }
     }
 }

@@ -1,0 +1,124 @@
+/** Toolbar **/
+
+.selectable-label > #unity-text-input {
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+#memory-profiler-module__toolbar {
+    flex-shrink: 0;
+}
+
+#memory-profiler-module__toolbar__menu {
+    flex-shrink: 0;
+    align-items: center;
+    flex-direction: row;
+}
+
+.toolbar__drop-down__arrow {
+    margin-top: -1px;
+}
+
+#memory-profiler-module__toolbar__view-mode {
+    flex-direction: row;
+    flex-shrink: 0;
+    -unity-text-align: middle-left;
+}
+
+#memory-profiler-module__toolbar__view-mode-label {
+    flex-shrink: 0;
+    -unity-text-align: middle-left;
+}
+
+#memory-profiler-module__toolbar__editor-warning {
+    flex-direction: row;
+}
+
+#memory-profiler-module__toolbar__editor-warning__icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    margin-left: 2px;
+    background-image: resource('console.warnicon.png');
+}
+
+#memory-profiler-module__toolbar__editor-warning__label {
+    align-self: center;
+}
+
+#memory-profiler-module__toolbar__install-package-button {
+    flex-shrink: 0;
+    -unity-text-align: middle-left;
+}
+
+.memory-module__toolbar__group {
+    flex-shrink: 0;
+    flex-direction: row;
+}
+
+/** View container **/
+#memory-profiler-module__view {
+    flex: 1 1 auto;
+}
+
+#memory-profiler-module__container {
+    flex: 1 1 auto;
+}
+
+/** No data view **/
+
+#memory-profiler-module__no-frame-data {
+    flex: 1 1 auto;
+}
+
+#memory-profiler-module__no-frame-data__label {
+    flex: 1 1 auto;
+    -unity-text-align: middle-center;
+}
+
+/** Simple view **/
+
+#memory-profiler-module__simple {
+    flex: 1;
+    flex-direction: column;
+
+    margin-top: 10px;
+}
+
+.memory-profiler-module__widget {
+    flex: 0 0 auto;
+
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 30px;
+    padding-right: 30px;
+
+    margin-bottom: 10px;
+    margin-left: 10px;
+    margin-right: 10px;
+
+    background-color: var(--unity-colors-box-background);
+}
+
+#memory-profiler-module__content__system .memory-summary__category__color-remainder {
+    visibility: hidden;
+}
+
+/** Detailed view **/
+
+#memory-profiler-module__detailed {
+    flex: 1 1 auto;
+}
+
+#memory-profiler-module__detailed__label {
+    flex: 1 1 auto;
+    -unity-text-align: middle-center;
+}

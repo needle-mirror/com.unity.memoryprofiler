@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.Experimental.UIElements" editor="UnityEditor.Experimental.UIElements" memory="Unity.MemoryProfiler.Editor" upm="UnityEditor.PackageManager.UI" noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd" schemaLocation="                         UnityEngine.Experimental.UIElements ../../../../UIElementsSchema/UnityEngine.Experimental.UIElements.xsd                         UnityEditor.Experimental.UIElements ../../../../UIElementsSchema/UnityEditor.Experimental.UIElements.xsd                         UnityEditor.PackageManager.UI ../../../../UIElementsSchema/UnityEditor.PackageManager.UI.xsd                         Unity.MemoryProfiler.Editor ../../../../UIElementsSchema/Unity.MemoryProfiler.Editor.xsd " editor-extension-mode="True">
+
+    <ui:VisualElement class="object-or-type-label">
+        <Style src="ObjectOrTypeLabel.uss" />
+
+        <ui:VisualElement class="object-or-type-label__icon-space">
+            <ui:VisualElement name="object-or-type-label__data-type-icon" class="type-icon data-type-icon data-type-icon__native" />
+            <ui:Image name="object-or-type-label__type-icon" class="type-icon" />
+        </ui:VisualElement>
+        <ui:Label name="object-or-type-label__text" text="Cube" class="object-or-type-label__text object-or-type-label__native-object-name" />
+
+        <ui:VisualElement style="flex-grow: 1;" />
+        <ui:Button name="object-or-type-label__documentation-button" class="icon-button icon-button__help-icon" />
+    </ui:VisualElement>
+</ui:UXML>

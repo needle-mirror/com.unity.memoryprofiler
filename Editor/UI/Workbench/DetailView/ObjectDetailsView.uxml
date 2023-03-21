@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profiler-object-details">
+        <Style src="ObjectDetailsView.uss" />
+
+        <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="reference-item-details__unity-item-title"/>
+
+        <engine:TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="300" name="details-panel__splitter" orientation="Vertical">
+            <engine:VisualElement name="reference-trees" class="details-panel__section">
+                <engine:Foldout text="References" name="details-panel__section-header__references" display-tooltip-when-elided="true" class="details-panel__section-header">
+                    <Unity.MemoryProfiler.Editor.UI.Ribbon name="references__ribbon__container" show-help-button="false" alignment="FlexStart" style="align-items: stretch;">
+                        <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Referenced By (Raw)"  toggled="true" name="raw-connections" style="flex-grow: 1;max-width: 200px; " tooltip="Displays a list of other entities that reference the selected object."/>
+                        <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="References To" toggled="false" name="referencing-to" style="flex-grow: 1; display: flex;" tooltip="Displays a list of the objects that the selection has references to." />
+                    </Unity.MemoryProfiler.Editor.UI.Ribbon>
+                    <engine:IMGUIContainer name="references-imguicontainer" style="flex-grow: 1; margin-top: 0;" />
+                </engine:Foldout>
+            </engine:VisualElement>
+
+            <engine:VisualElement name="selected-item-details" class="details-panel__section">
+                <engine:Foldout name="details-panel__section-header__selection-details" text="Selection Details" class="details-panel__section-header">
+                    <engine:Label name="selected-item-details__item-title" />
+                    <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="selected-item-details__unity-item-title" />
+
+                    <engine:VisualElement name="selected-item-details__find-buttons" class="selected-item-details__area selected-item-details__find-buttons">
+                        <engine:VisualElement name="selected-item-details__find-buttons__select-in-editor__holder" class="selected-item-details__find-buttons">
+                            <engine:Button text="Select in Editor" name="selected-item-details__find-buttons__select-in-editor" />
+                        </engine:VisualElement>
+                        <engine:VisualElement name="selected-item-details__find-buttons__search-in-editor__holder" class="selected-item-details__find-buttons">
+                            <engine:Button text="Search in Project" name="selected-item-details__find-buttons__search-in-editor" />
+                            <engine:Button text="Open in Search" name="selected-item-details__find-buttons__quick-search" />
+                        </engine:VisualElement>
+                        <engine:Button display-tooltip-when-elided="true" name="selected-item-details__find-buttons__copy" class="drop-down-button">
+                            <engine:Label name="drop-down-button__label" text="Copy" tooltip="Copy To Clipboard" />
+                            <engine:Button display-tooltip-when-elided="true" name="drop-down-button__drop-down-part"  class="drop-down-button__drop-down-part">
+                                <engine:VisualElement class="drop-down-button__drop-down-part__arrow-icon">
+                                    <engine:VisualElement class="unity-base-popup-field__arrow" />
+                                </engine:VisualElement>
+                            </engine:Button>
+                        </engine:Button>
+                    </engine:VisualElement>
+
+                    <engine:ScrollView name="selected-item-details__selection-details__scroll-area">
+
+                        <engine:VisualElement name="selected-item-details__item-description-and-documentation-link"  class="selected-item-details__area">
+                            <engine:TextField name="selected-item-details__item-description" multiline="true" class="selectable-label"/>
+                            <engine:VisualElement name="selected-item-details__documentation-link-area">
+                                <engine:Button name="selected-item-details__item-documentation-button" class="">
+                                    <engine:Image class="icon-button icon-button__help-icon square-button-icon" />
+                                    <engine:Label text="Open Manual" />
+                                </engine:Button>
+                            </engine:VisualElement>
+                        </engine:VisualElement>
+                        <engine:VisualElement name="selected-item-details__grouped-elements" class="selected-item-details__area" />
+                        <engine:VisualElement name="selected-item-details__dynamic-elements" class="selected-item-details__area" />
+
+                        <engine:VisualElement name="selected-item-details__preview-area"  class="selected-item-details__area">
+                            <engine:Foldout name="selected-item-details__preview__foldout" class="selected-item-details__generic-foldout" text="Preview (taken from Editor)">
+                                <engine:Image name="selected-item-details__preview" class="selected-item-details__preview" />
+                            </engine:Foldout>
+                        </engine:VisualElement>
+
+
+                    <engine:VisualElement name="selected-item-details__managed-field-inspector-area" class="selected-item-details__area">
+                        <engine:Foldout name="selected-item-details__managed-field-inspector__foldout" class="selected-item-details__managed-field-inspector__foldout" text="Managed Fields">
+                            <engine:IMGUIContainer name="selected-item-details__managed-field-inspector__imguicontainer" class="selected-item-details__managed-field-inspector__imguicontainer" />
+                        </engine:Foldout>
+                    </engine:VisualElement>
+
+                    </engine:ScrollView>
+                </engine:Foldout>
+            </engine:VisualElement>
+        </engine:TwoPaneSplitView>
+    </engine:VisualElement>
+</engine:UXML>

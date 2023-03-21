@@ -1,0 +1,35 @@
+#memory-profiler-snapshots
+{
+    flex-grow: 1;
+}
+
+#memory-profiler-snapshots__tree-view
+{
+    margin: 4px;
+}
+
+#memory-profiler-snapshots__tree-view .unity-tree-view__item-indent
+{
+    width: 0px;
+}
+
+#memory-profiler-snapshots__tree-view .unity-tree-view__item-content
+{
+    flex-shrink: 1;
+}
+
+#memory-profiler-snapshots__card__session-label
+{
+    color: #868686;
+}
+
+#memory-profiler-snapshots__no-snapshots-message
+{
+    flex-grow: 1;
+}
+
+#memory-profiler-snapshots__no-snapshots-message__label
+{
+    -unity-text-align: middle-center;
+    flex-grow: 1;
+}

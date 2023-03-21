@@ -2,6 +2,7 @@
 {
   --comparison-view__snapshot-size-bar__background-color: #5A5A5A;
   --comparison-view__snapshot-size-bar__fill-background-color: #F0F0F0;
+  --comparison-view__snapshot-size-bar__remainer-color: #232323;
   --comparison-view__tree-view__background-color: #3E3E3E;
   --comparison-view__tree-view__border-color: #232323;
   --comparison-view__loading-overlay__background-color: rgba(35, 35, 35, 0.8);
@@ -12,6 +13,7 @@
 {
   --comparison-view__snapshot-size-bar__background-color: #CBCBCB;
   --comparison-view__snapshot-size-bar__fill-background-color: white;
+  --comparison-view__snapshot-size-bar__remainer-color: #AAAAAA;
   --comparison-view__tree-view__background-color: #C8C8C8;
   --comparison-view__tree-view__border-color: #999999;
   --comparison-view__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
@@ -75,39 +77,41 @@
     margin: 4px 16px 0px 16px;
 }
 
-.comparison-view__snapshot-version-icon
+.comparison-view__snapshot-size-bar > .memory-profile-snapshotfile__tag__label__large
 {
-    -unity-text-align: middle-center;
-    -unity-font-style: bold;
-    -unity-background-image-tint-color: var(--comparison-view__snapshot-size-bar__fill-background-color);
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Circle.png');
-    color: rgb(40, 40, 40);
-    font-size: 11px;
-    height: 22px;
-    margin-right: 8px;
-    width: 22px;
+    margin-top: 4px;
 }
 
 .comparison-view__snapshot-size-bar .detailed-size-bar
 {
     flex-grow: 1;
-    margin-left: 12px;
+    margin-left: 4px;
     margin-top: 4px;
+}
+
+.comparison-view__snapshot-size-bar .detailed-size-bar__bar-container
+{
+    flex-direction: row;
+    flex-grow: 1;
+    height: 14px;
+    margin-top: 3px;
+    margin-bottom: 3px;
 }
 
 .comparison-view__snapshot-size-bar .detailed-size-bar__bar
 {
-    background-color: var(--comparison-view__snapshot-size-bar__background-color);
+    flex-grow: 0;
     height: 14px;
+    margin: 0px;
 }
 
-.comparison-view__snapshot-size-bar .detailed-size-bar__bar .progress-bar__fill
+.comparison-view__snapshot-size-bar .detailed-size-bar__bar-remainder
 {
-    background-color: var(--comparison-view__snapshot-size-bar__fill-background-color);
-    min-width: 1px;
-    transition-duration: 0.23s;
-    transition-property: width;
-    transition-timing-function: ease-out;
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 2px;
+    background-color: var(--comparison-view__snapshot-size-bar__remainer-color);
+    height: 14px;
 }
 
 .comparison-view__snapshot-size-bar .detailed-size-bar__size-label
@@ -208,7 +212,7 @@
 
 #comparison-view__loading-overlay ActivityIndicator
 {
-    background-image: resource('Packages/com.unity.memoryprofiler/Package Resources/Icons/Loading.png');
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Loading.png');
     height: 16px;
     width: 16px;
 }
@@ -280,4 +284,9 @@
     right: 0px;
     top: 0px;
     visibility: hidden;
+}
+
+.comparison-view__snapshot-size-bar .memory-bar-element__committed-bar
+{
+    background-color: #D6D6D6;
 }

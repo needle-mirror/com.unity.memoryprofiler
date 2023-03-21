@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profiler-simple-details">
+        <Style src="SimpleDetailsView.uss" />
+
+        <engine:Label name="memory-profiler-simple-details__title" />
+
+        <engine:ScrollView name="memory-profiler-simple-details__desc__scroll-area">
+            <engine:VisualElement name="memory-profiler-simple-details__desc">
+                <engine:TextField name="memory-profiler-simple-details__desc__text" multiline="true"/>
+
+                <engine:VisualElement name="memory-profiler-simple-details__desc__documentation-link-area">
+                    <engine:Button name="memory-profiler-simple-details__desc__documentation-link-button">
+                        <engine:Image class="icon-button icon-button__help-icon square-button-icon" />
+                        <engine:Label text="Open Manual" />
+                    </engine:Button>
+                </engine:VisualElement>
+            </engine:VisualElement>
+        </engine:ScrollView>
+    </engine:VisualElement>
+</engine:UXML>

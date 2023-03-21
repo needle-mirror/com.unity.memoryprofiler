@@ -8,22 +8,28 @@ namespace Unity.MemoryProfiler.Editor.UI
     class DetailedSizeBar : VisualElement
     {
         const string k_UxmlClass = "detailed-size-bar";
+        const string k_UxmlClass_BarContainer = "detailed-size-bar__bar-container";
         const string k_UxmlClass_Bar = "detailed-size-bar__bar";
+        const string k_UxmlClass_BarRemainder = "detailed-size-bar__bar-remainder";
         const string k_UxmlClass_Footer = "detailed-size-bar__footer";
         const string k_UxmlClass_SizeLabel = "detailed-size-bar__size-label";
         const string k_UxmlClass_TotalLabel = "detailed-size-bar__total-label";
 
+        VisualElement m_Reminder;
+
         public DetailedSizeBar()
         {
-            Bar = new ProgressBar()
-            {
-                style =
-                {
-                    flexGrow = 1,
-                }
-            };
+            var barContainer = new VisualElement();
+            barContainer.AddToClassList(k_UxmlClass_BarContainer);
+            Add(barContainer);
+
+            Bar = new MemoryBarElement();
             Bar.AddToClassList(k_UxmlClass_Bar);
-            Add(Bar);
+            barContainer.Add(Bar);
+
+            m_Reminder = new VisualElement();
+            m_Reminder.AddToClassList(k_UxmlClass_BarRemainder);
+            barContainer.Add(m_Reminder);
 
             var footer = new VisualElement()
             {
@@ -35,15 +41,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             footer.AddToClassList(k_UxmlClass_Footer);
             Add(footer);
 
-            SizeLabel = new Label()
+            SizeLabel = new Label();
+            SizeLabel.AddToClassList(k_UxmlClass_SizeLabel);
+            footer.Add(SizeLabel);
+
+            // Adding spacer rather than having SizeLabel grow, so that
+            // its tooltip appears in the correct position.
+            SpacerElement = new VisualElement()
             {
                 style =
                 {
                     flexGrow = 1,
                 }
             };
-            SizeLabel.AddToClassList(k_UxmlClass_SizeLabel);
-            footer.Add(SizeLabel);
+            footer.Add(SpacerElement);
 
             TotalLabel = new Label();
             TotalLabel.AddToClassList(k_UxmlClass_TotalLabel);
@@ -52,25 +63,36 @@ namespace Unity.MemoryProfiler.Editor.UI
             AddToClassList(k_UxmlClass);
         }
 
-        public ProgressBar Bar { get; }
+        public MemoryBarElement Bar { get; }
 
         Label SizeLabel { get; }
 
+        VisualElement SpacerElement { get; }
+
         Label TotalLabel { get; }
 
-        public void SetRelativeSize(float relativeSize)
+        public void SetValue(MemorySize size, ulong total, ulong maxValue)
         {
-            Bar.SetProgress(relativeSize);
+            Bar.Set(string.Empty, size, total, maxValue);
+
+            // Leftover filler, for compare mode when 100% of total might be
+            // not 100% of visual as snapshot size is different
+            float remainderPerc = maxValue > 0 ? (float)(maxValue - total) / maxValue * 100 : 0;
+            m_Reminder.style.width = new StyleLength(Length.Percent(remainderPerc));
         }
 
-        public void SetSizeText(string text)
+        public void SetSizeText(string text, string sizeTooltip)
         {
             SizeLabel.text = text;
+            SizeLabel.tooltip = sizeTooltip;
+            SizeLabel.displayTooltipWhenElided = false;
         }
 
-        public void SetTotalText(string text)
+        public void SetTotalText(string text, string sizeTooltip)
         {
             TotalLabel.text = text;
+            TotalLabel.tooltip = sizeTooltip;
+            TotalLabel.displayTooltipWhenElided = false;
         }
 
         public new class UxmlFactory : UxmlFactory<DetailedSizeBar> {}

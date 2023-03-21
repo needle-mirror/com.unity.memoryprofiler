@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:memoryprofiler="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd"
+    xsi:schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd">
+
+    <engine:VisualElement name="memory-summary">
+        <Style src="GenericMemorySummaryView.uss" />
+
+        <engine:VisualElement name="memory-summary__header">
+            <engine:Label name="memory-summary__header__title" text="Memory Usage" display-tooltip-when-elided="true"/>
+            <engine:Button name="memory-summary__header__inspect-button" text="Inspect"/>
+        </engine:VisualElement>
+
+        <engine:Label name="memory-summary__description" />
+
+        <engine:VisualElement name="memory-summary__warning">
+            <engine:Image name="memory-summary__warning__icon"/>
+            <engine:Label name="memory-summary__warning__label"/>
+        </engine:VisualElement>
+
+        <engine:VisualElement name="memory-summary__bars" />
+
+        <engine:VisualElement name="memory-summary__legend" />
+    </engine:VisualElement>
+</engine:UXML>

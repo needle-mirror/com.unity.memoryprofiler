@@ -1,0 +1,194 @@
+.memory-map-breakdown-view__dark:root
+{
+  --memory-map-breakdown-view__table-size-bar__background-color: #5A5A5A;
+  --memory-map-breakdown-view__table-size-bar__fill-background-color: #C4C4C4;
+  --memory-map-breakdown-view__table-size-bar__remainer-color: #232323;
+  --memory-map-breakdown-view__tree-view__background-color: #3E3E3E;
+  --memory-map-breakdown-view__tree-view__border-color: #232323;
+  --memory-map-breakdown-view__loading-overlay__background-color: rgba(0, 0, 0, 0.3);
+}
+
+.memory-map-breakdown-view__light:root
+{
+  --memory-map-breakdown-view__table-size-bar__background-color: #CBCBCB;
+  --memory-map-breakdown-view__table-size-bar__fill-background-color: white;
+  --memory-map-breakdown-view__table-size-bar__remainer-color: #AAAAAA;
+  --memory-map-breakdown-view__tree-view__background-color: #C8C8C8;
+  --memory-map-breakdown-view__tree-view__border-color: #999999;
+  --memory-map-breakdown-view__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
+}
+
+#memory-map-breakdown-view
+{
+    flex-grow: 1;
+    margin: 16px;
+}
+
+#memory-map-breakdown-view__search-field-container
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#memory-map-breakdown-view__search-field
+{
+    height: 14px;
+    margin: 0px;
+    padding: 4px;
+    width: 40%;
+}
+
+#memory-map-breakdown-view__search-field TextField
+{
+    padding-left: 4px;
+}
+
+#memory-map-breakdown-view__search-field TextElement
+{
+    font-size: 12px;
+}
+
+#memory-map-breakdown-view__table-size-bar
+{
+    flex-shrink: 0;
+    margin: 20px 0px 0px;
+}
+
+#memory-map-breakdown-view__table-size-bar .detailed-size-bar__bar-container
+{
+    flex-direction: row;
+    flex-grow: 1;
+    height: 14px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+}
+
+#memory-map-breakdown-view__table-size-bar .detailed-size-bar__bar
+{
+    flex-grow: 0;
+    height: 14px;
+    margin: 0px;
+}
+
+#memory-map-breakdown-view__table-size-bar .detailed-size-bar__bar-remainder
+{
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 2px;
+    background-color: var(--memory-map-breakdown-view__table-size-bar__remainer-color);
+    height: 14px;
+}
+
+#memory-map-breakdown-view__table-size-bar .detailed-size-bar__size-label
+{
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#memory-map-breakdown-view__table-size-bar .detailed-size-bar__total-label
+{
+    margin-left: 16px;
+}
+
+#memory-map-breakdown-view__table-size-bar .detailed-size-bar__footer
+{
+    margin: 8px 0px;
+}
+
+#memory-map-breakdown-view__tree-view__main-container
+{
+    flex-grow: 1;
+}
+
+#memory-map-breakdown-view__tree-view
+{
+    background-color: var(--memory-map-breakdown-view__tree-view__background-color);
+    border-color: var(--memory-map-breakdown-view__tree-view__border-color);
+    border-top-width: 1px;
+    flex-grow: 1;
+}
+
+#memory-map-breakdown-view__tree-view
+{
+    flex-grow: 1;
+}
+
+#memory-map-breakdown-view__tree-view .unity-multi-column-header
+{
+    margin: 2px 8px;
+}
+
+#memory-map-breakdown-view__tree-view #unity-content-viewport
+{
+    margin: 0px 8px;
+}
+
+#memory-map-breakdown-view__loading-overlay
+{
+    align-items: center;
+    background-color: var(--memory-map-breakdown-view__loading-overlay__background-color);
+    bottom: 0px;
+    justify-content: center;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    /* Uncomment when we drop support for <= 2020.
+    transition-duration: 0.23s;
+    transition-property: opacity;
+    transition-timing-function: ease-out;*/
+}
+
+#memory-map-breakdown-view__loading-overlay:enabled
+{
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+}
+
+#memory-map-breakdown-view__loading-overlay:disabled
+{
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+}
+
+#memory-map-breakdown-view__loading-overlay ActivityIndicator
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Loading.png');
+    height: 16px;
+    width: 16px;
+}
+
+#memory-map-breakdown-view__error-label
+{
+    -unity-text-align: middle-center;
+    background-color: var(--memory-map-breakdown-view__loading-overlay__background-color);
+    bottom: 0px;
+    display: none;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    visibility: hidden;
+}
+
+.memory-map-breakdown-view__tree-view__address
+{
+    -unity-font-definition: resource("Fonts/RobotoMono/RobotoMono-Regular SDF.asset");
+}
+
+.memory-map-breakdown-view__tree-view__size
+{
+    -unity-font-definition: resource("Fonts/RobotoMono/RobotoMono-Regular SDF.asset");
+    -unity-text-align: middle-right;
+    padding-right: 8px;
+}
+
+#memory-map-breakdown-view__tree-view .unity-multi-column-view__cell
+{
+    align-self: center;
+}

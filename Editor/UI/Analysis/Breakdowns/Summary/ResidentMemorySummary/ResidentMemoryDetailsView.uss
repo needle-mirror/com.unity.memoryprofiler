@@ -1,0 +1,106 @@
+#memory-profiler-resident-details {
+    flex-grow: 1;
+    flex-direction: column;
+    padding: 5px;
+}
+
+#memory-profiler-resident-details__title {
+    flex-shrink: 0;
+    font-size: 16px;
+    -unity-font-style: bold;
+    padding-bottom: 4px;
+    margin-top: 5px;
+    margin-left: 3px;
+    margin-right: 3px;
+}
+
+#memory-profiler-resident-details__desc {
+    flex-direction: column;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+#memory-profiler-resident-details__desc__text,
+#memory-profiler-resident-details__desc__allocated-memory-text-1,
+#memory-profiler-resident-details__desc__allocated-memory-text-2,
+#memory-profiler-resident-details__desc__resident-memory-text-1,
+#memory-profiler-resident-details__desc__resident-memory-text-2 {
+    flex-shrink: 1;
+    overflow: visible;
+    white-space: normal;
+    margin: 0;
+}
+
+#memory-profiler-resident-details__desc__text > #unity-text-input,
+#memory-profiler-resident-details__desc__allocated-memory-text-1 > #unity-text-input,
+#memory-profiler-resident-details__desc__allocated-memory-text-2 > #unity-text-input,
+#memory-profiler-resident-details__desc__resident-memory-text-1 > #unity-text-input,
+#memory-profiler-resident-details__desc__resident-memory-text-2 > #unity-text-input {
+    padding: 0;
+    border-width: 0;
+    border-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+#memory-profiler-resident-details__desc__label-resident {
+    padding-top: 32px;
+}
+
+#memory-profiler-resident-details__desc__image {
+    width: initial;
+    height: initial;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.memory-profiler__light #memory-profiler-resident-details__desc__image {
+    background-image: url('Resident-Committed-Explanation-Light.png');
+}
+
+.memory-profiler__dark #memory-profiler-resident-details__desc__image {
+    background-image: url('Resident-Committed-Explanation-Dark.png');
+}
+
+#memory-profiler-resident-details__desc__label-allocated {
+    padding-top: 4px;
+}
+
+#memory-profiler-resident-details__desc__block-allocated-memory,
+#memory-profiler-resident-details__desc__block-resident-memory {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-top: 40px;
+    -unity-font-style: bold;
+}
+
+#memory-profiler-resident-details__desc__allocated-memory-text-2,
+#memory-profiler-resident-details__desc__resident-memory-text-2 {
+    padding-top: 10px;
+}
+
+#memory-profiler-resident-details__desc__image-legend-group {
+    flex-direction: row;
+    align-self: auto;
+    justify-content: flex-start;
+    align-items: center;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 0;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+#memory-profiler-resident-details__desc__legend-image {
+    width: 16px;
+    height: 16px;
+}
+
+.memory-profiler__light #memory-profiler-resident-details__desc__legend-image {
+    background-image: url('Memory-Light.png');
+}
+
+.memory-profiler__dark #memory-profiler-resident-details__desc__legend-image {
+    background-image: url('Memory-Dark.png');
+}

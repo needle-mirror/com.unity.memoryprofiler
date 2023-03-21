@@ -1,0 +1,24 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <ui:VisualElement name="memory-profiler-resident-details">
+        <Style src="ResidentMemoryDetailsView.uss" />
+        <ui:Label name="memory-profiler-resident-details__title" text="Memory Usage On Device" />
+        <ui:ScrollView name="memory-profiler-resident-details__desc__scroll-area">
+            <ui:VisualElement name="memory-profiler-resident-details__desc">
+                <ui:TextField name="memory-profiler-resident-details__desc__text" multiline="true" text="Displays how much memory you have allocated to the system, and how much of that memory is currently Resident on device. Allocated Memory can be higher than the maximum available on device without causing issues." value="Displays how much memory you have allocated from the system, and how much of that memory is currently Resident on the device memory (RAM). Allocated memory can be higher than the maximum available on device without causing issues." />
+                <ui:Label name="memory-profiler-resident-details__desc__label-allocated" text="See Example below: &lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Allocated Memory&lt;/b&gt;" style="padding-top: 4px;" />
+                <ui:Image name="memory-profiler-resident-details__desc__image" style="height: 140px; width: 300px;" />
+                <ui:Label name="memory-profiler-resident-details__desc__label-resident" text="&lt;b&gt;Resident on Device&lt;/b&gt;" style="padding-top: 4px;" />
+                <ui:GroupBox name="memory-profiler-resident-details__desc__image-legend-group">
+                    <ui:Image name="memory-profiler-resident-details__desc__legend-image" style="height: 16px; width: 16px;" />
+                    <ui:Label name="memory-profiler-resident-details__desc__label-max-legend" text="Max Available on Device" enable-rich-text="false" />
+                </ui:GroupBox>
+                <ui:Label name="memory-profiler-resident-details__desc__block-allocated-memory" text="Allocated Memory" />
+                <ui:TextField name="memory-profiler-resident-details__desc__allocated-memory-text-1" multiline="true" value="Allocated Memory is all memory allocated by the process which has a resource committed to it by the OS. The resource might be in physical memory (in that case, it is called Resident) or swapped out to a secondary storage, such as a page file on a disk.  If an area of Allocated memory remains unused or is not accessed for a while, the OS might decide to compress or move it to a disk. That allows your application to keep in physical memory only what it immediately needs. On the downside, access speed to a secondary storage much slower and might affect your application performance.  " />
+                <ui:TextField name="memory-profiler-resident-details__desc__allocated-memory-text-2" multiline="true" value="Review your Allocated memory usage to improve the general health of your application. " />
+                <ui:Label name="memory-profiler-resident-details__desc__block-resident-memory" text="Total Resident on Device" />
+                <ui:TextField name="memory-profiler-resident-details__desc__resident-memory-text-1" multiline="true" value="The portion of Allocated memory which currently resides in the physical memory of the device (RAM). It is the indicator of how demanding your application is on the target device. If the Resident memory usage increases, you might be at risk of page faults, performance degradation, or eviction from the system. " />
+                <ui:TextField name="memory-profiler-resident-details__desc__resident-memory-text-2" multiline="true" value="Review the resident memory usage of your application to reduce the most immediate risks for running out of memory." />
+            </ui:VisualElement>
+        </ui:ScrollView>
+    </ui:VisualElement>
+</ui:UXML>

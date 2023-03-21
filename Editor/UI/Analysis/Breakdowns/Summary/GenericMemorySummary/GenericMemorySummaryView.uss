@@ -1,0 +1,466 @@
+.memory-summary__dark:root
+{
+  --memory-summary__legend__used-reserved-label__text-color: #868686;
+  --memory-summary__bar__element__border-color: none;
+  --memory-summary__bar__element__border-hover-color: #868686;
+  --memory-summary__bar__element__border-select-color: #52A6FF;
+}
+
+.memory-summary__light:root
+{
+  --memory-summary__legend__used-reserved-label__text-color: #626262;
+  --memory-summary__bar__element__border-color: black;
+  --memory-summary__bar__element__border-hover-color: #868686;
+  --memory-summary__bar__element__border-select-color: #52A6FF;
+}
+
+#memory-summary
+{
+    flex: 1 1 auto;
+}
+
+/*
+ * Header with a title
+ */
+#memory-summary__header
+{
+    flex-direction: row;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+#memory-summary__header__title
+{
+    font-size: 20px;
+    -unity-font-style: bold;
+}
+
+#memory-summary__header__inspect-button
+{
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+#memory-summary__description
+{
+    overflow: hidden;
+    font-size: 12px;
+    -unity-font-style: normal;
+    -unity-text-align: middle-left;
+    white-space: normal;
+
+    margin-bottom: 8px;
+}
+
+#memory-summary__warning
+{
+    flex-direction: row;
+    margin-bottom: 10px;
+}
+
+#memory-summary__warning__icon
+{
+    flex: auto 0 0;
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+.memory-summary__light #memory-summary__warning__icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/InfoIcon.png');
+}
+
+.memory-summary__dark #memory-summary__warning__icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_InfoIcon.png');
+}
+
+#memory-summary__warning__label
+{
+    align-self: center;
+    -unity-font-style: italic;
+}
+
+/*
+ * Generic Memory Breakdown bar
+ */
+.memory-summary__bar__container
+{
+    -unity-font-style: normal;
+}
+
+.memory-summary__bar__row
+{
+    flex-direction: row;
+    align-items: center;
+}
+
+.memory-summary__bar__row > .memory-profile-snapshotfile__tag__label
+{
+    font-size: 11px;
+
+    margin-right: 4px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+#memory-summary__bar
+{
+    flex-grow: 1;
+    flex-direction: row;
+    height: 22px;
+}
+
+#memory-summary__bar__container-b
+{
+    margin-top: 20px;
+}
+
+#memory-summary__bar__total-value
+{
+    position: absolute;
+    bottom: -16px;
+    right: 0;
+}
+
+.memory-summary__bar__element
+{
+    flex: 1 1 auto;
+
+    min-width: 4px;
+
+    margin-left: 1px;
+    margin-right: 1px;
+
+    /* Selection & highlight border */
+    border-width: 1px;
+    border-radius: 1px;
+    border-color: var(--memory-summary__bar__element__border-color);
+}
+
+#memory-summary__bar .memory-summary__element-hovered
+{
+    border-color: var(--memory-summary__bar__element__border-hover-color);
+}
+
+#memory-summary__bar .memory-summary__element-selected
+{
+    border-width: 2px;
+    border-color: var(--memory-summary__bar__element__border-select-color);
+}
+
+.memory-summary__bar__element-reserved
+{
+    flex: 1 1 auto;
+
+    border-width: 1px;
+    border-radius: 1px;
+}
+
+.memory-summary__bar__element-used-portion
+{
+    flex: 1 1 auto;
+
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+/*Compare mode remainder section of breakdown bars*/
+.memory-summary__category__color-remainder
+{
+    background-color: rgb(30, 30, 30);
+    flex: 1 1 auto;
+
+    border-width: 1px;
+    border-radius: 2px;
+}
+
+/*
+ * Total Resident on Device bar (Specialization of Generic Memory Breakdown)
+ */
+.memory-summary__device__container
+{
+    flex-direction: row;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    margin-left: 1px;
+    margin-right: 1px;
+}
+
+.memory-summary__device__state-normal
+{
+    flex: 1 1 auto;
+    background-color: rgba(108, 108, 108, 0.3);
+    border-color: #d4d4d4;
+    border-left-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+}
+.memory-summary__device__state-warning
+{
+    flex: 1 1 auto;
+    background-color: rgba(108, 108, 108, 0.3);
+    border-color: #d4d4d4;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+}
+.memory-summary__device__state-critical
+{
+    flex: 1 1 auto;
+    background-color: rgba(108, 108, 108, 0.3);
+    border-color: #d4d4d4;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+}
+.memory-summary__device__state-remainder
+{
+    background-color: rgba(0, 0, 0, 0.3);
+    flex: 1 1 auto;
+
+    border-width: 1px;
+    border-radius: 2px;
+}
+
+.memory-summary__bar__element-critical
+{
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    height: 100%;
+}
+.memory-summary__bar__element-critical-color
+{
+    flex: 1 1 auto;
+
+    margin-left: 2px;
+    margin-right: 1px;
+    background-color: #C9694A;
+}
+
+#memory-usage-summary__content__system #memory-summary__bar__container-b
+{
+    margin-top: 28px;
+}
+
+.memory-summary__bar__signpost
+{
+    position: absolute;
+    top: -18px;
+    align-items: center;
+}
+
+.memory-summary__bar__signpost-pole
+{
+    width: 1px;
+    height: 30px;
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Profiler.StripedBackground.png');
+}
+
+.memory-summary__bar__signpost-icon-normal
+{
+    width: 16px;
+    height: 16px;
+    background-image: resource('d_console.warnicon.sml.png');
+}
+
+.memory-summary__bar__signpost-icon-warning
+{
+    width: 16px;
+    height: 16px;
+    background-image: resource('d_console.erroricon.sml.png');
+}
+
+.memory-summary__bar__signpost-icon-critical
+{
+    width: 16px;
+    height: 16px;
+    background-image: resource('d_Profiler.Memory.png');
+}
+
+/*
+ * Legend table
+ */
+#memory-summary__legend
+{
+    flex-direction: row;
+    margin-top: 5px;
+}
+
+.memory-summary__legend__row
+{
+    flex-shrink: 0;
+    overflow: hidden;
+    height: 16px;
+
+    border-color: var(--unity-colors-object_field-border-hover);
+    border-bottom-width: 1px;
+
+    -unity-text-align: middle-right;
+}
+
+#memory-summary__legend__name-column, #memory-summary__legend__snapshot-a-column, #memory-summary__legend__snapshot-b-column, #memory-summary__legend__diff-column
+{
+    flex-shrink: 0;
+}
+
+#memory-summary__legend__cells
+{
+    flex-shrink: 0;
+}
+
+#memory-summary__legend__cells .memory-summary__element-hovered
+{
+    background-color: var(--unity-colors-highlight-background-hover);
+}
+
+#memory-summary__legend__cells .memory-summary__element-selected
+{
+    background-color: var(--unity-colors-highlight-background);
+}
+
+.memory-summary__legend__empty-space-holder
+{
+    height: 15px;
+}
+
+.memory-summary__legend__top-border
+{
+    flex-shrink: 0;
+    margin-top: 2px;
+    margin-bottom: 1px;
+    border-color: var(--unity-colors-object_field-border-hover);
+    border-bottom-width: 2px;
+}
+
+.memory-summary__legend__bottom-border
+{
+    flex-shrink: 0;
+    border-color: var(--unity-colors-object_field-border-hover);
+    border-top-width: 2px;
+}
+
+#memory-summary__legend__column-controls
+{
+    height: auto;
+    position: relative;
+    right: auto;
+    width: auto;
+    flex: 1 1 auto;
+    align-items: flex-end;
+}
+
+.memory-summary__legend__used-reserved-label
+{
+    -unity-font-style: italic;
+    color: var(--memory-summary__legend__used-reserved-label__text-color);
+}
+
+.memory-summary__legend__first-row
+{
+}
+
+.memory-summary__legend__last-row
+{
+    border-bottom-width: 0;
+}
+
+.memory-summary__legend__color-box
+{
+    flex: 0 0 auto;
+    height: 10px;
+    width: 12px;
+    margin-left: 4px;
+    margin-right: 4px;
+    border-width: 1px;
+}
+.memory-summary__legend__color-box-unused
+{
+    margin-left: 5px;
+    width: 5px;
+    height: 8px;
+    background-color: rgba(0, 0, 0, 0.7);
+}
+.memory-summary__legend__name-and-color
+{
+    flex: 0 0 auto;
+    overflow: hidden;
+    flex-direction: row;
+    align-items: center;
+    min-width: 250px;
+}
+.memory-summary__legend__name
+{
+    -unity-font-style: italic;
+}
+
+#memory-summary__legend__size-column
+{
+    flex: 0 0 auto;
+    padding-left: 15px;
+}
+
+.memory-summary__legend__row-item
+{
+    border-bottom-width: 1px;
+    border-color: rgb(64, 64, 64);
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+/*
+ * Legend Table column headers
+ */
+.memory-summary__legend__header
+{
+    flex: initial;
+    height: 20px;
+    justify-content: space-between;
+}
+.memory-summary__legend__header-row
+{
+    flex: 1 1 auto;
+    flex-direction: row;
+}
+.memory-summary__legend__header-controls
+{
+    position: relative;
+    right: auto;
+    top: auto;
+    left: auto;
+    bottom: auto;
+    width: auto;
+    height: 20px;
+    align-items: auto;
+    justify-content: flex-end;
+    flex-direction: row;
+}
+#memory-summary__legend__header-icon
+{
+    top: auto;
+    right: auto;
+    width: auto;
+    height: auto;
+    position: relative;
+}
+#memory-summary__legend__header-icon-text
+{
+}
+
+#memory-summary__legend-table-name-column
+{
+    min-width: 300px;
+}
+
+/*
+ * Summary view specialization of Memory Usage Bar
+ */
+#summary-view .memory-bar-element
+{
+    margin-left: 1px;
+    margin-right: 1px;
+}

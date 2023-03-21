@@ -1,0 +1,238 @@
+/*
+ * MemoryProfilerView defines styles for the root window and
+ * commonly used styles across entire memory profiler UI
+ *
+ * Use root class .memory-profiler__dark / .memory-profiler__light for
+ * skin specific styles
+ */
+
+.memory-profiler__light:root
+{
+}
+
+.memory-profiler__dark:root
+{
+}
+
+#memory-profiler-view__container
+{
+    flex-grow: 1;
+}
+
+#memory-profiler-view__snapshots-view__container
+{
+    flex-grow: 1;
+    flex-direction: column;
+    min-width: 270px;
+}
+
+#memory-profiler-view__snapshots-list-view__container
+{
+    flex-grow: 1;
+}
+
+#memory-profiler-view__analysis-view__container
+{
+    min-width: 350px;
+}
+
+#memory-profiler-view__details-view__splitter
+{
+    min-width: 700px;
+}
+
+#memory-profiler-view__details-view__container
+{
+    width: auto;
+    max-width: none;
+    min-width: 350px;
+}
+
+/*
+ * Generic Memory Usage Bar - dual bar with committed/resident sections
+ */
+.memory-bar-element
+{
+    flex-grow: 1;
+    border-width: 1px;
+    border-color: rgb(83, 83, 83);
+
+    min-width: 6px;
+}
+
+.memory-bar-element__committed-bar
+{
+    background-color: #D6D6D6;
+}
+
+.memory-bar-element__resident-bar-visible .memory-bar-element__committed-bar
+{
+    background-color: #858585;
+}
+
+.memory-bar-element__resident-bar
+{
+    background-color: #D6D6D6;
+}
+
+.memory-bar
+{
+    margin-top: 3px;
+    margin-bottom: 3px;
+    background-color: rgb(83, 83, 83);
+    flex-grow: 1;
+}
+
+/*
+ * Icon Button
+ */
+.icon-button
+{
+    width: 16px;
+    height: 16px;
+
+    margin: 0;
+    padding: 0;
+
+    border-width: 0;
+    border-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+Image.icon-button
+{
+    width: 16px;
+    height: 16px;
+
+    margin-top: 2px;
+    margin-bottom: 2px;
+    margin-left: 0;
+    margin-right: 0;
+
+    border-width: 0;
+    border-radius: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+Image.square-button-icon
+{
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+/*
+ * Icon Button Icons
+ * Used in multiple controls and are affected by skin color
+ */
+.memory-profiler__light .icon-button__menu-icon
+{
+    background-image: resource('_Menu.png');
+}
+.memory-profiler__dark .icon-button__menu-icon
+{
+    background-image: resource('d__Menu.png');
+}
+
+.memory-profiler__light .icon-button__help-icon
+{
+    background-image: resource('_Help.png');
+}
+.memory-profiler__dark .icon-button__help-icon
+{
+    background-image: resource('d__Help.png');
+}
+
+.memory-profiler__light .icon-button__import-icon
+{
+    background-image: resource('Import.png');
+}
+.memory-profiler__dark .icon-button__import-icon
+{
+    background-image: resource('d_Import.png');
+}
+
+.memory-profiler__light .icon-button__details-icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/MemoryProfiler_RightPanel_LightTheme.png');
+}
+.memory-profiler__dark .icon-button__details-icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/MemoryProfiler_RightPanel_DarkTheme.png');
+}
+
+.memory-profiler__light .icon-button__snapshot-icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/MemoryProfiler_LeftPanel_LightTheme.png');
+}
+.memory-profiler__dark .icon-button__snapshot-icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/MemoryProfiler_LeftPanel_DarkTheme.png');
+}
+
+.memory-profiler__light .icon-button__inspector-icon
+{
+    background-image: resource('UnityEditor.InspectorWindow.png');
+}
+.memory-profiler__dark .icon-button__inspector-icon
+{
+    background-image: resource('d_UnityEditor.InspectorWindow.png');
+}
+
+.memory-profiler__light .icon-button__export-icon
+{
+    background-image: resource('SaveAs.png');
+}
+.memory-profiler__dark .icon-button__export-icon
+{
+    background-image: resource('d_SaveAs.png');
+}
+
+.memory-profiler__light .icon-button__camera-icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/CameraIcon.png');
+}
+.memory-profiler__dark .icon-button__camera-icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_CameraIcon.png');
+}
+
+.memory-profile-snapshotfile__tag__container
+{
+    flex: 0 0 auto;
+    flex-direction: row;
+}
+
+.memory-profile-snapshotfile__tag__label
+{
+    width: auto;
+    height: auto;
+    min-width: 20px;
+    min-height: 18px;
+    max-height: 18px;
+
+    padding-left: 3px;
+    padding-right: 3px;
+
+    border-radius: 10px;
+    border-width: 0;
+
+    font-size: 11px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+
+    background-color: #929292;
+    color: #282828;
+}
+
+.memory-profile-snapshotfile__tag__label__large
+{
+    min-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+
+    margin-right: 8px;
+    border-radius: 11px;
+
+    font-size: 12px;
+}

@@ -13,11 +13,11 @@
             <editor:ToolbarSearchField name="comparison-view__search-field"/>
         </engine:VisualElement>
         <engine:VisualElement class="comparison-view__snapshot-size-bar">
-            <engine:Label class="comparison-view__snapshot-version-icon" text="A"/>
+            <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="A"/>
             <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="comparison-view__base-total-size-bar"/>
         </engine:VisualElement>
         <engine:VisualElement class="comparison-view__snapshot-size-bar">
-            <engine:Label class="comparison-view__snapshot-version-icon" text="B"/>
+            <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="B"/>
             <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="comparison-view__compared-total-size-bar"/>
         </engine:VisualElement>
         <engine:TwoPaneSplitView name="comparison-view__split-view" orientation="vertical" fixed-pane-index="1">
@@ -45,7 +45,7 @@
             <engine:VisualElement name="comparison-view__secondary">
                 <engine:VisualElement name="comparison-view__secondary__base">
                     <engine:VisualElement class="comparison-view__secondary__title-container">
-                        <engine:Label class="comparison-view__snapshot-version-icon" text="A"/>
+                        <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="A"/>
                         <engine:Label name="comparison-view__secondary__base-title-label" class="comparison-view__secondary__title-label"/>
                         <engine:Label name="comparison-view__secondary__base-description-label" class="comparison-view__secondary__description-label"/>
                     </engine:VisualElement>
@@ -53,7 +53,7 @@
                 </engine:VisualElement>
                 <engine:VisualElement name="comparison-view__secondary__compared">
                     <engine:VisualElement class="comparison-view__secondary__title-container">
-                        <engine:Label class="comparison-view__snapshot-version-icon" text="B"/>
+                        <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="B"/>
                         <engine:Label name="comparison-view__secondary__compared-title-label" class="comparison-view__secondary__title-label"/>
                         <engine:Label name="comparison-view__secondary__compared-description-label" class="comparison-view__secondary__description-label"/>
                     </engine:VisualElement>

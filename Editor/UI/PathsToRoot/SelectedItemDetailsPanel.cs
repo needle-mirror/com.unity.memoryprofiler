@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
@@ -17,23 +16,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         SelectableLabel = 1 << 1,
         ShowTitle = 1 << 2,
     }
-    internal interface ISelectedItemDetailsUI
+    internal class SelectedItemDetailsPanel : IDisposable
     {
-        VisualElement Root { get; }
-        void SetItemName(string name);
-        void SetItemName(ObjectData pureCSharpObject, UnifiedType typeInfo);
-        void SetItemName(UnifiedType typeInfo);
-        void SetItemName(UnifiedUnityObjectInfo unityObjectInfo);
-        void SetDescription(string description);
-        void AddInfoBox(string groupName, InfoBox infoBox);
-        void AddDynamicElement(string title, string content);
-        void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel);
-        void SetDocumentationURL(string url);
-        void SetManagedObjectInspector(ObjectData objectInfo, int indexOfInspector = 0);
-    }
+        const string k_UxmlAssetGuidSelectedItemDetailsGroup = "7b1ac4070dcbad341a293530f4f8e3d4";
+        const string k_UxmlAssetGuidSelectedItemDetailsGroupedItem = "37daf4bdc1779c949b7295ac03f33c74";
 
-    internal class SelectedItemDetailsPanel : ISelectedItemDetailsUI
-    {
         static class Styles
         {
             public static readonly GUIStyle LinkTextLabel = new GUIStyle(EditorStyles.label);
@@ -52,7 +39,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (value != m_ShowDebugInfo)
                 {
                     m_ShowDebugInfo = value;
-                    NewDetailItem(m_CurrentMemorySampleSelection);
                 }
             }
         }
@@ -61,9 +47,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         List<VisualElement> m_ManagedObjectInspectorContainors = new List<VisualElement>();
 
         CachedSnapshot m_CachedSnapshot;
-        MemorySampleSelection m_CurrentMemorySampleSelection;
         UnifiedUnityObjectInfo m_SelectedUnityObject;
-        IUIStateHolder m_UiStateHolder;
 
         Label m_Title;
         ObjectOrTypeLabel m_UnityObjectTitle;
@@ -136,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         VisualElement m_PreviewFoldoutheader;
         Image m_Preview;
-        bool m_PreviewNeedsCleaningUp;
+        EditorAssetFinderUtility.PreviewImageResult m_PreviewImageResult;
 
         List<DetailsGroup> m_DetailsGroups = new List<DetailsGroup>();
         Dictionary<string, DetailsGroup> m_DetailsGroupsByGroupName = new Dictionary<string, DetailsGroup>();
@@ -159,10 +143,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         public const string GroupNameDebug = "Debug"; // Only useful for Memory Profiler developers or _maybe_ for bug reports
 
 
-        public SelectedItemDetailsPanel(IUIStateHolder uiStateHolder, VisualElement detailsPanelRoot)
+        public SelectedItemDetailsPanel(CachedSnapshot cachedSnapshot, VisualElement detailsPanelRoot)
         {
-            m_UiStateHolder = uiStateHolder;
-            m_ManagedObjectInspectors.Add(new ManagedObjectInspector(uiStateHolder, 0, new TreeViewState(), new MultiColumnHeaderWithTruncateTypeName(ManagedObjectInspector.CreateDefaultMultiColumnHeaderState())));
+            m_CachedSnapshot = cachedSnapshot;
+
+            m_ManagedObjectInspectors.Add(new ManagedObjectInspector(0, new TreeViewState(), new MultiColumnHeaderWithTruncateTypeName(ManagedObjectInspector.CreateDefaultMultiColumnHeaderState())));
             var managedFieldInspectorFoldout = detailsPanelRoot.Q<Foldout>("selected-item-details__managed-field-inspector__foldout");
             var detailsContainer = managedFieldInspectorFoldout.Q<IMGUIContainer>("selected-item-details__managed-field-inspector__imguicontainer");
             detailsContainer.onGUIHandler += () =>
@@ -227,13 +212,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasHidden));
 
             m_GroupedElements = detailsPanelRoot.Q("selected-item-details__grouped-elements");
-            m_SelectedItemDetailsGroupUxmlPathViewTree = EditorGUIUtility.Load(ResourcePaths.SelectedItemDetailsGroupUxmlPath) as VisualTreeAsset;
+            m_SelectedItemDetailsGroupUxmlPathViewTree = UIElementsHelper.LoadAssetByGUID(k_UxmlAssetGuidSelectedItemDetailsGroup);
             CreateDetailsGroup(GroupNameBasic);
             CreateDetailsGroup(GroupNameMetaData);
             CreateDetailsGroup(GroupNameHelp);
             CreateDetailsGroup(GroupNameAdvanced).Foldout.value = false;
             CreateDetailsGroup(GroupNameDebug).Foldout.value = false;
-            m_SelectedItemDetailsGroupedItemUxmlPathViewTree = EditorGUIUtility.Load(ResourcePaths.SelectedItemDetailsGroupedItemUxmlPath) as VisualTreeAsset;
+            m_SelectedItemDetailsGroupedItemUxmlPathViewTree = UIElementsHelper.LoadAssetByGUID(k_UxmlAssetGuidSelectedItemDetailsGroupedItem);
         }
 
         // UI TK version
@@ -438,49 +423,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Title.text = "No details available";
         }
 
-        internal void NewDetailItem(MemorySampleSelection memorySampleSelection)
-        {
-            var preciousSelectionType = m_CurrentMemorySampleSelection.Type;
-            if (!memorySampleSelection.Valid)
-            {
-                m_CachedSnapshot = null;
-                Clear();
-                if (preciousSelectionType != MemorySampleSelectionType.None)
-                    m_UiStateHolder.UIState.CustomSelectionDetailsFactory.Clear(preciousSelectionType, this);
-                // End any pending Interaction Event
-                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>();
-                return;
-            }
-
-            m_CachedSnapshot = memorySampleSelection.GetSnapshotItemIsPresentIn(m_UiStateHolder.UIState);
-
-            m_CurrentMemorySampleSelection = MemorySampleSelection.InvalidMainSelection;
-            Clear();
-            // End any pending Interaction Event
-            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>();
-            if (preciousSelectionType != MemorySampleSelectionType.None)
-                m_UiStateHolder.UIState.CustomSelectionDetailsFactory.Clear(preciousSelectionType, this);
-
-            if (m_UiStateHolder.UIState.CustomSelectionDetailsFactory.Produce(memorySampleSelection, this, out var summaryStatus))
-            {
-                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>(
-                    new MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel()
-                    {
-                        selectedElementType = memorySampleSelection.GetTypeStringForAnalytics(m_CachedSnapshot),
-                        selectedElementStatus = summaryStatus
-                    });
-
-                m_CurrentMemorySampleSelection = memorySampleSelection;
-                return;
-            }
-            // This Selection type is apparently not yet implemented
-            m_CurrentMemorySampleSelection = MemorySampleSelection.InvalidMainSelection;
-            return;
-        }
-
         public void AddDynamicElement(string title, string content)
         {
-            var label = new Label($"{title} : {content}");
+            var label = new Label($"{title}: {content}");
             label.AddToClassList("selected-item-details__dynamic-label");
             m_DynamicElements.Add(label);
         }
@@ -530,7 +475,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             UIElementsHelper.SwitchVisibility(selectableLabel, contentLabel, options.HasFlag(SelectedItemDynamicElementOptions.SelectableLabel));
             if (options.HasFlag(SelectedItemDynamicElementOptions.ShowTitle))
-                titleLabel.text = $"{title} :";
+                titleLabel.text = $"{title}:";
             else
             {
                 UIElementsHelper.SetVisibility(titleLabel, false);
@@ -577,11 +522,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
             m_SelectedUnityObject = unityObjectInfo;
-            var findings = EditorAssetFinderUtility.FindObject(m_CachedSnapshot, unityObjectInfo);
+            using var findings = EditorAssetFinderUtility.FindObject(m_CachedSnapshot, unityObjectInfo);
             m_FoundObjectInEditor = findings.FoundObject;
 
             var searchButtonLabel = EditorAssetFinderUtility.GetSearchButtonLabel(m_CachedSnapshot, unityObjectInfo);
-            var canSearch = searchButtonLabel != null;
+            var canSearch = searchButtonLabel != TextContent.SearchButtonCantSearch;
             if (canSearch)
             {
                 m_SearchInEditorButton.text = searchButtonLabel.text;
@@ -606,14 +551,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SearchInEditorButtonHolder.tooltip = TextContent.SearchButtonCantSearch.tooltip;
             }
 
+            if (m_PreviewImageResult.PreviewImageNeedsCleanup)
+                m_PreviewImageResult.Dispose();
+
             if (m_FoundObjectInEditor != null)
             {
                 UIElementsHelper.SetVisibility(m_SelectInEditorButton, true);
-                if (findings.PreviewImage)
+                m_PreviewImageResult = EditorAssetFinderUtility.GetPreviewImage(findings);
+                if (m_PreviewImageResult.PreviewImage)
                 {
                     UIElementsHelper.SetVisibility(m_PreviewFoldoutheader, true);
-                    m_Preview.image = findings.PreviewImage;
-                    m_PreviewNeedsCleaningUp = findings.PreviewImageNeedsCleanup;
+                    m_Preview.image = m_PreviewImageResult.PreviewImage;
                 }
                 m_SelectInEditorButton.SetEnabled(true);
                 m_SelectInEditorButton.tooltip = (findings.DegreeOfCertainty < 100 ? TextContent.SelectInEditorButtonLessCertain : TextContent.SelectInEditorButton100PercentCertain).tooltip;
@@ -652,7 +600,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void SetDescription(string description)
         {
             if (!string.IsNullOrEmpty(description))
-                AddDynamicElement(GroupNameHelp, "Description", description, tooltip: description, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                AddDynamicElement(GroupNameHelp, "Description", description, tooltip: null, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
             // TODO: To be cleaned up as Selection Details stabilizes Keeping this for now in case we still want to use the description field for something.
             // UIElementsHelper.SetVisibility(m_Description, !string.IsNullOrEmpty(description))
             // m_Description.SetValueWithoutNotify(description);
@@ -678,7 +626,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public void OnDisable()
+        public void Dispose()
         {
             foreach (var inspector in m_ManagedObjectInspectors)
             {
@@ -686,9 +634,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             m_ManagedObjectInspectors.Clear();
             m_UnityObjectTitle.Dispose();
+            Clear();
         }
 
-        void Clear()
+        public void Clear()
         {
             m_SelectedUnityObject = default;
             if (m_ManagedObjectInspectors != null)
@@ -720,11 +669,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ActiveDetailsGroupsByGroupName.Clear();
 
             UIElementsHelper.SetVisibility(m_PreviewFoldoutheader, false);
-            if (m_Preview.image && m_PreviewNeedsCleaningUp && !m_Preview.image.hideFlags.HasFlag(HideFlags.NotEditable))
-            {
-                //if(m_Preview.image.hideFlags == HideFlags.)
-                UnityEngine.Object.DestroyImmediate(m_Preview.image);
-            }
+            if (m_PreviewImageResult.PreviewImageNeedsCleanup)
+                m_PreviewImageResult.Dispose();
             m_Preview.image = null;
             NoItemSelected();
             SetDescription("");

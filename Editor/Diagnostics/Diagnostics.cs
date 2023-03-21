@@ -1,5 +1,6 @@
 #define ENABLE_MEMORY_PROFILER_DEBUG
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
@@ -13,34 +14,41 @@ namespace Unity.MemoryProfiler.Editor.Diagnostics
         public static void CheckEntryTypeValueIsValidAndThrow(EntryType val)
         {
             if (val == EntryType.Count || (int)val < 0)
-                throw new UnityException("Invalid Entry type");
+                throw new UnityException($"Invalid Entry type: {val}");
+        }
+
+        [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
+        public static void CheckEntryTypeFormatIsValidAndThrow(EntryFormat val, EntryFormat val2)
+        {
+            if (val != val2)
+                throw new UnityException("Invalid Entry type format");
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
         public static void CheckIndexOutOfBoundsAndThrow(long index, long count)
         {
             if (index >= count)
-                throw new ArgumentOutOfRangeException("Index out of bounds.");
+                throw new ArgumentOutOfRangeException($"Index out of bounds. Expected smaller than {count} but received {index}.");
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
         public static void CheckIndexInRangeAndThrow(long index, long count)
         {
             if (index < 0 || index > count)
-                throw new ArgumentOutOfRangeException("Index out of bounds.");
+                throw new ArgumentOutOfRangeException($"Index out of bounds. Expected [0, {count}) but received {index}.");
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
-        public static void CheckEquals<T>(T rhs, T lhs) where T : IEquatable<T>
+        public static void CheckEquals<T>(T rhs, T lhs)
         {
-            if (!rhs.Equals(lhs))
-                throw new Exception(string.Format("Expected: {0}, but actual value was: {1}.", rhs, lhs));
+            if (!EqualityComparer<T>.Default.Equals(rhs, lhs))
+                throw new Exception($"Expected: {rhs}, but actual value was: {lhs}.");
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG")]
-        public static void CheckNotEquals<T>(T rhs, T lhs) where T : IEquatable<T>
+        public static void CheckNotEquals<T>(T rhs, T lhs)
         {
-            if (rhs.Equals(lhs))
+            if (EqualityComparer<T>.Default.Equals(rhs, lhs))
                 throw new Exception(string.Format("Expected comparands to be different, but they were the same. Value: {0}", rhs));
         }
 

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profile-snapshotfile-item" class="memory-profile-snapshotfile">
+        <Style src="SnapshotFileTreeItemView.uss" />
+
+        <engine:Button name="memory-profile-snapshotfile__button">
+            <engine:VisualElement name="memory-profile-snapshotfile__preview-image__container">
+                <engine:Image name="memory-profile-snapshotfile__preview-image" class="preview-image">
+                    <engine:Image name="memory-profile-snapshotfile__preview-image__editor-icon" />
+                    <engine:Image name="memory-profile-snapshotfile__preview-image__platform-icon" />
+                </engine:Image>
+            </engine:VisualElement>
+
+            <engine:VisualElement name="memory-profile-snapshotfile__meta-data__container">
+                <engine:VisualElement name="memory-profile-snapshotfile__meta-data">
+                    <engine:Label text="No snapshot loaded" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__meta-data__nodata" class="memory-profile-snapshotfile__text-style"/>
+                    <engine:VisualElement style="flex-direction: row; justify-content: space-between;">
+                        <engine:Label text="Snapshot Name" name="memory-profile-snapshotfile__meta-data__name" class="memory-profile-snapshotfile__text-style"/>
+                        <engine:TextField picking-mode="Ignore" text="Snapshot Name" name="memory-profile-snapshotfile__meta-data__rename" class="memory-profile-snapshotfile__text-style"/>
+                        <engine:VisualElement name="memory-profile-snapshotfile__meta-data__tag-spacer"/>
+                    </engine:VisualElement>
+                    <engine:Label text="2021-02-09 14:08" name="memory-profile-snapshotfile__meta-data__date" class="memory-profile-snapshotfile__text-style"/>
+                </engine:VisualElement>
+
+                <engine:VisualElement name="memory-profile-snapshotfile__bar__container">
+                    <engine:VisualElement name="memory-profile-snapshotfile__bar">
+                        <engine:Label text="N/A" name="memory-profile-snapshotfile__bar__not-available-label"/>
+                        <engine:Label text="--GB" name="memory-profile-snapshotfile__bar__allocated-label-inverted"/>
+                        <engine:VisualElement name="memory-profile-snapshotfile__bar__allocated">
+                            <engine:Label text="--GB" name="memory-profile-snapshotfile__bar__allocated-label"/>
+                        </engine:VisualElement>
+                        <engine:Label text="--GB" name="memory-profile-snapshotfile__bar__available-label"/>
+                    </engine:VisualElement>
+                </engine:VisualElement>
+            </engine:VisualElement>
+        </engine:Button>
+
+        <engine:Label text="A" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__tag" class="memory-profile-snapshotfile__tag__label"/>
+    </engine:VisualElement>
+</engine:UXML>

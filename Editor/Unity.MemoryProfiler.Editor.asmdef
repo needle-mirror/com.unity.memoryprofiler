@@ -1,6 +1,6 @@
 {
     "name": "Unity.MemoryProfiler.Editor",
-    "rootNamespace": "",
+    "rootNamespace": "Unity.MemoryProfiler.Editor",
     "references": [
         "Unity.EditorCoroutines.Editor",
         "Unity.MemoryProfiler"

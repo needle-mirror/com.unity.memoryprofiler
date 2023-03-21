@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" mui="Unity.MemoryProfiler.Editor.UI" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" memory="Unity.MemoryProfiler.Editor" memoryUI="Unity.MemoryProfiler.Editor.UI" noNamespaceSchemaLocation="../../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+    <ui:VisualElement name="selected-item-details__grouped-item__container" text="Basic" class="selected-item-details__grouped-item__container">
+        <ui:Label name="selected-item-details__grouped-item__label" class="selected-item-details__grouped-item__label" />
+        <ui:Label name="selected-item-details__grouped-item__content" class="selected-item-details__grouped-item__content" />
+        <ui:TextField name="selected-item-details__grouped-item__content_selectable-label" multiline="true" readonly="true" class="selected-item-details__grouped-item__content selectable-label" enable-rich-text="false"/>
+    </ui:VisualElement>
+</ui:UXML>

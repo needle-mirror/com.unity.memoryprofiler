@@ -1,0 +1,16 @@
+#memory-profiler-selection
+{
+    flex-grow: 1;
+}
+
+#memory-profiler-selection__container
+{
+    flex-grow: 1;
+}
+
+#memory-profiler-selection__no-selection
+{
+    margin-top: 20px;
+    -unity-text-align: upper-center;
+    flex-grow: 1;
+}

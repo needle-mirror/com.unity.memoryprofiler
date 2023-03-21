@@ -8,51 +8,69 @@ namespace Unity.MemoryProfiler.Editor.UI
     // Data model representing the 'AllTrackedMemory' breakdown.
     class AllTrackedMemoryModel : TreeModel<AllTrackedMemoryModel.ItemData>
     {
-        public AllTrackedMemoryModel(List<TreeViewItemData<ItemData>> treeRootNodes, ulong totalSnapshotMemorySize)
+        public AllTrackedMemoryModel(List<TreeViewItemData<ItemData>> treeRootNodes, MemorySize totalSnapshotMemorySize, Action<int, ItemData> selectionProcessor)
             : base(treeRootNodes)
         {
-            TotalSnapshotMemorySize = totalSnapshotMemorySize;
+            SelectionProcessor = selectionProcessor;
 
-            var totalMemorySize = 0UL;
+            var totalMemorySize = new MemorySize();
             foreach (var rootItem in treeRootNodes)
             {
+                if (rootItem.data.Name == AllTrackedMemoryModelBuilder.GraphicsGroupName)
+                    TotalGraphicsMemorySize += rootItem.data.Size;
+
                 totalMemorySize += rootItem.data.Size;
             }
             TotalMemorySize = totalMemorySize;
+
+            // Workaround for inflated resident due to gfx resources accounted as fully resident.
+            TotalSnapshotMemorySize = MemorySize.Max(totalSnapshotMemorySize, totalMemorySize);
         }
 
         // The total size, in bytes, of memory accounted for in the breakdown.
-        public ulong TotalMemorySize { get; }
+        // Includes graphics memory.
+        public MemorySize TotalMemorySize { get; }
+
+        // The total size, in bytes, of graphics memory accounted for in the breakdown.
+        public MemorySize TotalGraphicsMemorySize { get; }
 
         // The total size, in bytes, of memory accounted for in the original snapshot.
-        public ulong TotalSnapshotMemorySize { get; }
+        // Includes graphics memory.
+        public MemorySize TotalSnapshotMemorySize { get; }
+
+        // A callback to process the selection of an item.
+        public Action<int, ItemData> SelectionProcessor { get; }
 
         // The data associated with each item in the tree.
         public readonly struct ItemData : IComparableItemData
         {
             public ItemData(
                 string name,
-                ulong size,
-                Action selectionProcessor = null,
+                MemorySize size,
+                CachedSnapshot.SourceIndex source,
                 int childCount = 0)
             {
                 Name = name;
                 Size = size;
-                SelectionProcessor = selectionProcessor;
+                Source = source;
                 ChildCount = childCount;
+                Unreliable = false;
             }
 
             // The name of this item.
             public string Name { get; }
 
             // The total size of this item including its children.
-            public ulong Size { get; }
+            public MemorySize Size { get; }
+
+            // The source of this item in memory snapshot.
+            public CachedSnapshot.SourceIndex Source { get; }
 
             // The number of children.
             public int ChildCount { get; }
 
-            // A callback to process the selection of this item.
-            public Action SelectionProcessor { get; }
+            // The item information is unreliable and being shown "for information"
+            public bool Unreliable { get; init; }
         }
     }
 }

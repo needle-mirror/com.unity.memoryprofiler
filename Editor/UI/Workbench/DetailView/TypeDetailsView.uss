@@ -1,0 +1,40 @@
+#memory-profiler-type-details
+{
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+#memory-profiler-type-details__title
+{
+    flex-shrink: 0;
+    font-size: 14px;
+    -unity-font-style: bold;
+    margin-top: 10px;
+    margin-left: 10px;
+    margin-right: 10px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#memory-profiler-type-details__desc
+{
+    flex-direction: column;
+    padding: 10px;
+}
+
+.memory-profiler-type-details__desc__group
+{
+    flex-direction: row;
+    margin-bottom: 2px;
+}
+
+.memory-profiler-type-details__desc__group-label
+{
+    flex-direction: row;
+    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

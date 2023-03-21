@@ -1,0 +1,202 @@
+.memory-profiler__light:root
+{
+    --preview-image-background-color: #A7A7A7;
+}
+
+.memory-profiler__dark:root
+{
+    --preview-image-background-color: #282828;
+}
+
+.memory-profile-snapshotfile
+{
+    flex-direction: row;
+    padding-bottom: 4px;
+    padding-top: 4px;
+    padding-right: 10px;
+    padding-left: 10px;
+}
+
+#memory-profile-snapshotfile__button
+{
+    margin: 0px;
+    padding: 0px;
+    background-color: rgba(0, 0, 0, 0);
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-direction: row;
+    -unity-text-align: upper-left;
+    border-width: 0;
+    border-radius: 0;
+    border-color: rgba(0, 0, 0, 0);
+}
+
+.memory-profile-snapshotfile__text-style
+{
+    overflow: hidden;
+    flex-shrink: 1;
+    text-overflow: ellipsis;
+}
+
+#memory-profile-snapshotfile__preview-image__container
+{
+    flex-direction: row;
+    height: 54px;
+    width: 96px;
+}
+
+#memory-profile-snapshotfile__preview-image
+{
+    justify-content: flex-end;
+    align-items: flex-end;
+    height: 54px;
+    width: 96px;
+    background-color: var(--preview-image-background-color);
+}
+
+#memory-profile-snapshotfile__meta-data__container
+{
+    flex-grow: 1;
+    padding-left: 10px;
+}
+
+#memory-profile-snapshotfile__meta-data__name
+{
+    -unity-font-style: bold;
+}
+
+#memory-profile-snapshotfile__meta-data__rename
+{
+    flex: 1;
+    visibility: hidden;
+    max-height: 15px;
+    margin-right: 50px;
+    overflow: hidden;
+    display: none;
+}
+
+#memory-profile-snapshotfile__meta-data__nodata
+{
+    display: none;
+}
+
+#memory-profile-snapshotfile__preview-image__editor-icon, #memory-profile-snapshotfile__preview-image__platform-icon
+{
+    height: 16px;
+    width: 16px;
+    flex-shrink: 0;
+}
+
+#memory-profile-snapshotfile__preview-image__editor-icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Editor.png');
+}
+
+#memory-profile-snapshotfile__bar
+{
+    flex-direction: row;
+    background-color: rgb(35, 35, 35);
+    height: 20px;
+    flex-shrink: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+#memory-profile-snapshotfile__bar__allocated
+{
+    flex-direction: row;
+    height: 20px;
+    width: 56%;
+    -unity-background-scale-mode: stretch-to-fill;
+    background-color: rgb(153, 153, 153);
+    max-width: 56%;
+    overflow: hidden;
+}
+
+#memory-profile-snapshotfile__bar__allocated-label
+{
+    color: rgb(40, 40, 40);
+    overflow: hidden;
+    margin-top: 2px;
+}
+
+#memory-profile-snapshotfile__bar__allocated-label-inverted
+{
+    color: rgb(196, 196, 196);
+    position: absolute;
+    margin-top: 2px;
+}
+
+#memory-profile-snapshotfile__bar__available-label
+{
+    color: rgb(196, 196, 196);
+    position: absolute;
+    right: 0;
+    margin-top: 2px;
+}
+
+#memory-profile-snapshotfile__bar__not-available-label
+{
+    color: rgb(134, 134, 134);
+    margin-top: 2px;
+    -unity-font-style: italic;
+}
+
+.memory-profile-snapshotfile__state__in-view
+{
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(75, 135, 164);
+}
+
+.memory-profile-snapshotfile__state__base
+{
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(75, 135, 164);
+}
+
+.memory-profile-snapshotfile__state__compare
+{
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(75, 135, 164);
+}
+
+.memory-profile-snapshotfile__state__open
+{
+    border-left-width: 2px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: rgb(77, 77, 77);
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+#memory-profile-snapshotfile__tag
+{
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 20px;
+    height: 20px;
+    display: none;
+}
+
+#memory-profile-snapshotfile__meta-data__tag-spacer
+{
+    width: 20px;
+}

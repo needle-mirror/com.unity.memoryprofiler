@@ -9,7 +9,7 @@
     <engine:VisualElement name="breakdown-view">
         <Style src="BreakdownView.uss"/>
         <engine:VisualElement name="breakdown-view__search-field-container">
-            <engine:Label name="breakdown-view__description-label"/>
+            <engine:DropdownField name="breakdown-view__mode-dropdown"/>
             <editor:ToolbarSearchField name="breakdown-view__search-field"/>
         </engine:VisualElement>
         <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="breakdown-view__table-size-bar"/>

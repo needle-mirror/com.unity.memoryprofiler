@@ -1,0 +1,91 @@
+.memory-profiler__light:root
+{
+    --info-box-color: #1A1A1A;
+    --info-box-background-color: rgba(96, 96, 96, 0.2);
+}
+
+.memory-profiler__dark:root
+{
+    --info-box-color: #1A1A1A;
+    --info-box-background-color: rgba(96, 96, 96, 0.2);
+}
+
+.info-box
+{
+    flex: 1 1 0;
+    flex-direction: row;
+
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgb(35, 35, 35);
+
+    margin: 4px;
+    padding: 4px;
+
+    color: var(--info-box-color);
+    background-color: var(--info-box-background-color);
+}
+
+.info-box__icon
+{
+    flex: auto 0 0;
+    width: 32px;
+    height: 32px;
+    margin: 4px;
+}
+
+
+.memory-profiler__light .info-box__info-icon
+{
+    background-image: resource('console.infoicon.png');
+}
+.memory-profiler__light .info-box__warning-icon
+{
+    background-image: resource('console.warnicon.png');
+}
+.memory-profiler__light .info-box__error-icon
+{
+    background-image: resource('console.erroricon.png');
+}
+
+.memory-profiler__dark .info-box__info-icon
+{
+    background-image: resource('d_console.infoicon.png');
+}
+.memory-profiler__dark .info-box__warning-icon
+{
+    background-image: resource('d_console.warnicon.png');
+}
+.memory-profiler__dark .info-box__error-icon
+{
+    background-image: resource('d_console.erroricon.png');
+}
+
+.info-box__icon-space
+{
+    justify-content: center;
+}
+
+.info-box__message
+{
+    flex: 1 0 0;
+    flex-direction: row;
+}
+
+Label.info-box__message
+{
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-bottom: 0;
+
+    color: var(--info-box-color);
+
+    overflow: hidden;
+    white-space: normal;
+    -unity-font-style: normal;
+    -unity-text-align: middle-left;
+}
+
+.info-box__message Button
+{
+}

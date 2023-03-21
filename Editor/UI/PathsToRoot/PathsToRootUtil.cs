@@ -21,8 +21,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         internal const string HideAndDontSaveInfo = "HideAndDontSave - The GameObject is not shown in the Hierarchy, not saved to to Scenes, and not unloaded by Resources.UnloadUnusedAssets.";
 
         internal static readonly GUIContent FlagIcon = EditorGUIUtility.IconContent("console.infoicon");
-        internal static readonly Texture2D NoIcon = IconUtility.LoadIconAtPath(Icons.IconFolder + "NoIconIcon.png", true);
-        internal static readonly GUIContent NoIconContent = new GUIContent(NoIcon, "no icon for type");
+        internal static readonly GUIContent NoIconContent = new GUIContent(Icons.NoIcon, "no icon for type");
         internal static readonly GUIContent CSScriptIconContent = EditorGUIUtility.IconContent("cs Script Icon", "");
 
         internal static Dictionary<string, GUIContent> iconContent = new Dictionary<string, GUIContent>();

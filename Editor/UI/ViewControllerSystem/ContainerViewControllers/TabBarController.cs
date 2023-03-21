@@ -144,7 +144,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var contentViewController = ViewControllers[index];
 
             // If loading the view controller's view for the first time, it must be added to the content view.
-            if (!contentViewController.IsViewLoaded)
+            if (ContentView.IndexOf(contentViewController.View) == -1)
                 ContentView.Add(contentViewController.View);
 
             // Show the view controller's view.

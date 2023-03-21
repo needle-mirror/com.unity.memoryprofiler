@@ -10,24 +10,30 @@
   --memory-usage-summary__unavailable__background-color: #CBCBCB;
 }
 
+/*
+ * Main layout
+ */
 #summary-view
 {
     margin-top: 8px;
 }
 
-.memory-usage-summary__section {
+.memory-usage-summary__section
+{
     flex: 1;
     flex-direction: column;
 
     margin: 10px;
 }
 
-.memory-usage-summary__widget__group {
+.memory-usage-summary__widget__group
+{
     flex-direction: row;
     flex-wrap: wrap;
 }
 
-.memory-usage-summary__widget {
+.memory-usage-summary__widget
+{
     flex: 1 0 auto;
 
     padding-top: 10px;
@@ -42,22 +48,29 @@
     background-color: var(--unity-colors-box-background);
 }
 
-.memory-usage-summary__widget__group-item {
-    flex: 1 0 auto;
+/* Flex base is 48% as we want it to be near half screen and not to wrap */
+.memory-usage-summary__widget__group-item
+{
+    flex: 1 1 48%;
 }
 
-.memory-usage-summary__widget__content {
-
+.memory-usage-summary__widget__content
+{
 }
 
-#memory-usage-summary__header__right {
+#memory-usage-summary__header__right
+{
     position: absolute;
     top: 0px;
     right: 0px;
     align-items: flex-end;
 }
 
-#memory-usage-summary__unavailable {
+/*
+ * Unavailable Warning panel
+ */
+#memory-usage-summary__unavailable
+{
     flex: 1 1 0;
     flex-direction: row;
 
@@ -72,7 +85,8 @@
     background-color: var(--memory-usage-summary__unavailable__background-color);
 }
 
-#memory-usage-summary__unavailable__icon {
+#memory-usage-summary__unavailable__icon
+{
     flex: auto 0 0;
     width: 32px;
     height: 32px;
@@ -81,11 +95,13 @@
     background-image: resource('d_console.infoicon.png');
 }
 
-#memory-usage-summary__unavailable__icon-space {
+#memory-usage-summary__unavailable__icon-space
+{
     justify-content: center;
 }
 
-#memory-usage-summary__unavailable__message {
+#memory-usage-summary__unavailable__message
+{
     flex: 1 0 0;
     flex-direction: row;
 
@@ -97,4 +113,162 @@
     white-space: normal;
     -unity-font-style: normal;
     -unity-text-align: middle-left;
+}
+
+/*
+ * Total Resident On Device category colors
+ */
+.memory-category-color__resident, .memory-bar-element__resident-bar-visible .memory-category-color__resident
+{
+    background-color: #D9D9D9;
+}
+.memory-bar-element__resident-bar-visible > .memory-category-color__resident
+{
+    background-color: #737373;
+}
+
+/*
+ * Allocation Distribution category colors (for committed and resident sections)
+ */
+.memory-category-color__native, .memory-bar-element__resident-bar-visible .memory-category-color__native
+{
+    background-color: #8EC554;
+}
+.memory-bar-element__resident-bar-visible > .memory-category-color__native
+{
+    background-color: #5A7B36;
+}
+
+.memory-category-color__managed, .memory-bar-element__resident-bar-visible .memory-category-color__managed
+{
+    background-color: #81B8DF;
+}
+
+.memory-bar-element__resident-bar-visible > .memory-category-color__managed
+{
+    background-color: #3B6D8F;
+}
+
+.memory-category-color__executables, .memory-bar-element__resident-bar-visible .memory-category-color__executables
+{
+    background-color: #F5D45E;
+}
+
+.memory-bar-element__resident-bar-visible > .memory-category-color__executables
+{
+    background-color: #A58C37;
+}
+
+.memory-category-color__gfx, .memory-bar-element__resident-bar-visible .memory-category-color__gfx
+{
+    background-color: #A679E0;
+    --unity-pattern: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Profiler.GraphicsMemoryBackground.png');
+}
+
+.memory-bar-element__committed-bar > .memory-category-color__gfx
+{
+    visibility: hidden;
+    display: none;
+}
+
+.memory-category-color__other, .memory-bar-element__resident-bar-visible .memory-category-color__other
+{
+    background-color: #343434;
+    border-width: 1px;
+    --unity-pattern: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Profiler.GraphicsMemoryBackground.png');
+}
+
+.memory-bar-element__committed-bar > .memory-category-color__other
+{
+    visibility: hidden;
+    display: none;
+}
+
+.memory-category-color__dalvik, .memory-bar-element__resident-bar-visible .memory-category-color__dalvik
+{
+    background-color: #614985;
+}
+
+.memory-bar-element__resident-bar-visible > .memory-category-color__dalvik
+{
+    background-color: #342648;
+}
+
+/*
+ * Managed Memory category colors (for committed and resident sections)
+ */
+.memory-category-color__virtual-machine
+{
+    background-color: rgb(0, 146, 146);
+}
+
+.memory-category-color__objects
+{
+    background-color: rgb(100, 165, 172);
+}
+
+.memory-category-color__free-in-active-heap-section
+{
+    background-color: rgb(82, 205, 242);
+}
+
+.memory-category-color__lost-to-fragmentation
+{
+    background-color: rgb(240, 208, 68);
+}
+
+/*
+ * Top Unity Objects category colors (for committed and resident sections)
+ */
+.memory-category-color__grp-1
+{
+    background-color: #614985;
+}
+
+.memory-category-color__grp-2
+{
+    background-color: #8068C6;
+}
+
+.memory-category-color__grp-3
+{
+    background-color: #ADA6C1;
+}
+
+.memory-category-color__grp-4
+{
+    background-color: #AB69B0;
+}
+
+.memory-category-color__grp-5
+{
+    background-color: #A54F43;
+}
+
+.memory-category-color__grp-6
+{
+    background-color: #EC7735;
+}
+
+.memory-category-color__grp-7
+{
+    background-color: #ECAE35;
+}
+
+.memory-category-color__grp-8
+{
+    background-color: #D8C38D;
+}
+
+.memory-category-color__grp-other
+{
+    background-color: #7B7B7B;
+}
+
+/*
+ * Legend colors
+ */
+#memory-summary__legend__name-and-color .memory-category-color__resident
+{
+    background-color: rgb(212, 212, 212);
 }

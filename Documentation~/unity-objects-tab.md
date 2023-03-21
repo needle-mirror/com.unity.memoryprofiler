@@ -6,7 +6,7 @@ The __Unity Objects__ tab displays any Unity objects that use memory, how much n
 </br>The Unity Objects tab
 
 > [!NOTE]
-> The search bar can only search for items that contain text in the target object's name. This will be changed to include other search functionality in future updates.
+> The search bar can only search for the text shown in the Description column. This will be changed to include other search functionality in future updates.
 
 The following table describes each of the available columns in the table:
 

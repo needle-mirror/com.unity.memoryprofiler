@@ -8,39 +8,40 @@ namespace Unity.MemoryProfiler.Editor.UI
     // Data model for the 'Unity Objects' breakdown.
     class UnityObjectsModel : TreeModel<UnityObjectsModel.ItemData>
     {
-        public UnityObjectsModel(List<TreeViewItemData<ItemData>> treeRootNodes, Dictionary<int, string> itemTypeNamesMap, ulong totalSnapshotMemorySize)
+        public UnityObjectsModel(List<TreeViewItemData<ItemData>> treeRootNodes, MemorySize totalSnapshotMemorySize, Action<int, ItemData> selectionProcessor)
             : base(treeRootNodes)
         {
-            ItemTypeNamesMap = itemTypeNamesMap;
             TotalSnapshotMemorySize = totalSnapshotMemorySize;
+            SelectionProcessor = selectionProcessor;
 
-            var totalMemorySize = 0UL;
+            var totalMemorySize = new MemorySize();
             foreach (var rootItem in treeRootNodes)
-            {
                 totalMemorySize += rootItem.data.TotalSize;
-            }
+
             TotalMemorySize = totalMemorySize;
+
+            // Workaround for inflated resident due to fake gfx resources
+            TotalSnapshotMemorySize = MemorySize.Max(totalSnapshotMemorySize, totalMemorySize);
         }
 
-        // All Unity Object Type names for items in the tree. Used by items to look up their type name.
-        public Dictionary<int, string> ItemTypeNamesMap { get; }
-
         // The total size, in bytes, of memory accounted for in the breakdown.
-        public ulong TotalMemorySize { get; }
+        public MemorySize TotalMemorySize { get; }
 
         // The total size, in bytes, of memory accounted for in the original snapshot.
-        public ulong TotalSnapshotMemorySize { get; }
+        public MemorySize TotalSnapshotMemorySize { get; }
+
+        // A callback to process the selection of this item.
+        public Action<int, ItemData> SelectionProcessor { get; }
 
         // The data associated with each item in the tree.
         public readonly struct ItemData
         {
             public ItemData(
                 string name,
-                ulong nativeSize,
-                ulong managedSize,
-                ulong gpuSize,
-                int typeNameLookupKey,
-                Action selectionProcessor,
+                MemorySize nativeSize,
+                MemorySize managedSize,
+                MemorySize gpuSize,
+                CachedSnapshot.SourceIndex source,
                 int childCount = 0)
             {
                 Name = name;
@@ -48,8 +49,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 NativeSize = nativeSize;
                 ManagedSize = managedSize;
                 GpuSize = gpuSize;
-                TypeNameLookupKey = typeNameLookupKey;
-                SelectionProcessor = selectionProcessor;
+                Source = source;
                 ChildCount = childCount;
             }
 
@@ -57,22 +57,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             public string Name { get; }
 
             // The total size of this item including its children. Computed by summing NativeSize, ManagedSize, and GpuSize.
-            public ulong TotalSize { get; }
+            public MemorySize TotalSize { get; }
 
             // The native size of this item including its children.
-            public ulong NativeSize { get; }
+            public MemorySize NativeSize { get; }
 
             // The managed size of this item including its children.
-            public ulong ManagedSize { get; }
+            public MemorySize ManagedSize { get; }
 
             // The GPU size of this item including its children.
-            public ulong GpuSize { get; }
+            public MemorySize GpuSize { get; }
 
-            // The key into the model's ItemTypeNamesMap, to retrieve this item's type name.
-            public int TypeNameLookupKey { get; }
-
-            // A callback to process the selection of this item.
-            public Action SelectionProcessor { get; }
+            // The key into the cached snapshot, to retrieve this item's related data.
+            public CachedSnapshot.SourceIndex Source { get; }
 
             // The number of children.
             public int ChildCount { get; }

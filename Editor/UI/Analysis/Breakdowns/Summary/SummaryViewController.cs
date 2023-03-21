@@ -5,32 +5,19 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class SummaryViewController : ViewController, ISelectionDetailsProducer
+    class SummaryViewController : ViewController
     {
         const string k_UxmlAssetGuid = "63f1db43e50fc4f4288f3d1b1c3d9078";
         const string k_UssClass_Dark = "summary-view__dark";
         const string k_UssClass_Light = "summary-view__light";
 
-#if UNITY_2021_2_OR_NEWER
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2021.2.0a12 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2021.2.0a12 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#elif UNITY_2021_1_OR_NEWER
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2021.1.9f1 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2021.1.9f1 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#elif UNITY_2020_1_OR_NEWER
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2020.3.12f1 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2020.3.12f1 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#else
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2019.4.29f1 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2019.4.29f1 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#endif
-        public const string MemoryUsageUnavailableMessage = "The Memory Usage Overview is not available with this snapshot.\n" + PreSnapshotVersion11UpdgradeInfoMemoryOverview;
-
-        // Model.
+        // State
+        readonly ISelectionDetails m_SelectionDetails;
+        readonly IAnalysisViewSelectable m_AnalysisItemSelection;
         readonly CachedSnapshot m_BaseSnapshot;
         readonly CachedSnapshot m_ComparedSnapshot;
 
-        // View.
+        // View
         VisualElement m_SummaryUnavailable;
         Label m_SummaryUnavailableMessage;
 
@@ -42,22 +29,19 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_ManagedMemoryBreakdown;
         VisualElement m_UnityObjectsBreakdown;
 
-        List<IMemoryBreakdownViewController> m_WidgetControllers;
+        List<IMemorySummaryViewController> m_WidgetControllers;
 
-        // Needed for selection callback registration & unregistration
-        MemoryProfilerWindow m_Window;
-
-        public SummaryViewController(CachedSnapshot baseSnapshot, CachedSnapshot comparedSnapshot)
+        public SummaryViewController(ISelectionDetails selectionDetails, IAnalysisViewSelectable itemSelection, CachedSnapshot baseSnapshot, CachedSnapshot comparedSnapshot)
         {
+            m_SelectionDetails = selectionDetails;
+            m_AnalysisItemSelection = itemSelection;
             m_BaseSnapshot = baseSnapshot;
             m_ComparedSnapshot = comparedSnapshot;
 
-            m_WidgetControllers = new List<IMemoryBreakdownViewController>();
+            m_WidgetControllers = new List<IMemorySummaryViewController>();
         }
 
-        public event Action<MemorySampleSelection> SelectionChangedEvt = delegate { };
-
-        public AnalysisTabBarController TabController { private get; set; }
+        public AnalysisTabBarController TabController { private get; init; }
 
         protected override VisualElement LoadView()
         {
@@ -79,16 +63,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             RefreshView();
         }
 
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                m_Window?.UIState.CustomSelectionDetailsFactory.DeregisterCustomDetailsDrawer(MemorySampleSelectionType.HighlevelBreakdownElement, this);
-            }
-
-            base.Dispose(disposing);
-        }
-
         void GatherReferences()
         {
             m_SummaryUnavailable = View.Q("memory-usage-summary__unavailable");
@@ -108,7 +82,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             bool isSupportedSnapshots = IsSupportedSnapshotFormat();
             UIElementsHelper.SetVisibility(m_SummaryUnavailable.parent, !isSupportedSnapshots);
-            m_SummaryUnavailableMessage.text = MemoryUsageUnavailableMessage;
+            m_SummaryUnavailableMessage.text = SummaryTextContent.kMemoryUsageUnavailableMessage;
 
             // Warn about issues with snapshots
             var issuesModelBuilder = new SnapshotIssuesModelBuilder(m_BaseSnapshot, m_ComparedSnapshot);
@@ -125,28 +99,26 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_NormalizedToggle.RegisterValueChangedCallback(ToggleNormalized);
 
             // Memory breakdown widgets
-            AddController(
-                m_ResidentMemoryBreakdown,
-                isSupportedSnapshots && HasResidentMemoryInformation(),
-                new DeviceMemoryBreakdownViewController(new DeviceMemoryBreakdownModelBuilder(m_BaseSnapshot, m_ComparedSnapshot))
-                {
-                    Normalized = normalizedSetting
-                });
+            var committedMemoryController = new GenericMemorySummaryViewController(new AllMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), HasDetailedResidentMemoryInformation())
+            {
+                TotalLabelFormat = "Total Allocated: {0}",
+                InspectAction = comapreMode ? null : TabController.MakePageSelector("All Of Memory"),
+                Normalized = normalizedSetting
+            };
+            committedMemoryController.OnRowDoubleClick += (model, row) => m_AnalysisItemSelection.TrySelectCategory(model.Rows[row].CategoryId);
+            AddController(m_CommittedMemoryBreakdown, isSupportedSnapshots, committedMemoryController);
 
-            AddController(
-                m_CommittedMemoryBreakdown,
-                isSupportedSnapshots,
-                new MemoryBreakdownViewController(new AllProcessMemoryBreakdownModelBuilder(m_BaseSnapshot, m_ComparedSnapshot))
-                {
-                    TotalLabelFormat = "Total Committed: {0}",
-                    InspectAction = comapreMode ? null : TabController.MakePageSelector("All Of Memory"),
-                    Normalized = normalizedSetting
-                });
+            var residentMemoryController = new ResidentMemorySummaryViewController(new ResidentMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot))
+            {
+                Normalized = normalizedSetting,
+            };
+            residentMemoryController.OnRowHovered += (model, index, state) => { committedMemoryController.ForceShowResidentBars = state; };
+            AddController(m_ResidentMemoryBreakdown, isSupportedSnapshots && HasResidentMemoryInformation(), residentMemoryController);
 
             AddController(
                 m_ManagedMemoryBreakdown,
                 isSupportedSnapshots && HasManagedMemoryInformation(),
-                new MemoryBreakdownViewController(new ManagedMemoryBreakdownModelBuilder(m_BaseSnapshot, m_ComparedSnapshot))
+                new GenericMemorySummaryViewController(new ManagedMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
                 {
                     TotalLabelFormat = "Total: {0}",
                     InspectAction = TabController.MakePageSelector("All Of Memory"),
@@ -156,29 +128,26 @@ namespace Unity.MemoryProfiler.Editor.UI
             AddController(
                 m_UnityObjectsBreakdown,
                 isSupportedSnapshots && HasNativeObjectsInformation(),
-                new MemoryBreakdownViewController(new UnityObjectsMemoryBreakdownModelBuilder(m_BaseSnapshot, m_ComparedSnapshot))
+                new GenericMemorySummaryViewController(new UnityObjectsMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
                 {
                     TotalLabelFormat = "Total: {0}",
                     InspectAction = TabController.MakePageSelector("Unity Objects"),
                     Normalized = normalizedSetting
                 });
 
-            // Selection handling
-            m_Window = EditorWindow.GetWindow<MemoryProfilerWindow>();
-            m_Window.UIState.SelectionChanged += OnSelectionChanged;
-            SelectionChangedEvt += m_Window.UIState.RegisterSelectionChangeEvent;
-
-            // Moved here for now to avoid duplicate registration. Please delete with rework.
-            m_Window.UIState.CustomSelectionDetailsFactory.RegisterCustomDetailsDrawer(MemorySampleSelectionType.HighlevelBreakdownElement, this);
+            View.RegisterCallback<PointerDownEvent>((e) =>
+            {
+                ClearSelection();
+                e.StopPropagation();
+            });
         }
 
-        void AddController<T>(VisualElement root, bool state, T controller) where T : ViewController, IMemoryBreakdownViewController
+        void AddController<T>(VisualElement root, bool state, T controller) where T : ViewController, IMemorySummaryViewController
         {
             if (state)
             {
                 var controllerId = m_WidgetControllers.Count;
-                controller.OnRowSelected += (model, rowId) => { SelectionChangedEvt(new MemorySampleSelection(model.Title, controllerId, rowId)); };
-                controller.OnRowDeselected += OnBreakdownElementDeselected;
+                controller.OnRowSelected += (model, rowId) => { OnShowDetailsForSelection(controller, model, rowId); };
                 root.Clear();
                 root.Add(controller.View);
                 AddChild(controller);
@@ -203,11 +172,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 controller.Normalized = normalized;
         }
 
-        void OnBreakdownElementDeselected(MemoryBreakdownModel model, int rowId)
-        {
-            SelectionChangedEvt(MemorySampleSelection.InvalidMainSelection);
-        }
-
         bool IsSupportedSnapshotFormat()
         {
             if (!m_BaseSnapshot.HasTargetAndMemoryInfo || !m_BaseSnapshot.HasMemoryLabelSizesAndGCHeapTypes)
@@ -221,10 +185,21 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         bool HasResidentMemoryInformation()
         {
-            if (!m_BaseSnapshot.HasSystemMemoryRegionsInfo)
+            if (!m_BaseSnapshot.HasSystemMemoryRegionsInfo || (m_BaseSnapshot.SystemMemoryRegions.Count <= 0))
                 return false;
 
-            if (m_ComparedSnapshot != null && !m_ComparedSnapshot.HasSystemMemoryRegionsInfo)
+            if (m_ComparedSnapshot != null && (!m_ComparedSnapshot.HasSystemMemoryRegionsInfo || (m_ComparedSnapshot.SystemMemoryRegions.Count <= 0)))
+                return false;
+
+            return true;
+        }
+
+        bool HasDetailedResidentMemoryInformation()
+        {
+            if (!m_BaseSnapshot.HasSystemMemoryResidentPages || (m_BaseSnapshot.SystemMemoryResidentPages.Count <= 0))
+                return false;
+
+            if (m_ComparedSnapshot != null && (!m_ComparedSnapshot.HasSystemMemoryResidentPages || (m_ComparedSnapshot.SystemMemoryResidentPages.Count <= 0)))
                 return false;
 
             return true;
@@ -252,31 +227,27 @@ namespace Unity.MemoryProfiler.Editor.UI
             return true;
         }
 
-        public void OnSelectionChanged(MemorySampleSelection selection)
+        void OnShowDetailsForSelection(IMemorySummaryViewController controller, MemorySummaryModel model, int rowId)
         {
-            for (int i = 0; i < m_WidgetControllers.Count; i++)
+            // Set new selection details
+            var selection = controller.MakeSelection(rowId);
+            m_SelectionDetails.SetSelection(selection);
+
+            // Clear selection in all other widgets
+            foreach (var item in m_WidgetControllers)
             {
-                if ((selection.Type != MemorySampleSelectionType.HighlevelBreakdownElement) || (selection.SecondaryItemIndex != i))
-                    m_WidgetControllers[i].ClearSelection();
+                if (item == controller)
+                    continue;
+                item.ClearSelection();
             }
         }
 
-        public void OnShowDetailsForSelection(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem)
+        void ClearSelection()
         {
-            throw new NotImplementedException();
-        }
+            foreach (var item in m_WidgetControllers)
+                item.ClearSelection();
 
-        public void OnShowDetailsForSelection(ISelectedItemDetailsUI mainUI, MemorySampleSelection selectedItem, out string summary)
-        {
-            m_WidgetControllers[(int)selectedItem.SecondaryItemIndex].GetRowDescription((int)selectedItem.RowIndex, out var itemName, out var itemDescrption, out var documentationUrl);
-            mainUI.SetItemName($"{selectedItem.Table} : {itemName}");
-            mainUI.SetDescription(itemDescrption);
-            mainUI.SetDocumentationURL(documentationUrl);
-            summary = $"{selectedItem.Table} : {itemName}";
-        }
-
-        public void OnClearSelectionDetails(ISelectedItemDetailsUI detailsUI)
-        {
+            m_SelectionDetails.ClearSelection();
         }
     }
 }

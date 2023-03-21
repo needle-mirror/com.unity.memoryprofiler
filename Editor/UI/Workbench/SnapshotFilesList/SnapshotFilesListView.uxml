@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profiler-snapshots">
+        <Style src="SnapshotFilesListView.uss" />
+
+        <engine:TreeView name="memory-profiler-snapshots__tree-view"/>
+
+        <engine:VisualElement name="memory-profiler-snapshots__no-snapshots-message">
+            <engine:Label name="memory-profiler-snapshots__no-snapshots-message__label" text="No Memory Profiler captures found" display-tooltip-when-elided="true" />
+        </engine:VisualElement>
+    </engine:VisualElement>
+
+</engine:UXML>

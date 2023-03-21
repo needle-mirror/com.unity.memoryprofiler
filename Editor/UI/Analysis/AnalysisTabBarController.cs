@@ -7,7 +7,7 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class AnalysisTabBarController : TabBarController
+    class AnalysisTabBarController : TabBarController, IAnalysisViewSelectable
     {
         const string k_UxmlAssetGuid = "c6e4b2cc6ed5ca245a88ee690b17b4c0";
         const string k_UssClass_Dark = "analysis-tab-bar-view__dark";
@@ -17,6 +17,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_ContentView = "analysis-tab-bar-view__content-view";
 
         // Model.
+        readonly ISelectionDetails m_SelectionDetails;
         readonly CachedSnapshot m_BaseSnapshot;
         readonly CachedSnapshot m_CompareSnapshot;
 
@@ -25,8 +26,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         List<Option> m_Options;
 
-        public AnalysisTabBarController(CachedSnapshot baseSnapshot, CachedSnapshot compareSnapshot) : base()
+        public AnalysisTabBarController(ISelectionDetails selectionDetails, CachedSnapshot baseSnapshot, CachedSnapshot compareSnapshot) : base()
         {
+            m_SelectionDetails = selectionDetails;
             m_BaseSnapshot = baseSnapshot;
             m_CompareSnapshot = compareSnapshot;
 
@@ -126,18 +128,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Options = new List<Option>()
             {
                 new Option("Summary",
-                    new SummaryViewController(snapshot, null) { TabController = this }),
+                    new SummaryViewController(m_SelectionDetails, this, snapshot, null) { TabController = this }),
                 new Option("Unity Objects",
-                    new UnityObjectsBreakdownViewController(snapshot, unityObjectsDescription),
+                    new UnityObjectsBreakdownViewController(snapshot, unityObjectsDescription, m_SelectionDetails),
                     unityObjectsDescription),
                 new Option("All Of Memory",
-                    new AllTrackedMemoryBreakdownViewController(snapshot, allTrackedMemoryDescription),
+                    new AllTrackedMemoryBreakdownViewController(snapshot, allTrackedMemoryDescription, m_SelectionDetails),
                     allTrackedMemoryDescription),
-#if UNITY_ENABLE_EXPERIMENTAL_FEATURES
-                new Option("All of System Memory",
-                    new AllSystemMemoryBreakdownViewController(snapshot)),
-#endif
             };
+
+            if (MemoryProfilerSettings.ShowMemoryMapView)
+                m_Options.Add(new Option("Memory Map", new MemoryMapBreakdownViewController(snapshot, m_SelectionDetails)));
+
 #else
             var errorDescription = $"This feature is not available in Unity {UnityEngine.Application.unityVersion}. Please use Unity 2022.1 or newer.";
             m_Options = new List<Option>()
@@ -163,20 +165,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Options = new List<Option>()
             {
                 new Option("Summary",
-                    new SummaryViewController(baseSnapshot, comparedSnapshot) { TabController = this },
+                    new SummaryViewController(m_SelectionDetails, this, baseSnapshot, comparedSnapshot) { TabController = this },
                     analyticsPageName: "Summary Comparison"),
                 new Option("Unity Objects",
                     new UnityObjectsComparisonViewController(
                         baseSnapshot,
                         comparedSnapshot,
-                        unityObjectsComparisonDescription),
+                        unityObjectsComparisonDescription,
+                        m_SelectionDetails),
                     unityObjectsComparisonDescription,
                     "Unity Objects Comparison"),
                 new Option("All Of Memory",
                     new AllTrackedMemoryComparisonViewController(
                         baseSnapshot,
                         comparedSnapshot,
-                        allTrackedMemoryComparisonDescription),
+                        allTrackedMemoryComparisonDescription,
+                        m_SelectionDetails),
                     allTrackedMemoryComparisonDescription,
                     "All Of Memory Comparison")
             };
@@ -197,6 +201,27 @@ namespace Unity.MemoryProfiler.Editor.UI
                     "All Of Memory Comparison"),
             };
 #endif
+        }
+
+        public bool TrySelectCategory(IAnalysisViewSelectable.Category category)
+        {
+            for (int i = 0; i < ViewControllers.Length; i++)
+            {
+                var controller = ViewControllers[i];
+
+                // We need to make sure that controller is fully initialized
+                // before we can start querying about its state
+                controller.EnsureLoaded();
+
+                if ((controller is IAnalysisViewSelectable selectable) && selectable.TrySelectCategory(category))
+                {
+                    // We switch focus of tab view to the tab where selection is made
+                    SelectedIndex = i;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         readonly struct Option

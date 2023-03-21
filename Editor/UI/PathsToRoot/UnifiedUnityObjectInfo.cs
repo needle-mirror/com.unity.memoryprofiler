@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.Database;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
@@ -19,7 +18,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public readonly int ManagedTypeIndex;
         public bool HasManagedType => ManagedTypeIndex >= 0;
         public bool HasNativeType => NativeTypeIndex >= 0;
-        public bool IsUnifiedtyType => HasManagedType && HasNativeType;
+        public bool IsUnifiedType => HasManagedType && HasNativeType;
 
         public readonly string NativeTypeName;
         public readonly string ManagedTypeName;
@@ -211,7 +210,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public ObjectData ManagedObjectData;
 
         public UnifiedType Type;
-        public int NativeTypeIndex => Type.ManagedTypeIndex;
+        public int NativeTypeIndex => Type.NativeTypeIndex;
         public int ManagedTypeIndex => Type.ManagedTypeIndex;
         public string NativeTypeName => Type.NativeTypeName;
         public string ManagedTypeName => Type.ManagedTypeName;
@@ -227,8 +226,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         public bool IsGameObject => Type.IsGameObjectType;
         public bool IsTransform => Type.IsTransformType;
         // Derived Meta Types:
-        public bool IsSceneObject => Type.IsSceneObjectType;
-        public bool IsAssetObject => Type.IsAssetObjectType && !IsManager;
+        // Scene Objects are GameObjects and Components, unless they are attached to a prefab (IsPersistent), then they are assets
+        public bool IsSceneObject => Type.IsSceneObjectType && !IsPersistentAsset;
+        public bool IsAssetObject => Type.IsAssetObjectType && !IsManager || Type.IsSceneObjectType && IsPersistentAsset;
 
         // Native Object Only info
         public bool HasNativeSide => NativeObjectIndex != -1;
@@ -238,7 +238,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public readonly HideFlags HideFlags;
         public readonly Format.ObjectFlags Flags;
         public readonly int NativeRefCount;
-        public bool IsAsset => Flags.HasFlag(Format.ObjectFlags.IsPersistent) && !IsManager;
+        public bool IsPersistentAsset => Flags.HasFlag(Format.ObjectFlags.IsPersistent) && !IsManager;
         public bool IsRuntimeCreated => InstanceId < 0;
         public bool IsManager => Flags.HasFlag(Format.ObjectFlags.IsManager);
         public bool IsDontUnload => Flags.HasFlag(Format.ObjectFlags.IsDontDestroyOnLoad) || HideFlags.HasFlag(HideFlags.DontUnloadUnusedAsset);
@@ -299,7 +299,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 NativeSize = snapshot.NativeObjects.Size[NativeObjectData.nativeObjectIndex];
                 NativeObjectName = snapshot.NativeObjects.ObjectName[NativeObjectData.nativeObjectIndex];
                 HideFlags = snapshot.NativeObjects.HideFlags[NativeObjectData.nativeObjectIndex];
-                NativeRefCount = snapshot.NativeObjects.refcount[NativeObjectData.nativeObjectIndex];
+                NativeRefCount = snapshot.NativeObjects.RefCount[NativeObjectData.nativeObjectIndex];
                 // Discount the Native Reference to the Managed Object, that is established via a GCHandle
                 if (ManagedObjectData.IsValid && NativeRefCount >= 1)
                     --NativeRefCount;

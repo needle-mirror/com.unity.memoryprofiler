@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="memory-profiler-selection">
+        <Style src="DetailsView.uss" />
+
+        <engine:Label name="memory-profiler-selection__no-selection" text="Nothing is selected or no details available" display-tooltip-when-elided="true" />
+
+        <engine:VisualElement name="memory-profiler-selection__container">
+        </engine:VisualElement>
+    </engine:VisualElement>
+</engine:UXML>

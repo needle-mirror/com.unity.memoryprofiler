@@ -60,7 +60,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     (itemsA, itemsB) =>
                     {
                         // We make an assumption that any items with children (non-leaf items) have an exclusive size/count of zero, i.e only leaf nodes have a non-zero exclusive size/count. This means the sizes/counts of non-leaf items are derived entirely from the sum of their children. This allows us to filter the tree later, calculating inclusive size/count per item for display.
-                        var exclusiveSizeInA = 0UL;
+                        var exclusiveSizeInA = new MemorySize();
                         var exclusiveCountInA = 0U;
                         foreach (var item in itemsA)
                         {
@@ -71,7 +71,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                             }
                         }
 
-                        var exclusiveSizeInB = 0UL;
+                        var exclusiveSizeInB = new MemorySize();
                         var exclusiveCountInB = 0U;
                         foreach (var item in itemsB)
                         {
@@ -83,12 +83,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                         }
 
                         var name = (itemsA.Count > 0) ? itemsA[0].data.Name : itemsB[0].data.Name;
+
+                        // Check if item has special id and retain it
+                        var treeId = (itemsA.Count > 0) ? itemsA[0].id : itemsB[0].id;
+                        if (!IAnalysisViewSelectable.IsPredefinedCategory(treeId))
+                            treeId = (int)IAnalysisViewSelectable.Category.None;
+
                         var data = new NodeData(
                             name,
-                            exclusiveSizeInA,
-                            exclusiveSizeInB,
+                            exclusiveSizeInA.Committed,
+                            exclusiveSizeInB.Committed,
                             exclusiveCountInA,
-                            exclusiveCountInB);
+                            exclusiveCountInB,
+                            treeId);
                         var outputNode = new Node(parentOutputNode, data);
                         parentOutputNode.Children.Add(outputNode);
 
@@ -194,7 +201,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             // Post-order depth-first traversal.
-            var itemId = 0;
+            var itemId = (int)IAnalysisViewSelectable.Category.FirstDynamicId;
             largestAbsoluteSizeDelta = 0;
             while (postOrderStack.Count > 0)
             {
@@ -234,11 +241,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                     itemPath.Insert(0, n.Data.Name);
                     n = n.Parent;
                 }
-                var selectionProcessor = args.SelectionProcessor;
-                void ProcessItemSelection()
-                {
-                    selectionProcessor?.Invoke(itemPath);
-                }
 
                 // Create UIToolkit node type with children. Store on our node type until full tree is traversed.
                 var comparisonData = new ComparisonTableModel.ComparisonData(
@@ -247,14 +249,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                     inclusiveSizeInB,
                     inclusiveCountInA,
                     inclusiveCountInB,
-                    ProcessItemSelection);
+                    itemPath);
 
                 // Only include unchanged items if requested by build args.
                 if (!comparisonData.HasChanged && !args.IncludeUnchanged)
                     continue;
 
+                var nodeItemId = IAnalysisViewSelectable.IsPredefinedCategory(node.Data.TreeNodeId) ? node.Data.TreeNodeId : itemId++;
                 var item = new TreeViewItemData<ComparisonTableModel.ComparisonData>(
-                    itemId++,
+                    nodeItemId,
                     comparisonData,
                     childItems);
                 node.OutputItem = item;
@@ -279,18 +282,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         public readonly struct BuildArgs
         {
             public BuildArgs(
-                bool includeUnchanged,
-                Action<List<string>> selectionProcessor)
+                bool includeUnchanged)
             {
                 IncludeUnchanged = includeUnchanged;
-                SelectionProcessor = selectionProcessor;
             }
 
             // Include unchanged items.
             public bool IncludeUnchanged { get; }
-
-            // Selection processor for each item. Argument is the item's path.
-            public Action<List<string>> SelectionProcessor { get; }
         }
 
         // A node for the intermediate comparison tree.
@@ -320,13 +318,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ulong exclusiveSizeInA,
                 ulong exclusiveSizeInB,
                 uint exclusiveCountInA,
-                uint exclusiveCountInB)
+                uint exclusiveCountInB,
+                int treeNodeId)
             {
                 Name = name;
                 ExclusiveSizeInA = exclusiveSizeInA;
                 ExclusiveSizeInB = exclusiveSizeInB;
                 ExclusiveCountInA = exclusiveCountInA;
                 ExclusiveCountInB = exclusiveCountInB;
+                TreeNodeId = treeNodeId;
             }
 
             // The name of this item.
@@ -343,6 +343,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // The number of this item in B, excluding children.
             public uint ExclusiveCountInB { get; }
+
+            public int TreeNodeId { get; }
         }
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEditor.IMGUI.Controls;
 using UnityEditor;
+using System.Runtime.CompilerServices;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -9,6 +10,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         public bool PendingProcessing => m_ReferencePendingProcessingWhenExpanding.ObjectData.IsValid;
         public bool IsDuplicate => m_ExistingTreeViewItemId != -1;
         public bool IsRecursive => m_DuplicationType == DuplicationType.Recursive || m_DuplicationType == DuplicationType.RecursiveToRoot;
+        public readonly bool IsStatic;
+        public readonly int ManagedTypeIndex = -1;
         public int ExistingItemId => m_ExistingTreeViewItemId;
 
         const string HyperlinkManagedObjectInspectorIdTag = "ManagedObjectInspectorId";
@@ -18,7 +21,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         int m_InspectorID;
         long m_Idx;
         ulong m_IdentifyingPointer;
-        bool m_IsStatic;
         int m_ExistingTreeViewItemId = -1;
         DuplicationType m_DuplicationType = DuplicationType.None;
 
@@ -62,19 +64,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             children = new List<TreeViewItem>();
         }
 
-        internal ManagedObjectInspectorItem(int managedInspectorId, string name, string type, string value, bool isStatic, ulong identifyingPointer, ulong size)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal ManagedObjectInspectorItem(int managedInspectorId, string name, int managedTypeIndex, string type, string value, bool isStatic, ulong identifyingPointer, ulong size)
+            : this(managedInspectorId, name, managedTypeIndex, type, value, isStatic, identifyingPointer, EditorUtility.FormatBytes((long)size))
+        { }
+
+        internal ManagedObjectInspectorItem(int managedInspectorId, string name, int managedTypeIndex, string type, string value, bool isStatic, ulong identifyingPointer, string size)
         {
             m_InspectorID = managedInspectorId;
             id = s_IdGenerator++;
             DisplayName = name;
+            ManagedTypeIndex = managedTypeIndex;
             TypeName = type;
             if (ManagedObjectInspector.HidePointers && value.StartsWith("0x"))
                 Value = string.Empty;
             else
                 Value = value;
-            Size = size > 0 ? EditorUtility.FormatBytes((long)size) : string.Empty;
+            Size = size;
             depth = -1;
-            m_IsStatic = isStatic;
+            IsStatic = isStatic;
             m_IdentifyingPointer = identifyingPointer;
             children = new List<TreeViewItem>();
         }
@@ -149,7 +157,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                             break;
                     }
                 }
-                if (m_IsStatic)
+                if (IsStatic)
                     return "Static";
                 return "";
             }

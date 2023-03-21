@@ -29,10 +29,10 @@
 
 .no-data-view__dark #no-data-view__button-icon
 {
-    --unity-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/d_CameraIcon.png");
+    --unity-image: resource("Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_CameraIcon.png");
 }
 
 .no-data-view__light #no-data-view__button-icon
 {
-    --unity-image: resource("Packages/com.unity.memoryprofiler/Package Resources/Icons/CameraIcon.png");
+    --unity-image: resource("Packages/com.unity.memoryprofiler/Editor/UI/Icons/CameraIcon.png");
 }
