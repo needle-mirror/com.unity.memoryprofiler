@@ -160,7 +160,7 @@ namespace Unity.MemoryProfiler.Editor
             if (od.hostManagedObjectPtr != 0)
             {
                 var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(m_Snapshot, od.managedObjectData, od.managedTypeIndex);
-                switch (arrayInfo.rank.Length)
+                switch (arrayInfo.Rank.Length)
                 {
                     case 1:
                         int nestedArrayCount = CountArrayOfArrays(originalTypeName);

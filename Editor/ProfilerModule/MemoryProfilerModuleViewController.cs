@@ -65,8 +65,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             if (ProfilerWindow != null)
                 ProfilerWindow.SelectedFrameIndexChanged -= UpdateWidgetsFrame;
 
-            if (m_ConnectionState != null)
-                m_ConnectionState.Dispose();
+            m_ConnectionState?.Dispose();
             m_ConnectionState = null;
         }
 

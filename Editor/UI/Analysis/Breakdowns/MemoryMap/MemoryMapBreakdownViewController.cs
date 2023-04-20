@@ -9,7 +9,7 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class MemoryMapBreakdownViewController : TreeViewController<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>
+    class MemoryMapBreakdownViewController : TreeViewController<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>, IViewControllerWithVisibilityEvents
     {
         const string k_UxmlAssetGuid = "bc16108acf3b6484aa65bf05d6048e8f";
 
@@ -59,7 +59,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var themeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
             view.AddToClassList(themeUssClass);
-
             return view;
         }
 
@@ -244,12 +243,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
         }
 
-        protected override void OnTreeViewSelectionChanged(IEnumerable<object> items)
+        protected override void OnTreeItemSelected(int itemId, MemoryMapBreakdownModel.ItemData itemData)
         {
-            var selectedIndex = m_TreeView.selectedIndex;
-            var itemId = m_TreeView.GetIdForIndex(selectedIndex);
-            var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(selectedIndex);
-
             ViewController detailsView = BreakdownDetailsViewControllerFactory.Create(m_Snapshot, itemId, itemData.Name, 0, itemData.Source);
             m_SelectionDetails.SetSelection(detailsView);
         }
@@ -297,6 +292,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                 default:
                     throw new ArgumentException("Unable to sort. Unknown column name.");
             }
+        }
+
+        void IViewControllerWithVisibilityEvents.ViewWillBeDisplayed()
+        {
+            // Silent deselection on revisiting this view.
+            // The Selection Details panel should stay the same but the selection in the table needs to be cleared
+            // So that there is no confusion about what is selected, and so that there is no previously selected item
+            // that won't update the Selection Details panel when an attempt to select it is made.
+            ClearSelection();
+        }
+
+        void IViewControllerWithVisibilityEvents.ViewWillBeHidden()
+        {
         }
     }
 }

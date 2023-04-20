@@ -2159,6 +2159,9 @@ namespace Unity.MemoryProfiler.Editor
 
                 EntriesMemoryMap.Dispose();
                 CrawledData = null;
+
+                // Close and dispose the reader
+                m_Reader.Close();
             }
         }
 
@@ -3075,7 +3078,6 @@ namespace Unity.MemoryProfiler.Editor
                 const int kMaxStackDepth = 16;
                 var hierarchyStack = new long[kMaxStackDepth];
                 var hierarchyStackCount = 0;
-                bool hasShownFaultyDataWarning = false;
                 for (long i = 0; i < m_ItemsCount; i++)
                 {
                     var point = m_CombinedData[i];
@@ -3151,21 +3153,13 @@ namespace Unity.MemoryProfiler.Editor
 
                             hierarchyStackCount = startPointStackLevel;
 
-                            // To avoid spam and unnecessarily long opening times due
-                            // to logging overhead, in normal mode warn users only once
-#if !DEBUG_VALIDATION
-                            if (!hasShownFaultyDataWarning)
+#if DEBUG_VALIDATION
+                            // For Native Objects this is a known issue as their GPU size was included in older versions of the backend
+                            // So we only report this issue for newer snapshot versions as a reminder to fix it (i.e. bumping the above version is fine but).
+                            // Other types having the same issue is not a known issue, so we'd want to know about it for these
+                            if (point.Source.Id != SourceIndex.SourceId.NativeObject || m_Snapshot.m_SnapshotVersion > FormatVersion.SystemMemoryResidentPagesVersion)
+                                Debug.LogWarning($"The snapshot contains faulty data, an item of type {point.Source.Id} was nested within an item of the same type (index {i})!");
 #endif
-                            {
-                                // For Native Objects this is a known issue as their GPU size was included in older versions of the backend
-                                // So we only report this issue for newer snapshot versions as a reminder to fix it (i.e. bumping the above version is fine but).
-                                // Other types having the same issue is not a known issue, so we'd want to know about it for these
-                                if (point.Source.Id != SourceIndex.SourceId.NativeObject || m_Snapshot.m_SnapshotVersion > FormatVersion.SystemMemoryResidentPagesVersion)
-                                {
-                                    Debug.LogWarning($"The snapshot contains faulty data, an item of type {point.Source.Id} was nested within an item of the same type (index {i})!");
-                                    hasShownFaultyDataWarning = true;
-                                }
-                            }
                         }
 
                         hierarchyStack[hierarchyStackCount] = i;

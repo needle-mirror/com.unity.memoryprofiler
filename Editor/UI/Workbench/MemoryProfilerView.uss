@@ -236,3 +236,20 @@ Image.square-button-icon
 
     font-size: 12px;
 }
+
+.memory-profile__warning-msg
+{
+    position: absolute;
+
+    width: auto;
+    height: auto;
+    min-width: 80px;
+    min-height: 18px;
+
+    padding: 2px;
+
+    color: red;
+    border-width: 1px;
+    border-color: black;
+    background-color: #383838;
+}

@@ -4,14 +4,22 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    interface IViewController : IDisposable
+    {
+        public VisualElement View { get; }
+        public bool IsViewLoaded { get; }
+        public bool IsDisposed { get; }
+        public void EnsureLoaded();
+    }
+
     // Base view controller class. A view controller is responsible for managing a single, logical unit of UI, known as a 'view'. View controllers may embed the views of other view controllers to form a modular hierarchy.
-    abstract class ViewController : IDisposable
+    abstract class ViewController : IViewController
     {
         // The view owned by this view controller.
         VisualElement m_View;
 
         // The view controller's child view controllers.
-        readonly List<ViewController> m_Children = new List<ViewController>();
+        readonly List<IViewController> m_Children = new List<IViewController>();
 
         // The view controller's view. If the view does not exist when this method is called, it will be created.
         public VisualElement View
@@ -74,13 +82,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         // Add viewController as a child of this view controller.
-        protected void AddChild(ViewController viewController)
+        protected void AddChild(IViewController viewController)
         {
             m_Children.Add(viewController);
         }
 
         // Remove viewController from the children of this view controller.
-        protected void RemoveChild(ViewController viewController)
+        protected void RemoveChild(IViewController viewController)
         {
             m_Children.Remove(viewController);
         }

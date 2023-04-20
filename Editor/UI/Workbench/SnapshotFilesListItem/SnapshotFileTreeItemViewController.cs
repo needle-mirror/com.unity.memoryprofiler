@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Collections;
 using UnityEditor;
 using UnityEngine;
@@ -18,7 +17,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlNameLabel = "memory-profile-snapshotfile__meta-data__name";
         const string k_UxmlOpenSnapshotTag = "memory-profile-snapshotfile__tag";
         const string k_UxmlRenameField = "memory-profile-snapshotfile__meta-data__rename";
-        const string k_UxmlRenameFieldInputArea = "unity-text-input";
+        const string k_UxmlRenameFieldInput = "unity-text-input";
+        const string k_UxmlRenameFieldWarning = "memory-profile-snapshotfile__warning";
+        const string k_UxmlRenameFieldWarningMsg = "memory-profile__warning-msg";
         const string k_UxmlTotalAllocatedInvertedLabel = "memory-profile-snapshotfile__bar__allocated-label-inverted";
 
         public enum State
@@ -34,12 +35,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         SnapshotDataService m_SnapshotDataService;
 
         // View
-        Button m_OpenButton;
+        VisualElement m_Container;
         Label m_Name;
         Label m_OpenSnapshotTag;
         Label m_TotalLabelAllocatedInverted;
         TextField m_RenameField;
-        VisualElement m_RenameFieldInputArea;
+        TextElement m_RenameFieldInputArea;
+        Label m_WarningMessage;
 
         public SnapshotFileItemViewController(SnapshotFileModel model, SnapshotDataService snapshotDataService, ScreenshotsManager screenshotsManager) :
             base(model, screenshotsManager)
@@ -61,6 +63,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+
+            m_WarningMessage?.RemoveFromHierarchy();
+        }
+
         protected override VisualElement LoadView()
         {
             var view = ViewControllerUtility.LoadVisualTreeFromUxml(k_UxmlAssetGuid);
@@ -78,11 +87,15 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void GatherReferencesInView(VisualElement view)
         {
             base.GatherReferencesInView(view);
-            m_OpenButton = view.Q<Button>(k_UxmlOpenButton);
+            m_Container = view.Q(k_UxmlOpenButton);
             m_Name = view.Q<Label>(k_UxmlNameLabel);
             m_OpenSnapshotTag = view.Q<Label>(k_UxmlOpenSnapshotTag);
             m_RenameField = view.Q<TextField>(k_UxmlRenameField);
+            m_RenameFieldInputArea = m_RenameField.Q<TextElement>();
             m_TotalLabelAllocatedInverted = view.Q<Label>(k_UxmlTotalAllocatedInvertedLabel);
+
+            m_WarningMessage = new Label();
+            m_WarningMessage.AddToClassList(k_UxmlRenameFieldWarningMsg);
         }
 
         protected override void RefreshView()
@@ -91,28 +104,63 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             Debug.Assert(Model != null);
 
-            m_OpenButton.clickable.clicked += () => OpenCapture();
-            m_OpenButton.AddManipulator(new ContextualMenuManipulator((binder) => PopulateOpenSnapshotOptionMenu(binder)));
+            m_Container.AddManipulator(new ContextualMenuManipulator((binder) => PopulateOpenSnapshotOptionMenu(binder)));
+            m_Container.RegisterCallback<MouseUpEvent>((evt) =>
+            {
+                if ((MouseButton)evt.button == MouseButton.LeftMouse)
+                {
+                    OpenCapture();
+                    evt.StopPropagation();
+                }
+            });
 
             m_Name.AddManipulator(new Clickable(() => RenameCapture()));
 
             m_RenameField.isDelayed = true;
             m_RenameField.SetValueWithoutNotify(Model.Name);
-            m_RenameField.RegisterCallback<ChangeEvent<string>>((evt) =>
-            {
-                if (evt.newValue != evt.previousValue)
-                    TryRename();
-            });
             m_RenameField.RegisterCallback<KeyDownEvent>((evt) =>
             {
-                if (evt.keyCode == KeyCode.KeypadEnter || evt.keyCode == KeyCode.Return)
-                    TryRename();
-
-                if (evt.keyCode == KeyCode.Escape)
+                if ((evt.keyCode == KeyCode.Return) || (evt.keyCode == KeyCode.KeypadEnter) ||
+                (evt.character == '\n') || (evt.character == '\r') || (evt.character == 0x10))
+                {
+                    if (!ValidateInput(m_RenameField.text))
+                    {
+                        // Don't allow input field to finish editing
+                        // if input value is invalid
+                        evt.StopImmediatePropagation();
+#if UNITY_2023_1_OR_NEWER
+                        m_RenameField.focusController.IgnoreEvent(evt);
+#else
+                        evt.PreventDefault();
+#endif
+                    }
+                }
+                else if (evt.keyCode == KeyCode.Escape)
+                {
                     ResetRenameState();
+                    evt.StopImmediatePropagation();
+                }
+            }, TrickleDown.TrickleDown);
+            m_RenameField.RegisterCallback<KeyUpEvent>((evt) =>
+            {
+                // We validate it separately, overwise m_RenameField.text
+                // will have value before key input is applied
+                ValidateInput(m_RenameField.text);
             });
-            m_RenameField.RegisterCallback<BlurEvent>((evt) => TryRename());
-            m_RenameFieldInputArea = m_RenameField.Q(k_UxmlRenameFieldInputArea);
+            m_RenameField.RegisterCallback<MouseUpEvent>((evt) =>
+            {
+                // Block mouse events, so that it doesn't cause open when
+                // we edit input field and click on it
+                evt.StopImmediatePropagation();
+            });
+            m_RenameField.RegisterCallback<FocusOutEvent>((evt) =>
+            {
+                // We don't validate here, as otherwise we can end up
+                // in sitation of invalid input and lost focus, which
+                // is hard to exit (you'll need to focus and press `esc`)
+                TryRename(m_RenameField.text);
+                ResetRenameState();
+            });
 
             if (Model.MemoryInformationAvailable && Model.TotalResidentMemory > 0)
             {
@@ -161,11 +209,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             binder.menu.AppendAction(TextContent.SnapshotOptionMenuItemDelete.text, (a) =>
             {
-                DeleteCapture();
+                DelayedAction(DeleteCapture);
             });
             binder.menu.AppendAction(TextContent.SnapshotOptionMenuItemRename.text, (a) =>
             {
-                RenameCapture();
+                DelayedAction(RenameCapture);
             });
             binder.menu.AppendAction(TextContent.SnapshotOptionMenuItemBrowse.text, (a) =>
             {
@@ -180,6 +228,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OpenCapture()
         {
+            if (!ProgressBarDisplay.IsComplete())
+                return;
+
             m_SnapshotDataService.Load(Model.FullPath);
         }
 
@@ -193,7 +244,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             UIElementsHelper.SwitchVisibility(m_RenameField, m_Name, true);
             m_RenameField.SetValueWithoutNotify(m_Name.text);
-            EditorCoroutines.Editor.EditorCoroutineUtility.StartCoroutine(FocusRenamFieldDelayed(), this);
+            FocusRenameField();
         }
 
         void DeleteCapture()
@@ -204,30 +255,90 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SnapshotDataService.Delete(Model.FullPath);
         }
 
-        IEnumerator FocusRenamFieldDelayed()
+        bool ValidateInput(string newSnapshotName)
         {
-            // wait for two frames, as the EditorWindow might still be getting it's focus back from the "close to rename" popup
-            yield return null;
-            yield return null;
-            m_RenameFieldInputArea.Focus();
-        }
-
-        void TryRename()
-        {
-            if (!m_SnapshotDataService.ValidateName(m_RenameField.text))
+            if (string.IsNullOrEmpty(newSnapshotName))
             {
-                EditorUtility.DisplayDialog("Error", string.Format("Filename '{0}' contains invalid characters", m_RenameField.text), "OK");
-                return;
+                ShowRenameWarning("Name shouldn't be empty");
+                return false;
             }
 
-            m_SnapshotDataService.Rename(Model.FullPath, m_RenameField.text);
+            if (!m_SnapshotDataService.ValidateName(newSnapshotName))
+            {
+                ShowRenameWarning("Name contains invalid characters");
+                return false;
+            }
 
-            ResetRenameState();
+            if (!m_SnapshotDataService.CanRename(Model.FullPath, newSnapshotName) && (Model.Name != newSnapshotName))
+            {
+                ShowRenameWarning("Snapshot with the same name already exist");
+                return false;
+            }
+
+            HideRenameWarning();
+            return true;
+        }
+
+        void TryRename(string newSnapshotName)
+        {
+            if (!m_SnapshotDataService.ValidateName(newSnapshotName))
+                return;
+
+            if (!m_SnapshotDataService.CanRename(Model.FullPath, newSnapshotName))
+                return;
+
+            m_SnapshotDataService.Rename(Model.FullPath, newSnapshotName);
+        }
+
+        void FocusRenameField()
+        {
+            // We need this because dialogs don't restore
+            // EditorWindow focus, if it's a detached window
+            EditorWindow.FocusWindowIfItsOpen<MemoryProfilerWindow>();
+
+            //// Delay field re-focus so that EditorWindow has time to get focus
+            DelayedAction(() => m_RenameFieldInputArea.Focus());
         }
 
         void ResetRenameState()
         {
             UIElementsHelper.SwitchVisibility(m_RenameField, m_Name, false);
+            HideRenameWarning();
+        }
+
+        void DelayedAction(Action action, int framesDelay = 2)
+        {
+            EditorCoroutines.Editor.EditorCoroutineUtility.StartCoroutine(DelayedActionExecutor(action, framesDelay), this);
+        }
+
+        IEnumerator DelayedActionExecutor(Action action, int framesDelay)
+        {
+            for (int i = 0; i < framesDelay; i++)
+                yield return null;
+
+            action.Invoke();
+        }
+
+        void ShowRenameWarning(string message)
+        {
+            if (!m_RenameField.visible)
+                return;
+
+            m_RenameField.Q(k_UxmlRenameFieldInput).AddToClassList(k_UxmlRenameFieldWarning);
+
+            var viewRoot = m_RenameField.panel.visualTree.Q("memory-profiler-view");
+            var bounds = m_RenameField.ChangeCoordinatesTo(viewRoot, m_RenameField.contentRect);
+            m_WarningMessage.RemoveFromHierarchy();
+            viewRoot.Add(m_WarningMessage);
+            m_WarningMessage.style.left = bounds.xMin;
+            m_WarningMessage.style.top = bounds.yMax + 4;
+            m_WarningMessage.text = message;
+        }
+
+        void HideRenameWarning()
+        {
+            m_RenameField.Q(k_UxmlRenameFieldInput).RemoveFromClassList(k_UxmlRenameFieldWarning);
+            m_WarningMessage.RemoveFromHierarchy();
         }
     }
 }

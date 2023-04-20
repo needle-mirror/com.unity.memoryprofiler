@@ -118,7 +118,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualTreeAsset m_SelectedItemDetailsGroupedItemUxmlPathViewTree;
         const string m_SelectedItemDetailsGroupedItemContainerElementName = "selected-item-details__grouped-item__container";
 
-        VisualElement m_PreviewFoldoutheader;
+        VisualElement m_PreviewFoldoutHeader;
+        Foldout m_PreviewFoldout;
         Image m_Preview;
         EditorAssetFinderUtility.PreviewImageResult m_PreviewImageResult;
 
@@ -156,10 +157,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ManagedObjectInspectors[0].DoGUI(detailsContainer.contentRect);
             };
             m_ManagedObjectInspectorContainors.Add(managedFieldInspectorFoldout);
+
+            var managedFieldInspectorFoldoutSessionStateKey = GetFoldoutSessionStateKey(managedFieldInspectorFoldout.text);
+            managedFieldInspectorFoldout.SetValueWithoutNotify(SessionState.GetBool(managedFieldInspectorFoldoutSessionStateKey, true));
             managedFieldInspectorFoldout.RegisterValueChangedCallback((evt) =>
+            {
                 MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
                     evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectInspectorSectionWasRevealed :
-                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectInspectorSectionWasHidden));
+                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectInspectorSectionWasHidden);
+                SessionState.SetBool(managedFieldInspectorFoldoutSessionStateKey, evt.newValue);
+            });
 
             UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainors[0], false);
 
@@ -202,22 +209,28 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_QuickSearchButton, false);
             UIElementsHelper.SetVisibility(m_CopyButton, false);
 
-            m_PreviewFoldoutheader = detailsPanelRoot.Q("selected-item-details__preview-area");
-            m_Preview = m_PreviewFoldoutheader.Q<Image>("selected-item-details__preview");
-            UIElementsHelper.SetVisibility(m_PreviewFoldoutheader, false);
+            m_PreviewFoldoutHeader = detailsPanelRoot.Q("selected-item-details__preview-area");
+            m_Preview = m_PreviewFoldoutHeader.Q<Image>("selected-item-details__preview");
+            UIElementsHelper.SetVisibility(m_PreviewFoldoutHeader, false);
 
-            m_PreviewFoldoutheader.Q<Foldout>().RegisterValueChangedCallback((evt) =>
+            m_PreviewFoldout = m_PreviewFoldoutHeader.Q<Foldout>();
+            var previewFoldoutSessionStateKey = GetFoldoutSessionStateKey(m_PreviewFoldout.text);
+            m_PreviewFoldout.SetValueWithoutNotify(SessionState.GetBool(previewFoldoutSessionStateKey, true));
+            m_PreviewFoldout.RegisterValueChangedCallback((evt) =>
+            {
                 MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
                     evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasRevealed :
-                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasHidden));
+                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasHidden);
+                SessionState.SetBool(previewFoldoutSessionStateKey, evt.newValue);
+            });
 
             m_GroupedElements = detailsPanelRoot.Q("selected-item-details__grouped-elements");
             m_SelectedItemDetailsGroupUxmlPathViewTree = UIElementsHelper.LoadAssetByGUID(k_UxmlAssetGuidSelectedItemDetailsGroup);
             CreateDetailsGroup(GroupNameBasic);
             CreateDetailsGroup(GroupNameMetaData);
             CreateDetailsGroup(GroupNameHelp);
-            CreateDetailsGroup(GroupNameAdvanced).Foldout.value = false;
-            CreateDetailsGroup(GroupNameDebug).Foldout.value = false;
+            CreateDetailsGroup(GroupNameAdvanced, false);
+            CreateDetailsGroup(GroupNameDebug, false);
             m_SelectedItemDetailsGroupedItemUxmlPathViewTree = UIElementsHelper.LoadAssetByGUID(k_UxmlAssetGuidSelectedItemDetailsGroupedItem);
         }
 
@@ -330,7 +343,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        DetailsGroup CreateDetailsGroup(string name)
+        string GetFoldoutSessionStateKey(string foldoutName) => $"com.unity.memoryprofiler.{nameof(SelectedItemDetailsPanel)}.foldout.{foldoutName}";
+
+        DetailsGroup CreateDetailsGroup(string name, bool expansionDefaultState = true)
         {
             var item = m_SelectedItemDetailsGroupUxmlPathViewTree.Clone();
             item.style.flexGrow = 1;
@@ -339,8 +354,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Foldout = item.Q<Foldout>("selected-item-details__group__header-foldout"),
                 Content = item.Q("selected-item-details__group__content"),
             };
+            var foldoutSessionStateKey = GetFoldoutSessionStateKey(name);
+            groupData.Foldout.SetValueWithoutNotify(SessionState.GetBool(foldoutSessionStateKey, expansionDefaultState));
             groupData.Foldout.RegisterValueChangedCallback((evt) =>
             {
+                SessionState.SetBool(foldoutSessionStateKey, evt.newValue);
                 switch (name)
                 {
                     case GroupNameBasic:
@@ -558,9 +576,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 UIElementsHelper.SetVisibility(m_SelectInEditorButton, true);
                 m_PreviewImageResult = EditorAssetFinderUtility.GetPreviewImage(findings);
+                var previewFoldoutSessionStateKey = GetFoldoutSessionStateKey(m_PreviewFoldout.text);
+                m_PreviewFoldout.SetValueWithoutNotify(SessionState.GetBool(previewFoldoutSessionStateKey, true));
                 if (m_PreviewImageResult.PreviewImage)
                 {
-                    UIElementsHelper.SetVisibility(m_PreviewFoldoutheader, true);
+                    UIElementsHelper.SetVisibility(m_PreviewFoldoutHeader, true);
                     m_Preview.image = m_PreviewImageResult.PreviewImage;
                 }
                 m_SelectInEditorButton.SetEnabled(true);
@@ -668,7 +688,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             m_ActiveDetailsGroupsByGroupName.Clear();
 
-            UIElementsHelper.SetVisibility(m_PreviewFoldoutheader, false);
+            UIElementsHelper.SetVisibility(m_PreviewFoldoutHeader, false);
             if (m_PreviewImageResult.PreviewImageNeedsCleanup)
                 m_PreviewImageResult.Dispose();
             m_Preview.image = null;

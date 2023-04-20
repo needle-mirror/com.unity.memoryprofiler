@@ -200,3 +200,9 @@
 {
     width: 20px;
 }
+
+.memory-profile-snapshotfile__warning
+{
+    border-color: red;
+    border-width: 1px;
+}

@@ -136,11 +136,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.Dispose(disposing);
         }
 
-        // Subclasses may override to handle selection in the comparison tree.
-        protected virtual void OnComparisonTreeItemSelected(int itemId, ComparisonTableModel.ComparisonData itemData)
-        {
-        }
-
         protected IScopedFilter<string> BuildTextFilterFromSearchText()
         {
             var searchText = m_SearchField.value;
@@ -386,15 +381,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             BuildModelAsync();
             MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
                 evt.newValue ? MemoryProfilerAnalytics.PageInteractionType.UnchangedFilterWasApplied : MemoryProfilerAnalytics.PageInteractionType.UnchangedFilterWasRemoved);
-        }
-
-        protected override void OnTreeViewSelectionChanged(IEnumerable<object> items)
-        {
-            // Invoke the selection processor for the selected item.
-            var selectedIndex = m_TreeView.selectedIndex;
-            var itemId = m_TreeView.GetIdForIndex(selectedIndex);
-            var itemData = m_TreeView.GetItemDataForIndex<ComparisonTableModel.ComparisonData>(selectedIndex);
-            OnComparisonTreeItemSelected(itemId, itemData);
         }
 
         Comparison<TreeViewItemData<ComparisonTableModel.ComparisonData>> BuildSortComparisonFromTreeView()

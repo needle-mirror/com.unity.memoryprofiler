@@ -313,7 +313,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             var i = info.IndexToContinueAt;
             string v = null;
-            var typeIdx = info.ArrayInfo != null ? info.ArrayInfo.elementTypeDescription : snapshot.FieldDescriptions.TypeIndex[info.FieldList[i]];
+            var typeIdx = info.ArrayInfo != null ? info.ArrayInfo.ElementTypeDescription : snapshot.FieldDescriptions.TypeIndex[info.FieldList[i]];
             var actualFielTypeIdx = typeIdx;
             if (info.ObjectData.dataType == ObjectDataType.ReferenceArray || info.ObjectData.dataType == ObjectDataType.ReferenceObject)
             {
@@ -394,7 +394,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (data.IsValid)
                 {
                     bool wasAlreadyCrawled;
-                    var moi = Crawler.ParseObjectHeader(cs, new Crawler.StackCrawlData() { ptr = pointer }, out wasAlreadyCrawled, true, data);
+                    var moi = ManagedDataCrawler.ParseObjectHeader(cs, new ManagedDataCrawler.StackCrawlData() { Ptr = pointer }, out wasAlreadyCrawled, true, data);
                     if (moi.IsValid())
                     {
                         m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(childItem, ObjectData.FromManagedObjectInfo(cs, moi)));
@@ -417,10 +417,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                         }
 
                         var bytes = "";
-                        var maxBytesAvailable = (ulong)data.bytes.Count - data.offset;
+                        var maxBytesAvailable = (ulong)data.Bytes.Count - data.Offset;
                         for (var b = 0u; b < maxBytesAvailable && b < 20; b++)
                         {
-                            bytes += data.bytes[(long)data.offset + b].ToString("X") + " ";
+                            bytes += data.Bytes[(long)data.Offset + b].ToString("X") + " ";
                         }
                         // lets get some debug info
                         if (cs.SortedManagedHeapEntries.SectionType(iHeapSection) == CachedSnapshot.MemorySectionType.GarbageCollector)
@@ -589,7 +589,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 item.IndexToContinueAt = 0;
             }
 
-            var elementCount = item.ArrayInfo.length;
+            var elementCount = item.ArrayInfo.Length;
             var elementToStopAt = Math.Min(elementCount, item.IndexToContinueAt + k_MaxArrayIncrement);
 
             for (var i = item.IndexToContinueAt; i < elementToStopAt; i++)

@@ -88,7 +88,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_HelpButton = view.Q<Button>(k_UxmlIdentifier_HelpButton);
         }
 
-        VisualElement MakeAnalysisTabBarItem(ViewController viewController, int viewControllerIndex)
+        VisualElement MakeAnalysisTabBarItem(IViewController viewController, int viewControllerIndex)
         {
             var option = m_Options[viewControllerIndex];
             var tabBarItem = new Label(option.DisplayName)
@@ -124,7 +124,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             const string unityObjectsDescription = "A breakdown of memory contributing to all Unity Objects.";
             const string allTrackedMemoryDescription = "A breakdown of all tracked memory that Unity knows about.";
-#if UNITY_2022_1_OR_NEWER
             m_Options = new List<Option>()
             {
                 new Option("Summary",
@@ -139,21 +138,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (MemoryProfilerSettings.ShowMemoryMapView)
                 m_Options.Add(new Option("Memory Map", new MemoryMapBreakdownViewController(snapshot, m_SelectionDetails)));
-
-#else
-            var errorDescription = $"This feature is not available in Unity {UnityEngine.Application.unityVersion}. Please use Unity 2022.1 or newer.";
-            m_Options = new List<Option>()
-            {
-                new Option("Summary",
-                    new SummaryViewController(snapshot, null) { TabController = this }),
-                new Option("Unity Objects",
-                    new FeatureUnavailableViewController(errorDescription),
-                    unityObjectsDescription),
-                new Option("All Of Memory",
-                    new FeatureUnavailableViewController(errorDescription),
-                    allTrackedMemoryDescription),
-            };
-#endif
         }
 
         // Create a model containing the available Analysis options when comparing two snapshots.
@@ -161,7 +145,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             const string unityObjectsComparisonDescription = "A comparison of memory contributing to all Unity Objects in each capture.";
             const string allTrackedMemoryComparisonDescription = "A comparison of all tracked memory in each capture.";
-#if UNITY_2022_1_OR_NEWER
+
             m_Options = new List<Option>()
             {
                 new Option("Summary",
@@ -184,23 +168,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                     allTrackedMemoryComparisonDescription,
                     "All Of Memory Comparison")
             };
-#else
-            var errorDescription = $"This feature is not available in Unity {UnityEngine.Application.unityVersion}. Please use Unity 2022.1 or newer.";
-            m_Options = new List<Option>()
-            {
-                new Option("Summary",
-                    new SummaryViewController(baseSnapshot, comparedSnapshot) { TabController = this },
-                    analyticsPageName: "Summary Comparison"),
-                new Option("Unity Objects",
-                    new FeatureUnavailableViewController(errorDescription),
-                    unityObjectsComparisonDescription,
-                    "Unity Objects Comparison"),
-                new Option("All Of Memory",
-                    new FeatureUnavailableViewController(errorDescription),
-                    allTrackedMemoryComparisonDescription,
-                    "All Of Memory Comparison"),
-            };
-#endif
         }
 
         public bool TrySelectCategory(IAnalysisViewSelectable.Category category)
@@ -226,7 +193,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         readonly struct Option
         {
-            public Option(string displayName, ViewController viewController, string description = null, string analyticsPageName = null)
+            public Option(string displayName, IViewControllerWithVisibilityEvents viewController, string description = null, string analyticsPageName = null)
             {
                 DisplayName = displayName;
                 ViewController = viewController;
@@ -239,7 +206,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public string DisplayName { get; }
 
-            public ViewController ViewController { get; }
+            public IViewControllerWithVisibilityEvents ViewController { get; }
 
             public string Description { get; }
 

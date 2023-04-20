@@ -99,7 +99,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         // The data associated with each item in the tree.
-        public readonly struct ItemData
+        public readonly struct ItemData : INamedTreeItemData
         {
             public ItemData(string name, ulong address, MemorySize size, string itemType, CachedSnapshot.SourceIndex source)
             {

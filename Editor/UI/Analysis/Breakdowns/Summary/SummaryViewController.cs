@@ -5,7 +5,7 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class SummaryViewController : ViewController
+    class SummaryViewController : ViewController, IViewControllerWithVisibilityEvents
     {
         const string k_UxmlAssetGuid = "63f1db43e50fc4f4288f3d1b1c3d9078";
         const string k_UssClass_Dark = "summary-view__dark";
@@ -242,12 +242,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        void ClearSelection()
+        void ClearSelection(bool notify = true)
         {
             foreach (var item in m_WidgetControllers)
                 item.ClearSelection();
 
-            m_SelectionDetails.ClearSelection();
+            if (notify)
+                m_SelectionDetails.ClearSelection();
+        }
+
+        void IViewControllerWithVisibilityEvents.ViewWillBeDisplayed()
+        {
+            // Silent deselection
+            ClearSelection(notify: false);
+        }
+
+        void IViewControllerWithVisibilityEvents.ViewWillBeHidden()
+        {
         }
     }
 }

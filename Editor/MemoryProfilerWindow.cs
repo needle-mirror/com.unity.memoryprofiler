@@ -84,8 +84,11 @@ namespace Unity.MemoryProfiler.Editor
             EditorApplication.update -= PollForApplicationFocus;
             EditorSceneManager.activeSceneChangedInEditMode -= RefreshScreenshotsOnSceneChange;
 
-            m_PlayerConnectionService.OnDisable();
+            m_PlayerConnectionService?.Dispose();
             m_PlayerConnectionService = null;
+
+            m_SnapshotDataService?.Dispose();
+            m_SnapshotDataService = null;
 
             MemoryProfilerAnalytics.DisableAnalytics();
         }

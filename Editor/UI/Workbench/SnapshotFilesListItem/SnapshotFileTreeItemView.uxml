@@ -8,7 +8,7 @@
     <engine:VisualElement name="memory-profile-snapshotfile-item" class="memory-profile-snapshotfile">
         <Style src="SnapshotFileTreeItemView.uss" />
 
-        <engine:Button name="memory-profile-snapshotfile__button">
+        <engine:VisualElement name="memory-profile-snapshotfile__button">
             <engine:VisualElement name="memory-profile-snapshotfile__preview-image__container">
                 <engine:Image name="memory-profile-snapshotfile__preview-image" class="preview-image">
                     <engine:Image name="memory-profile-snapshotfile__preview-image__editor-icon" />
@@ -38,7 +38,7 @@
                     </engine:VisualElement>
                 </engine:VisualElement>
             </engine:VisualElement>
-        </engine:Button>
+        </engine:VisualElement>
 
         <engine:Label text="A" display-tooltip-when-elided="true" name="memory-profile-snapshotfile__tag" class="memory-profile-snapshotfile__tag__label"/>
     </engine:VisualElement>

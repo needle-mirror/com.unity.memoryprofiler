@@ -7,6 +7,25 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.0-exp.2] - 2023-04-20
+
+### Added
+- Added metadata support for AudioClip and Shader objects.
+
+### Fixed
+- Fixed an ArgumentNullException for a parameter named `e` in `MemoryBreakdownLegendViewController.GatherColumnReferences` ([PROFB-97](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-97)).
+- Fixed Selection Details foldouts so that they retain their expansion status for the duration of an Editor session and not change on every selection change.
+- Fixed screenshots remaining after deleting snapshots.
+- Fixed situations where the highlighted element in tables did not reflect the displayed selection but could not be clicked to show its details in the selection, particularly when the selected row item would change due to search filtering the table, switching back to a previously visited view.
+- Fixed leaks of native UnsafeUtility.Malloc(Persistent) allocations that occured when the Editor recompiled code while a snapshot was open.
+- Fixed leaks of Persistent NativeArray allocations via the Snapshot FileReader occuring with every (attempted) opening of a snapshot.
+- Fixed Unity Objects view not showing graphics resources for snapshots made with Unity 2022.1 and older
+- Added a tooltip for graphics items in All of Memory Table in "Resident" and "Allocated and Resident" views for a better explanation of why some elements are grayed out
+- Removed not-actionable console warning for iOS captures about reported overlapping Native Objects allocations
+- Fixed error if you try to open a snapshot while capturing
+- Fixed error reported if you try to change table view mode with dropdown while the view is still loading
+- Fixed snapshot renaming issues in situations when warning or error dialog is shown
+
 ## [1.1.0-exp.1] - 2023-03-21
 
 ### Added
@@ -79,7 +98,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Removed Fragmentation, Objects & Allocations, and Tree Map legacy tabs.
 
 ### Changed
-- Changed minimal supported version to 2020.3.
+- Changed minimal supported version to 2022.2.
 - Use Editor built-in platform icons in the Snapshot panel.
 - Moved Unity Objects and All Of Memory breakdowns to their own tabs.
 - Moved Potential Duplicates to an option within Unity Objects.

@@ -102,7 +102,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Managed Size", EditorUtility.FormatBytes(managedSize), $"{managedSize:N0} B");
             if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array)
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).length.ToString());
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).Length.ToString());
             }
             else if (type.ManagedTypeIndex == m_CachedSnapshot.TypeDescriptions.ITypeString)
             {
@@ -126,7 +126,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 if (heldByGCHandle)
                 {
-                    if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array && m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).length == 0 &&
+                    if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array && m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).Length == 0 &&
                         m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[m_CurrentSelectionObjectData.managedTypeIndex].StartsWith("Unity"))
                     {
                         m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UsedByNativeCodeStatus, TextContent.UsedByNativeCodeHint);

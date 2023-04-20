@@ -3,6 +3,12 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    interface IViewControllerWithVisibilityEvents : IViewController
+    {
+        public void ViewWillBeDisplayed();
+        public void ViewWillBeHidden();
+    }
+
     // TabBarController is a container view controller designed for switching between content views in a tab-bar interface.
     abstract class TabBarController : ViewController
     {
@@ -13,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         VisualElement[] m_TabBarItems;
 
-        ViewController[] m_ViewControllers;
+        IViewControllerWithVisibilityEvents[] m_ViewControllers;
 
         protected TabBarController(IResponder responder = null)
         {
@@ -27,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             set => SetSelectedIndex(value);
         }
 
-        public ViewController[] ViewControllers
+        public IViewControllerWithVisibilityEvents[] ViewControllers
         {
             get => m_ViewControllers;
             set
@@ -41,6 +47,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Clean up old view controllers.
                 if (m_ViewControllers != null)
                 {
+                    m_ViewControllers[m_SelectedIndex].ViewWillBeHidden();
                     foreach (var viewController in m_ViewControllers)
                     {
                         RemoveChild(viewController);
@@ -65,7 +72,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        protected IResponder Responder { get; set; }
+        protected IResponder Responder { get; private set; }
 
         // The tab bar controller's content view, where it places the selected content view controller's view. Must be assigned before ViewLoaded (in LoadView).
         protected abstract VisualElement ContentView { get; set; }
@@ -74,7 +81,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected abstract VisualElement TabBarView { get; set; }
 
         // Override to provide custom tab bar items. One tab bar item will be created for each content view controller in ViewControllers and added as children of TabBarView.
-        protected Func<ViewController, int, VisualElement> MakeTabBarItem { get; set; }
+        protected Func<IViewControllerWithVisibilityEvents, int, VisualElement> MakeTabBarItem { get; set; }
 
         protected override void ViewLoaded()
         {
@@ -147,6 +154,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (ContentView.IndexOf(contentViewController.View) == -1)
                 ContentView.Add(contentViewController.View);
 
+            contentViewController.ViewWillBeDisplayed();
             // Show the view controller's view.
             UIElementsHelper.SetElementDisplay(contentViewController.View, true);
         }
@@ -159,6 +167,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (!contentViewController.IsViewLoaded)
                 return;
 
+            contentViewController.ViewWillBeHidden();
             // Hide the view controller's view.
             UIElementsHelper.SetElementDisplay(contentViewController.View, false);
         }
@@ -215,7 +224,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 tabBarItem.RemoveFromClassList(k_UssClass_TabBarItemSelected);
         }
 
-        VisualElement MakeDefaultTabBarItem(ViewController viewController, int viewControllerIndex)
+        VisualElement MakeDefaultTabBarItem(IViewControllerWithVisibilityEvents viewController, int viewControllerIndex)
         {
             return new Button(() =>
             {

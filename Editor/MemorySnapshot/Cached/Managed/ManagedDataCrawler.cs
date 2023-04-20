@@ -4,492 +4,21 @@ using System.Collections.Generic;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Format;
-using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    internal struct ManagedConnection
-    {
-        public enum ConnectionType
-        {
-            ManagedObject_To_ManagedObject,
-            ManagedType_To_ManagedObject,
-            UnityEngineObject,
-        }
-        public ManagedConnection(ConnectionType t, int from, int to, int fieldFrom, int arrayIndexFrom)
-        {
-            connectionType = t;
-            index0 = from;
-            index1 = to;
-            this.fieldFrom = fieldFrom;
-            this.arrayIndexFrom = arrayIndexFrom;
-        }
-
-        private int index0;
-        private int index1;
-
-        public int fieldFrom;
-        public int arrayIndexFrom;
-
-        public ConnectionType connectionType;
-        public long GetUnifiedIndexFrom(CachedSnapshot snapshot)
-        {
-            switch (connectionType)
-            {
-                case ConnectionType.ManagedObject_To_ManagedObject:
-                    return snapshot.ManagedObjectIndexToUnifiedObjectIndex(index0);
-                case ConnectionType.ManagedType_To_ManagedObject:
-                    return index0;
-                case ConnectionType.UnityEngineObject:
-                    return snapshot.NativeObjectIndexToUnifiedObjectIndex(index0);
-                default:
-                    return -1;
-            }
-        }
-
-        public long GetUnifiedIndexTo(CachedSnapshot snapshot)
-        {
-            switch (connectionType)
-            {
-                case ConnectionType.ManagedObject_To_ManagedObject:
-                case ConnectionType.ManagedType_To_ManagedObject:
-                case ConnectionType.UnityEngineObject:
-                    return snapshot.ManagedObjectIndexToUnifiedObjectIndex(index1);
-                default:
-                    return -1;
-            }
-        }
-
-        public int fromManagedObjectIndex
-        {
-            get
-            {
-                switch (connectionType)
-                {
-                    case ConnectionType.ManagedObject_To_ManagedObject:
-                    case ConnectionType.ManagedType_To_ManagedObject:
-                        return index0;
-                }
-                return -1;
-            }
-        }
-        public int toManagedObjectIndex
-        {
-            get
-            {
-                switch (connectionType)
-                {
-                    case ConnectionType.ManagedObject_To_ManagedObject:
-                    case ConnectionType.ManagedType_To_ManagedObject:
-                        return index1;
-                }
-                return -1;
-            }
-        }
-
-        public int fromManagedType
-        {
-            get
-            {
-                if (connectionType == ConnectionType.ManagedType_To_ManagedObject)
-                {
-                    return index0;
-                }
-                return -1;
-            }
-        }
-        public int UnityEngineNativeObjectIndex
-        {
-            get
-            {
-                if (connectionType == ConnectionType.UnityEngineObject)
-                {
-                    return index0;
-                }
-                return -1;
-            }
-        }
-        public int UnityEngineManagedObjectIndex
-        {
-            get
-            {
-                if (connectionType == ConnectionType.UnityEngineObject)
-                {
-                    return index1;
-                }
-                return -1;
-            }
-        }
-        public static ManagedConnection MakeUnityEngineObjectConnection(int NativeIndex, int ManagedIndex)
-        {
-            return new ManagedConnection(ConnectionType.UnityEngineObject, NativeIndex, ManagedIndex, 0, 0);
-        }
-
-        public static ManagedConnection MakeConnection(CachedSnapshot snapshot, int fromIndex, ulong fromPtr, int toIndex, ulong toPtr, int fromTypeIndex, int fromField, int fieldArrayIndexFrom)
-        {
-            if (fromIndex >= 0)
-            {
-                //from an object
-#if DEBUG_VALIDATION
-                if (fromField >= 0)
-                {
-                    if (snapshot.FieldDescriptions.IsStatic[fromField] == 1)
-                    {
-                        Debug.LogError("Cannot make a connection from an object using a static field.");
-                    }
-                }
-#endif
-                return new ManagedConnection(ConnectionType.ManagedObject_To_ManagedObject, fromIndex, toIndex, fromField, fieldArrayIndexFrom);
-            }
-            else if (fromTypeIndex >= 0)
-            {
-                //from a type static data
-#if DEBUG_VALIDATION
-                if (fromField >= 0)
-                {
-                    if (snapshot.FieldDescriptions.IsStatic[fromField] == 0)
-                    {
-                        Debug.LogError("Cannot make a connection from a type using a non-static field.");
-                    }
-                }
-#endif
-                return new ManagedConnection(ConnectionType.ManagedType_To_ManagedObject, fromTypeIndex, toIndex, fromField, fieldArrayIndexFrom);
-            }
-            else
-            {
-                throw new InvalidOperationException("Tried to add a Managed Connection without a valid source.");
-            }
-        }
-    }
-
-#pragma warning disable CS0660 // Type defines operator == or operator != but does not override Object.Equals(object o)
-#pragma warning disable CS0661 // Type defines operator == or operator != but does not override Object.GetHashCode()
-    internal struct ManagedObjectInfo
-#pragma warning restore CS0661 // Type defines operator == or operator != but does not override Object.GetHashCode()
-#pragma warning restore CS0660 // Type defines operator == or operator != but does not override Object.Equals(object o)
-    {
-        public ulong PtrObject;
-        public ulong PtrTypeInfo;
-        public int NativeObjectIndex;
-        public int ManagedObjectIndex;
-        public int ITypeDescription;
-        public int Size;
-        public int RefCount;
-
-        public bool IsKnownType()
-        {
-            return ITypeDescription >= 0;
-        }
-
-        public BytesAndOffset data;
-
-        public bool IsValid()
-        {
-            return PtrObject != 0 && PtrTypeInfo != 0 && data.bytes.IsCreated;
-        }
-
-        public static bool operator ==(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
-        {
-            return lhs.PtrObject == rhs.PtrObject
-                && lhs.PtrTypeInfo == rhs.PtrTypeInfo
-                && lhs.NativeObjectIndex == rhs.NativeObjectIndex
-                && lhs.ManagedObjectIndex == rhs.ManagedObjectIndex
-                && lhs.ITypeDescription == rhs.ITypeDescription
-                && lhs.Size == rhs.Size
-                && lhs.RefCount == rhs.RefCount;
-        }
-
-        public static bool operator !=(ManagedObjectInfo lhs, ManagedObjectInfo rhs)
-        {
-            return !(lhs == rhs);
-        }
-    }
-
-    internal class ManagedData
-    {
-        public bool Crawled { private set; get; }
-        const int k_ManagedObjectBlockSize = 32768;
-        const int k_ManagedConnectionsBlockSize = 65536;
-        public BlockList<ManagedObjectInfo> ManagedObjects { private set; get; }
-        public Dictionary<ulong, int> MangedObjectIndexByAddress { private set; get; }
-        public BlockList<ManagedConnection> Connections { private set; get; }
-        public Dictionary<int, int> NativeUnityObjectTypeIndexToManagedBaseTypeIndex { get; private set; }
-        public ulong ManagedObjectMemoryUsage { private set; get; }
-        public ulong AbandonedManagedObjectMemoryUsage { private set; get; }
-        public ulong ActiveHeapMemoryUsage { private set; get; }
-        public ulong ActiveHeapMemoryEmptySpace { private set; get; }
-        public ulong AbandonedManagedObjectActiveHeapMemoryUsage { private set; get; }
-        // ConnectionsMappedToUnifiedIndex and ConnectionsMappedToNativeIndex are derived structure used in accelerating searches in the details view
-        public Dictionary<long, List<int>> ConnectionsToMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
-        public Dictionary<long, List<int>> ConnectionsFromMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
-        public Dictionary<long, List<int>> ConnectionsMappedToNativeIndex { private set; get; } = new Dictionary<long, List<int>>();
-
-#if DEBUG_VALIDATION
-        // This Dictionary block is here to make the investigations for PROF-2420 easier.
-        public Dictionary<int, ManagedObjectInfo> InvalidManagedObjectsReportedViaGCHandles { private set; get; } = new Dictionary<int, ManagedObjectInfo>();
-#endif
-
-        public ManagedData(long rawGcHandleCount, long rawConnectionsCount)
-        {
-            //compute initial block counts for larger snapshots
-            ManagedObjects = new BlockList<ManagedObjectInfo>(k_ManagedObjectBlockSize, rawGcHandleCount);
-            Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsBlockSize, rawConnectionsCount);
-
-            MangedObjectIndexByAddress = new Dictionary<ulong, int>();
-            NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new Dictionary<int, int>();
-        }
-
-        internal void AddUpTotalMemoryUsage(CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)
-        {
-            var totalManagedObjectsCount = ManagedObjects.Count;
-            ManagedObjectMemoryUsage = 0;
-            if (managedMemorySections.Count <= 0)
-            {
-                ActiveHeapMemoryUsage = AbandonedManagedObjectMemoryUsage = 0;
-
-                return;
-            }
-
-            var activeHeapSectionStartAddress = managedMemorySections.StartAddress[managedMemorySections.FirstAssumedActiveHeapSectionIndex];
-            var activeHeapSectionEndAddress = managedMemorySections.StartAddress[managedMemorySections.LastAssumedActiveHeapSectionIndex] + managedMemorySections.SectionSize[managedMemorySections.LastAssumedActiveHeapSectionIndex];
-            for (int i = 0; i < totalManagedObjectsCount; i++)
-            {
-                var size = (ulong)ManagedObjects[i].Size;
-                ManagedObjectMemoryUsage += size;
-                if (ManagedObjects[i].RefCount == 0)
-                    AbandonedManagedObjectMemoryUsage += size;
-
-                if (ManagedObjects[i].PtrObject > activeHeapSectionStartAddress && ManagedObjects[i].PtrObject < activeHeapSectionEndAddress)
-                {
-                    ActiveHeapMemoryUsage += size;
-                    if (ManagedObjects[i].RefCount == 0)
-                        AbandonedManagedObjectActiveHeapMemoryUsage += size;
-                }
-            }
-            ActiveHeapMemoryEmptySpace = managedMemorySections.StartAddress[managedMemorySections.LastAssumedActiveHeapSectionIndex]
-                + managedMemorySections.SectionSize[managedMemorySections.LastAssumedActiveHeapSectionIndex]
-                - managedMemorySections.StartAddress[managedMemorySections.FirstAssumedActiveHeapSectionIndex]
-                - ActiveHeapMemoryUsage;
-        }
-
-        internal void FinishedCrawling()
-        {
-            Crawled = true;
-        }
-
-        public void CreateConnectionMaps(CachedSnapshot cs)
-        {
-            for (var i = 0; i < Connections.Count; i++)
-            {
-                var key = Connections[i].GetUnifiedIndexTo(cs);
-                if (ConnectionsToMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
-                    unifiedIndexList.Add(i);
-                else
-                    ConnectionsToMappedToUnifiedIndex[key] = new List<int> { i };
-            }
-
-            for (var i = 0; i < Connections.Count; i++)
-            {
-                var key = Connections[i].GetUnifiedIndexFrom(cs);
-                if (ConnectionsFromMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
-                    unifiedIndexList.Add(i);
-                else
-                    ConnectionsFromMappedToUnifiedIndex[key] = new List<int> { i };
-            }
-
-            for (var i = 0; i < Connections.Count; i++)
-            {
-                var key = Connections[i].UnityEngineNativeObjectIndex;
-                if (ConnectionsMappedToNativeIndex.TryGetValue(key, out var nativeObjectList))
-                    nativeObjectList.Add(i);
-                else
-                    ConnectionsMappedToNativeIndex[key] = new List<int> { i };
-            }
-        }
-    }
-
-    internal readonly struct BytesAndOffset
-    {
-        public readonly DynamicArray<byte> bytes;
-        public readonly ulong offset;
-        public readonly uint pointerSize;
-        public bool IsValid { get { return bytes.IsCreated; } }
-        public BytesAndOffset(DynamicArray<byte> bytes, uint pointerSize, ulong offset = 0)
-        {
-            if (!bytes.IsCreated)
-                throw new ArgumentException(nameof(bytes), $"{nameof(bytes)} does not contain any data.");
-            this.bytes = bytes;
-            this.pointerSize = pointerSize;
-            this.offset = offset;
-        }
-
-        public enum PtrReadError
-        {
-            Success,
-            OutOfBounds,
-            InvalidPtrSize
-        }
-
-        public PtrReadError TryReadPointer(out ulong ptr)
-        {
-            ptr = unchecked(0xffffffffffffffff);
-
-            if (offset + pointerSize > (ulong)bytes.Count)
-                return PtrReadError.OutOfBounds;
-
-            unsafe
-            {
-                switch (pointerSize)
-                {
-                    case VMTools.X64ArchPtrSize:
-                        ptr = BitConverterExt.ToUInt64(bytes, offset);
-                        return PtrReadError.Success;
-                    case VMTools.X86ArchPtrSize:
-                        ptr = BitConverterExt.ToUInt32(bytes, offset);
-                        return PtrReadError.Success;
-                    default: //should never happen
-                        return PtrReadError.InvalidPtrSize;
-                }
-            }
-        }
-
-        public byte ReadByte()
-        {
-            return bytes[(long)offset];
-        }
-
-        public short ReadInt16()
-        {
-            return BitConverterExt.ToInt16(bytes, offset);
-        }
-
-        public Int32 ReadInt32()
-        {
-            return BitConverterExt.ToInt32(bytes, offset);
-        }
-
-        public Int32 ReadInt32(ulong additionalOffset)
-        {
-            return BitConverterExt.ToInt32(bytes, offset + additionalOffset);
-        }
-
-        public Int64 ReadInt64()
-        {
-            return BitConverterExt.ToInt64(bytes, offset);
-        }
-
-        public ushort ReadUInt16()
-        {
-            return BitConverterExt.ToUInt16(bytes, offset);
-        }
-
-        public uint ReadUInt32()
-        {
-            return BitConverterExt.ToUInt32(bytes, offset);
-        }
-
-        public ulong ReadUInt64()
-        {
-            return BitConverterExt.ToUInt64(bytes, offset);
-        }
-
-        public bool ReadBoolean()
-        {
-            return BitConverterExt.ToBoolean(bytes, offset);
-        }
-
-        public char ReadChar()
-        {
-            return BitConverterExt.ToChar(bytes, offset);
-        }
-
-        public double ReadDouble()
-        {
-            return BitConverterExt.ToDouble(bytes, offset);
-        }
-
-        public float ReadSingle()
-        {
-            return BitConverterExt.ToSingle(bytes, offset);
-        }
-
-        public unsafe byte* GetUnsafeOffsetTypedPtr()
-        {
-            return bytes.GetUnsafeTypedPtr() + offset;
-        }
-
-        public string ReadString(out int fullLength)
-        {
-            var readLength = fullLength = ReadInt32();
-            var additionalOffsetForObjectHeader = 0ul;
-            if (fullLength < 0 || (long)offset + (long)sizeof(int) + ((long)fullLength * (long)2) > bytes.Count)
-            {
-                // Why is the header not included for object data in the tables?
-                // this workaround here is flakey!
-                additionalOffsetForObjectHeader = 16;
-                readLength = fullLength = ReadInt32(additionalOffsetForObjectHeader);
-
-                if (fullLength < 0 || (long)offset + (long)sizeof(int) + ((long)fullLength * (long)2) > bytes.Count)
-                {
-#if DEBUG_VALIDATION
-                    Debug.LogError("Attempted to read outside of binary buffer.");
-#endif
-                    return "Invalid String object, " + TextContent.InvalidObjectPleaseReportABugMessage;
-                }
-                // find out what causes this and fix it, then remove the additionalOffsetForObjectHeader workaround
-#if DEBUG_VALIDATION
-                Debug.LogError("String reading is broken.");
-#endif
-            }
-            if (fullLength > StringTools.MaxStringLengthToRead)
-            {
-                readLength = StringTools.MaxStringLengthToRead;
-                readLength += StringTools.Elipsis.Length;
-            }
-            unsafe
-            {
-                byte* ptr = bytes.GetUnsafeTypedPtr();
-                {
-                    string str = null;
-                    char* begin = (char*)(ptr + (offset + additionalOffsetForObjectHeader + sizeof(int)));
-                    str = new string(begin, 0, readLength);
-                    if (fullLength != readLength)
-                    {
-                        fixed (char* s = str, e = StringTools.Elipsis)
-                        {
-                            var c = s;
-                            c += readLength - StringTools.Elipsis.Length;
-                            UnsafeUtility.MemCpy(c, e, StringTools.Elipsis.Length);
-                        }
-                    }
-                    return str;
-                }
-            }
-        }
-
-        public BytesAndOffset Add(ulong add)
-        {
-            return new BytesAndOffset(bytes, pointerSize, offset + add);
-        }
-
-        public BytesAndOffset NextPointer()
-        {
-            return Add(pointerSize);
-        }
-    }
-
-    internal static class Crawler
+    static class ManagedDataCrawler
     {
         internal struct StackCrawlData
         {
-            public ulong ptr;
-            public ulong ptrFrom;
-            public int typeFrom;
-            public int indexOfFrom;
-            public int fieldFrom;
-            public int fromArrayIndex;
+            public ulong Ptr;
+            public ulong PtrFrom;
+            public int TypeFrom;
+            public int IndexOfFrom;
+            public int FieldFrom;
+            public int FromArrayIndex;
         }
 
         class IntermediateCrawlData
@@ -564,7 +93,7 @@ namespace Unity.MemoryProfiler.Editor
                 //add handles for processing
                 while (uniqueHandlesBegin != uniqueHandlesEnd)
                 {
-                    crawlData.CrawlDataStack.Push(new StackCrawlData { ptr = UnsafeUtility.ReadArrayElement<ulong>(uniqueHandlesBegin++, 0), ptrFrom = 0, typeFrom = -1, indexOfFrom = -1, fieldFrom = -1, fromArrayIndex = -1 });
+                    crawlData.CrawlDataStack.Push(new StackCrawlData { Ptr = UnsafeUtility.ReadArrayElement<ulong>(uniqueHandlesBegin++, 0), PtrFrom = 0, TypeFrom = -1, IndexOfFrom = -1, FieldFrom = -1, FromArrayIndex = -1 });
                 }
                 UnsafeUtility.Free(uniqueHandlesPtr, Collections.Allocator.Temp);
             }
@@ -722,22 +251,36 @@ namespace Unity.MemoryProfiler.Editor
                 //Must derive of unity Object
                 var objectInfo = objectInfos[i];
                 objectInfo.NativeObjectIndex = -1;
-                int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
-                int nativeTypeIndex;
-                if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue(objectInfo.ITypeDescription, out nativeTypeIndex))
+
+                var isInUnityObjectTypeIndexToNativeTypeIndex = snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue(objectInfo.ITypeDescription, out var nativeTypeIndex);
+                var isOrCouldBeAUnityObject = isInUnityObjectTypeIndexToNativeTypeIndex;
+                if (!isInUnityObjectTypeIndexToNativeTypeIndex)
                 {
+                    if (i < snapshot.GcHandles.Count)
+                    {
+                        // If this managed object was reported because someone had a GC Handle on it, chances are pretty good that there is a Native Object behind this
+                        // Given that the type isn't yet known to be a UnityObjectType, something might've gone wrong with the TypeDescription reporting
+                        // (annecdotal evidence suggests that ScriptableSingletons residing in assemblies other that the Editor Assembly could be affected this way
+                        // If this looks to be the case, try to patch the data back up as good as possible
+                        isOrCouldBeAUnityObject = true;
+                        nativeTypeIndex = -1;
+                    }
+                }
+                if (isOrCouldBeAUnityObject)
+                {
+                    int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
                     // TODO: Add index to a list of Managed Unity Objects here
                     var heapSection = snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
                     if (!heapSection.IsValid)
                     {
-                        Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
+                        // Don't warn if this was an attempt to fix broken data
+                        if (isInUnityObjectTypeIndexToNativeTypeIndex)
+                            Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
                     }
                     else
                     {
-                        ulong cachedPtr;
-                        heapSection.TryReadPointer(out cachedPtr);
-
-                        if (!snapshot.NativeObjects.NativeObjectAddressToInstanceId.TryGetValue(cachedPtr, out instanceID))
+                        if (heapSection.TryReadPointer(out var cachedPtr) != BytesAndOffset.PtrReadError.Success ||
+                            !snapshot.NativeObjects.NativeObjectAddressToInstanceId.TryGetValue(cachedPtr, out instanceID))
                             instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
                         // cachedPtr == 0UL or instanceID == CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone -> Leaked Shell
                         // TODO: Add index to a list of leaked shells here.
@@ -746,24 +289,57 @@ namespace Unity.MemoryProfiler.Editor
                     if (instanceID != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone)
                     {
                         if (snapshot.NativeObjects.InstanceId2Index.TryGetValue(instanceID, out objectInfo.NativeObjectIndex))
+                        {
                             snapshot.NativeObjects.ManagedObjectIndex[objectInfo.NativeObjectIndex] = i;
 
-                        if (nativeTypeIndex == -1)
-                        {
-                            nativeTypeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[objectInfo.NativeObjectIndex];
-                            ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes(snapshot, nativeTypeIndex, objectInfo.ITypeDescription);
-                        }
-                        if (snapshot.HasConnectionOverhaul)
-                        {
-                            snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
-                            var rc = ++snapshot.NativeObjects.RefCount[objectInfo.NativeObjectIndex];
-                            snapshot.NativeObjects.RefCount[objectInfo.NativeObjectIndex] = rc;
+                            if (nativeTypeIndex == -1)
+                            {
+                                nativeTypeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[objectInfo.NativeObjectIndex];
+
+                                if (!isInUnityObjectTypeIndexToNativeTypeIndex)
+                                {
+                                    if (nativeTypeIndex == snapshot.NativeTypes.MonoBehaviourIdx
+                                        || nativeTypeIndex == snapshot.NativeTypes.ScriptableObjectIdx
+                                        || nativeTypeIndex == snapshot.NativeTypes.EditorScriptableObjectIdx)
+                                    {
+                                        // This acutally WAS a Unity Object with faulty type data reporting, fix up UnityObjectTypeIndexToNativeTypeIndex,
+                                        // but set native type to -1 so that ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes can fix up all managed base types that ARE reported
+                                        snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.Add(objectInfo.ITypeDescription, -1);
+                                        isInUnityObjectTypeIndexToNativeTypeIndex = true;
+                                    }
+                                    else
+                                    {
 #if DEBUG_VALIDATION
-                            managedObjectAddressToNativeObjectIndex.Add(objectInfo.PtrObject, objectInfo.NativeObjectIndex);
+                                        Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") looked like it could have been a Unity Object with a faultily reported managed type but wasn't a ScriptableObject or MonoBehaviour");
 #endif
+                                        // As a safeguard measure, in case that there are objects:
+                                        // - with GCHandles on them
+                                        // - with a field at the same position as m_CachedHandle
+                                        // - which contains data that looks like a valid address to a valid native object
+                                        // but which isn't likely to have broken reported type data (aka is not a scriptable type)
+                                        // Ignore it and BAIL!
+                                        objectInfo.NativeObjectIndex = -1;
+                                        objectInfos[i] = objectInfo;
+                                        continue;
+                                    }
+                                }
+
+                                ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes(snapshot, nativeTypeIndex, objectInfo.ITypeDescription);
+                            }
+                            if (snapshot.HasConnectionOverhaul)
+                            {
+                                snapshot.CrawledData.Connections.Add(ManagedConnection.MakeUnityEngineObjectConnection(objectInfo.NativeObjectIndex, objectInfo.ManagedObjectIndex));
+                                var refCount = ++snapshot.NativeObjects.RefCount[objectInfo.NativeObjectIndex];
+                                snapshot.NativeObjects.RefCount[objectInfo.NativeObjectIndex] = refCount;
+#if DEBUG_VALIDATION
+                                managedObjectAddressToNativeObjectIndex.Add(objectInfo.PtrObject, objectInfo.NativeObjectIndex);
+#endif
+                            }
                         }
+                        else
+                            objectInfo.NativeObjectIndex = -1;
                     }
-                    if (nativeTypeIndex == -1)
+                    if (nativeTypeIndex == -1 && isInUnityObjectTypeIndexToNativeTypeIndex)
                     {
                         // make a note of the failure to connect this object's type to its native type
                         // after all objects were connected, the types that are still not connected can then
@@ -947,26 +523,25 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
 
-                ulong fieldAddr;
-                if (fieldLocation.TryReadPointer(out fieldAddr) == BytesAndOffset.PtrReadError.Success
+                if (fieldLocation.TryReadPointer(out var fieldAddr) == BytesAndOffset.PtrReadError.Success
                     // don't process null pointers
                     && fieldAddr != 0)
                 {
-                    crawlData.CrawlDataStack.Push(new StackCrawlData() { ptr = fieldAddr, ptrFrom = ptrFrom, typeFrom = iTypeDescription, indexOfFrom = indexOfFrom, fieldFrom = iField, fromArrayIndex = -1 });
+                    crawlData.CrawlDataStack.Push(new StackCrawlData() { Ptr = fieldAddr, PtrFrom = ptrFrom, TypeFrom = iTypeDescription, IndexOfFrom = indexOfFrom, FieldFrom = iField, FromArrayIndex = -1 });
                 }
             }
         }
 
         static bool CrawlPointer(IntermediateCrawlData dataStack)
         {
-            UnityEngine.Debug.Assert(dataStack.CrawlDataStack.Count > 0);
+            Debug.Assert(dataStack.CrawlDataStack.Count > 0);
 
             var snapshot = dataStack.CachedMemorySnapshot;
             var typeDescriptions = snapshot.TypeDescriptions;
             var data = dataStack.CrawlDataStack.Pop();
             var virtualMachineInformation = snapshot.VirtualMachineInformation;
             var managedHeapSections = snapshot.ManagedHeapSections;
-            var byteOffset = managedHeapSections.Find(data.ptr, virtualMachineInformation);
+            var byteOffset = managedHeapSections.Find(data.Ptr, virtualMachineInformation);
 
             if (!byteOffset.IsValid)
             {
@@ -991,10 +566,10 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             ManagedObjectInfo obj;
-            bool wasAlreadyCrawled;
 
-            obj = ParseObjectHeader(snapshot, data, out wasAlreadyCrawled, false, byteOffset);
-            bool addConnection = (data.typeFrom >= 0 || data.fieldFrom >= 0);
+
+            obj = ParseObjectHeader(snapshot, data, out var wasAlreadyCrawled, false, byteOffset);
+            bool addConnection = (data.TypeFrom >= 0 || data.FieldFrom >= 0);
             if (addConnection)
                 ++obj.RefCount;
 
@@ -1005,18 +580,18 @@ namespace Unity.MemoryProfiler.Editor
             snapshot.CrawledData.MangedObjectIndexByAddress[obj.PtrObject] = obj.ManagedObjectIndex;
 
             if (addConnection)
-                dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.indexOfFrom, data.ptrFrom, obj.ManagedObjectIndex, data.ptr, data.typeFrom, data.fieldFrom, data.fromArrayIndex));
+                dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.IndexOfFrom, data.PtrFrom, obj.ManagedObjectIndex, data.Ptr, data.TypeFrom, data.FieldFrom, data.FromArrayIndex));
 
             if (wasAlreadyCrawled)
                 return true;
 
             if (!typeDescriptions.HasFlag(obj.ITypeDescription, TypeFlags.kArray))
             {
-                CrawlRawObjectData(dataStack, byteOffset.Add(snapshot.VirtualMachineInformation.ObjectHeaderSize), obj.ITypeDescription, false, data.ptr, obj.ManagedObjectIndex);
+                CrawlRawObjectData(dataStack, byteOffset.Add(snapshot.VirtualMachineInformation.ObjectHeaderSize), obj.ITypeDescription, false, data.Ptr, obj.ManagedObjectIndex);
                 return true;
             }
 
-            var arrayLength = ManagedHeapArrayDataTools.ReadArrayLength(snapshot, data.ptr, obj.ITypeDescription);
+            var arrayLength = ManagedHeapArrayDataTools.ReadArrayLength(snapshot, data.Ptr, obj.ITypeDescription);
             int iElementTypeDescription = typeDescriptions.BaseOrElementTypeIndex[obj.ITypeDescription];
             if (iElementTypeDescription == -1)
             {
@@ -1027,18 +602,17 @@ namespace Unity.MemoryProfiler.Editor
             {
                 if (typeDescriptions.HasFlag(iElementTypeDescription, TypeFlags.kValueType))
                 {
-                    CrawlRawObjectData(dataStack, arrayData, iElementTypeDescription, false, data.ptr, obj.ManagedObjectIndex);
+                    CrawlRawObjectData(dataStack, arrayData, iElementTypeDescription, false, data.Ptr, obj.ManagedObjectIndex);
                     arrayData = arrayData.Add((ulong)typeDescriptions.Size[iElementTypeDescription]);
                 }
                 else
                 {
-                    ulong arrayDataPtr;
-                    if (arrayData.TryReadPointer(out arrayDataPtr) != BytesAndOffset.PtrReadError.Success)
+                    if (arrayData.TryReadPointer(out var arrayDataPtr) != BytesAndOffset.PtrReadError.Success)
                         return false;
 
                     // don't process null pointers
                     if (arrayDataPtr != 0)
-                        dataStack.CrawlDataStack.Push(new StackCrawlData() { ptr = arrayDataPtr, ptrFrom = data.ptr, typeFrom = obj.ITypeDescription, indexOfFrom = obj.ManagedObjectIndex, fieldFrom = -1, fromArrayIndex = i });
+                        dataStack.CrawlDataStack.Push(new StackCrawlData() { Ptr = arrayDataPtr, PtrFrom = data.Ptr, TypeFrom = obj.ITypeDescription, IndexOfFrom = obj.ManagedObjectIndex, FieldFrom = -1, FromArrayIndex = i });
                     arrayData = arrayData.NextPointer();
                 }
             }
@@ -1078,16 +652,14 @@ namespace Unity.MemoryProfiler.Editor
             var objectList = snapshot.CrawledData.ManagedObjects;
             var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
 
-            ManagedObjectInfo objectInfo = default(ManagedObjectInfo);
-
-            int idx = 0;
-            if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(crawlData.ptr, out idx))
+            ManagedObjectInfo objectInfo;
+            if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(crawlData.Ptr, out var idx))
             {
                 if (TryParseObjectHeader(snapshot, crawlData, out objectInfo, byteOffset))
                 {
                     objectInfo.ManagedObjectIndex = (int)objectList.Count;
                     objectList.Add(objectInfo);
-                    objectsByAddress.Add(crawlData.ptr, objectInfo.ManagedObjectIndex);
+                    objectsByAddress.Add(crawlData.Ptr, objectInfo.ManagedObjectIndex);
                 }
                 wasAlreadyCrawled = false;
                 return objectInfo;
@@ -1102,7 +674,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     objectInfo.ManagedObjectIndex = idx;
                     objectList[idx] = objectInfo;
-                    objectsByAddress[crawlData.ptr] = idx;
+                    objectsByAddress[crawlData.Ptr] = idx;
                 }
 
                 wasAlreadyCrawled = false;
@@ -1117,16 +689,17 @@ namespace Unity.MemoryProfiler.Editor
         {
             bool resolveFailed = false;
             var heap = snapshot.ManagedHeapSections;
-            info = new ManagedObjectInfo();
-            info.ManagedObjectIndex = -1;
+            info = new ManagedObjectInfo
+            {
+                ManagedObjectIndex = -1
+            };
 
-            ulong ptrIdentity = 0;
-            if (!boHeader.IsValid) boHeader = heap.Find(data.ptr, snapshot.VirtualMachineInformation);
+            if (!boHeader.IsValid) boHeader = heap.Find(data.Ptr, snapshot.VirtualMachineInformation);
             if (!boHeader.IsValid)
                 resolveFailed = true;
             else
             {
-                boHeader.TryReadPointer(out ptrIdentity);
+                boHeader.TryReadPointer(out var ptrIdentity);
 
                 info.PtrTypeInfo = ptrIdentity;
                 info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
@@ -1136,8 +709,7 @@ namespace Unity.MemoryProfiler.Editor
                     var boIdentity = heap.Find(ptrIdentity, snapshot.VirtualMachineInformation);
                     if (boIdentity.IsValid)
                     {
-                        ulong ptrTypeInfo;
-                        boIdentity.TryReadPointer(out ptrTypeInfo);
+                        boIdentity.TryReadPointer(out var ptrTypeInfo);
                         info.PtrTypeInfo = ptrTypeInfo;
                         info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
                         resolveFailed = info.ITypeDescription < 0;
@@ -1165,7 +737,7 @@ namespace Unity.MemoryProfiler.Editor
                 info.ITypeDescription = -1;
                 info.Size = 0;
                 info.PtrObject = 0;
-                info.data = default(BytesAndOffset);
+                info.data = default;
 
                 return false;
             }
@@ -1173,170 +745,8 @@ namespace Unity.MemoryProfiler.Editor
 
             info.Size = SizeOfObjectInBytes(snapshot, info.ITypeDescription, boHeader, heap);
             info.data = boHeader;
-            info.PtrObject = data.ptr;
+            info.PtrObject = data.Ptr;
             return true;
-        }
-    }
-
-    internal static class StringTools
-    {
-        // After 8000 chars, StringBuilder will ring buffer the strings and our UI breaks. Also see https://referencesource.microsoft.com/#mscorlib/system/text/stringbuilder.cs,76
-        const int k_StringBuilderMaxCap = 8000;
-        // However, 8000 chars is quite a bit more than would be necessarily helpful for the memory profiler, so trim it further
-        const int k_AdditionalTrimForLongStrings = 6000;
-        public const int MaxStringLengthToRead = k_StringBuilderMaxCap - k_AdditionalTrimForLongStrings - 10 /*Buffer for ellipsis, quotes and spaces*/;
-        public const string Elipsis = " [...]";
-
-        public static string ReadString(this BytesAndOffset bo, out int fullLength, VirtualMachineInformation virtualMachineInformation)
-        {
-            fullLength = -1;
-            return ReadStringInternal(bo, ref fullLength, virtualMachineInformation);
-        }
-
-        public static string ReadString(this ManagedObjectInfo managedObjectInfo, CachedSnapshot snapshot)
-        {
-            int fullLength = -1;
-            return ReadStringInternal(managedObjectInfo.data, ref fullLength, snapshot.VirtualMachineInformation);
-        }
-
-        public static string ReadCharArray(this ManagedObjectInfo managedObjectInfo, CachedSnapshot snapshot)
-        {
-            return ReadCharArray(managedObjectInfo.data, ManagedHeapArrayDataTools.GetArrayInfo(snapshot, managedObjectInfo.data, managedObjectInfo.ITypeDescription).length, snapshot.VirtualMachineInformation);
-        }
-
-        public static string ReadCharArray(this BytesAndOffset bo, int fullLength, VirtualMachineInformation virtualMachineInformation)
-        {
-            return ReadStringInternal(bo, ref fullLength, virtualMachineInformation).Replace((char)0, ' ');
-        }
-
-        static string ReadStringInternal(this BytesAndOffset bo, ref int fullLength, VirtualMachineInformation virtualMachineInformation, int maxLengthToRead = MaxStringLengthToRead)
-        {
-            BytesAndOffset firstChar = bo;
-            if (fullLength < 0)
-            {
-                // parsing a string with an object header
-                bo = bo.Add(virtualMachineInformation.ObjectHeaderSize);
-                fullLength = bo.ReadInt32();
-                firstChar = bo.Add(sizeof(int));
-            }
-            else
-            {
-                // pasring a char [] with an array header
-                bo = bo.Add(virtualMachineInformation.ArrayHeaderSize);
-                firstChar = bo;
-            }
-
-
-            if (fullLength < 0 || (ulong)fullLength * 2 > (ulong)bo.bytes.Count - bo.offset - sizeof(int))
-            {
-#if DEBUG_VALIDATION
-                Debug.LogError("Found a String Object of impossible length.");
-#endif
-                fullLength = 0;
-            }
-
-            unsafe
-            {
-                if (fullLength > maxLengthToRead)
-                {
-                    var cappedLength = maxLengthToRead;
-                    return $"{System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), cappedLength * 2)}{Elipsis}";
-                }
-                else
-                    return System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), fullLength * 2);
-            }
-        }
-
-        public static string ReadFirstStringLine(this ManagedObjectInfo moi, VirtualMachineInformation virtualMachineInformation, bool addQuotes)
-        {
-            return ReadFirstStringLineInternal(moi.data, virtualMachineInformation, addQuotes, -1);
-        }
-
-        public static string ReadFirstStringLine(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, bool addQuotes)
-        {
-            return ReadFirstStringLineInternal(bo, virtualMachineInformation, addQuotes, -1);
-        }
-
-        public static string ReadFirstCharArrayLine(this ManagedObjectInfo managedObjectInfo, CachedSnapshot snapshot, bool addQuotes)
-        {
-            return ReadFirstCharArrayLine(managedObjectInfo.data, snapshot.VirtualMachineInformation, addQuotes, ManagedHeapArrayDataTools.GetArrayInfo(snapshot, managedObjectInfo.data, managedObjectInfo.ITypeDescription).length);
-        }
-
-        public static string ReadFirstCharArrayLine(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, bool addQuotes, int fullLength)
-        {
-            return ReadFirstStringLineInternal(bo, virtualMachineInformation, addQuotes, fullLength).Replace((char)0, ' ');
-        }
-
-        static string ReadFirstStringLineInternal(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, bool addQuotes, int fullLength)
-        {
-            const int maxCharsInLine = 30;
-            var str = ReadStringInternal(bo, ref fullLength, virtualMachineInformation, maxCharsInLine);
-            var firstLineBreak = str.IndexOf('\n');
-            if (firstLineBreak >= 0)
-            {
-                if (firstLineBreak < maxCharsInLine && str.Length > maxCharsInLine)
-                {
-                    // reduce our working set
-                    str = str.Substring(0, Math.Min(str.Length, maxCharsInLine));
-                }
-                str = str.Replace("\n", "\\n");
-                str += Elipsis;
-            }
-            if (addQuotes)
-            {
-                if (firstLineBreak >= 0)
-                    return $"\"{str}"; // open ended quote
-                return $"\"{str}\"";
-            }
-            else
-            {
-                return str;
-            }
-        }
-
-        public static int ReadStringObjectSizeInBytes(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
-        {
-            var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
-            var length = lengthPointer.ReadInt32();
-            if (length < 0 || (ulong)length * 2 > (ulong)bo.bytes.Count - bo.offset - sizeof(int))
-            {
-#if DEBUG_VALIDATION
-                Debug.LogError("Found a String Object of impossible length.");
-#endif
-                length = 0;
-            }
-
-            return (int)virtualMachineInformation.ObjectHeaderSize + /*lengthfield*/ 4 + (length * /*utf16=2bytes per char*/ 2) + /*2 zero terminators*/ 2;
-        }
-    }
-    internal class ArrayInfo
-    {
-        public ulong baseAddress;
-        public int[] rank;
-        public int length;
-        public uint elementSize;
-        public int arrayTypeDescription;
-        public int elementTypeDescription;
-        public BytesAndOffset header;
-        public BytesAndOffset data;
-        public BytesAndOffset GetArrayElement(uint index)
-        {
-            return data.Add(elementSize * index);
-        }
-
-        public ulong GetArrayElementAddress(int index)
-        {
-            return baseAddress + (ulong)(elementSize * index);
-        }
-
-        public string IndexToRankedString(int index)
-        {
-            return ManagedHeapArrayDataTools.ArrayRankIndexToString(rank, index);
-        }
-
-        public string ArrayRankToString()
-        {
-            return ManagedHeapArrayDataTools.ArrayRankToString(rank);
         }
     }
 }

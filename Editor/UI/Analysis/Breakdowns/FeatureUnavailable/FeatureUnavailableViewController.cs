@@ -2,7 +2,7 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class FeatureUnavailableViewController : ViewController
+    class FeatureUnavailableViewController : ViewController, IViewControllerWithVisibilityEvents
     {
         // Data.
         readonly string m_Description;
@@ -13,6 +13,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         public FeatureUnavailableViewController(string description)
         {
             m_Description = description;
+        }
+
+        void IViewControllerWithVisibilityEvents.ViewWillBeDisplayed()
+        {
+        }
+
+        void IViewControllerWithVisibilityEvents.ViewWillBeHidden()
+        {
         }
 
         protected override VisualElement LoadView()

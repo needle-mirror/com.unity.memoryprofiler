@@ -10,7 +10,7 @@ using Unity.MemoryProfiler.Editor.UI;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    internal class SnapshotDataService
+    internal class SnapshotDataService : IDisposable
     {
         const string k_SnapshotScreenshotFileExtension = ".png";
         const string k_SnapshotFileExtension = ".snap";
@@ -66,7 +66,11 @@ namespace Unity.MemoryProfiler.Editor
             var reader = new FileReader();
             ReadError err = reader.Open(filePath);
             if (err != ReadError.Success)
+            {
+                // Close and dispose the reader
+                reader.Close();
                 return;
+            }
 
             if (m_CompareMode)
             {
@@ -132,14 +136,26 @@ namespace Unity.MemoryProfiler.Editor
             return fileName.IndexOfAny(Path.GetInvalidFileNameChars()) == -1;
         }
 
-        public bool Rename(string sourceFilePath, string targetFileName)
+        public bool CanRename(string sourceFilePath, string targetFileName)
         {
-            if (IsOpen(sourceFilePath))
-                Unload(sourceFilePath);
-
             var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + k_SnapshotFileExtension);
             if (File.Exists(targetFilePath))
                 return false;
+
+            return true;
+        }
+
+        public bool Rename(string sourceFilePath, string targetFileName)
+        {
+            var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + k_SnapshotFileExtension);
+            if (File.Exists(targetFilePath))
+            {
+                Debug.LogError($"Can't rename {sourceFilePath} to {targetFileName}, file with the same name is already exist!");
+                return false;
+            }
+
+            if (IsOpen(sourceFilePath))
+                Unload(sourceFilePath);
 
             string sourceScreenshotPath = Path.ChangeExtension(sourceFilePath, k_SnapshotScreenshotFileExtension);
             if (File.Exists(sourceScreenshotPath))
@@ -173,6 +189,12 @@ namespace Unity.MemoryProfiler.Editor
 
             if (!File.Exists(filePath))
                 return false;
+
+            string screenshotPath = Path.ChangeExtension(filePath, k_SnapshotScreenshotFileExtension);
+            if (File.Exists(screenshotPath))
+            {
+                File.Delete(screenshotPath);
+            }
 
             File.Delete(filePath);
 
@@ -262,7 +284,7 @@ namespace Unity.MemoryProfiler.Editor
             var cachedSnapshot = new CachedSnapshot(file);
             using (s_CrawlManagedData.Auto())
             {
-                var crawling = Crawler.Crawl(cachedSnapshot);
+                var crawling = ManagedDataCrawler.Crawl(cachedSnapshot);
                 crawling.MoveNext(); //start execution
 
                 var status = crawling.Current as EnumerationStatus;
@@ -363,6 +385,13 @@ namespace Unity.MemoryProfiler.Editor
             File.Copy(sourceFilePath, targetFilePath);
 
             return true;
+        }
+
+        public void Dispose()
+        {
+            // Unload without notify
+            LoadedSnapshotsChanged = null;
+            UnloadAll();
         }
     }
 }

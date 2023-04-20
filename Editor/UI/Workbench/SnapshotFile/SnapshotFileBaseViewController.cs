@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlTotalDataNotAvailableLabel = "memory-profile-snapshotfile__bar__not-available-label";
 
         const string k_TotalMemoryNotAvailable = "N/A";
-        const string k_Tooltip = "{0}\nPlatform: {1}\n\nMax Available: {2}\nTotal Resident: {3}\nTotal Allocated: {4}";
+        const string k_Tooltip = "{0}\nPlatform: {1}\nUnity Version: {2}\n\nMax Available: {3}\nTotal Resident: {4}\nTotal Allocated: {5}";
         const string k_TooltipValueNotAvailable = "not available";
 
         // Model & state
@@ -165,6 +165,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             View.tooltip = String.Format(k_Tooltip,
                 m_Model.Name,
                 m_Model.Platform,
+                m_Model.UnityVersion,
                 totalAvailableMemoryLabel,
                 residentMemoryLabel,
                 totalAllocatedLabel);

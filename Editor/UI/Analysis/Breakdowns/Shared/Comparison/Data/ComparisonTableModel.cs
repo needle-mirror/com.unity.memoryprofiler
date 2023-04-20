@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public long LargestAbsoluteSizeDelta { get; }
 
         // The data associated with each item in the tree.
-        public readonly struct ComparisonData
+        public readonly struct ComparisonData : INamedTreeItemData
         {
             public ComparisonData(
                 string name,

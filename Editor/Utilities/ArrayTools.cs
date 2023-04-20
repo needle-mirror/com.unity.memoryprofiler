@@ -9,60 +9,60 @@ namespace Unity.MemoryProfiler.Editor
         {
             var virtualMachineInformation = data.VirtualMachineInformation;
             var arrayInfo = new ArrayInfo();
-            arrayInfo.baseAddress = 0;
-            arrayInfo.arrayTypeDescription = iTypeDescriptionArrayType;
+            arrayInfo.BaseAddress = 0;
+            arrayInfo.ArrayTypeDescription = iTypeDescriptionArrayType;
 
 
-            arrayInfo.header = arrayData;
-            arrayInfo.data = arrayInfo.header.Add(virtualMachineInformation.ArrayHeaderSize);
+            arrayInfo.Header = arrayData;
+            arrayInfo.Data = arrayInfo.Header.Add(virtualMachineInformation.ArrayHeaderSize);
             ulong bounds;
-            arrayInfo.header.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
+            arrayInfo.Header.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
             if (bounds == 0)
             {
-                arrayInfo.length = arrayInfo.header.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
-                arrayInfo.rank = new int[1] { arrayInfo.length };
+                arrayInfo.Length = arrayInfo.Header.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
+                arrayInfo.Rank = new int[1] { arrayInfo.Length };
             }
             else
             {
                 int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
-                arrayInfo.rank = new int[rank];
+                arrayInfo.Rank = new int[rank];
 
                 var cursor = data.ManagedHeapSections.Find(bounds, virtualMachineInformation);
                 if (cursor.IsValid)
                 {
-                    arrayInfo.length = 1;
+                    arrayInfo.Length = 1;
                     for (int i = 0; i != rank; i++)
                     {
                         var l = cursor.ReadInt32();
-                        arrayInfo.length *= l;
-                        arrayInfo.rank[i] = l;
+                        arrayInfo.Length *= l;
+                        arrayInfo.Rank[i] = l;
                         cursor = cursor.Add(8);
                     }
                 }
                 else
                 {
                     //object has corrupted data
-                    arrayInfo.length = 0;
+                    arrayInfo.Length = 0;
                     for (int i = 0; i != rank; i++)
                     {
-                        arrayInfo.rank[i] = -1;
+                        arrayInfo.Rank[i] = -1;
                     }
                 }
             }
 
-            arrayInfo.elementTypeDescription = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
-            if (arrayInfo.elementTypeDescription == -1) //We currently do not handle uninitialized types as such override the type, making it return pointer size
+            arrayInfo.ElementTypeDescription = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
+            if (arrayInfo.ElementTypeDescription == -1) //We currently do not handle uninitialized types as such override the type, making it return pointer size
             {
-                arrayInfo.elementTypeDescription = iTypeDescriptionArrayType;
+                arrayInfo.ElementTypeDescription = iTypeDescriptionArrayType;
             }
-            if (data.TypeDescriptions.HasFlag(arrayInfo.elementTypeDescription, TypeFlags.kValueType))
+            if (data.TypeDescriptions.HasFlag(arrayInfo.ElementTypeDescription, TypeFlags.kValueType))
             {
-                arrayInfo.elementSize = (uint)data.TypeDescriptions.Size[arrayInfo.elementTypeDescription];
+                arrayInfo.ElementSize = (uint)data.TypeDescriptions.Size[arrayInfo.ElementTypeDescription];
             }
             else
             {
-                arrayInfo.elementSize = virtualMachineInformation.PointerSize;
+                arrayInfo.ElementSize = virtualMachineInformation.PointerSize;
             }
             return arrayInfo;
         }

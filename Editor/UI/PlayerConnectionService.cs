@@ -8,7 +8,6 @@ using UnityEditor.Networking.PlayerConnection;
 using UnityEngine;
 using UnityEngine.Networking.PlayerConnection;
 using Unity.Profiling;
-using Unity.Profiling.Memory;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Collections;
@@ -19,7 +18,7 @@ using UnityEngine.Profiling;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    internal class PlayerConnectionService
+    internal class PlayerConnectionService : IDisposable
     {
         EditorWindow m_Window;
         SnapshotDataService m_SnapshotDataService;
@@ -51,15 +50,6 @@ namespace Unity.MemoryProfiler.Editor
 
         public string PlayerConnectionName => m_ConnectionDisplayName;
         public bool IsConnectedToEditor => m_PlayerConnectionState?.connectedToTarget == ConnectionTarget.Editor;
-
-        public void OnDisable()
-        {
-            CompilationPipeline.compilationStarted -= StartedCompilationCallback;
-            CompilationPipeline.compilationFinished -= FinishedCompilationCallback;
-
-            m_PlayerConnectionState?.Dispose();
-            m_PlayerConnectionState = null;
-        }
 
         public void ShowPlayerConnectionSelection(Rect rect)
         {
@@ -290,5 +280,13 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
+        public void Dispose()
+        {
+            CompilationPipeline.compilationStarted -= StartedCompilationCallback;
+            CompilationPipeline.compilationFinished -= FinishedCompilationCallback;
+
+            m_PlayerConnectionState?.Dispose();
+            m_PlayerConnectionState = null;
+        }
     }
 }

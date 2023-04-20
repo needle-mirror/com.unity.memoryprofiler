@@ -34,7 +34,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public Action<int, ItemData> SelectionProcessor { get; }
 
         // The data associated with each item in the tree.
-        public readonly struct ItemData
+        public readonly struct ItemData : INamedTreeItemData
         {
             public ItemData(
                 string name,

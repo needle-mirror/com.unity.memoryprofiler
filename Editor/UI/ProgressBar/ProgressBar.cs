@@ -83,5 +83,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             instance.m_DidDraw = 0;
             EditorUtility.ClearProgressBar();
         }
+
+        public static bool IsComplete() => instance.m_IsComplete == 1;
     }
 }

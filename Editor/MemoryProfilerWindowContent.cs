@@ -91,7 +91,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "\n- Native Allocations including Native Arrays and other Native Containers" +
         "\n- CPU side of Graphics Asset memory" +
         "\n- And other" +
-        "\n\nThis doesn't include Audio and Graphics, which are shown in separate categories." +
+        "\n\nThis doesn't include Graphics, which is shown in a separate category." +
         "\n\nYou can inspect these categories further in the All of Memory Breakdown." +
         "\n\nNote: Values in Summary and All Of Memory views might be different as they use different ways of grouping items together.";
         public static string NativeReservedDescription => "Reserved memory is memory that Unity allocated from the system (OS) but isn't used by any Unity objects at the moment of the capture. " +
@@ -112,7 +112,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static string ProfilerDescription => "This is the Profiler overhead, which includes memory used to collect and send Profiler frame data, take memory captures, or process the received Profiler frame data in the Editor.";
         public static string GraphicsEstimatedDescription => "Estimated memory used by the Graphics Driver and the GPU to visualize your application." +
             "\nThe information is based on the tracking of graphics resource allocations within Unity. This includes RenderTextures, Textures, Meshes, Animations and other graphics buffers which are allocated by Unity or Scripting API. Use All Of Memory tab to explore graphics resources." +
-            "\nNot all these objects' memory is represented in this category. For example, Read/Write enabled graphics assets need to retain a copy in CPU-accessible memory, which doubles their total memory usage. Use Unity Objects tab to explore total memory usage of Unit Objects." +
+            "\nNot all these objects' memory is represented in this category. For example, Read/Write enabled graphics assets need to retain a copy in CPU-accessible memory, which doubles their total memory usage. Use Unity Objects tab to explore total memory usage of Unity Objects. " +
             "Also, not necessarily all memory from these type of objects resides in GPU memory. Memory Profiler is unable to get exact residence information for graphics resources.";
         public static string GraphicsEstimatedDisabledDescription => "Estimated memory used by the Graphics Driver and the GPU to visualize your application." +
             "\nThe information is based on the process memory regions reported by the operating system. This includes display buffers, RenderTextures, Textures, Meshes, Animations." +
@@ -224,7 +224,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string TypedGroupDescription = "The selected item is a Type";
         public const string NonTypedGroupDescription = "The selected item is a group of similar elements";
 
-        public const string NoResidentMemoryInformationOldSnapshot = "Detailed breakdown of resident allocations is not available. This snapshot was taken with Unity 2021.2 or older.";
+        public const string NoResidentMemoryInformationOldSnapshot = "Detailed breakdown of resident allocations is not available. This snapshot was taken with a Unity version 2021.2 or older.";
         public const string NoResidentMemoryInformationNotSupported = "Detailed breakdown of resident allocations is not available. This platform is not supported.";
         public const string ResidentAndAllocatedMemoryAreIdentical = "On this platform, there is no distinction between Allocated Memory, and Resident Memory on Device. Therefore, the Memory profiler will present information exclusively about Allocated Memory.";
 

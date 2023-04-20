@@ -82,10 +82,12 @@ namespace Unity.MemoryProfiler.Editor
                 case RuntimePlatform.Switch:
                     buildTarget = BuildTarget.Switch;
                     break;
-#if !UNITY_2023_1_OR_NEWER
+#if !UNITY_2022_2_OR_NEWER
                 case RuntimePlatform.Lumin:
                     buildTarget = BuildTarget.Lumin;
                     break;
+#endif
+#if !UNITY_2023_1_OR_NEWER
                 case RuntimePlatform.Stadia:
                     buildTarget = BuildTarget.Stadia;
                     break;
@@ -99,7 +101,7 @@ namespace Unity.MemoryProfiler.Editor
                     break;
 #endif
                 case CloudRendering:
-#if UNITY_2023_1_OR_NEWER
+#if UNITY_2022_2_OR_NEWER
                     buildTarget = BuildTarget.LinuxHeadlessSimulation;
 #else
                     buildTarget = BuildTarget.CloudRendering;
@@ -107,7 +109,6 @@ namespace Unity.MemoryProfiler.Editor
                     break;
                 default:
                     // Unknown target
-                    //return BuildTarget.NoTarget;
                     break;
             }
             return buildTarget;

@@ -184,17 +184,17 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             public MemorySize Native;
             public MemorySize Managed;
-            public MemorySize GPU;
+            public MemorySize Gfx;
 
             public static UnityObjectSize operator +(UnityObjectSize l, UnityObjectSize r)
             {
-                return new UnityObjectSize() { Native = l.Native + r.Native, Managed = l.Managed + r.Managed, GPU = l.GPU + r.GPU };
+                return new UnityObjectSize() { Native = l.Native + r.Native, Managed = l.Managed + r.Managed, Gfx = l.Gfx + r.Gfx };
             }
         };
 
         static void AccumulateValue(Dictionary<SourceIndex, UnityObjectSize> accumulator, SourceIndex index, MemorySize native, MemorySize managed, MemorySize gpu)
         {
-            var sizeValue = new UnityObjectSize() { Native = native, Managed = managed, GPU = gpu };
+            var sizeValue = new UnityObjectSize() { Native = native, Managed = managed, Gfx = gpu };
             if (accumulator.TryGetValue(index, out var storedValue))
                 sizeValue += storedValue;
 
@@ -269,7 +269,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 totalMemoryInSnapshot = new MemorySize(memoryStats.Value.TotalVirtualMemory, 0);
 
             // Add graphics resources separately, as we don't have them in memory map.
-            AddGraphicsResources(snapshot, nativeObject2Size);
+            if (snapshot.HasGfxResourceReferencesAndAllocators)
+                AddGraphicsResources(snapshot, nativeObject2Size);
+            else
+                AddLegacyGraphicsResources(snapshot, nativeObject2Size);
 
             _totalMemoryInSnapshot = totalMemoryInSnapshot;
 
@@ -295,6 +298,33 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 var memorySize = new MemorySize(size, 0);
                 AccumulateValue(nativeObject2Size, new SourceIndex(SourceIndex.SourceId.NativeObject, objectIndex), new MemorySize(), new MemorySize(), memorySize);
+            }
+        }
+
+        void AddLegacyGraphicsResources(CachedSnapshot snapshot, Dictionary<SourceIndex, UnityObjectSize> nativeObject2Size)
+        {
+            var nativeObjects = snapshot.NativeObjects;
+            var nativeRootReferences = snapshot.NativeRootReferences;
+            var keys = nativeObject2Size.Keys.ToList();
+            foreach (var key in keys)
+            {
+                if (key.Id != SourceIndex.SourceId.NativeObject)
+                    continue;
+
+                var totalSize = nativeObjects.Size[key.Index];
+                var rootReferenceId = nativeObjects.RootReferenceId[key.Index];
+                if (rootReferenceId <= 0)
+                    continue;
+
+                if (!nativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out var rootReferenceIndex))
+                    continue;
+
+                var rootAccumulatedtSize = nativeRootReferences.AccumulatedSize[rootReferenceIndex];
+                if (rootAccumulatedtSize >= totalSize)
+                    continue;
+
+                var record = nativeObject2Size[key];
+                nativeObject2Size[key] = new UnityObjectSize() { Native = new MemorySize(rootAccumulatedtSize, 0), Managed = record.Managed, Gfx = new MemorySize(totalSize - rootAccumulatedtSize, 0) };
             }
         }
 
@@ -398,7 +428,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         itemName,
                         obj.Value.Native,
                         obj.Value.Managed,
-                        obj.Value.GPU,
+                        obj.Value.Gfx,
                         obj.Key)
                 );
 

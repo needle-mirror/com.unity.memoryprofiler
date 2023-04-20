@@ -7,34 +7,30 @@ The Memory Profiler window
 
 The Memory Profiler window also provides an overview of native and managed memory allocations, to assess your application's memory use and identify potential issues such as memory leaks.
 
-This package is separate to the built-in [Memory Profiler module](https://docs.unity3d.com/Manual/ProfilerMemory.html), and each is useful for different purposes. The Memory Profiler package is designed to provide more detailed information about your application's memory allocations.
+This package is complimenting the built-in [Memory Profiler module](https://docs.unity3d.com/Manual/ProfilerMemory.html) which provides high level memory usage information over time. The Memory Profiler package is designed to provide more detailed information about your application's memory allocations at a specific moment of time.
 
 ## Installing Memory Profiler
 
 To install this package, follow the instructions in the [Package Manager documentation](https://docs.unity3d.com/Manual/upm-ui.html).
 
-In Unity version 2021.3 or later, select the `+` button in the Package Manager window, select the option __Add By Name__ and enter `com.unity.memoryprofiler` to install the package. For more information, see [Adding a registry package by name](https://docs.unity3d.com/Manual/upm-ui-quick.html). You can also use the following link to open the Unity Editor and install the Memory Profiler via the package manager directly:
+You can install the package using the [package registry list](https://docs.unity3d.com/Manual/upm-ui-install.html). Or using `com.unity.memoryprofiler` name when [adding a registry package by name](https://docs.unity3d.com/Manual/upm-ui-quick.html).
 
-[Open the Unity Editor and install the Memory Profiler](com.unity3d.kharma:upmpackage/com.unity.memoryprofiler)
+You can also use the following link to open the Unity Editor and install the Memory Profiler via the package manager directly: [Open the Unity Editor and install the Memory Profiler](com.unity3d.kharma:upmpackage/com.unity.memoryprofiler)
 
 ## Requirements
 
 This version of the Memory Profiler is compatible with the following versions of the Unity Editor:
 
-| Unity Version | Package Version | Minimum Unity Version | Recommended Unity Version |
-|----------------|---------|------------|---------------------|
-| 2022.2 or newer| 1.0.x   | 2022.2.0a16 | 2022.2.0b1  or newer|
-| 2021.x         | 0.7.x   | 2021.1.0a1 | 2021.3.3f1 or newer|
-| 2020.x         | 0.7.x   | 2020.1.0a1 | 2020.3.35f1 or newer|
-| 2019.x         | 0.7.x   | 2019.3.0f1 | 2019.4.29f1 or newer|
+| Unity Version  | Package Version | Minimum Unity Version | Recommended Unity Version |
+|----------------|-----------------|-----------------------|---------------------------|
+| 2022.2 or newer| 1.x.x           | 2022.2.0a16           | 2022.2.0b1  or newer      |
+| 2021.x         | 0.7.x           | 2021.1.0a1            | 2021.3.3f1 or newer       |
+| 2020.x         | 0.7.x           | 2020.1.0a1            | 2020.3.35f1 or newer      |
+| 2019.x         | 0.7.x           | 2019.3.0f1            | 2019.4.29f1 or newer      |
 
 When you install the Memory Profiler package, Unity automatically installs the [Editor Coroutines](https://docs.unity3d.com/Packages/com.unity.editorcoroutines@0.0/manual/index.html) package as a dependency.
 
-## Known Issues
-
-* The Memory Profiler reports the wrong Total Committed Memory value for Android devices on Unity versions before 2021.1.0a1 or before 2020.2.0b8. It reports the total RAM that the device has, not the total amount of RAM used. [(Case 1267773)](https://issuetracker.unity3d.com/product/unity/issues/guid/1267773/)
-
-### Data concerns when sharing snapshots
+## Data concerns when sharing snapshots
 
 The memory snapshots you take with the Memory Profiler UI or the [Memory Profiler API](https://docs.unity3d.com/Documentation/ScriptReference/Profiling.Memory.Experimental.MemoryProfiler.html) contain the entire contents of the managed heap of the Player or Editor instance you are capturing.
 

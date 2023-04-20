@@ -62,34 +62,35 @@ namespace Unity.MemoryProfiler.Editor.Containers
     {
         enum AvailableMetaDataTypes
         {
-            Texture2D,
+            AudioClip,
             Mesh,
-            Texture,
             RenderTexture,
+            Shader,
+            Texture,
+            Texture2D,
         }
 
         static Dictionary<string, AvailableMetaDataTypes> s_TypeNameToEnum = new()
         {
-            { "Texture2D", AvailableMetaDataTypes.Texture2D },
+            { "AudioClip", AvailableMetaDataTypes.AudioClip },
             { "Mesh", AvailableMetaDataTypes.Mesh },
-            { "Texture", AvailableMetaDataTypes.Texture },
             { "RenderTexture", AvailableMetaDataTypes.RenderTexture },
+            { "Shader", AvailableMetaDataTypes.Shader },
+            { "Texture", AvailableMetaDataTypes.Texture },
+            { "Texture2D", AvailableMetaDataTypes.Texture2D },
         };
 
         static List<(string, string)> MetaDataStringFactory(DynamicArray<byte> bytes, AvailableMetaDataTypes key, CachedSnapshot cs)
         {
             switch (key)
             {
-                case AvailableMetaDataTypes.Texture2D:
-                    return new Texture2DMetaData(bytes).GenerateInfoStrings(cs);
-                case AvailableMetaDataTypes.Mesh:
-                    return new MeshMetaData(bytes).GenerateInfoStrings(cs);
-                case AvailableMetaDataTypes.Texture:
-                    return new TextureMetaData(bytes).GenerateInfoStrings(cs);
-                case AvailableMetaDataTypes.RenderTexture:
-                    return new RenderTextureMetaData(bytes).GenerateInfoStrings(cs);
-                default:
-                    throw new ArgumentOutOfRangeException();
+                case AvailableMetaDataTypes.AudioClip: return new AudioClipMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.Mesh: return new MeshMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.RenderTexture: return new RenderTextureMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.Shader: return new ShaderMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.Texture: return new TextureMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.Texture2D: return new Texture2DMetaData(bytes).GenerateInfoStrings(cs);
+                default: throw new ArgumentOutOfRangeException();
             }
         }
 
@@ -102,7 +103,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
             int typeIndex = cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex];
             string typeName = cs.NativeTypes.TypeName[typeIndex];
-            if (s_TypeNameToEnum.TryGetValue(typeName, out var key))
+            if (s_TypeNameToEnum.TryGetValue(typeName, out var key) && cs.NativeObjects.MetaData(nativeObjectIndex).Count != 0)
             {
                 metaDataStrings = MetaDataStringFactory(cs.NativeObjects.MetaData(nativeObjectIndex), key, cs);
                 return true;
@@ -121,8 +122,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
     interface IMetaDataBuffer
     {
-        public int SnapshotFormatVersion { get; }
-        public int PackageFormatVersion { get; }
         public bool VersionMatches();
         public List<(string, string)> GenerateInfoStrings(CachedSnapshot cachedSnapshot);
     }
@@ -148,9 +147,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             return MipMapCount > 1;
         }
-
-        public int SnapshotFormatVersion => kPackageFormatVersion;
-        public int PackageFormatVersion => version;
 
         public bool VersionMatches()
         {
@@ -260,9 +256,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return infoStrings;
         }
 
-        public int SnapshotFormatVersion => version;
-        public int PackageFormatVersion => kPackageFormatVersion;
-
         public bool VersionMatches()
         {
             return version == kPackageFormatVersion;
@@ -342,6 +335,11 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public List<(string, string)> GenerateInfoStrings(CachedSnapshot cs)
         {
             List<(string, string)> infoStrings = new List<(string, string)>();
+            if (!VersionMatches())
+            {
+                infoStrings.Add(("Warning", MetaDataHelpers.GenerateVersionMismatchWarning(version, kPackageFormatVersion)));
+            }
+
             infoStrings.Add(("Vertices", VertexCount.ToString()));
             foreach (VertexAttribute attribute in Enum.GetValues(typeof(VertexAttribute)))
             {
@@ -358,9 +356,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
             infoStrings.Add(("SubMesh Count", SubMeshCount.ToString()));
             return infoStrings;
         }
-
-        public int SnapshotFormatVersion => version;
-        public int PackageFormatVersion => kPackageFormatVersion;
 
         public bool VersionMatches()
         {
@@ -534,12 +529,138 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return infoStrings;
         }
 
-        public int SnapshotFormatVersion => version;
-        public int PackageFormatVersion => kPackageFormatVersion;
-
         public bool VersionMatches()
         {
             return version == kPackageFormatVersion;
+        }
+    }
+
+    internal struct AudioClipMetaData : IMetaDataBuffer
+    {
+        const int kPackageFormatVersion = 1;
+        public int Version;
+
+        public float LengthSecs;
+        public int Frequency;
+        public int Bitrate;
+        public int Samples;
+        public AudioCompressionFormat CompressionFormat;
+        public AudioDataLoadState LoadState;
+        public int Channels;
+        public AudioClipLoadType LoadType;
+        public bool LoadInBackground;
+        public bool IsAmbisonic;
+
+        [Flags]
+        enum BitIndices : byte
+        {
+            LoadInBackground = 1 << 0,
+            IsAmbisonic = 1 << 1,
+        }
+
+        struct MetaDataPacked
+        {
+            public float LengthSecs;
+            public Int32 Frequency;
+            public Int32 Bitrate;
+            public Int32 Samples;
+            public sbyte CompressionFormat;
+            public sbyte LoadState;
+            public sbyte Channels;
+            public sbyte LoadType;
+            public BitIndices boolFlags;
+        }
+
+        public unsafe AudioClipMetaData(DynamicArray<byte> bytes)
+        {
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+            // Version loaded separately at first, in case the rest of the layout is altered in newer versions
+            Version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+
+            MetaDataPacked metaData = ByteBufferReader.ReadValue<MetaDataPacked>(ref pos, ptr);
+            LengthSecs = metaData.LengthSecs;
+            Frequency = metaData.Frequency;
+            Bitrate = metaData.Bitrate;
+            Samples = metaData.Samples;
+            CompressionFormat = (AudioCompressionFormat)metaData.CompressionFormat;
+
+            // Load state enum in Native is 5 values (two types of Loading) but in Managed is only 4.
+            if (metaData.LoadState > 1)
+                LoadState = (AudioDataLoadState)(metaData.LoadState - 1);
+            else
+                LoadState = (AudioDataLoadState)metaData.LoadState;
+
+            Channels = metaData.Channels;
+            LoadType = (AudioClipLoadType)metaData.LoadType;
+            LoadInBackground = metaData.boolFlags.HasFlag(BitIndices.LoadInBackground);
+            IsAmbisonic = metaData.boolFlags.HasFlag(BitIndices.IsAmbisonic);
+        }
+
+        public List<(string, string)> GenerateInfoStrings(CachedSnapshot cachedSnapshot)
+        {
+            List<(string, string)> infoStrings = new List<(string, string)>();
+            if (!VersionMatches())
+            {
+                infoStrings.Add(("Warning", MetaDataHelpers.GenerateVersionMismatchWarning(Version, kPackageFormatVersion)));
+            }
+
+            TimeSpan ts = TimeSpan.FromSeconds(LengthSecs);
+            string LengthStr = (LengthSecs == 0xffffffff) ? "Unlimited" : String.Format("{0:00}:{1:00}.{2:000}", ts.Minutes, ts.Seconds, ts.Milliseconds);
+
+            infoStrings.Add(("Length", LengthStr));
+            infoStrings.Add(("Frequency", $"{Frequency:N0} Hz"));
+            infoStrings.Add(("Bitrate", $"{Bitrate:N0} Bps"));
+            infoStrings.Add(("Samples", $"{Samples:N0}"));
+            infoStrings.Add(("Compression", CompressionFormat.ToString()));
+            infoStrings.Add(("Load state", LoadState.ToString()));
+            infoStrings.Add(("Channels", Channels == 1 ? "Mono" : Channels == 2 ? "Stereo" : (Channels - 1) + ".1"));
+            infoStrings.Add(("Load Type", LoadType.ToString()));
+            infoStrings.Add(("Load in background", LoadInBackground ? "Yes" : "No"));
+            infoStrings.Add(("Ambisonic", IsAmbisonic ? "Yes" : "No"));
+
+            return infoStrings;
+        }
+
+        public bool VersionMatches()
+        {
+            return Version == kPackageFormatVersion;
+        }
+    }
+
+    internal struct ShaderMetaData : IMetaDataBuffer
+    {
+        const int kPackageFormatVersion = 1;
+        public int Version;
+
+        public UInt64 NumVariants;
+
+        public unsafe ShaderMetaData(DynamicArray<byte> bytes)
+        {
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+
+            Version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            pos += 4; // Skip padding
+            NumVariants = ByteBufferReader.ReadValue<UInt64>(ref pos, ptr);
+        }
+
+        public List<(string, string)> GenerateInfoStrings(CachedSnapshot cachedSnapshot)
+        {
+            List<(string, string)> infoStrings = new List<(string, string)>();
+            if (!VersionMatches())
+            {
+                infoStrings.Add(("Warning", MetaDataHelpers.GenerateVersionMismatchWarning(Version, kPackageFormatVersion)));
+            }
+
+            infoStrings.Add(("Variants", $"{NumVariants:N0}"));
+
+            return infoStrings;
+        }
+
+        public bool VersionMatches()
+        {
+            return Version == kPackageFormatVersion;
         }
     }
 }
