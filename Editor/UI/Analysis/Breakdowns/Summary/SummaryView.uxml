@@ -7,7 +7,11 @@
     <VisualElement name="summary-view">
         <Style src="SummaryView.uss"/>
 
-        <ScrollView name="selected-item-details__selection-details__scroll-area">
+        <ScrollView name="summary-view__scroll-view">
+            <VisualElement name="memory-usage-summary__header__right">
+                <Toggle  name="memory-usage-summary-section__normalized-toggle" text="Normalized" tooltip="Normalize bars to their snapshots total memory usage or scale it in relation to the maximal memory usage of the two snapshots"/>
+            </VisualElement>
+
             <VisualElement class="memory-usage-summary__widget">
                 <VisualElement name="memory-usage-summary__unavailable">
                     <VisualElement name="memory-usage-summary__unavailable__icon-space">
@@ -37,10 +41,6 @@
                 <VisualElement class="memory-usage-summary__widget memory-usage-summary__widget__group-item">
                     <VisualElement name="memory-usage-summary__content__unity-objects" class="memory-usage-summary__widget__content" />
                 </VisualElement>
-            </VisualElement>
-
-            <VisualElement name="memory-usage-summary__header__right">
-                <Toggle  name="memory-usage-summary-section__normalized-toggle" text="Normalized" tooltip="Normalize bars to their snapshots total memory usage or scale it in relation to the maximal memory usage of the two snapshots"/>
             </VisualElement>
         </ScrollView>
     </VisualElement>

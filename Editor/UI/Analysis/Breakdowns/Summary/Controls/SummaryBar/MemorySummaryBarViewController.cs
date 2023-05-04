@@ -142,6 +142,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetCellSelectedState(m_CellsB, index, state);
         }
 
+        public void SetMinimumWidthExcludingTotalLabel(float minWidth)
+        {
+            if (!IsViewLoaded)
+                return;
+
+            const int k_Spacing = 8;
+            var largestTotalLabelWidth = System.Math.Max(m_TotalA.contentRect.width, m_TotalB.contentRect.width);
+            View.style.minWidth = minWidth + largestTotalLabelWidth + k_Spacing;
+        }
+
         protected override VisualElement LoadView()
         {
             var view = ViewControllerUtility.LoadVisualTreeFromUxml(k_UxmlAssetGuid);

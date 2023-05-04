@@ -14,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             List<TreeViewItemData<T>> treeB,
             BuildArgs args,
             out long largestAbsoluteSizeDelta)
-            where T : IComparableItemData
+            where T : IPrivateComparableItemData
         {
             var intermediateTree = BuildIntermediateTree(treeA, treeB);
             var comparisonTree = BuildUitkTreeFromIntermediateTree(intermediateTree, args, out largestAbsoluteSizeDelta);
@@ -24,7 +24,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         static List<Node> BuildIntermediateTree<T>(
             IEnumerable<TreeViewItemData<T>> treeA,
             IEnumerable<TreeViewItemData<T>> treeB)
-            where T : IComparableItemData
+            where T : IPrivateComparableItemData
         {
             var itemStackA = new Stack<TreeViewItemData<T>>();
             var rootA = new TreeViewItemData<T>(-1, default, new List<TreeViewItemData<T>>(treeA));
@@ -120,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             List<TreeViewItemData<T>> itemsSortedByNameA,
             List<TreeViewItemData<T>> itemsSortedByNameB,
             Action<List<TreeViewItemData<T>>, List<TreeViewItemData<T>>> match)
-            where T : IComparableItemData
+            where T : IPrivateComparableItemData
         {
             var indexA = 0;
             var indexB = 0;

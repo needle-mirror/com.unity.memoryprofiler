@@ -7,6 +7,21 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.0-pre.1] - 2023-05-04
+
+### Added
+- Added thumbnailing for screenshots to improve startup speed.
+
+### Changed
+- Deprecated accidentially exposed as public IComparableItemData interface.
+- Updated window icon.
+
+### Fixed
+- Fixed an empty MonoBehaviour entry being displayed in the Unity Objects table when 'Show Potential Duplicates' was checked and there are no potential duplicate MonoBehaviours.
+- Fixed Summary view tracking of Graphics memory on Switch.
+- Fixed the Summary breakdown bar's total label overlapping with its legend when using small window sizes.
+- Fixed not showing negative values when comparing snapshots in Summary view ([PROFB-72](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-72)).
+
 ## [1.1.0-exp.2] - 2023-04-20
 
 ### Added

@@ -12,7 +12,6 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal class SnapshotDataService : IDisposable
     {
-        const string k_SnapshotScreenshotFileExtension = ".png";
         const string k_SnapshotFileExtension = ".snap";
         const string k_SessionNameTempalte = "Session {0}";
 
@@ -157,13 +156,7 @@ namespace Unity.MemoryProfiler.Editor
             if (IsOpen(sourceFilePath))
                 Unload(sourceFilePath);
 
-            string sourceScreenshotPath = Path.ChangeExtension(sourceFilePath, k_SnapshotScreenshotFileExtension);
-            if (File.Exists(sourceScreenshotPath))
-            {
-                var targetScreenshotPath = Path.ChangeExtension(targetFilePath, k_SnapshotScreenshotFileExtension);
-                File.Move(sourceScreenshotPath, targetScreenshotPath);
-            }
-
+            ScreenshotsManager.SnapshotRenamed(sourceFilePath, targetFilePath);
             File.Move(sourceFilePath, targetFilePath);
 
             SyncSnapshotsFolder();
@@ -190,12 +183,7 @@ namespace Unity.MemoryProfiler.Editor
             if (!File.Exists(filePath))
                 return false;
 
-            string screenshotPath = Path.ChangeExtension(filePath, k_SnapshotScreenshotFileExtension);
-            if (File.Exists(screenshotPath))
-            {
-                File.Delete(screenshotPath);
-            }
-
+            ScreenshotsManager.SnapshotDeleted(filePath);
             File.Delete(filePath);
 
             SyncSnapshotsFolder();
@@ -375,13 +363,7 @@ namespace Unity.MemoryProfiler.Editor
             if (File.Exists(targetFilePath))
                 return false;
 
-            string sourceScreenshotPath = Path.ChangeExtension(sourceFilePath, k_SnapshotScreenshotFileExtension);
-            if (File.Exists(sourceScreenshotPath))
-            {
-                var targetScreenshotPath = Path.ChangeExtension(targetFilePath, k_SnapshotScreenshotFileExtension);
-                File.Copy(sourceScreenshotPath, targetScreenshotPath);
-            }
-
+            ScreenshotsManager.SnapshotImported(sourceFilePath, targetFilePath);
             File.Copy(sourceFilePath, targetFilePath);
 
             return true;

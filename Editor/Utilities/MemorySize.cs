@@ -7,10 +7,10 @@ namespace Unity.MemoryProfiler.Editor
         public readonly ulong Committed;
         public readonly ulong Resident;
 
-        public MemorySize(ulong commited, ulong resisdent)
+        public MemorySize(ulong committed, ulong resident)
         {
-            Committed = commited;
-            Resident = resisdent;
+            Committed = committed;
+            Resident = resident;
         }
 
         public static bool operator ==(MemorySize l, MemorySize r)

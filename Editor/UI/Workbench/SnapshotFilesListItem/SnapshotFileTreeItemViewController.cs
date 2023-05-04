@@ -128,7 +128,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         // Don't allow input field to finish editing
                         // if input value is invalid
                         evt.StopImmediatePropagation();
-#if UNITY_2023_1_OR_NEWER
+#if UNITY_2023_2_OR_NEWER
                         m_RenameField.focusController.IgnoreEvent(evt);
 #else
                         evt.PreventDefault();

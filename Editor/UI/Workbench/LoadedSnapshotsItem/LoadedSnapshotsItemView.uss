@@ -51,7 +51,7 @@
     justify-content: flex-end;
     flex-direction: row;
     width: 153px;
-    height: 88px;
+    height: 86px;
     min-width: 153px;
     background-color: rgb(2, 2, 2);
 }
@@ -60,7 +60,7 @@
 {
     flex-direction: row;
     width: 153px;
-    height: 88px;
+    height: 86px;
     min-width: 153px;
 }
 

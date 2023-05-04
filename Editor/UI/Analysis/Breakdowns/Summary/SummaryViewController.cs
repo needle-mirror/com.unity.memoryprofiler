@@ -23,6 +23,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         VisualElement m_IssuesBox;
 
+        VisualElement m_NormalizedToggleHeader;
         Toggle m_NormalizedToggle;
         VisualElement m_ResidentMemoryBreakdown;
         VisualElement m_CommittedMemoryBreakdown;
@@ -75,6 +76,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ManagedMemoryBreakdown = View.Q("memory-usage-summary__content__managed");
             m_UnityObjectsBreakdown = View.Q("memory-usage-summary__content__unity-objects");
 
+            m_NormalizedToggleHeader = View.Q<VisualElement>("memory-usage-summary__header__right");
             m_NormalizedToggle = View.Q<Toggle>("memory-usage-summary-section__normalized-toggle");
         }
 
@@ -92,8 +94,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_IssuesBox.parent, issuesViewController.HasIssues);
 
             // "Normalize" checkbox for compare mode
-            bool comapreMode = m_ComparedSnapshot != null;
-            UIElementsHelper.SetVisibility(m_NormalizedToggle, comapreMode && isSupportedSnapshots);
+            bool compareMode = m_ComparedSnapshot != null;
+            UIElementsHelper.SetVisibility(m_NormalizedToggleHeader, compareMode && isSupportedSnapshots);
             bool normalizedSetting = EditorPrefs.GetBool("com.unity.memoryprofiler:MemoryUsageSummary.Normalized", false);
             m_NormalizedToggle.value = normalizedSetting;
             m_NormalizedToggle.RegisterValueChangedCallback(ToggleNormalized);
@@ -102,7 +104,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var committedMemoryController = new GenericMemorySummaryViewController(new AllMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), HasDetailedResidentMemoryInformation())
             {
                 TotalLabelFormat = "Total Allocated: {0}",
-                InspectAction = comapreMode ? null : TabController.MakePageSelector("All Of Memory"),
+                InspectAction = compareMode ? null : TabController.MakePageSelector("All Of Memory"),
                 Normalized = normalizedSetting
             };
             committedMemoryController.OnRowDoubleClick += (model, row) => m_AnalysisItemSelection.TrySelectCategory(model.Rows[row].CategoryId);

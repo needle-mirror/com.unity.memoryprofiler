@@ -291,6 +291,11 @@
     margin-top: 5px;
 }
 
+#memory-summary-legend-view
+{
+    flex-shrink: 0;
+}
+
 .memory-summary__legend__row
 {
     flex-shrink: 0;

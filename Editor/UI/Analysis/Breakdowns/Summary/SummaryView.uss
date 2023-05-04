@@ -13,9 +13,15 @@
 /*
  * Main layout
  */
-#summary-view
+
+#summary-view__scroll-view
 {
-    margin-top: 8px;
+    flex-grow: 1;
+}
+
+#summary-view__scroll-view #unity-content-container
+{
+    padding-top: 10px;
 }
 
 .memory-usage-summary__section
@@ -51,7 +57,7 @@
 /* Flex base is 48% as we want it to be near half screen and not to wrap */
 .memory-usage-summary__widget__group-item
 {
-    flex: 1 1 48%;
+    flex: 1 1 48.4%;
 }
 
 .memory-usage-summary__widget__content
@@ -60,10 +66,10 @@
 
 #memory-usage-summary__header__right
 {
-    position: absolute;
-    top: 0px;
-    right: 0px;
     align-items: flex-end;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
 }
 
 /*

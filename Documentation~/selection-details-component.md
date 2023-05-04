@@ -14,10 +14,11 @@ The __Selection Details__ component displays three buttons to interact with and 
 Th Selection Details component also provides information about the object through the following data groups:
 
 * A: [Basic](#basic) - displays high level information about any selected object.
-* B: [Help](#help) - displays text to explain the status of the object in more detail.
-* C: [Advanced](#advanced) - displays more detailed information about the object than the Basic group. The Selection Details panel doesn't display this group for all types of objects.
-* D: [Preview](#preview) - displays a preview of how an object appears in the Editor or your application e.g. Shaders.
-* E: [Managed Fields](#managed-fields) - displays a table including any managed fields the selected object contains and information about those fields.
+* B: [MetaData](#metadata) - displays various detailed information about certain objects.
+* C: [Help](#help) - displays text to explain the status of the object in more detail.
+* D: [Advanced](#advanced) - displays more detailed information about the object than the Basic group. The Selection Details panel doesn't display this group for all types of objects.
+* E: [Preview](#preview) - displays a preview of how an object appears in the Editor or your application e.g. Shaders.
+* F: [Managed Fields](#managed-fields) - displays a table including any managed fields the selected object contains and information about those fields.
 
 ## Basic
 
@@ -26,6 +27,15 @@ This data group contains three entries:
 * The __Size__ entry displays the size of the object in memory, and how much of that total is native or managed memory.
 * The __Referenced By__ entry displays how many other objects reference the selected object and how many self-references the object has. The [References component](references-component.md) provides more details about these references.
 * The __Status__ entry displays the type of object selected, whether or not it's used anywhere in the application and, if applicable, how it's used.
+
+## MetaData
+
+This group shows additional data specifics for supported objects. Current supported object types:
+
+* Texture (eg. Texture2D, RenderTexture, Cubemap...)
+* Mesh
+* AudioClip
+* Shader
 
 ## Help
 

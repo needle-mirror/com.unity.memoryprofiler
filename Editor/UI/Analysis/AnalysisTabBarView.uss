@@ -18,6 +18,7 @@
 {
     background-color: var(--analysis-tab-bar-view__background-color);
     min-width: 320px;
+    overflow: hidden;
 }
 
 #analysis-tab-bar-view__tab-bar

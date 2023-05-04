@@ -286,8 +286,10 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<int> NumAllocations = default;
             public readonly bool UsesDynamicHeapAllocator = false;
             public readonly bool UsesSystemAllocator;
+            public readonly long SwitchGPUAllocatorIndex = -1;
 
             const string k_DynamicHeapAllocatorName = "ALLOC_DEFAULT_MAIN";
+            const string k_SwitchGPUAllocatorName = "ALLOC_GPU";
 
             public NativeMemoryRegionEntriesCache(ref IFileReader reader)
             {
@@ -311,13 +313,21 @@ namespace Unity.MemoryProfiler.Editor
                     ConvertDynamicArrayByteBufferToManagedArray(tmp, ref MemoryRegionName);
                 }
 
-                for (int i = 0; i < Count; i++)
+                for (long i = 0; i < Count; i++)
                 {
-                    if (MemoryRegionName[i].StartsWith(k_DynamicHeapAllocatorName) && AddressSize[i] > 0)
+                    if (!UsesDynamicHeapAllocator && AddressSize[i] > 0 && MemoryRegionName[i].StartsWith(k_DynamicHeapAllocatorName))
                     {
                         UsesDynamicHeapAllocator = true;
-                        break;
                     }
+
+                    if (SwitchGPUAllocatorIndex == -1 && MemoryRegionName[i].Equals(k_SwitchGPUAllocatorName))
+                    {
+                        SwitchGPUAllocatorIndex = i;
+                    }
+
+                    // Nothing left to check if we've found an instance of both
+                    if (UsesDynamicHeapAllocator && SwitchGPUAllocatorIndex != -1)
+                        break;
                 }
                 if (Count > 0)
                     UsesSystemAllocator = !UsesDynamicHeapAllocator;
@@ -911,7 +921,7 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<long> RootReferenceId = default;
             public DynamicArray<int> ManagedObjectIndex = default;
 
-            //scondary data
+            //secondary data
             public DynamicArray<int> RefCount = default;
             public Dictionary<ulong, int> NativeObjectAddressToInstanceId { private set; get; }
             public Dictionary<long, int> RootReferenceIdToIndex { private set; get; }
@@ -1027,7 +1037,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             public enum MemoryType : ushort
             {
-                // NB!: The same as in SystemInfo.h
+                // NB!: The same as in SystemInfoMemory.h
                 Private = 0, // Private to this process allocations
                 Mapped = 1,  // Allocations mapped to a file (dll/exe/etc)
                 Shared = 2,  // Shared memory
@@ -2889,7 +2899,24 @@ namespace Unity.MemoryProfiler.Editor
                     case SourceIndex.SourceId.NativeMemoryRegion:
                         return PointType.NativeReserved;
                     case SourceIndex.SourceId.NativeAllocation:
+                    {
+                        if (m_Snapshot.MetaData.TargetInfo.HasValue &&
+                            m_Snapshot.MetaData.TargetInfo.Value.RuntimePlatform == RuntimePlatform.Switch)
+                        {
+                            // On Switch we see some "Native" allocations which are actually graphics memory.
+                            // This is likely an issue for us because Switch has the combination of being
+                            // unified memory that uses BaseAllocators for graphics, with no VirtualQuery equivalent.
+                            // See what region the memory was allocated in to let us decide how to tag it.
+                            var memIndex = m_Snapshot.NativeAllocations.MemoryRegionIndex[source.Index];
+                            var parentIndex = m_Snapshot.NativeMemoryRegions.ParentIndex[memIndex];
+                            memIndex = (parentIndex != 0) ? parentIndex : memIndex;
+
+                            if (memIndex == m_Snapshot.NativeMemoryRegions.SwitchGPUAllocatorIndex)
+                                return PointType.Device;
+                        }
+
                         return PointType.Native;
+                    }
                     case SourceIndex.SourceId.NativeObject:
                         return PointType.Native;
 

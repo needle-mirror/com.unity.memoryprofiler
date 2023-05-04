@@ -109,7 +109,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                     nativeTypeToManagedTypesKVP.Key,
                     nonDisambiguatedTechnicallyManagedTypeItems.ContainsKey(nativeTypeToManagedTypesKVP.Key)
                     ? nonDisambiguatedTechnicallyManagedTypeItems[nativeTypeToManagedTypesKVP.Key] : null);
-                unityObjectsTree.Add(CreateManagedUnityObjectTypeGroup(snapshot, nativeTypeToManagedTypesKVP, nativeUndisambiguatedItems));
+
+                var managedTypesCount = nativeTypeToManagedTypesKVP.Value.Count;
+                if (managedTypesCount > 0)
+                    unityObjectsTree.Add(CreateManagedUnityObjectTypeGroup(snapshot, nativeTypeToManagedTypesKVP, nativeUndisambiguatedItems));
             }
 
             return unityObjectsTree;
@@ -269,7 +272,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 totalMemoryInSnapshot = new MemorySize(memoryStats.Value.TotalVirtualMemory, 0);
 
             // Add graphics resources separately, as we don't have them in memory map.
-            if (snapshot.HasGfxResourceReferencesAndAllocators)
+            var snapshotUnityVersion = snapshot.MetaData.UnityVersion.Split('.');
+            var snapshotUnityVersionYear = int.Parse(snapshotUnityVersion[0]);
+            if (snapshot.HasGfxResourceReferencesAndAllocators && snapshotUnityVersionYear >= 2023)
                 AddGraphicsResources(snapshot, nativeObject2Size);
             else
                 AddLegacyGraphicsResources(snapshot, nativeObject2Size);
@@ -416,9 +421,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         !searchFilterScopeNativeObjectName.Passes(itemName)
                         : !searchFilterScopeNativeObjectName.ScopePasses))
                     {
-                            continue;
+                        continue;
                     }
-
                 }
 
                 // Create node for conceptual Unity Object.
@@ -434,7 +438,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 // Add node to corresponding type's list of Unity Objects.
                 var nativeTypeSourceIndex = new SourceIndex(SourceIndex.SourceId.NativeType, typeIndex);
-                if (nativeUnityObjectBaseTypesToDisambiguateByManagedType.Contains(nativeTypeSourceIndex))
+                if (nativeUnityObjectBaseTypesToDisambiguateByManagedType.Contains(nativeTypeSourceIndex) && args.DisambiguateByInstanceId)
                 {
                     if(managedTypeIndex >= 0)
                     {

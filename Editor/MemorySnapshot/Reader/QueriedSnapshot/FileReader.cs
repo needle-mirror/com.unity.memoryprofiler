@@ -69,7 +69,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
     //
     // Legend:
     //  <Chapter> - EntryType eg: NativeObjectName
-    struct FileReader : IFileReader
+    class FileReader : IFileReader
     {
         [StructLayout(LayoutKind.Explicit, Size = 16, Pack = 4)]
         struct Blob16Byte { }

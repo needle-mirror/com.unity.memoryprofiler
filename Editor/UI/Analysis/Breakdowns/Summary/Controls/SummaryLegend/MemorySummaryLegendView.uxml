@@ -7,7 +7,7 @@
 
     <Template name="memory-summary__legend__column-template" src="MemorySummaryLegendColumnTemplate.uxml" />
 
-    <VisualElement>
+    <VisualElement name="memory-summary-legend-view">
         <VisualElement name="memory-summary__legend" class="memory-summary__legend">
             <VisualElement name="memory-summary__legend__name-column">
                 <VisualElement name="memory-summary__legend__column-controls">
@@ -26,7 +26,7 @@
                 <AttributeOverrides element-name="memory-summary__legend__header-icon-text" text="B"/>
             </Instance>
             <Instance template="memory-summary__legend__column-template" name="memory-summary__legend__diff-column">
-                <AttributeOverrides element-name="memory-summary__legend__header-icon-text" text="A-B"/>
+                <AttributeOverrides element-name="memory-summary__legend__header-icon-text" text="Diff"/>
             </Instance>
         </VisualElement>
     </VisualElement>

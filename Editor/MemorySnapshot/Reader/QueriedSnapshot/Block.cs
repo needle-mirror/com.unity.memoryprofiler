@@ -30,6 +30,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 return;
 
             UnsafeUtility.Free(m_Offsets, Allocator.Persistent);
+            m_Offsets = null;
         }
 
         public unsafe long* GetOffsetsPtr() { return m_Offsets; }
