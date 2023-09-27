@@ -19,6 +19,11 @@ namespace Unity.MemoryProfiler.Editor
 
         MemoryProfilerViewController m_ProfilerViewController;
 
+        // Api exposed for testing purposes
+        internal PlayerConnectionService PlayerConnectionService => m_PlayerConnectionService;
+        internal SnapshotDataService SnapshotDataService => m_SnapshotDataService;
+        internal MemoryProfilerViewController ProfilerViewController => m_ProfilerViewController;
+
         [MenuItem("Window/Analysis/Memory Profiler", false, 4)]
         static void ShowWindow()
         {
@@ -32,6 +37,9 @@ namespace Unity.MemoryProfiler.Editor
             titleContent = new GUIContent("Memory Profiler", icon);
 
             minSize = new Vector2(500, 500);
+
+            // initialize quick search in the background so that it is ready for finding assets once a snapshot is openes
+            QuickSearchUtility.InitializeQuickSearch(async: true);
         }
 
         void Init()
@@ -42,7 +50,7 @@ namespace Unity.MemoryProfiler.Editor
             m_PlayerConnectionService = new PlayerConnectionService(this, m_SnapshotDataService);
 
             // Analytics
-            MemoryProfilerAnalytics.EnableAnalytics(this);
+            MemoryProfilerAnalytics.EnableAnalytics();
             m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
             EditorApplication.update += PollForApplicationFocus;
             EditorSceneManager.activeSceneChangedInEditMode += RefreshScreenshotsOnSceneChange;

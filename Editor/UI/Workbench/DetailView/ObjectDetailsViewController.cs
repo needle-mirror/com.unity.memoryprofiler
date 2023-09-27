@@ -18,6 +18,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifierReferencesSelection = "reference-item-details__unity-item-title";
         const string k_UxmlIdentifierSelectedDetails = "selected-item-details";
 
+        public const string ReferencesLabelText = "References";
+        public const string DetailsLabelText = "Selected Item Details";
+
         // State
         readonly CachedSnapshot m_Snapshot;
         readonly CachedSnapshot.SourceIndex m_DataSource;
@@ -54,9 +57,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (IsViewLoaded)
                 {
-                    // End analytics collection and send
-                    MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>();
-
                     // Update panel settings to the latest actual size
                     // - We update only if details panel was loaded
                     // - We fetch actual size as it is only updated on visibility
@@ -100,14 +100,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             base.ViewLoaded();
             RefreshView();
-
-            // Start analytics collection after view is loaded
-            MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel>(
-                new MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel()
-                {
-                    selectedElementType = $"{m_DataSource.Id}:{m_DataSource.Index}",
-                    selectedElementStatus = m_DataSource.GetName(m_Snapshot)
-                });
         }
 
         void GatherReferencesInView(VisualElement view)
@@ -166,16 +158,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (evt.target != m_ReferencesFoldout || evt.newValue == evt.previousValue)
                 return;
 
-            const string k_ReferencesLabelText = "References";
             if (evt.newValue)
             {
-                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_ReferencesLabelText });
                 ExpandReferencesSeletion();
             }
             else
             {
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(MemoryProfilerAnalytics.ReferencePanelInteractionType.ReferencePanelWasHidden);
                 CollapseReferencesSeletion();
             }
         }
@@ -185,15 +173,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (evt.target != m_SelectionDetailsFolout || evt.newValue == evt.previousValue)
                 return;
 
-            const string k_DetailsLabelText = "Selected Item Details";
             if (evt.newValue)
             {
-                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = k_DetailsLabelText });
-            }
-            else
-            {
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionDetailsPanelWasHidden);
+                // Send analytics event for the opened references view
+                MemoryProfilerAnalytics.SendOpenViewEvent(DetailsLabelText, false);
             }
         }
 
@@ -237,6 +220,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Cheat to force update
                 m_DetailsSplitter.fixedPaneInitialDimension = 0;
                 m_DetailsSplitter.fixedPaneInitialDimension = m_ReferencesSectionExpandedSize;
+
+                // Send analytics event for the opened references view
+                MemoryProfilerAnalytics.SendOpenViewEvent(ReferencesLabelText, initial);
             }
             else
             {

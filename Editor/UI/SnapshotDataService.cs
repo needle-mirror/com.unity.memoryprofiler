@@ -10,7 +10,14 @@ using Unity.MemoryProfiler.Editor.UI;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    internal class SnapshotDataService : IDisposable
+    interface ISnapshotDataService
+    {
+        void SyncSnapshotsFolder();
+        void UnloadAll();
+        string GetSnapshotFolderPath();
+    }
+
+    internal class SnapshotDataService : IDisposable, ISnapshotDataService
     {
         const string k_SnapshotFileExtension = ".snap";
         const string k_SessionNameTempalte = "Session {0}";
@@ -166,10 +173,9 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool Import(string filePath)
         {
-            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.ImportedSnapshotEvent>();
-            var ret = ImportSnapshot(filePath);
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.ImportedSnapshotEvent() { fileExtensionOrVersionOfImportedSnapshot = Path.GetExtension(filePath) });
+            using var importSnapshotEvent = MemoryProfilerAnalytics.BeginImportSnapshotEvent();
 
+            var ret = ImportSnapshot(filePath);
             SyncSnapshotsFolder();
 
             return ret;
@@ -261,12 +267,12 @@ namespace Unity.MemoryProfiler.Editor
             return true;
         }
 
-        CachedSnapshot LoadSnapshot(FileReader file)
+        static CachedSnapshot LoadSnapshot(FileReader file)
         {
             if (!file.HasOpenFile)
                 return null;
 
-            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.LoadedSnapshotEvent>();
+            using var loadSnapshotEvent = MemoryProfilerAnalytics.BeginLoadSnapshotEvent();
 
             ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(file.FullPath)));
             var cachedSnapshot = new CachedSnapshot(file);
@@ -282,21 +288,15 @@ namespace Unity.MemoryProfiler.Editor
                     ProgressBarDisplay.UpdateProgress(status.CurrentStep * progressPerStep, status.StepStatus);
                 }
             }
-            ProgressBarDisplay.ClearBar();
 
-            var snapshotDetails = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(cachedSnapshot);
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.LoadedSnapshotEvent()
-            {
-                success = cachedSnapshot.MetaData.ProductName == Application.productName,
-                openSnapshotDetails = snapshotDetails,
-                unityVersionOfSnapshot = cachedSnapshot.MetaData.UnityVersion,
-                runtimePlatform = PlatformsHelper.GetRuntimePlatform(cachedSnapshot.MetaData.Platform)
-            });
+            loadSnapshotEvent.SetResult(cachedSnapshot);
+
+            ProgressBarDisplay.ClearBar();
 
             return cachedSnapshot;
         }
 
-        void UnloadSnapshot(ref CachedSnapshot snapshot)
+        static void UnloadSnapshot(ref CachedSnapshot snapshot)
         {
             if (snapshot == null)
                 return;
@@ -326,7 +326,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        List<SnapshotFileModel> BuildSnapshotsInfo(string snapshotsPath, IReadOnlyList<SnapshotFileModel> snapshotInfos)
+        static List<SnapshotFileModel> BuildSnapshotsInfo(string snapshotsPath, IReadOnlyList<SnapshotFileModel> snapshotInfos)
         {
             var snapshotsMap = snapshotInfos.ToDictionary(x => x.FullPath, x => x);
 
@@ -346,7 +346,7 @@ namespace Unity.MemoryProfiler.Editor
             return results;
         }
 
-        IEnumerable<string> GetSnapshotFiles(string rootPath)
+        static IEnumerable<string> GetSnapshotFiles(string rootPath)
         {
             if (!Directory.Exists(rootPath))
                 yield break;
@@ -359,7 +359,8 @@ namespace Unity.MemoryProfiler.Editor
 
         bool ImportSnapshot(string sourceFilePath)
         {
-            var targetFilePath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, Path.GetFileNameWithoutExtension(sourceFilePath) + k_SnapshotFileExtension);
+            var snapshotFolderPath = GetSnapshotFolderPath();
+            var targetFilePath = Path.Combine(snapshotFolderPath, Path.GetFileNameWithoutExtension(sourceFilePath) + k_SnapshotFileExtension);
             if (File.Exists(targetFilePath))
                 return false;
 
@@ -374,6 +375,18 @@ namespace Unity.MemoryProfiler.Editor
             // Unload without notify
             LoadedSnapshotsChanged = null;
             UnloadAll();
+        }
+
+        public string GetSnapshotFolderPath()
+        {
+            var snapshotFolderPath = MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath;
+            if (!Directory.Exists(snapshotFolderPath) && MemoryProfilerSettings.UsingDefaultMemorySnapshotStoragePath())
+            {
+                // If the path points to the default folder but doesn't exist, create it.
+                // We don't create non default path folders though. As that could lead to unexpected behaviour for the User.
+                Directory.CreateDirectory(snapshotFolderPath);
+            }
+            return snapshotFolderPath;
         }
     }
 }

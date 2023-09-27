@@ -259,6 +259,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 // Dispose asynchronous worker.
                 m_BuildModelWorker.Dispose();
+
+
+                // Update usage counters
+                MemoryProfilerAnalytics.AddAllTrackedMemoryComparisonUsage(itemNameFilter != null, MemoryProfilerSettings.ShowReservedMemoryBreakdown, m_UnchangedToggle.value);
             });
         }
 
@@ -379,8 +383,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         void ApplyFilter(ChangeEvent<bool> evt)
         {
             BuildModelAsync();
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
-                evt.newValue ? MemoryProfilerAnalytics.PageInteractionType.UnchangedFilterWasApplied : MemoryProfilerAnalytics.PageInteractionType.UnchangedFilterWasRemoved);
         }
 
         Comparison<TreeViewItemData<ComparisonTableModel.ComparisonData>> BuildSortComparisonFromTreeView()

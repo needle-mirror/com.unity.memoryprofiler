@@ -66,7 +66,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ManagedObjectInspectorItem(int managedInspectorId, string name, int managedTypeIndex, string type, string value, bool isStatic, ulong identifyingPointer, ulong size)
-            : this(managedInspectorId, name, managedTypeIndex, type, value, isStatic, identifyingPointer, EditorUtility.FormatBytes((long)size))
+            : this(managedInspectorId, name, managedTypeIndex, type, value, isStatic, identifyingPointer,
+                  // TODO: Lazy generate byte size when proting this to UI TK Multicolumn Tree Views, as this is ~30% of the cost of using this constructor,
+                  // or 968ms of 3246ms (total constructor cost) when selecting a relatively mundane managed TypeConverter in the All Of Memory table
+                  EditorUtility.FormatBytes((long)size))
         { }
 
         internal ManagedObjectInspectorItem(int managedInspectorId, string name, int managedTypeIndex, string type, string value, bool isStatic, ulong identifyingPointer, string size)
@@ -76,8 +79,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             DisplayName = name;
             ManagedTypeIndex = managedTypeIndex;
             TypeName = type;
-            if (ManagedObjectInspector.HidePointers && value.StartsWith("0x"))
-                Value = string.Empty;
+            if (ManagedObjectInspector.HidePointers && value.Length >= DetailFormatter.PointerNameMinLength)
+            {
+                // string.StartsWith("0x"... but without all the Globalization and safety non-sense
+                // string.StartsWith used to be ~50%, or 1694ms of 2256ms, of the cost of this constructor
+                unsafe
+                {
+                    fixed (char* ptr = value)
+                    {
+                        if (*ptr == '0' && *(ptr + 1) == 'x')
+                            value = string.Empty;
+                    }
+                }
+            }
             else
                 Value = value;
             Size = size;

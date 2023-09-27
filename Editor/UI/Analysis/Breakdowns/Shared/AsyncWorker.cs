@@ -5,7 +5,22 @@ using Unity.EditorCoroutines.Editor;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class AsyncWorker<T> : IDisposable
+    abstract class BaseAsyncWorker : IDisposable
+    {
+        // Track the active count of Async workers
+        protected static int s_ActiveInstanceCount = 0;
+        public static int ActiveInstanceCount => Interlocked.Add(ref s_ActiveInstanceCount, 0);
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected abstract void Dispose(bool disposing);
+    }
+
+    class AsyncWorker<T> : BaseAsyncWorker
     {
         Func<T> m_Execution;
         Action<T> m_Completion;
@@ -28,6 +43,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_Completion == null)
                 throw new ArgumentNullException(nameof(completion));
 
+            Interlocked.Increment(ref s_ActiveInstanceCount);
+
             // Start a coroutine to invoke the completion handler on the main thread when the work is completed.
             m_WaitForExecutionCompletion = EditorCoroutineUtility.StartCoroutine(WaitForExecutionCompletion(), this);
 
@@ -36,13 +53,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Thread.Start();
         }
 
-        public void Dispose()
-        {
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
-
-        protected virtual void Dispose(bool disposing)
+        protected override void Dispose(bool disposing)
         {
             if (m_Disposed)
                 return;
@@ -56,6 +67,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_Thread = null;
                 m_Execution = null;
                 m_Completion = null;
+
+                Interlocked.Decrement(ref s_ActiveInstanceCount);
             }
 
             m_Disposed = true;

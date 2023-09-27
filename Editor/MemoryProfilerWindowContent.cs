@@ -6,19 +6,9 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 {
     internal static class TextContent
     {
-        public static readonly GUIContent NoneView = new GUIContent("None", "");
-        public static readonly GUIContent SummaryView = new GUIContent("Summary", "");
-        public static readonly GUIContent MemoryMapView = new GUIContent("Memory Map", "Show Snapshot as Memory Map");
-        public static readonly GUIContent MemoryMapViewDiff = new GUIContent("Memory Map Diff", "Show Snapshot Diff as Memory Map");
-        public static readonly GUIContent TreeMapView = new GUIContent("Tree Map", "Show Snapshot as Memory Tree");
-        public const string TableMapViewRoot = "Table/";
-        public const string RawDataTableMapViewRoot = "Raw Data/";
-        public const string DiffRawDataTableMapViewRoot = "Diff Raw Data/";
         public static readonly GUIContent SnapshotOptionMenuItemDelete = new GUIContent("Delete", "Deletes the snapshot file from disk.");
         public static readonly GUIContent SnapshotOptionMenuItemRename = new GUIContent("Rename", "Renames the snapshot file on disk.");
         public static readonly GUIContent SnapshotOptionMenuItemBrowse = new GUIContent("Open Folder", "Opens the folder where the snapshot file is located on disk.");
-        public static readonly GUIContent SnapshotCaptureFlagsDropDown = new GUIContent("Capture", "Captures a memory snapshot with the specified types of data. Warning, this can take a moment.");
-        public static readonly GUIContent SnapshotImportButton = new GUIContent("Import", "Imports a memory snapshot.");
         public static readonly GUIContent CaptureManagedObjectsItem = new GUIContent("Managed Objects");
         public static readonly GUIContent CaptureNativeObjectsItem = new GUIContent("Native Objects");
         public static readonly GUIContent CaptureNativeAllocationsItem = new GUIContent("Native Allocations");
@@ -27,18 +17,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static readonly GUIContent GCCollectItem = new GUIContent("Run Garbage Collection before capturing Editor");
 
         public static readonly GUIContent OpenSettingsOption = new GUIContent("Open Preferences");
-
-        public static readonly string UnknownSession = "Unknown Session";
-        public static readonly string SessionName = "Session {0}";
-        public static readonly GUIContent SessionFoldoutLabel = new GUIContent("{0} - {1}", "{0} - Unity {1} - Session ID: {2}");
-
-        public static readonly string TotalResidentMemory = "Total Resident: {0}";
-        public static readonly string TotalCommittedMemory = "Total Allocated: {0}";
-        public static readonly GUIContent TotalPhysicallyAvailableMemory = new GUIContent("Max Available: {0}", "Maximum amount of available physical memory: {0}");
-
-        public const string DefaultVirtualMachineMemoryCategoryLabel = "Virtual Machine (Scripting)";
-        public const string MonoVirtualMachineMemoryCategoryLabel = "Virtual Machine (Mono)";
-        public const string IL2CPPVirtualMachineMemoryCategoryLabel = "Virtual Machine (IL2CPP)";
 
         public const string ImportSnapshotWindowTitle = "Import snapshot file";
         public const string DeleteSnapshotDialogTitle = "Delete Snapshot";
@@ -58,13 +36,9 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string HeapWarningWindowOK = "Take Snapshot";
 
         public static readonly string[] MemorySnapshotImportWindowFileExtensions = new string[] { "MemorySnapshot", "snap", "Bitbucket MemorySnapshot", "memsnap,memsnap2,memsnap3" };
-        public const string RawCategoryName = "Raw";
-        public const string DiffRawCategoryName = "Diff Raw";
 
         public const string InstanceIdPingingOnlyWorksInSameSessionMessage = "Pinging objects only works for snapshots taken in the current editor session, as it relies on instance IDs. Current Editor Session ID:{0}, Snapshot Session ID: {1}";
         public const string InstanceIdPingingOnlyWorksInNewerUnityVersions = "Pinging objects based on their Instance ID does not work in this Unity version. To enable that functionality, please update your Unity installation to 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer.";
-
-        public const string MemoryUsageUnavailableMessage = "The Memory Usage Overview is not available with this snapshot.\n" + PreSnapshotVersion11UpdgradeInfoMemoryOverview;
 
         public static readonly string OpenManualTooltip = L10n.Tr("Open the relevant documentation entry.");
         public const string InvalidObjectPleaseReportABugMessageShort = "Failed To read Object, please report a bug via 'Help > Report a Bug'.";
@@ -72,7 +46,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string InvalidObjectPleaseReportABugMessage = PleaseReportABugMessage + " Please attach this snapshot, info on how to find this object in the snapshot, and a project to reproduce this with.";
 
         public static readonly string TruncateTypeName = "Truncate Managed Type Names";
-        public static readonly string TreeMapNotAvailableInDiffTooltip = "Tree Map is not available when Comparing Snapshots";
 
         public static readonly string CopyToClipboardButtonTooltip = "Copy To Clipboard";
         public static readonly string CopyTitleToClipboardContextClickItem = "Copy {0}";
@@ -80,6 +53,14 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public static readonly string CopyButtonDropdownOptionObjectName = "Object Name";
         public static readonly string CopyButtonDropdownOptionManagedTypeName = "Managed Type Name";
         public static readonly string CopyButtonDropdownOptionNativeTypeName = "Native Type Name";
+
+        public const string SummaryViewName = "Summary";
+        public const string UnityObjectsViewName = "Unity Objects";
+        public const string AllOfMemoryViewName = "All Of Memory";
+        public const string MemoryMapViewName = "Memory Map";
+
+        const string k_ComparisonSuffix = " Comparison";
+        public static string GetComparisonViewName(string viewName) => viewName + k_ComparisonSuffix;
 
         public static string ResidentMemoryDescription => "The application footprint in physical memory. It includes all Unity and non-Unity allocations resident in memory at the time of the capture.";
 
@@ -92,8 +73,8 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "\n- CPU side of Graphics Asset memory" +
         "\n- And other" +
         "\n\nThis doesn't include Graphics, which is shown in a separate category." +
-        "\n\nYou can inspect these categories further in the All of Memory Breakdown." +
-        "\n\nNote: Values in Summary and All Of Memory views might be different as they use different ways of grouping items together.";
+        $"\n\nYou can inspect these categories further in the {AllOfMemoryViewName} Breakdown." +
+        $"\n\nNote: Values in {SummaryViewName} and {AllOfMemoryViewName} views might be different as they use different ways of grouping items together.";
         public static string NativeReservedDescription => "Reserved memory is memory that Unity allocated from the system (OS) but isn't used by any Unity objects at the moment of the capture. " +
             "There are many reasons why Unity might allocate memory for it internal allocators:" +
             "\n- Loading of resources" +
@@ -109,10 +90,9 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "\n- Unload your assets before loading a new scene" +
             "\n- Use \"temp\" allocator for short-living allocations if you use unsafe utilities API" +
             "\n- Customize allocators for your specific needs if Unity pre-allocate too much on start(recommended only for advanced users)";
-        public static string ProfilerDescription => "This is the Profiler overhead, which includes memory used to collect and send Profiler frame data, take memory captures, or process the received Profiler frame data in the Editor.";
         public static string GraphicsEstimatedDescription => "Estimated memory used by the Graphics Driver and the GPU to visualize your application." +
-            "\nThe information is based on the tracking of graphics resource allocations within Unity. This includes RenderTextures, Textures, Meshes, Animations and other graphics buffers which are allocated by Unity or Scripting API. Use All Of Memory tab to explore graphics resources." +
-            "\nNot all these objects' memory is represented in this category. For example, Read/Write enabled graphics assets need to retain a copy in CPU-accessible memory, which doubles their total memory usage. Use Unity Objects tab to explore total memory usage of Unity Objects. " +
+            $"\nThe information is based on the tracking of graphics resource allocations within Unity. This includes RenderTextures, Textures, Meshes, Animations and other graphics buffers which are allocated by Unity or Scripting API. Use {AllOfMemoryViewName} tab to explore graphics resources." +
+            $"\nNot all these objects' memory is represented in this category. For example, Read/Write enabled graphics assets need to retain a copy in CPU-accessible memory, which doubles their total memory usage. Use {UnityObjectsViewName} tab to explore total memory usage of Unity Objects. " +
             "Also, not necessarily all memory from these type of objects resides in GPU memory. Memory Profiler is unable to get exact residence information for graphics resources.";
         public static string GraphicsEstimatedDisabledDescription => "Estimated memory used by the Graphics Driver and the GPU to visualize your application." +
             "\nThe information is based on the process memory regions reported by the operating system. This includes display buffers, RenderTextures, Textures, Meshes, Animations." +
@@ -159,11 +139,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "Therefore the Contiguous Managed Heap section at the highest virtual address value is assumed to be the highest one, which is likely to be correct. " +
         "This bar shows the amount of unused memory in that section." +
         k_SharedEmptyHeapDescription;
-        public static string EmptyFragmentedHeapDescription => "This bar represents the empty space in all Managed Heap sections that are not the Active Heap section. " +
-        "\nFor some reason, this memory can not yet be returned to the system. " +
-        "This can be because there are still active Managed Objects in it that do not occupy all of the space. " +
-        "Heap Sections can only be allocated from the system or released back to the system in Pages (4KB on most platforms) and any partially-occupied page is therefore impossible to release until it is no longer used. " +
-        k_SharedEmptyHeapDescription;
 
         const string k_SharedEmptyHeapDescription =
             "\n\nWhen allocating new managed memory for Managed Objects, the Active Heap Section is checked for empty space first, which is the fastest way to allocate it. " +
@@ -171,8 +146,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "If no fitting place is found for the Object, GC Collection is triggered. When using the Incremental GC, a new heap section is immediately allocated (expanding the heap) for the new Object, " +
             "while the Garbage Collection happens asynchronously. When it is not used, a new section is only allocated if there is not enough space after the collection either." +
             "\n\nThis Memory could also still be occupied by Objects that have been abandoned after the last GC.Alloc sweep and are waiting for collection in the next one.";
-
-        public static string UnitySubsystemsDescription => "Lists all Unity subsystems, responsible for managing different features and functionalities within the Unity Engine.";
 
         public const string UsedByNativeCodeStatus = "Empty Array Required by Unity's subsystems";
         public const string UsedByNativeCodeHint = "This array's Type is marked with a [UsedByNativeCode] or [RequiredByNativeCode] Attribute in the Unity code-base and the array exists so that the Type is not compiled out on build. It is held in memory via a GCHandle. You can search the public C# reference repository for those attributes https://github.com/Unity-Technologies/UnityCsReference/.";
@@ -221,10 +194,9 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string LeakedManagedShellName = "Leaked Managed Shell";
         public const string LeakedManagedShellHint = "(" + LeakedManagedShellName + ")";
 
-        public const string TypedGroupDescription = "The selected item is a Type";
         public const string NonTypedGroupDescription = "The selected item is a group of similar elements";
 
-        public const string NoResidentMemoryInformationOldSnapshot = "Detailed breakdown of resident allocations is not available. This snapshot was taken with a Unity version 2021.2 or older.";
+        public const string NoResidentMemoryInformationOldSnapshot = "Detailed breakdown of resident allocations is not available. This information was added in 2023.1 and this snapshot was taken with an older Unity version.";
         public const string NoResidentMemoryInformationNotSupported = "Detailed breakdown of resident allocations is not available. This platform is not supported.";
         public const string ResidentAndAllocatedMemoryAreIdentical = "On this platform, there is no distinction between Allocated Memory, and Resident Memory on Device. Therefore, the Memory profiler will present information exclusively about Allocated Memory.";
 
@@ -255,7 +227,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 #else
         public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Profiling.Memory.Experimental.CaptureFlags.html";
 #endif
-        public const string Requirements = LatestPackageVersionBaseUrl + IndexHelp + k_AnchorChar + "requirements";
 
         public const string UntrackedMemoryDocumentation = LatestPackageVersionBaseUrl + IndexHelp + k_AnchorChar + "known-limitations";
     }
@@ -269,7 +240,5 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 #endif
         public const string SnapshotScreenshotFileExtension = ".png";
         public const string SnapshotFileExtension = ".snap";
-        public const string SnapshotFileNamePart = "Snapshot-";
-        public const string ConvertedSnapshotTempFileName = "ConvertedSnaphot.tmpsnap";
     }
 }

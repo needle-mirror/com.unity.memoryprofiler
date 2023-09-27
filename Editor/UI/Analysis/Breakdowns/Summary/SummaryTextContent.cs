@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// Managed Memory summary
         /// </summary>
         public const string kManagedMemoryTitle = "Managed Heap Utilization";
-        public const string kManagedMemoryDescription = "Displays how efficiently Unity is using the memory you have allocated. High amounts of reserved memory and low usage might be signs of low efficiency or fragmentation.";
+        public const string kManagedMemoryDescription = "Displays a breakdown of the memory that Unity manages which you can't affect, such as memory in the managed heap, memory used by a virtual machine, or any empty memory pre-allocated for similar purposes.";
         public const string kManagedMemoryCategoryVM = "Virtual Machine";
         public const string kManagedMemoryCategoryObjects = "Objects";
         public const string kManagedMemoryCategoryFreeHeap = "Empty Heap Space";
@@ -48,7 +48,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// Top Unity Objects summary
         /// </summary>
         public const string kUnityObjectsTitle = "Top Unity Objects Categories";
-        public const string kUnityObjectsDescription = "Displays the main Unity Objects Assets Categories that are currently impacting memory.";
+        public const string kUnityObjectsDescription = "Displays which types of Unity Objects use the most memory in the snapshot.";
         public const string kUnityObjectsCategoryOther = "Others";
 
         /// <summary>

@@ -21,9 +21,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         IViewControllerWithVisibilityEvents[] m_ViewControllers;
 
-        protected TabBarController(IResponder responder = null)
+        protected TabBarController()
         {
-            Responder = responder;
             MakeTabBarItem = MakeDefaultTabBarItem;
         }
 
@@ -72,8 +71,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        protected IResponder Responder { get; private set; }
-
         // The tab bar controller's content view, where it places the selected content view controller's view. Must be assigned before ViewLoaded (in LoadView).
         protected abstract VisualElement ContentView { get; set; }
 
@@ -82,6 +79,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // Override to provide custom tab bar items. One tab bar item will be created for each content view controller in ViewControllers and added as children of TabBarView.
         protected Func<IViewControllerWithVisibilityEvents, int, VisualElement> MakeTabBarItem { get; set; }
+
+        // Invoked after the tab bar controller's selected index has changed.
+        protected abstract void SelectedIndexChanged(int newSelectedIndex);
+
 
         protected override void ViewLoaded()
         {
@@ -128,9 +129,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 SwitchContentViewController(previousIndex, m_SelectedIndex);
                 SwitchSelectedTabBarItem(previousIndex, m_SelectedIndex);
-
-                Responder?.TabBarControllerSelectedIndexChanged(this, m_SelectedIndex);
             }
+
+            if (previousIndex != m_SelectedIndex)
+                SelectedIndexChanged(m_SelectedIndex);
         }
 
         bool IsValidViewControllerIndex(int index)
@@ -237,14 +239,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                     flexGrow = 1,
                 }
             };
-        }
-
-        public interface IResponder
-        {
-            // Invoked after the tab bar controller's selected index has changed.
-            void TabBarControllerSelectedIndexChanged(
-                TabBarController tabBarController,
-                int selectedIndex);
         }
     }
 }

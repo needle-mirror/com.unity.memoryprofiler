@@ -22,7 +22,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlLegendTableCellSelectedStateClass = "memory-summary__element-selected";
 
         // Model
-        readonly MemorySummaryModel m_Model;
+        MemorySummaryModel m_Model;
         string m_TotalLabelFormat;
 
         // View
@@ -180,7 +180,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TotalB = m_ContainerB.Q<Label>(k_UxmlMemoryUsageBarHeaderTitle);
         }
 
-        protected virtual void RefreshView()
+        public void Update(MemorySummaryModel model)
+        {
+            m_Model = model;
+            RefreshView();
+        }
+
+        void RefreshView()
         {
             var maxValue = Math.Max(m_Model.TotalA, m_Model.TotalB);
 

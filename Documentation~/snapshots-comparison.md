@@ -18,7 +18,7 @@ Select any non-parented entry to open that entry in the direct comparison tables
 
 ## Summary comparison
 
-In this tab, each of the __Total Committed Memory__, __Managed Memory__ and __Top Unity Objects Categories__ sections contains two sets of information - two bars to visually display the memory used in each snapshot, and a table to compare the absolute values for the used memory.
+In this tab, each of the __Memory Usage On Device__, __Allocated Memory Distribution__, __Managed Heap Utilization__ and __Top Unity Objects Categories__ sections contains two sets of information - two bars to visually display the memory used in each snapshot, and a table to compare the absolute values for the used memory.
 
 ![The Summary comparison tab](images/workflow-comparison-summary-tab.png)
 

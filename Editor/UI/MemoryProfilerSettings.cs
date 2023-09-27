@@ -53,6 +53,8 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
+        public static bool UsingDefaultMemorySnapshotStoragePath() => MemorySnapshotStoragePath.Equals(k_DefaultPath, StringComparison.Ordinal);
+
         public static bool MemorySnapshotTruncateTypes
         {
             get

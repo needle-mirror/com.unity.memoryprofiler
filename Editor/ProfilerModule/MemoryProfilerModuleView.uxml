@@ -11,6 +11,9 @@
 
     <ui:VisualElement name="memory-profiler-module__view">
         <Style src="MemoryProfilerModuleView.uss" />
+        <Style src="../UI/Analysis/Breakdowns/Summary/SummaryView.uss" />
+        <Style src="../UI/Analysis/Breakdowns/Summary/GenericMemorySummary/GenericMemorySummaryView.uss" />
+
 
         <uie:Toolbar name="memory-profiler-module__toolbar">
             <uie:ToolbarButton name="memory-profiler-module__toolbar__view-mode">

@@ -231,6 +231,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (!ProgressBarDisplay.IsComplete())
                 return;
 
+            if (m_SnapshotDataService.IsOpen(Model.FullPath) && m_SnapshotDataService.Compared != null)
+            {
+                // Special case when it's open as "compared", which is in single mode can be considered as "cached"
+                if (PathHelpers.NormalizePath(m_SnapshotDataService.Compared.FullPath) == PathHelpers.NormalizePath(Model.FullPath))
+                    m_SnapshotDataService.Swap();
+
+                return;
+            }
+
             m_SnapshotDataService.Load(Model.FullPath);
         }
 

@@ -8,11 +8,11 @@ namespace Unity.MemoryProfiler.Editor
 {
     readonly struct BytesAndOffset
     {
-        public readonly DynamicArray<byte> Bytes;
+        public readonly DynamicArrayRef<byte> Bytes;
         public readonly ulong Offset;
         public readonly uint PointerSize;
         public bool IsValid { get { return Bytes.IsCreated; } }
-        public BytesAndOffset(DynamicArray<byte> bytes, uint pointerSize, ulong offset = 0)
+        public BytesAndOffset(DynamicArrayRef<byte> bytes, uint pointerSize, ulong offset = 0)
         {
             if (!bytes.IsCreated)
                 throw new ArgumentException(nameof(bytes), $"{nameof(bytes)} does not contain any data.");

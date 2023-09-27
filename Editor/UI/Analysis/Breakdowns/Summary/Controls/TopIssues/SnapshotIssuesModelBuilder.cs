@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.Profiling.Memory;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -52,6 +53,17 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         const string kCrossUnityVersionDiff = "Comparing snapshots from different Unity versions.";
         const string kCrossUnityVersionDiffDetail = "Snapshot A was taken from Unity version '{0}', while snapshot B was taken from Unity version '{1}'. Some change in memory usage might be due to the different base Unity versions used while some might be due to changes in the project.";
+
+        /// <summary>
+        /// Not All Capture Flags are important to check to raise issues for their presence or absence
+        /// e.g. <see cref="CaptureFlags.NativeStackTraces"/> and/or <see cref="CaptureFlags.NativeAllocationSites"/>
+        /// might have been requested (or not) but that is currently not relevant as there is no UI for them.
+        /// It also in general does not matter for comparisons if one but not the other has these defined.
+        ///
+        /// Further, future flags might be added and old package versions would have no idea what those are
+        /// and if they would be important to raise issues on these, so only check these cleared list of flags.
+        /// </summary>
+        const CaptureFlags kCaptureFlagsRelevantForIssueEntries = (CaptureFlags.ManagedObjects | CaptureFlags.NativeObjects | CaptureFlags.NativeAllocations);
 
         // Data.
         readonly CachedSnapshot m_BaseSnapshot;
@@ -108,15 +120,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             else if (snapshotB.MetaData.IsEditorCapture)
                 AddIssue(results, kEditorHintDiffOne, kEditorHintDiffOneDetails, SnapshotIssuesModel.IssueLevel.Warning);
 
+            // mask flags to only contain flags relevant for issue entries
+            var flagsA = snapshotA.MetaData.CaptureFlags & kCaptureFlagsRelevantForIssueEntries;
+            var flagsB = snapshotB.MetaData.CaptureFlags & kCaptureFlagsRelevantForIssueEntries;
             // Compare capture flags
-            if (snapshotA.CaptureFlags != snapshotB.CaptureFlags)
+            if (flagsA != flagsB)
             {
                 var strBuilder = new StringBuilder();
-                bool noNativeObjectsA, noNativeAllocationsA, noManagedObjectsA;
-                var missingSupportedCaptureFlagCountA = CheckMissingCaptureFlags(snapshotA.CaptureFlags, out noNativeObjectsA, out noNativeAllocationsA, out noManagedObjectsA);
+                var missingSupportedCaptureFlagCountA = CheckMissingCaptureFlags(flagsA, out bool noNativeObjectsA, out bool noNativeAllocationsA, out bool noManagedObjectsA);
 
-                bool noNativeObjectsB, noNativeAllocationsB, noManagedObjectsB;
-                var missingSupportedCaptureFlagCountB = CheckMissingCaptureFlags(snapshotB.CaptureFlags, out noNativeObjectsB, out noNativeAllocationsB, out noManagedObjectsB);
+                var missingSupportedCaptureFlagCountB = CheckMissingCaptureFlags(flagsB, out bool noNativeObjectsB, out bool noNativeAllocationsB, out bool noManagedObjectsB);
+
                 if (missingSupportedCaptureFlagCountA == 0)
                     strBuilder.AppendFormat(kCaptureFlagsDiffDetailsAllWereCaptured, "A");
                 else
@@ -177,8 +191,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void AddCaptureFlagsInfo(List<SnapshotIssuesModel.Issue> results, CachedSnapshot snapshot)
         {
-            bool noNativeObjects, noNativeAllocations, noManagedObjects;
-            var missingSupportedCaptureFlagCount = CheckMissingCaptureFlags(snapshot.CaptureFlags, out noNativeObjects, out noNativeAllocations, out noManagedObjects);
+            // mask flags to only contain flags relevant for issue entries
+            var flags = snapshot.MetaData.CaptureFlags & kCaptureFlagsRelevantForIssueEntries;
+
+            var missingSupportedCaptureFlagCount = CheckMissingCaptureFlags(flags, out bool noNativeObjects, out bool noNativeAllocations, out bool noManagedObjects);
             if (missingSupportedCaptureFlagCount > 0)
             {
                 var detailsStringBuilder = new StringBuilder();
@@ -216,9 +232,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             int missingSupportedCaptureFlagCount = 0;
             noNativeObjects = !flags.HasFlag(CaptureFlags.NativeObjects);
             missingSupportedCaptureFlagCount += noNativeObjects ? 1 : 0;
-            noNativeAllocations = !flags.HasFlag(Format.CaptureFlags.NativeAllocations);
+            noNativeAllocations = !flags.HasFlag(CaptureFlags.NativeAllocations);
             missingSupportedCaptureFlagCount += noNativeAllocations ? 1 : 0;
-            noManagedObjects = !flags.HasFlag(Format.CaptureFlags.ManagedObjects);
+            noManagedObjects = !flags.HasFlag(CaptureFlags.ManagedObjects);
             missingSupportedCaptureFlagCount += noManagedObjects ? 1 : 0;
             return missingSupportedCaptureFlagCount;
         }

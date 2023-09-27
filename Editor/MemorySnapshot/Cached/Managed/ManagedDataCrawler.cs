@@ -6,6 +6,7 @@ using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.Profiling;
 using UnityEngine;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -14,10 +15,11 @@ namespace Unity.MemoryProfiler.Editor
         internal struct StackCrawlData
         {
             public ulong Ptr;
-            public ulong PtrFrom;
-            public int TypeFrom;
-            public int IndexOfFrom;
+            public int ActualFieldFromITypeDescription;
+            public SourceIndex IndexOfFrom;
             public int FieldFrom;
+            public int ValueTypeFieldFrom;
+            public int AdditionalValueTypeFieldOffset;
             public int FromArrayIndex;
         }
 
@@ -25,7 +27,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             public List<int> TypesWithStaticFields { private set; get; }
             public Stack<StackCrawlData> CrawlDataStack { private set; get; }
-            public BlockList<ManagedObjectInfo> ManagedObjectInfos { get { return CachedMemorySnapshot.CrawledData.ManagedObjects; } }
+            public ref DynamicArray<ManagedObjectInfo> ManagedObjectInfos => ref CachedMemorySnapshot.CrawledData.ManagedObjects;
             public BlockList<ManagedConnection> ManagedConnections { get { return CachedMemorySnapshot.CrawledData.Connections; } }
             public CachedSnapshot CachedMemorySnapshot { private set; get; }
             public Stack<int> DuplicatedGCHandleTargetsStack { private set; get; }
@@ -40,11 +42,11 @@ namespace Unity.MemoryProfiler.Editor
                 TypesWithObjectsThatMayStillNeedNativeTypeConnection = new HashSet<int>();
 
                 TypesWithStaticFields = new List<int>();
-                for (long i = 0; i != snapshot.TypeDescriptions.Count; ++i)
+                for (int i = 0; i != snapshot.TypeDescriptions.Count; ++i)
                 {
-                    if (snapshot.TypeDescriptions.StaticFieldBytes.Count(i) > 0)
+                    if (snapshot.TypeDescriptions.HasStaticFieldData(i))
                     {
-                        TypesWithStaticFields.Add(snapshot.TypeDescriptions.TypeIndex[i]);
+                        TypesWithStaticFields.Add(i);
                     }
                 }
             }
@@ -86,14 +88,14 @@ namespace Unity.MemoryProfiler.Editor
                         ++writtenRange;
                     }
 
-                    crawlData.ManagedObjectInfos.Add(moi);
+                    crawlData.ManagedObjectInfos.Push(moi);
                 }
                 uniqueHandlesBegin = uniqueHandlesPtr; //reset iterator
                 ulong* uniqueHandlesEnd = uniqueHandlesPtr + writtenRange;
                 //add handles for processing
                 while (uniqueHandlesBegin != uniqueHandlesEnd)
                 {
-                    crawlData.CrawlDataStack.Push(new StackCrawlData { Ptr = UnsafeUtility.ReadArrayElement<ulong>(uniqueHandlesBegin++, 0), PtrFrom = 0, TypeFrom = -1, IndexOfFrom = -1, FieldFrom = -1, FromArrayIndex = -1 });
+                    crawlData.CrawlDataStack.Push(new StackCrawlData { Ptr = UnsafeUtility.ReadArrayElement<ulong>(uniqueHandlesBegin++, 0), ActualFieldFromITypeDescription = -1, IndexOfFrom = default, FieldFrom = -1, ValueTypeFieldFrom = -1, AdditionalValueTypeFieldOffset = 0, FromArrayIndex = -1 });
                 }
                 UnsafeUtility.Free(uniqueHandlesPtr, Collections.Allocator.Temp);
             }
@@ -128,7 +130,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 var iTypeDescription = crawlData.TypesWithStaticFields[i];
                 var bytesOffset = new BytesAndOffset(snapshot.TypeDescriptions.StaticFieldBytes[iTypeDescription], snapshot.VirtualMachineInformation.PointerSize);
-                CrawlRawObjectData(crawlData, bytesOffset, iTypeDescription, true, 0, -1);
+                CrawlRawObjectData(crawlData, bytesOffset, iTypeDescription, true, new SourceIndex(SourceIndex.SourceId.ManagedType, iTypeDescription));
             }
 
             //crawl handles belonging to static instances
@@ -181,7 +183,7 @@ namespace Unity.MemoryProfiler.Editor
                 int iManagedTo = snapshot.UnifiedObjectIndexToManagedObjectIndex(snapshot.Connections.To[i]);
                 if (iManagedTo >= 0)
                 {
-                    var obj = snapshot.CrawledData.ManagedObjects[iManagedTo];
+                    ref var obj = ref snapshot.CrawledData.ManagedObjects[iManagedTo];
                     ++obj.RefCount;
 #if DEBUG_VALIDATION
                     // This whole if block is here to make the investigations for PROF-2420 easier.
@@ -210,7 +212,6 @@ namespace Unity.MemoryProfiler.Editor
                         }
                     }
 #endif
-                    snapshot.CrawledData.ManagedObjects[iManagedTo] = obj;
                     continue;
                 }
 
@@ -233,7 +234,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             using var marker = k_ConnectNativeToManageObjectProfilerMarker.Auto();
             var snapshot = crawlData.CachedMemorySnapshot;
-            var objectInfos = crawlData.ManagedObjectInfos;
+            ref var objectInfos = ref crawlData.ManagedObjectInfos;
 
             if (snapshot.TypeDescriptions.Count == 0)
                 return;
@@ -504,30 +505,55 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        static void CrawlRawObjectData(IntermediateCrawlData crawlData, BytesAndOffset bytesAndOffset, int iTypeDescription, bool useStaticFields, ulong ptrFrom, int indexOfFrom)
+        static void CrawlRawObjectData(
+            IntermediateCrawlData crawlData, BytesAndOffset bytesAndOffsetOfFieldDataWithoutHeader,
+            int iTypeDescription, bool useStaticFields, SourceIndex indexOfFrom,
+            int baseFieldFrom = -1, int additionalFieldOffset = 0, int fromArrayIndex = -1)
         {
             var snapshot = crawlData.CachedMemorySnapshot;
 
             var fields = useStaticFields ? snapshot.TypeDescriptions.fieldIndicesOwnedStatic[iTypeDescription] : snapshot.TypeDescriptions.FieldIndicesInstance[iTypeDescription];
+            if (!useStaticFields && !snapshot.TypeDescriptions.HasFlag(iTypeDescription, TypeFlags.kValueType))
+            {
+                // Add the Object header. All callers already skipped the header.
+                additionalFieldOffset += (int)snapshot.VirtualMachineInformation.ObjectHeaderSize;
+            }
             foreach (var iField in fields)
             {
+                var baseField = baseFieldFrom < 0 ? iField : baseFieldFrom;
                 int iField_TypeDescription_TypeIndex = snapshot.FieldDescriptions.TypeIndex[iField];
-                int iField_TypeDescription_ArrayIndex = snapshot.TypeDescriptions.TypeIndex2ArrayIndex(iField_TypeDescription_TypeIndex);
 
-                var fieldLocation = bytesAndOffset.Add((ulong)snapshot.FieldDescriptions.Offset[iField] - (useStaticFields ? 0 : snapshot.VirtualMachineInformation.ObjectHeaderSize));
+                var fieldOffset = snapshot.FieldDescriptions.Offset[iField];
+                if (!useStaticFields)
+                    fieldOffset -= (int)snapshot.VirtualMachineInformation.ObjectHeaderSize;
+                var fieldLocation = bytesAndOffsetOfFieldDataWithoutHeader.Add((ulong)fieldOffset);
 
-                if (snapshot.TypeDescriptions.HasFlag(iField_TypeDescription_ArrayIndex, TypeFlags.kValueType))
+                if (snapshot.TypeDescriptions.HasFlag(iField_TypeDescription_TypeIndex, TypeFlags.kValueType))
                 {
-                    CrawlRawObjectData(crawlData, fieldLocation, iField_TypeDescription_ArrayIndex, useStaticFields, ptrFrom, indexOfFrom);
-                    continue;
+                    CrawlRawObjectData(
+                        crawlData, fieldLocation,
+                        iField_TypeDescription_TypeIndex, false, indexOfFrom,
+                        baseFieldFrom: baseField,
+                        additionalFieldOffset: additionalFieldOffset + fieldOffset,
+                        fromArrayIndex: fromArrayIndex);
+                    continue; // FIXME: this means the crawler ignores int/long and pointer types e.g. System.Void*! i.e. primitves that the conservative GC might read as possible references
                 }
 
 
-                if (fieldLocation.TryReadPointer(out var fieldAddr) == BytesAndOffset.PtrReadError.Success
+                if (fieldLocation.TryReadPointer(out var address) == BytesAndOffset.PtrReadError.Success
                     // don't process null pointers
-                    && fieldAddr != 0)
+                    && address != 0)
                 {
-                    crawlData.CrawlDataStack.Push(new StackCrawlData() { Ptr = fieldAddr, PtrFrom = ptrFrom, TypeFrom = iTypeDescription, IndexOfFrom = indexOfFrom, FieldFrom = iField, FromArrayIndex = -1 });
+                    crawlData.CrawlDataStack.Push(new StackCrawlData()
+                    {
+                        Ptr = address,
+                        ActualFieldFromITypeDescription = iTypeDescription,
+                        IndexOfFrom = indexOfFrom,
+                        FieldFrom = baseField,
+                        ValueTypeFieldFrom = iField,
+                        AdditionalValueTypeFieldOffset = additionalFieldOffset,
+                        FromArrayIndex = fromArrayIndex
+                    });
                 }
             }
         }
@@ -568,8 +594,8 @@ namespace Unity.MemoryProfiler.Editor
             ManagedObjectInfo obj;
 
 
-            obj = ParseObjectHeader(snapshot, data, out var wasAlreadyCrawled, false, byteOffset);
-            bool addConnection = (data.TypeFrom >= 0 || data.FieldFrom >= 0);
+            obj = ParseObjectHeader(snapshot, data.Ptr, out var wasAlreadyCrawled, false, byteOffset);
+            bool addConnection = data.IndexOfFrom.Valid;
             if (addConnection)
                 ++obj.RefCount;
 
@@ -580,14 +606,24 @@ namespace Unity.MemoryProfiler.Editor
             snapshot.CrawledData.MangedObjectIndexByAddress[obj.PtrObject] = obj.ManagedObjectIndex;
 
             if (addConnection)
-                dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.IndexOfFrom, data.PtrFrom, obj.ManagedObjectIndex, data.Ptr, data.TypeFrom, data.FieldFrom, data.FromArrayIndex));
+            {
+                // if FieldFromITypeDescription differs from the type of the holding Type or Object, that's because the field is held by a value type
+                var valueTypeFieldOwningITypeDescription = data.IndexOfFrom.Id switch
+                {
+                    SourceIndex.SourceId.ManagedType => data.IndexOfFrom.Index != data.ActualFieldFromITypeDescription ? data.ActualFieldFromITypeDescription : -1,
+                    SourceIndex.SourceId.ManagedObject => obj.ITypeDescription != data.ActualFieldFromITypeDescription ? data.ActualFieldFromITypeDescription : -1,
+                    _ => -1
+                };
+                dataStack.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot, data.IndexOfFrom, obj.ManagedObjectIndex, data.FieldFrom,
+                    valueTypeFieldOwningITypeDescription, data.ValueTypeFieldFrom, data.AdditionalValueTypeFieldOffset, data.FromArrayIndex));
+            }
 
             if (wasAlreadyCrawled)
                 return true;
 
             if (!typeDescriptions.HasFlag(obj.ITypeDescription, TypeFlags.kArray))
             {
-                CrawlRawObjectData(dataStack, byteOffset.Add(snapshot.VirtualMachineInformation.ObjectHeaderSize), obj.ITypeDescription, false, data.Ptr, obj.ManagedObjectIndex);
+                CrawlRawObjectData(dataStack, byteOffset.Add(snapshot.VirtualMachineInformation.ObjectHeaderSize), obj.ITypeDescription, false, new SourceIndex(SourceIndex.SourceId.ManagedObject, obj.ManagedObjectIndex));
                 return true;
             }
 
@@ -598,11 +634,12 @@ namespace Unity.MemoryProfiler.Editor
                 return false; //do not crawl uninitialized object types, as we currently don't have proper handling for these
             }
             var arrayData = byteOffset.Add(virtualMachineInformation.ArrayHeaderSize);
-            for (int i = 0; i != arrayLength; i++)
+            var arrayObjectIndex = new SourceIndex(SourceIndex.SourceId.ManagedObject, obj.ManagedObjectIndex);
+            for (int i = 0; i < arrayLength; i++)
             {
                 if (typeDescriptions.HasFlag(iElementTypeDescription, TypeFlags.kValueType))
                 {
-                    CrawlRawObjectData(dataStack, arrayData, iElementTypeDescription, false, data.Ptr, obj.ManagedObjectIndex);
+                    CrawlRawObjectData(dataStack, arrayData, iElementTypeDescription, false, arrayObjectIndex, fromArrayIndex: i);
                     arrayData = arrayData.Add((ulong)typeDescriptions.Size[iElementTypeDescription]);
                 }
                 else
@@ -612,7 +649,7 @@ namespace Unity.MemoryProfiler.Editor
 
                     // don't process null pointers
                     if (arrayDataPtr != 0)
-                        dataStack.CrawlDataStack.Push(new StackCrawlData() { Ptr = arrayDataPtr, PtrFrom = data.Ptr, TypeFrom = obj.ITypeDescription, IndexOfFrom = obj.ManagedObjectIndex, FieldFrom = -1, FromArrayIndex = i });
+                        dataStack.CrawlDataStack.Push(new StackCrawlData() { Ptr = arrayDataPtr, ActualFieldFromITypeDescription = obj.ITypeDescription, IndexOfFrom = arrayObjectIndex, FieldFrom = -1, ValueTypeFieldFrom = -1, AdditionalValueTypeFieldOffset = 0, FromArrayIndex = i });
                     arrayData = arrayData.NextPointer();
                 }
             }
@@ -647,34 +684,34 @@ namespace Unity.MemoryProfiler.Editor
             return snapshot.TypeDescriptions.Size[iTypeDescription];
         }
 
-        internal static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, StackCrawlData crawlData, out bool wasAlreadyCrawled, bool ignoreBadHeaderError, BytesAndOffset byteOffset)
+        internal static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, ulong addressOfHeader, out bool wasAlreadyCrawled, bool ignoreBadHeaderError, BytesAndOffset byteOffset)
         {
-            var objectList = snapshot.CrawledData.ManagedObjects;
+            ref var objectList = ref snapshot.CrawledData.ManagedObjects;
             var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
 
             ManagedObjectInfo objectInfo;
-            if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(crawlData.Ptr, out var idx))
+            if (!snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(addressOfHeader, out var idx))
             {
-                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo, byteOffset))
+                if (TryParseObjectHeader(snapshot, addressOfHeader, out objectInfo, byteOffset))
                 {
                     objectInfo.ManagedObjectIndex = (int)objectList.Count;
-                    objectList.Add(objectInfo);
-                    objectsByAddress.Add(crawlData.Ptr, objectInfo.ManagedObjectIndex);
+                    objectList.Push(objectInfo);
+                    objectsByAddress.Add(addressOfHeader, objectInfo.ManagedObjectIndex);
                 }
                 wasAlreadyCrawled = false;
                 return objectInfo;
             }
 
-            objectInfo = snapshot.CrawledData.ManagedObjects[idx];
+            objectInfo = objectList[idx];
             // this happens on objects from gcHandles, they are added before any other crawled object but have their ptr set to 0.
             if (objectInfo.PtrObject == 0)
             {
                 idx = objectInfo.ManagedObjectIndex;
-                if (TryParseObjectHeader(snapshot, crawlData, out objectInfo, byteOffset))
+                if (TryParseObjectHeader(snapshot, addressOfHeader, out objectInfo, byteOffset))
                 {
                     objectInfo.ManagedObjectIndex = idx;
                     objectList[idx] = objectInfo;
-                    objectsByAddress[crawlData.Ptr] = idx;
+                    objectsByAddress[addressOfHeader] = idx;
                 }
 
                 wasAlreadyCrawled = false;
@@ -685,7 +722,7 @@ namespace Unity.MemoryProfiler.Editor
             return objectInfo;
         }
 
-        public static bool TryParseObjectHeader(CachedSnapshot snapshot, StackCrawlData data, out ManagedObjectInfo info, BytesAndOffset boHeader)
+        public static bool TryParseObjectHeader(CachedSnapshot snapshot, ulong addressOfHeader, out ManagedObjectInfo info, BytesAndOffset boHeader)
         {
             bool resolveFailed = false;
             var heap = snapshot.ManagedHeapSections;
@@ -694,7 +731,7 @@ namespace Unity.MemoryProfiler.Editor
                 ManagedObjectIndex = -1
             };
 
-            if (!boHeader.IsValid) boHeader = heap.Find(data.Ptr, snapshot.VirtualMachineInformation);
+            if (!boHeader.IsValid) boHeader = heap.Find(addressOfHeader, snapshot.VirtualMachineInformation);
             if (!boHeader.IsValid)
                 resolveFailed = true;
             else
@@ -745,7 +782,7 @@ namespace Unity.MemoryProfiler.Editor
 
             info.Size = SizeOfObjectInBytes(snapshot, info.ITypeDescription, boHeader, heap);
             info.data = boHeader;
-            info.PtrObject = data.Ptr;
+            info.PtrObject = addressOfHeader;
             return true;
         }
     }

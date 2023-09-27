@@ -159,6 +159,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 // Hide loading UI.
                 m_LoadingOverlay.Hide();
+
+                // Update usage counters
+                MemoryProfilerAnalytics.AddMemoryMapUsage(nameFilter != null);
             });
         }
 

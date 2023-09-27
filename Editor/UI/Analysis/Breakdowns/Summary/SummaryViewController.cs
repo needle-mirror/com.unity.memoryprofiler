@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -101,12 +102,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_NormalizedToggle.RegisterValueChangedCallback(ToggleNormalized);
 
             // Memory breakdown widgets
+            var allOfMemoryInspectAction = TabController.MakePageSelector(TextContent.AllOfMemoryViewName);
             var committedMemoryController = new GenericMemorySummaryViewController(new AllMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), HasDetailedResidentMemoryInformation())
             {
                 TotalLabelFormat = "Total Allocated: {0}",
-                InspectAction = compareMode ? null : TabController.MakePageSelector("All Of Memory"),
+                InspectAction = compareMode ? null : () =>
+                {
+                    MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectAllocatedMemoryClickCount);
+                    allOfMemoryInspectAction();
+                },
                 Normalized = normalizedSetting
             };
+            committedMemoryController.OnRowSelected += (model, row) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.AllocatedMemoryClickCount);
+            committedMemoryController.OnRowHovered += (model, row, state) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.AllocatedMemoryHoverCount);
             committedMemoryController.OnRowDoubleClick += (model, row) => m_AnalysisItemSelection.TrySelectCategory(model.Rows[row].CategoryId);
             AddController(m_CommittedMemoryBreakdown, isSupportedSnapshots, committedMemoryController);
 
@@ -114,28 +122,42 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 Normalized = normalizedSetting,
             };
-            residentMemoryController.OnRowHovered += (model, index, state) => { committedMemoryController.ForceShowResidentBars = state; };
+            residentMemoryController.OnRowSelected += (model, row) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.ResidentMemoryClickCount);
+            residentMemoryController.OnRowHovered += (model, index, state) =>
+            {
+                MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.ResidentMemoryHoverCount);
+                committedMemoryController.ForceShowResidentBars = state;
+            };
             AddController(m_ResidentMemoryBreakdown, isSupportedSnapshots && HasResidentMemoryInformation(), residentMemoryController);
 
-            AddController(
-                m_ManagedMemoryBreakdown,
-                isSupportedSnapshots && HasManagedMemoryInformation(),
-                new GenericMemorySummaryViewController(new ManagedMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
+            var managedMemoryController = new GenericMemorySummaryViewController(new ManagedMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
+            {
+                TotalLabelFormat = "Total: {0}",
+                InspectAction = () =>
                 {
-                    TotalLabelFormat = "Total: {0}",
-                    InspectAction = TabController.MakePageSelector("All Of Memory"),
-                    Normalized = normalizedSetting
-                });
+                    MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectManagedMemoryClickCount);
+                    allOfMemoryInspectAction();
+                },
+                Normalized = normalizedSetting
+            };
+            managedMemoryController.OnRowSelected += (model, row) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.ManagedMemoryClickCount);
+            managedMemoryController.OnRowHovered += (model, row, state) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.ManagedMemoryHoverCount);
+            AddController(m_ManagedMemoryBreakdown, isSupportedSnapshots && HasManagedMemoryInformation(), managedMemoryController);
 
-            AddController(
-                m_UnityObjectsBreakdown,
-                isSupportedSnapshots && HasNativeObjectsInformation(),
-                new GenericMemorySummaryViewController(new UnityObjectsMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
+            var unityObjectInspectAction = TabController.MakePageSelector(TextContent.UnityObjectsViewName);
+            var unityObjectController = new GenericMemorySummaryViewController(new UnityObjectsMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
+            {
+                TotalLabelFormat = "Total: {0}",
+                InspectAction = () =>
                 {
-                    TotalLabelFormat = "Total: {0}",
-                    InspectAction = TabController.MakePageSelector("Unity Objects"),
-                    Normalized = normalizedSetting
-                });
+                    MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectUnityObjectsClickCount);
+                    unityObjectInspectAction();
+                },
+                Normalized = normalizedSetting
+            };
+            managedMemoryController.OnRowSelected += (model, row) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.UnityObjectsClickCount);
+            managedMemoryController.OnRowHovered += (model, row, state) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.UnityObjectsHoverCount);
+            AddController(m_UnityObjectsBreakdown, isSupportedSnapshots && HasNativeObjectsInformation(), unityObjectController);
 
             View.RegisterCallback<PointerDownEvent>((e) =>
             {
@@ -187,10 +209,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         bool HasResidentMemoryInformation()
         {
-            if (!m_BaseSnapshot.HasSystemMemoryRegionsInfo || (m_BaseSnapshot.SystemMemoryRegions.Count <= 0))
+            if (!m_BaseSnapshot.HasSystemMemoryRegionsInfo)
                 return false;
 
-            if (m_ComparedSnapshot != null && (!m_ComparedSnapshot.HasSystemMemoryRegionsInfo || (m_ComparedSnapshot.SystemMemoryRegions.Count <= 0)))
+            if (m_ComparedSnapshot != null && !m_ComparedSnapshot.HasSystemMemoryRegionsInfo)
                 return false;
 
             return true;
@@ -198,10 +220,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         bool HasDetailedResidentMemoryInformation()
         {
-            if (!m_BaseSnapshot.HasSystemMemoryResidentPages || (m_BaseSnapshot.SystemMemoryResidentPages.Count <= 0))
+            if (!m_BaseSnapshot.HasSystemMemoryResidentPages)
                 return false;
 
-            if (m_ComparedSnapshot != null && (!m_ComparedSnapshot.HasSystemMemoryResidentPages || (m_ComparedSnapshot.SystemMemoryResidentPages.Count <= 0)))
+            if (m_ComparedSnapshot != null && !m_ComparedSnapshot.HasSystemMemoryResidentPages)
                 return false;
 
             return true;
@@ -261,6 +283,19 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void IViewControllerWithVisibilityEvents.ViewWillBeHidden()
         {
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (m_WidgetControllers != null)
+            {
+                foreach (var controller in m_WidgetControllers)
+                {
+                    controller?.Dispose();
+                }
+                m_WidgetControllers = null;
+            }
         }
     }
 }

@@ -109,10 +109,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             m_ReferencesToButton.text = $"References To ()";
             m_ActiveTree = ActiveTree.RawReferences;
 
-            multiColumnHeaderWithTruncateTypeName.TruncationChangedViaThisHeader += (truncate) =>
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
-                    truncate ? MemoryProfilerAnalytics.ReferencePanelInteractionType.TypeNameTruncationWasEnabled : MemoryProfilerAnalytics.ReferencePanelInteractionType.TypeNameTruncationWasDisabled);
-
             Reload();
         }
 
@@ -120,14 +116,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         {
             m_ActiveTree = (ActiveTree)idx;
 
-            // end any pending Interaction event
-            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
-            MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInReferencesPanel>(new MemoryProfilerAnalytics.InteractionsInReferencesPanel() { viewName = m_ActiveTree.ToString() });
-            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedViewInSidePanelEvent>();
-
+            // Report view change event
+            using var openViewEvent = MemoryProfilerAnalytics.BeginOpenViewEvent(m_ActiveTree.ToString());
             Reload();
-
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedViewInSidePanelEvent() { viewName = m_ActiveTree.ToString() });
         }
 
         void OnTruncateStateChanged()
@@ -204,8 +195,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
             if (m_CurrentSelection != -1)
             {
-                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
-                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInReferencesPanel>(new MemoryProfilerAnalytics.InteractionsInReferencesPanel() { viewName = m_ActiveTree.ToString() });
                 if (CurrentSelection.CachedSnapshot != null && !CurrentSelection.CachedSnapshot.Valid)
                 {
                     Debug.LogError($"a {nameof(PathsToRootDetailView)} was leaked");
@@ -217,7 +206,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
             else
             {
-                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
                 NoObject(m_CachedSnapshot, ref m_RawReferenceTree);
                 NoObject(m_CachedSnapshot, ref m_ReferencesToTree);
                 Reload();
@@ -297,11 +285,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             if (!itemObjectData.IsValid) m_ReferencesToTree = DefaultItem();
 
             var objectsConnectingTo =
-                ObjectConnection.GenerateReferencesTo(m_CachedSnapshot, itemObjectData);
+                ObjectConnection.GenerateReferencesTo(m_CachedSnapshot, itemObjectData,
+                // TODO: Consider improving the PathsToRootDetailTreeViewItem for References To to show referencing field info and flipping addManagedObjectsWithFieldInfo to true
+                addManagedObjectsWithFieldInfo: false);
 
             foreach (var data in objectsConnectingTo)
             {
-                m_ReferencesToTree.AddChild(new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot));
+                m_ReferencesToTree.AddChild(new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot, truncateTypeNames));
             }
         }
 
@@ -458,7 +448,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
             foreach (var objectData in objectsConnectingTo)
             {
-                m_RawReferenceTree.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot));
+                m_RawReferenceTree.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, truncateTypeNames));
             }
 
             foreach (var treeViewItem in m_RawReferenceTree.children)
@@ -490,7 +480,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     // might need to come back and reconsider this in the future
                     if (connection.IsUnknownDataType() || connection.displayObject.dataType == ObjectDataType.Type) continue;
 
-                    var child = new PathsToRootDetailTreeViewItem(connection.displayObject, m_CachedSnapshot, current);
+                    var child = new PathsToRootDetailTreeViewItem(connection.displayObject, m_CachedSnapshot, current, truncateTypeNames);
                     current.AddChild(child);
 
                     if (!child.HasCircularReference)
@@ -518,7 +508,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     objData = Filter(objData, new int[] { m_CachedSnapshot.NativeTypes.GameObjectIdx });
                     foreach (var objectData in objData)
                     {
-                        current.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot));
+                        current.AddChild(new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, truncateTypeNames));
                     }
                     continue;
                 }
@@ -527,7 +517,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 {
                     if (objectData.dataType == ObjectDataType.Unknown) continue;
 
-                    var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, current);
+                    var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, current, truncateTypeNames);
                     current.AddChild(child);
 
                     if (!child.HasCircularReference)
@@ -553,7 +543,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 {
                     if (objectData.dataType == ObjectDataType.Unknown) continue;
 
-                    var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, current);
+                    var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, current, truncateTypeNames);
                     current.AddChild(child);
 
                     if (child.Data.IsRootTransform(m_CachedSnapshot))
@@ -562,7 +552,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                         foreach (var data in o)
                         {
                             if (data.IsGameObject(m_CachedSnapshot))
-                                child.AddChild(new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot));
+                                child.AddChild(new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot, truncateTypeNames));
                         }
                     }
                     else if (!child.HasCircularReference)
@@ -878,6 +868,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         {
             if (string.IsNullOrEmpty(name))
                 return name;
+            name = name.Replace(" ", "");
             if (name.Contains('.'))
             {
                 if (name.Contains('<'))
@@ -912,19 +903,36 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
 
                 var nameSplt = name.Split('.');
+                name = string.Empty;
                 int offset = 1;
-                while (string.IsNullOrEmpty(nameSplt[nameSplt.Length - offset]) || nameSplt[nameSplt.Length - offset].StartsWith("<", StringComparison.Ordinal))
+                while (offset < nameSplt.Length &&
+                    (string.IsNullOrEmpty(nameSplt[nameSplt.Length - offset])
+                    || nameSplt[nameSplt.Length - offset].StartsWith("<", StringComparison.Ordinal)))
                     offset++;
-                for (int i = 0; i < nameSplt.Length - offset; i++)
+                var mainNamePart = nameSplt.Length - offset;
+                for (int i = 0; i < nameSplt.Length; i++)
                 {
-                    if (nameSplt[i].IndexOfAny(k_GenericBracesChars, 0) == -1)
+                    if (i < mainNamePart)
                     {
-                        name = name.Replace($"{nameSplt[i]}.", "");
+                        if (nameSplt[i].IndexOfAny(k_GenericBracesChars, 0) != -1)
+                        {
+                            if (!string.IsNullOrEmpty(name))
+                                name += $".{nameSplt[i]}";
+                            else
+                                name = nameSplt[i];
+                        }
+                    }
+                    else
+                    {
+                        if (!string.IsNullOrEmpty(name))
+                            name += $".{nameSplt[i]}";
+                        else
+                            name = nameSplt[i];
                     }
                 }
             }
 
-            return name.Replace(" ", "");
+            return name;
         }
 
         protected override void SelectionChanged(IList<int> selectedIds)
@@ -938,16 +946,16 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
             SelectionChangedEvt?.Invoke(source);
 
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
-                MemoryProfilerAnalytics.ReferencePanelInteractionType.SelectionInTableWasUsed);
+            // Track selection count
+            MemoryProfilerAnalytics.AddReferencePanelInteraction(MemoryProfilerAnalytics.ReferencePanelInteraction.SelectionInTableCount);
         }
 
         protected override void ExpandedStateChanged()
         {
             base.ExpandedStateChanged();
 
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInReferencesPanel, MemoryProfilerAnalytics.ReferencePanelInteractionType>(
-                MemoryProfilerAnalytics.ReferencePanelInteractionType.TreeViewElementWasExpanded);
+            // Track unfolds count
+            MemoryProfilerAnalytics.AddReferencePanelInteraction(MemoryProfilerAnalytics.ReferencePanelInteraction.TreeViewElementExpandCount);
         }
 
         protected override bool CanMultiSelect(TreeViewItem item)
@@ -957,7 +965,6 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         public void OnDisable()
         {
-            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInReferencesPanel>();
             MemoryProfilerSettings.TruncateStateChanged -= OnTruncateStateChanged;
         }
 

@@ -94,8 +94,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void ViewLoaded()
         {
-            SearchField.RegisterCallback<FocusOutEvent>(OnSearchFocusLost);
-
             TableColumnsDropdown.label = m_Description;
             TableColumnsDropdown.choices = k_BreakdownModes.Select((x) => x.title).ToList();
             TableColumnsDropdown.RegisterValueChangedCallback(OnBreakdownModeDropdown);
@@ -223,12 +221,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TableSizeBar = view.Q<DetailedSizeBar>(k_UxmlIdentifier_TableSizeBar);
             TableContainer = view.Q<VisualElement>(k_UxmlIdentifier_TableContainer);
             TableColumnsDropdown = view.Q<DropdownField>(k_UxmlIdentifier_TableModeDropdown);
-        }
-
-        void OnSearchFocusLost(FocusOutEvent evt)
-        {
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
-                MemoryProfilerAnalytics.PageInteractionType.SearchInPageWasUsed);
         }
     }
 }

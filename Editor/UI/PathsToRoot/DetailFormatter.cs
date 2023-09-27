@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine;
 
@@ -7,10 +8,13 @@ namespace Unity.MemoryProfiler.Editor
 {
     class DetailFormatter
     {
+        public const int PointerFormatSignificantDigits = 16;
+        public const int PointerNameMinLength = PointerFormatSignificantDigits + 2 /*"0x"*/;
+        public static readonly string PointerFormatString = $"0x{{0:x{PointerFormatSignificantDigits}}}";
+
         const string k_NullPtrAddr = "0x0000000000000000";
         const string k_NullRef = "null";
         const string k_FailedToReadObject = TextContent.InvalidObjectPleaseReportABugMessageShort;
-        const string k_ArrayClosedSqBrackets = "[]";
 
         Dictionary<int, Func<ObjectData, string>> m_TypeFormatter = new Dictionary<int, Func<ObjectData, string>>();
         CachedSnapshot m_Snapshot;
@@ -71,11 +75,11 @@ namespace Unity.MemoryProfiler.Editor
         // Formats "[ptr]" or "null" if ptr == 0
         public string FormatPointer(ulong ptr)
         {
-            return ptr == 0 ? k_NullPtrAddr : string.Format("0x{0:x16}", ptr);
+            return ptr == 0 ? k_NullPtrAddr : string.Format(PointerFormatString, ptr);
         }
 
         // Formats "{field=value, ...}"
-        string FormatObjectBrief(ObjectData od, bool objectBrief)
+        string FormatObjectBrief(ObjectData od, bool objectBrief, bool truncateTypeNames)
         {
             if (objectBrief)
             {
@@ -94,7 +98,7 @@ namespace Unity.MemoryProfiler.Editor
                     }
                     var field = od.GetInstanceFieldByIndex(m_Snapshot, 0);
                     string k = field.GetFieldName(m_Snapshot);
-                    string v = Format(field, false);
+                    string v = Format(field, false, truncateTypeNames);
                     if (fieldCount > 1)
                     {
                         return result + k + "=" + v + ", ...}";
@@ -109,41 +113,22 @@ namespace Unity.MemoryProfiler.Editor
             return od.TryGetObjectPointer(out var ptr) ? FormatPointer(ptr) : "{...}";
         }
 
-        public string FormatValueType(ObjectData od, bool objectBrief)
+        public string FormatValueType(ObjectData od, bool objectBrief, bool truncateTypeNames)
         {
             if (m_TypeFormatter.TryGetValue(od.managedTypeIndex, out var td))
             {
                 return td.Invoke(od);
             }
-            return FormatObjectBrief(od, objectBrief);
+            return FormatObjectBrief(od, objectBrief, truncateTypeNames);
         }
 
-        public string FormatObject(ObjectData od, bool objectBrief)
+        public string FormatObject(ObjectData od, bool objectBrief, bool truncateTypeNames)
         {
             if (m_TypeFormatter.TryGetValue(od.managedTypeIndex, out var td))
             {
                 return td.Invoke(od);
             }
-            return FormatObjectBrief(od, objectBrief);
-        }
-
-        int CountArrayOfArrays(string typename)
-        {
-            int count = 0;
-
-            int iter = 0;
-            while (true)
-            {
-                int idxFound = typename.IndexOf(k_ArrayClosedSqBrackets, iter);
-                if (idxFound == -1)
-                    break;
-                ++count;
-                iter = idxFound + k_ArrayClosedSqBrackets.Length;
-                if (iter >= typename.Length)
-                    break;
-            }
-
-            return count;
+            return FormatObjectBrief(od, objectBrief, truncateTypeNames);
         }
 
         public string FormatArray(ObjectData od)
@@ -153,50 +138,23 @@ namespace Unity.MemoryProfiler.Editor
                 return td.Invoke(od);
             }
 
-            var originalTypeName = m_Snapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
-            var sb = new System.Text.StringBuilder(originalTypeName);
-
-
-            if (od.hostManagedObjectPtr != 0)
-            {
-                var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(m_Snapshot, od.managedObjectData, od.managedTypeIndex);
-                switch (arrayInfo.Rank.Length)
-                {
-                    case 1:
-                        int nestedArrayCount = CountArrayOfArrays(originalTypeName);
-                        sb.Replace(k_ArrayClosedSqBrackets, string.Empty);
-                        sb.Append('[');
-                        sb.Append(arrayInfo.ArrayRankToString());
-                        sb.Append(']');
-                        for (int i = 1; i < nestedArrayCount; ++i)
-                        {
-                            sb.Append(k_ArrayClosedSqBrackets);
-                        }
-                        break;
-                    default:
-                        sb.Append('[');
-                        sb.Append(arrayInfo.ArrayRankToString());
-                        sb.Append(']');
-                        break;
-                }
-            }
-            return sb.ToString();
+            return od.GenerateArrayDescription(m_Snapshot);
         }
 
-        string Format(ObjectData od, bool objectBrief = true)
+        string Format(ObjectData od, bool objectBrief = true, bool truncateTypeNames = false)
         {
             if (!od.IsValid)
                 return k_FailedToReadObject;
             switch (od.dataType)
             {
                 case ObjectDataType.BoxedValue:
-                    return FormatValueType(od.GetBoxedValue(m_Snapshot, true), objectBrief);
+                    return FormatValueType(od.GetBoxedValue(m_Snapshot, true), objectBrief, truncateTypeNames);
                 case ObjectDataType.Value:
-                    return FormatValueType(od, objectBrief);
+                    return FormatValueType(od, objectBrief, truncateTypeNames);
                 case ObjectDataType.Object:
-                    return FormatObject(od, objectBrief);
+                    return FormatObject(od, objectBrief, truncateTypeNames);
                 case ObjectDataType.Array:
-                    return FormatArray(od);
+                    return FormatArray(od, truncateTypeNames);
                 case ObjectDataType.ReferenceObject:
                 {
                     ulong ptr = od.GetReferencePointer();
@@ -206,7 +164,7 @@ namespace Unity.MemoryProfiler.Editor
                     }
 
                     var o = ObjectData.FromManagedPointer(m_Snapshot, ptr);
-                    return !o.IsValid ? k_FailedToReadObject : FormatObject(o, objectBrief);
+                    return !o.IsValid ? k_FailedToReadObject : FormatObject(o, objectBrief, truncateTypeNames);
                 }
                 case ObjectDataType.ReferenceArray:
                 {
@@ -216,15 +174,30 @@ namespace Unity.MemoryProfiler.Editor
                         return k_NullRef;
                     }
                     var arr = ObjectData.FromManagedPointer(m_Snapshot, ptr);
-                    return !arr.IsValid ? k_FailedToReadObject : FormatArray(arr);
+                    return !arr.IsValid ? k_FailedToReadObject : FormatArray(arr, truncateTypeNames);
                 }
                 case ObjectDataType.Type:
-                    return m_Snapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
+                {
+                    var typeName = m_Snapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
+                    if (truncateTypeNames)
+                        typeName = PathsToRootDetailView.TruncateTypeName(typeName);
+                    return typeName;
+                }
                 case ObjectDataType.NativeObject:
                     return FormatPointer(m_Snapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
                 default:
                     return "<uninitialized type>";
             }
+        }
+
+        public string FormatArray(ObjectData od, bool truncateTypeNames)
+        {
+            if (m_TypeFormatter.TryGetValue(od.managedTypeIndex, out var td))
+            {
+                return td.Invoke(od);
+            }
+
+            return od.GenerateArrayDescription(m_Snapshot, truncateTypeNames);
         }
     }
 }

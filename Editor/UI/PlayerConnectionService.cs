@@ -21,24 +21,25 @@ namespace Unity.MemoryProfiler.Editor
     internal class PlayerConnectionService : IDisposable
     {
         EditorWindow m_Window;
-        SnapshotDataService m_SnapshotDataService;
 
         IConnectionState m_PlayerConnectionState;
+        ISnapshotDataService m_SnapshotDataService;
         string m_ConnectionName;
         string m_ConnectionDisplayName;
 
         // Capture state
+        bool m_CaptureInProgress; // Exclusively for the tests
         bool m_SnapshotInProgress;
         bool m_ScreenshotInProgress;
         double m_TimestamprOfLastSnapshotReceived;
         const double k_TimeOutForScreenshots = 60;
 
-        public PlayerConnectionService(EditorWindow window, SnapshotDataService snapshotDataService)
+        public PlayerConnectionService(EditorWindow window, ISnapshotDataService snapshotDataService)
         {
             m_Window = window;
-            m_SnapshotDataService = snapshotDataService;
 
             m_PlayerConnectionState = PlayerConnectionGUIUtility.GetConnectionState(m_Window);
+            m_SnapshotDataService = snapshotDataService;
 
             CompilationPipeline.compilationStarted += StartedCompilationCallback;
             CompilationPipeline.compilationFinished += FinishedCompilationCallback;
@@ -50,6 +51,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public string PlayerConnectionName => m_ConnectionDisplayName;
         public bool IsConnectedToEditor => m_PlayerConnectionState?.connectedToTarget == ConnectionTarget.Editor;
+        internal bool IsCaptureInProgress => m_CaptureInProgress;
 
         public void ShowPlayerConnectionSelection(Rect rect)
         {
@@ -64,10 +66,11 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             }
 
-            if (EditorUtilityCompatibilityHelper.DisplayDialog(TextContent.HeapWarningWindowTitle,
+            if (Application.isBatchMode || EditorUtilityCompatibilityHelper.DisplayDialog(TextContent.HeapWarningWindowTitle,
                 TextContent.HeapWarningWindowContent, TextContent.HeapWarningWindowOK,
                 EditorUtilityCompatibilityHelper.DialogOptOutDecisionType.ForThisMachine, MemoryProfilerSettings.HeapWarningWindowOptOutKey))
             {
+                m_CaptureInProgress = true;
                 EditorCoroutineUtility.StartCoroutine(DelayedSnapshotRoutine(), m_Window);
             }
             GUIUtility.ExitGUI();
@@ -86,7 +89,7 @@ namespace Unity.MemoryProfiler.Editor
 
         IEnumerator PollTargetConnectionName()
         {
-            while (m_Window)
+            while (m_Window && m_PlayerConnectionState != null)
             {
                 if (m_ConnectionName != m_PlayerConnectionState.connectionName)
                 {
@@ -98,7 +101,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        IEnumerator DelayedSnapshotRoutine()
+        internal IEnumerator DelayedSnapshotRoutine()
         {
             if (m_SnapshotInProgress || m_ScreenshotInProgress)
             {
@@ -108,6 +111,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (m_ScreenshotInProgress)
                     Debug.LogWarning("Screenshot already in progress.");
 
+                m_CaptureInProgress = false;
                 yield break;
             }
 
@@ -117,7 +121,7 @@ namespace Unity.MemoryProfiler.Editor
             m_SnapshotInProgress = true;
             m_ScreenshotInProgress = true;
 
-            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.CapturedSnapshotEvent>();
+            using var capturedSnapshotEvent = MemoryProfilerAnalytics.BeginCapturedSnapshotEvent();
 
             if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Editor)
             {
@@ -150,7 +154,8 @@ namespace Unity.MemoryProfiler.Editor
 
             ProgressBarDisplay.UpdateProgress(0.2f, "Taking capture...");
 
-            string basePath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, FileExtensionContent.SnapshotTempFileName);
+            var snapshotFolderPath = m_SnapshotDataService.GetSnapshotFolderPath();
+            string basePath = Path.Combine(snapshotFolderPath, FileExtensionContent.SnapshotTempFileName);
 
             bool snapshotCaptureResult = false;
             bool screenshotCaptureResult = false;
@@ -198,16 +203,25 @@ namespace Unity.MemoryProfiler.Editor
                 capturePath = path;
             };
 
-            if (MemoryProfilerSettings.CaptureWithScreenshot && (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Player || Application.isPlaying))
+            try
             {
-                QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
+                if (MemoryProfilerSettings.CaptureWithScreenshot && (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Player || Application.isPlaying))
+                {
+                    QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
+                }
+                else
+                {
+                    QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
+                    m_ScreenshotInProgress = false; //screenshot is not in progress
+                }
             }
-            else
+            catch (Exception ex)
             {
-                QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
-                m_ScreenshotInProgress = false; //screenshot is not in progress
+                Debug.LogError($"Failed to take a Memory Snapshot. Configured storage path was: {basePath}");
+                throw ex;
             }
 
+            capturedSnapshotEvent.SetResult(snapshotCaptureResult);
             ProgressBarDisplay.UpdateProgress(0.7f);
 
             // Wait for snapshotting operation to finish and skip one frame to update loading bar
@@ -231,8 +245,6 @@ namespace Unity.MemoryProfiler.Editor
                 yield return null;
             }
 
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.CapturedSnapshotEvent() { success = snapshotCaptureResult });
-
             if (snapshotCaptureResult)
             {
                 ProgressBarDisplay.UpdateProgress(0.9f, "Copying capture...");
@@ -254,9 +266,16 @@ namespace Unity.MemoryProfiler.Editor
                 var finalFileName = $"{prodNameSanitised}_{dateString}{FileExtensionContent.SnapshotFileExtension}";
 
                 // Move file to the final location
-                string snapshotPath = Path.Combine(MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath, finalFileName);
-                File.Move(capturePath, snapshotPath);
-
+                string snapshotPath = Path.Combine(snapshotFolderPath, finalFileName);
+                try
+                {
+                    File.Move(capturePath, snapshotPath);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Failed to store Memory Snapshot. Attempted to store as: {snapshotPath}");
+                    throw ex;
+                }
                 if (screenshotCaptureResult)
                 {
                     capturePath = Path.ChangeExtension(capturePath, FileExtensionContent.SnapshotTempScreenshotFileExtension);
@@ -267,7 +286,10 @@ namespace Unity.MemoryProfiler.Editor
 
             ProgressBarDisplay.ClearBar();
 
-            m_SnapshotDataService.SyncSnapshotsFolder();
+            if (snapshotCaptureResult)
+                m_SnapshotDataService.SyncSnapshotsFolder();
+
+            m_CaptureInProgress = false;
         }
 
         void CopyDataToTexture(Texture2D tex, NativeArray<byte> byteArray)

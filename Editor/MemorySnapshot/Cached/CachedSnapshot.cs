@@ -9,9 +9,12 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Containers.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
+using Unity.MemoryProfiler.Editor.Diagnostics;
+using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.Profiling;
+using Unity.Profiling.Memory;
 using UnityEditor;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
@@ -26,22 +29,20 @@ namespace Unity.MemoryProfiler.Editor
             OnlyStatic
         }
 
-        static void RecurseCrawlFields(ref List<int> fieldsBuffer, int ITypeArrayIndex, TypeDescriptionEntriesCache typeDescriptions, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions fieldFindOptions, bool crawlBase)
+        static void RecurseCrawlFields(ref List<int> fieldsBuffer, int typeIndex, TypeDescriptionEntriesCache typeDescriptions, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions fieldFindOptions, bool crawlBase)
         {
-            bool isValueType = typeDescriptions.HasFlag(ITypeArrayIndex, TypeFlags.kValueType);
+            bool isValueType = typeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
             if (crawlBase)
             {
-                int baseTypeIndex = typeDescriptions.BaseOrElementTypeIndex[ITypeArrayIndex];
+                int baseTypeIndex = typeDescriptions.BaseOrElementTypeIndex[typeIndex];
                 if (crawlBase && baseTypeIndex != -1 && !isValueType)
                 {
-                    int baseArrayIndex = typeDescriptions.TypeIndex2ArrayIndex(baseTypeIndex);
-                    RecurseCrawlFields(ref fieldsBuffer, baseArrayIndex, typeDescriptions, fieldDescriptions, fieldFindOptions, true);
+                    RecurseCrawlFields(ref fieldsBuffer, baseTypeIndex, typeDescriptions, fieldDescriptions, fieldFindOptions, true);
                 }
             }
 
 
-            int iTypeIndex = typeDescriptions.TypeIndex[ITypeArrayIndex];
-            var fieldIndices = typeDescriptions.FieldIndices[ITypeArrayIndex];
+            var fieldIndices = typeDescriptions.FieldIndices[typeIndex];
             for (int i = 0; i < fieldIndices.Count; ++i)
             {
                 var iField = fieldIndices[i];
@@ -49,7 +50,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (!FieldMatchesOptions(iField, fieldDescriptions, fieldFindOptions))
                     continue;
 
-                if (fieldDescriptions.TypeIndex[iField] == iTypeIndex && isValueType)
+                if (fieldDescriptions.TypeIndex[iField] == typeIndex && isValueType)
                 {
                     // this happens in primitive types like System.Single, which is a weird type that has a field of its own type.
                     continue;
@@ -125,12 +126,12 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool HasSystemMemoryRegionsInfo
         {
-            get { return m_SnapshotVersion >= FormatVersion.SystemMemoryRegionsVersion; }
+            get { return (m_SnapshotVersion >= FormatVersion.SystemMemoryRegionsVersion) && (SystemMemoryRegions.Count > 0); }
         }
 
         public bool HasSystemMemoryResidentPages
         {
-            get { return m_SnapshotVersion >= FormatVersion.SystemMemoryResidentPagesVersion; }
+            get { return (m_SnapshotVersion >= FormatVersion.SystemMemoryResidentPagesVersion) && (SystemMemoryResidentPages.Count > 0); }
         }
 
         public ManagedData CrawledData { internal set; get; }
@@ -141,7 +142,7 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<long> id = default;
             public DynamicArray<int> memoryLabelIndex = default;
 
-            public NestedDynamicArray<ulong> callstackSymbols => m_callstackSymbolsReadOp.CompleteReadAndGetNestedResults();
+            public NestedDynamicArray<ulong> callstackSymbols => m_callstackSymbolsReadOp?.CompleteReadAndGetNestedResults() ?? default;
             NestedDynamicSizedArrayReadOperation<ulong> m_callstackSymbolsReadOp;
 
             unsafe public NativeAllocationSiteEntriesCache(ref IFileReader reader)
@@ -929,7 +930,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public readonly ulong TotalSizes = 0ul;
             DynamicArray<int> MetaDataBufferIndicies = default;
-            NestedDynamicArray<byte> MetaDataBuffers => m_MetaDataBuffersReadOp.CompleteReadAndGetNestedResults();
+            NestedDynamicArray<byte> MetaDataBuffers => m_MetaDataBuffersReadOp?.CompleteReadAndGetNestedResults() ?? default;
             NestedDynamicSizedArrayReadOperation<byte> m_MetaDataBuffersReadOp;
 
             unsafe public NativeObjectEntriesCache(ref IFileReader reader)
@@ -998,11 +999,11 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public DynamicArray<byte> MetaData(int nativeObjectIndex)
+            public ILongIndexedContainer<byte> MetaData(int nativeObjectIndex)
             {
                 if (MetaDataBufferIndicies.Count == 0) return default;
                 var bufferIndex = MetaDataBufferIndicies[nativeObjectIndex];
-                if (bufferIndex == -1) return default;
+                if (bufferIndex == -1) return default(DynamicArrayRef<byte>);
 
                 return MetaDataBuffers[bufferIndex];
             }
@@ -1198,7 +1199,7 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<ulong> SectionSize = default;
             public DynamicArray<MemorySectionType> SectionType = default;
             public string[] SectionName = default;
-            public NestedDynamicArray<byte> Bytes => m_BytesReadOp.CompleteReadAndGetNestedResults();
+            public NestedDynamicArray<byte> Bytes => m_BytesReadOp?.CompleteReadAndGetNestedResults() ?? default;
             NestedDynamicSizedArrayReadOperation<byte> m_BytesReadOp;
             ulong m_MinAddress;
             ulong m_MaxAddress;
@@ -1343,27 +1344,34 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            struct SortIndexHelper : IComparable<SortIndexHelper>
+            readonly struct SortIndexHelper : IComparable<SortIndexHelper>
             {
-                public long Index;
-                public ulong StartAddress;
+                public readonly long Index;
+                public readonly ulong StartAddress;
 
+                public SortIndexHelper(ref long index, ref ulong startAddress)
+                {
+                    Index = index;
+                    StartAddress = startAddress;
+                }
+
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public int CompareTo(SortIndexHelper other) => StartAddress.CompareTo(other.StartAddress);
             }
 
             static void SortSectionEntries(ref DynamicArray<ulong> startAddresses, ref DynamicArray<ulong> sizes, ref DynamicArray<MemorySectionType> associatedSectionType, ref string[] associatedSectionNames,
                 ref NestedDynamicSizedArrayReadOperation<byte> associatedByteArrayReadOp, bool isStackMemory)
             {
-                var sortMapping = new DynamicArray<SortIndexHelper>(startAddresses.Count, Allocator.Temp);
+                using var sortMapping = new DynamicArray<SortIndexHelper>(startAddresses.Count, Allocator.Temp);
 
-                for (int i = 0; i < sortMapping.Count; ++i)
+                for (long i = 0; i < sortMapping.Count; ++i)
                 {
-                    sortMapping[i] = new SortIndexHelper() { Index = i, StartAddress = startAddresses[i] };
+                    sortMapping[i] = new SortIndexHelper(ref i, ref startAddresses[i]);
                 }
 
                 var startAddr = startAddresses;
                 DynamicArrayAlgorithms.IntrospectiveSort(sortMapping, 0, startAddresses.Count);
-                var newSortedAddresses = new ulong[startAddresses.Count];
+                using var newSortedAddresses = new DynamicArray<ulong>(startAddresses.Count, Allocator.Temp);
                 unsafe
                 {
                     var newSortedSectionTypes = isStackMemory ? null : new MemorySectionType[startAddresses.Count];
@@ -1385,9 +1393,9 @@ namespace Unity.MemoryProfiler.Editor
                         associatedByteArrayReadOp.UnsafeAccessToNestedDynamicSizedArray.Sort(sortedIndice);
                     }
 
+                    UnsafeUtility.MemCpy(startAddresses.GetUnsafePtr(), newSortedAddresses.GetUnsafePtr(), sizeof(ulong) * startAddresses.Count);
                     for (long i = 0; i < startAddresses.Count; ++i)
                     {
-                        startAddresses[i] = newSortedAddresses[i];
                         sizes[i] = (ulong)associatedByteArrayReadOp.UnsafeAccessToNestedDynamicSizedArray.Count(i);
                         if (!isStackMemory)
                             associatedSectionType[i] = newSortedSectionTypes[i];
@@ -1450,28 +1458,25 @@ namespace Unity.MemoryProfiler.Editor
             const string k_SystemIntPtrName = "System.IntPtr";
             const string k_SystemByteName = "System.Byte";
 
-            public long Count;
+            public int Count;
             public DynamicArray<TypeFlags> Flags = default;
             public DynamicArray<int> BaseOrElementTypeIndex = default;
             public DynamicArray<int> Size = default;
             public DynamicArray<ulong> TypeInfoAddress = default;
-            public DynamicArray<int> TypeIndex = default;
+            //public DynamicArray<int> TypeIndex = default;
 
             public string[] TypeDescriptionName;
             public string[] Assembly;
-#if !UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
-            public string[] UniqueCurrentlyAvailableUnityAssemblyNames;
-#endif
-            public NestedDynamicArray<int> FieldIndices => m_FieldIndicesReadOp.CompleteReadAndGetNestedResults();
+
+            public NestedDynamicArray<int> FieldIndices => m_FieldIndicesReadOp?.CompleteReadAndGetNestedResults() ?? default;
             NestedDynamicSizedArrayReadOperation<int> m_FieldIndicesReadOp;
-            public NestedDynamicArray<byte> StaticFieldBytes => m_StaticFieldBytesReadOp.CompleteReadAndGetNestedResults();
+            public NestedDynamicArray<byte> StaticFieldBytes => m_StaticFieldBytesReadOp?.CompleteReadAndGetNestedResults() ?? default;
             NestedDynamicSizedArrayReadOperation<byte> m_StaticFieldBytesReadOp;
 
             //secondary data, handled inside InitSecondaryItems
             public int[][] FieldIndicesInstance;//includes all bases' instance fields
             public int[][] fieldIndicesStatic;  //includes all bases' static fields
             public int[][] fieldIndicesOwnedStatic;  //includes only type's static fields
-            public bool[] HasStaticFields;
 
             public int ITypeValueType { get; private set; }
             public int ITypeUnityObject { get; private set; }
@@ -1496,14 +1501,14 @@ namespace Unity.MemoryProfiler.Editor
             public int ITypeUnityScriptableObject { get; private set; }
             public int ITypeUnityComponent { get; private set; }
             public Dictionary<ulong, int> TypeInfoToArrayIndex { get; private set; }
-            public Dictionary<int, int> TypeIndexToArrayIndex { get; private set; }
             // only fully initialized after the Managed Crawler is done stitching up Objects. Might be better to be moved over to ManagedData
             public Dictionary<int, int> UnityObjectTypeIndexToNativeTypeIndex { get; private set; }
             public HashSet<int> PureCSharpTypeIndices { get; private set; }
 
             public TypeDescriptionEntriesCache(ref IFileReader reader, FieldDescriptionEntriesCache fieldDescriptions)
             {
-                Count = reader.GetEntryCount(EntryType.TypeDescriptions_TypeIndex);
+                Count = (int)reader.GetEntryCount(EntryType.TypeDescriptions_TypeIndex);
+
                 TypeDescriptionName = new string[Count];
                 Assembly = new string[Count];
 
@@ -1514,7 +1519,26 @@ namespace Unity.MemoryProfiler.Editor
                 BaseOrElementTypeIndex = reader.Read(EntryType.TypeDescriptions_BaseOrElementTypeIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
                 Size = reader.Read(EntryType.TypeDescriptions_Size, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
                 TypeInfoAddress = reader.Read(EntryType.TypeDescriptions_TypeInfoAddress, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
-                TypeIndex = reader.Read(EntryType.TypeDescriptions_TypeIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
+#if DEBUG_VALIDATION
+                if(reader.FormatVersion == FormatVersion.SnapshotMinSupportedFormatVersion)
+                {
+                    // Nb! This code is left here for posterity in case anyone wonders what EntryType.TypeDescriptions_TypeIndex is, and if it is needed. No it is not.
+
+                    // After thorough archeological digging, there seems to be no evidence that this array was ever needed
+                    // At the latest after FormatVersion.StreamingManagedMemoryCaptureFormatVersion (9) it is definitely not needed
+                    // as the indices reported in this map exactly to the indices in the array
+
+                    var TypeIndex = reader.Read(EntryType.TypeDescriptions_TypeIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
+                    for (int i = 0; i < TypeIndex.Count; i++)
+                    {
+                        if(i != TypeIndex[i])
+                        {
+                            Debug.LogError("Attempted to load a broken Snapshot file from an ancient Unity version!");
+                            break;
+                        }
+                    }
+                }
+#endif
 
                 using (DynamicArray<byte> tmp = new DynamicArray<byte>(0, Allocator.TempJob))
                 {
@@ -1550,9 +1574,19 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             // Check only the type's fields
-            public bool HasStaticField(int iType)
+            public bool HasStaticField(long iType)
             {
-                return HasStaticFields[iType];
+                return fieldIndicesOwnedStatic[iType].Length > 0;
+            }
+
+            /// <summary>
+            /// Note: A Type may <see cref="HasStaticField"/> but no data for them, presumably because they haven't been initialized yet.
+            /// </summary>
+            /// <param name="iType"></param>
+            /// <returns></returns>
+            public bool HasStaticFieldData(long iType)
+            {
+                return StaticFieldBytes[iType].Count > 0;
             }
 
             public bool HasFlag(int arrayIndex, TypeFlags flag)
@@ -1563,17 +1597,8 @@ namespace Unity.MemoryProfiler.Editor
             public int GetRank(int arrayIndex)
             {
                 int r = (int)(Flags[arrayIndex] & TypeFlags.kArrayRankMask) >> 16;
+                Checks.IsTrue(r >= 0);
                 return r;
-            }
-
-            public int TypeIndex2ArrayIndex(int typeIndex)
-            {
-                int i;
-                if (!TypeIndexToArrayIndex.TryGetValue(typeIndex, out i))
-                {
-                    throw new Exception("typeIndex not found");
-                }
-                return i;
             }
 
             public int TypeInfo2ArrayIndex(UInt64 aTypeInfoAddress)
@@ -1591,12 +1616,11 @@ namespace Unity.MemoryProfiler.Editor
             void InitSecondaryItems(TypeDescriptionEntriesCache typeDescriptionEntries, FieldDescriptionEntriesCache fieldDescriptions)
             {
                 TypeInfoToArrayIndex = Enumerable.Range(0, (int)TypeInfoAddress.Count).ToDictionary(x => TypeInfoAddress[x], x => x);
-                TypeIndexToArrayIndex = Enumerable.Range(0, (int)TypeIndex.Count).ToDictionary(x => TypeIndex[x], x => x);
                 UnityObjectTypeIndexToNativeTypeIndex = new Dictionary<int, int>();
                 PureCSharpTypeIndices = new HashSet<int>();
 
 
-                ITypeUnityObject = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == UnityObjectTypeName)];
+                ITypeUnityObject = Array.FindIndex(TypeDescriptionName, x => x == UnityObjectTypeName);
 #if DEBUG_VALIDATION //This shouldn't really happen
                 if (ITypeUnityObject < 0)
                 {
@@ -1606,7 +1630,6 @@ namespace Unity.MemoryProfiler.Editor
 
                 using (k_TypeFieldArraysBuild.Auto())
                 {
-                    HasStaticFields = new bool[Count];
                     FieldIndicesInstance = new int[Count][];
                     fieldIndicesStatic = new int[Count][];
                     fieldIndicesOwnedStatic = new int[Count][];
@@ -1614,16 +1637,6 @@ namespace Unity.MemoryProfiler.Editor
 
                     for (int i = 0; i < Count; ++i)
                     {
-                        HasStaticFields[i] = false;
-                        foreach (var iField in FieldIndices[i])
-                        {
-                            if (fieldDescriptions.IsStatic[iField] == 1)
-                            {
-                                HasStaticFields[i] = true;
-                                break;
-                            }
-                        }
-
                         TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, typeDescriptionEntries, fieldDescriptions, TypeTools.FieldFindOptions.OnlyInstance, true);
                         FieldIndicesInstance[i] = fieldProcessingBuffer.ToArray();
 
@@ -1633,14 +1646,14 @@ namespace Unity.MemoryProfiler.Editor
                         TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, typeDescriptionEntries, fieldDescriptions, TypeTools.FieldFindOptions.OnlyStatic, false);
                         fieldIndicesOwnedStatic[i] = fieldProcessingBuffer.ToArray();
 
-                        var typeIndex = typeDescriptionEntries.TypeIndex[i];
+                        var typeIndex = i;
                         if (DerivesFromUnityObject(typeIndex))
                             UnityObjectTypeIndexToNativeTypeIndex.Add(typeIndex, -1);
                         else
                             PureCSharpTypeIndices.Add(typeIndex);
                     }
                 }
-                var fieldIndices = typeDescriptionEntries.FieldIndices[TypeIndexToArrayIndex[ITypeUnityObject]];
+                var fieldIndices = typeDescriptionEntries.FieldIndices[ITypeUnityObject];
                 long fieldIndicesIndex = -1;
                 for (long i = 0; i < fieldIndices.Count; i++)
                 {
@@ -1667,52 +1680,27 @@ namespace Unity.MemoryProfiler.Editor
                     return;
                 }
 #endif
-                ITypeValueType = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemValueTypeName)];
-                ITypeObject = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemObjectTypeName)];
-                ITypeEnum = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemEnumTypeName)];
-                ITypeChar = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemCharTypeName)];
-                ITypeCharArray = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemCharArrayTypeName)];
-                ITypeInt16 = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemInt16Name)];
-                ITypeInt32 = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemInt32Name)];
-                ITypeInt64 = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemInt64Name)];
-                ITypeIntPtr = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemIntPtrName)];
-                ITypeString = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemStringName)];
-                ITypeBool = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemBoolName)];
-                ITypeSingle = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemSingleName)];
-                ITypeByte = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemByteName)];
-                ITypeDouble = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemDoubleName)];
-                ITypeUInt16 = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemUInt16Name)];
-                ITypeUInt32 = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemUInt32Name)];
-                ITypeUInt64 = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_SystemUInt64Name)];
+                ITypeValueType = Array.FindIndex(TypeDescriptionName, x => x == k_SystemValueTypeName);
+                ITypeObject = Array.FindIndex(TypeDescriptionName, x => x == k_SystemObjectTypeName);
+                ITypeEnum = Array.FindIndex(TypeDescriptionName, x => x == k_SystemEnumTypeName);
+                ITypeChar = Array.FindIndex(TypeDescriptionName, x => x == k_SystemCharTypeName);
+                ITypeCharArray = Array.FindIndex(TypeDescriptionName, x => x == k_SystemCharArrayTypeName);
+                ITypeInt16 = Array.FindIndex(TypeDescriptionName, x => x == k_SystemInt16Name);
+                ITypeInt32 = Array.FindIndex(TypeDescriptionName, x => x == k_SystemInt32Name);
+                ITypeInt64 = Array.FindIndex(TypeDescriptionName, x => x == k_SystemInt64Name);
+                ITypeIntPtr = Array.FindIndex(TypeDescriptionName, x => x == k_SystemIntPtrName);
+                ITypeString = Array.FindIndex(TypeDescriptionName, x => x == k_SystemStringName);
+                ITypeBool = Array.FindIndex(TypeDescriptionName, x => x == k_SystemBoolName);
+                ITypeSingle = Array.FindIndex(TypeDescriptionName, x => x == k_SystemSingleName);
+                ITypeByte = Array.FindIndex(TypeDescriptionName, x => x == k_SystemByteName);
+                ITypeDouble = Array.FindIndex(TypeDescriptionName, x => x == k_SystemDoubleName);
+                ITypeUInt16 = Array.FindIndex(TypeDescriptionName, x => x == k_SystemUInt16Name);
+                ITypeUInt32 = Array.FindIndex(TypeDescriptionName, x => x == k_SystemUInt32Name);
+                ITypeUInt64 = Array.FindIndex(TypeDescriptionName, x => x == k_SystemUInt64Name);
 
-                ITypeUnityMonoBehaviour = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_UnityMonoBehaviourTypeName)];
-                ITypeUnityScriptableObject = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_UnityScriptableObjectTypeName)];
-                ITypeUnityComponent = TypeIndex[Array.FindIndex(TypeDescriptionName, x => x == k_UnityComponentObjectTypeName)];
-
-#if !UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
-                var uniqueCurrentlyAvailableUnityAssemblyNames = new List<string>();
-                var assemblyHashSet = new HashSet<string>();
-                foreach (var assembly in Assembly)
-                {
-                    if (assemblyHashSet.Contains(assembly))
-                        continue;
-                    assemblyHashSet.Add(assembly);
-                    if (assembly.StartsWith("Unity"))
-                    {
-                        try
-                        {
-                            System.Reflection.Assembly.Load(assembly);
-                        }
-                        catch (Exception)
-                        {
-                            // only add assemblies currently available
-                            continue;
-                        }
-                        uniqueCurrentlyAvailableUnityAssemblyNames.Add(assembly);
-                    }
-                }
-                UniqueCurrentlyAvailableUnityAssemblyNames = uniqueCurrentlyAvailableUnityAssemblyNames.ToArray();
-#endif
+                ITypeUnityMonoBehaviour = Array.FindIndex(TypeDescriptionName, x => x == k_UnityMonoBehaviourTypeName);
+                ITypeUnityScriptableObject = Array.FindIndex(TypeDescriptionName, x => x == k_UnityScriptableObjectTypeName);
+                ITypeUnityComponent = Array.FindIndex(TypeDescriptionName, x => x == k_UnityComponentObjectTypeName);
             }
 
             public bool DerivesFromUnityObject(int iTypeDescription)
@@ -1745,7 +1733,6 @@ namespace Unity.MemoryProfiler.Editor
                 BaseOrElementTypeIndex.Dispose();
                 Size.Dispose();
                 TypeInfoAddress.Dispose();
-                TypeIndex.Dispose();
                 TypeDescriptionName = null;
                 Assembly = null;
                 if (m_FieldIndicesReadOp != null)
@@ -1764,12 +1751,10 @@ namespace Unity.MemoryProfiler.Editor
                 FieldIndicesInstance = null;
                 fieldIndicesStatic = null;
                 fieldIndicesOwnedStatic = null;
-                HasStaticFields = null;
                 ITypeValueType = ITypeInvalid;
                 ITypeObject = ITypeInvalid;
                 ITypeEnum = ITypeInvalid;
                 TypeInfoToArrayIndex = null;
-                TypeIndexToArrayIndex = null;
                 UnityObjectTypeIndexToNativeTypeIndex = null;
                 PureCSharpTypeIndices = null;
             }
@@ -1851,10 +1836,10 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<int> To { private set; get; }
 
             // List of objects referencing an object with the specfic key
-            public Dictionary<int, List<int>> ReferencedBy { get; private set; } = new Dictionary<int, List<int>>();
+            public Dictionary<SourceIndex, List<SourceIndex>> ReferencedBy { get; private set; } = new Dictionary<SourceIndex, List<SourceIndex>>();
 
             // List of objects an object with the specific key is refereing to
-            public Dictionary<int, List<int>> ReferenceTo { get; private set; } = new Dictionary<int, List<int>>();
+            public Dictionary<SourceIndex, List<SourceIndex>> ReferenceTo { get; private set; } = new Dictionary<SourceIndex, List<SourceIndex>>();
 
 #if DEBUG_VALIDATION // could be always present but currently only used for validation in the crawler
             public long IndexOfFirstNativeToGCHandleConnection = -1;
@@ -1883,16 +1868,22 @@ namespace Unity.MemoryProfiler.Editor
 
                 for (int i = 0; i < Count; i++)
                 {
-                    if (ReferencedBy.TryGetValue(To[i], out var fromList))
-                        fromList.Add(From[i]);
-                    else
-                        ReferencedBy[To[i]] = new List<int> { From[i] };
+                    var to = ToSourceIndex(To[i], gcHandlesCount);
+                    var from = ToSourceIndex(From[i], gcHandlesCount);
 
-                    if (ReferenceTo.TryGetValue(From[i], out var toList))
-                        toList.Add(To[i]);
-                    else
-                        ReferenceTo[From[i]] = new List<int> { To[i] };
+                    ReferencedBy.GetAndAddToListOrCreateList(to, from);
+
+                    ReferenceTo.GetAndAddToListOrCreateList(from, to);
                 }
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            SourceIndex ToSourceIndex(int index, long gcHandlesCount)
+            {
+                if (index < gcHandlesCount)
+                    return new SourceIndex(SourceIndex.SourceId.ManagedObject, index);
+
+                return new SourceIndex(SourceIndex.SourceId.NativeObject, index - gcHandlesCount);
             }
 
             void RemapInstanceIdsToUnifiedIndex(NativeObjectEntriesCache nativeObjects, long gcHandlesCount)
@@ -1987,11 +1978,8 @@ namespace Unity.MemoryProfiler.Editor
         public GCHandleEntriesCache GcHandles;
         public FieldDescriptionEntriesCache FieldDescriptions;
         public ConnectionEntriesCache Connections;
-        public CaptureFlags CaptureFlags = 0;
 
         public SortedNativeMemoryRegionEntriesCache SortedNativeRegionsEntries;
-        public SortedManagedMemorySectionEntriesCache SortedManagedStacksEntries;
-        public SortedManagedMemorySectionEntriesCache SortedManagedHeapEntries;
         public SortedManagedObjectsCache SortedManagedObjects;
         public SortedNativeAllocationsCache SortedNativeAllocations;
         public SortedNativeObjectsCache SortedNativeObjects;
@@ -2047,19 +2035,6 @@ namespace Unity.MemoryProfiler.Editor
                 SystemMemoryRegions = new SystemMemoryRegionEntriesCache(ref reader);
                 SystemMemoryResidentPages = new SystemMemoryResidentPagesEntriesCache(ref reader);
 
-                if (GcHandles.Count > 0)
-                    CaptureFlags |= CaptureFlags.ManagedObjects;
-                if (NativeAllocations.Count > 0)
-                    CaptureFlags |= CaptureFlags.NativeAllocations;
-                if (NativeAllocationSites.Count > 0)
-                    CaptureFlags |= CaptureFlags.NativeAllocationSites;
-                if (NativeObjects.Count > 0)
-                    CaptureFlags |= CaptureFlags.NativeObjects;
-                if (NativeCallstackSymbols.Count > 0)
-                    CaptureFlags |= CaptureFlags.NativeStackTraces;
-
-                SortedManagedStacksEntries = new SortedManagedMemorySectionEntriesCache(ManagedStacks);
-                SortedManagedHeapEntries = new SortedManagedMemorySectionEntriesCache(ManagedHeapSections);
                 SortedManagedObjects = new SortedManagedObjectsCache(this);
 
                 SortedNativeRegionsEntries = new SortedNativeMemoryRegionEntriesCache(this);
@@ -2168,7 +2143,13 @@ namespace Unity.MemoryProfiler.Editor
                 SystemMemoryResidentPages.Dispose();
 
                 EntriesMemoryMap.Dispose();
+                CrawledData.Dispose();
                 CrawledData = null;
+
+                SortedNativeRegionsEntries.Dispose();
+                SortedManagedObjects.Dispose();
+                SortedNativeAllocations.Dispose();
+                SortedNativeObjects.Dispose();
 
                 // Close and dispose the reader
                 m_Reader.Close();
@@ -2178,198 +2159,257 @@ namespace Unity.MemoryProfiler.Editor
         public interface ISortedEntriesCache
         {
             void Preload();
-            int Count { get; }
-            ulong Address(int index);
-            ulong Size(int index);
+            long Count { get; }
+            ulong Address(long index);
+            ulong Size(long index);
         }
 
-        public class SortedNativeMemoryRegionEntriesCache : ISortedEntriesCache
+        public abstract class IndirectlySortedEntriesCache<TSortComparer>
+            : IDisposable, ISortedEntriesCache
+            where TSortComparer : unmanaged, IRefComparer<long>
         {
-            CachedSnapshot m_Snapshot;
-            int[] m_Sorting;
+            protected CachedSnapshot m_Snapshot;
+            DynamicArray<long> m_Sorting;
+            bool m_Loaded;
 
-            public SortedNativeMemoryRegionEntriesCache(CachedSnapshot snapshot)
+            protected IndirectlySortedEntriesCache(CachedSnapshot snapshot)
             {
                 m_Snapshot = snapshot;
+                m_Loaded = false;
             }
 
-            public void Preload()
-            {
-                if (m_Sorting == null)
-                {
-                    m_Sorting = new int[m_Snapshot.NativeMemoryRegions.Count];
-
-                    for (int i = 0; i < m_Sorting.Length; ++i)
-                        m_Sorting[i] = i;
-
-                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.NativeMemoryRegions.AddressBase[x].CompareTo(m_Snapshot.NativeMemoryRegions.AddressBase[y]));
-                }
-            }
-
-            int this[int index]
+            public long this[long index]
             {
                 get
                 {
+                    if (m_Loaded)
+                        return m_Sorting[index];
+                    // m_Loaded is more likely than not true, but we can't tell the optimizer that in C#,
+                    // so have the less likely case as separate fallback branch
                     Preload();
                     return m_Sorting[index];
                 }
             }
 
-            public int Count { get { return (int)m_Snapshot.NativeMemoryRegions.Count; } }
-            public ulong Address(int index) { return m_Snapshot.NativeMemoryRegions.AddressBase[this[index]]; }
-            public ulong Size(int index) { return m_Snapshot.NativeMemoryRegions.AddressSize[this[index]]; }
+            public abstract long Count { get; }
+            protected abstract TSortComparer SortingComparer { get; }
+            unsafe DynamicArrayAlgorithms.ArraySortingData<long, TSortComparer> Comparer =>
+                DynamicArrayAlgorithms.ArraySortingData<TSortComparer>.GetSortDataForSortingAnIndexingArray(in m_Sorting, SortingComparer);
 
-            public string Name(int index) { return m_Snapshot.NativeMemoryRegions.MemoryRegionName[this[index]]; }
-            public int UnsortedParentRegionIndex(int index) { return m_Snapshot.NativeMemoryRegions.ParentIndex[this[index]]; }
-            public int UnsortedFirstAllocationIndex(int index) { return m_Snapshot.NativeMemoryRegions.FirstAllocationIndex[this[index]]; }
-            public int UnsortedNumAllocations(int index) { return m_Snapshot.NativeMemoryRegions.NumAllocations[this[index]]; }
-        }
+            public abstract ulong Address(long index);
 
-        //TODO: unify with the other old section entries as those are sorted by default now
-        public class SortedManagedMemorySectionEntriesCache : ISortedEntriesCache
-        {
-            ManagedMemorySectionEntriesCache m_Entries;
-
-            public SortedManagedMemorySectionEntriesCache(ManagedMemorySectionEntriesCache entries)
+            public virtual void Preload()
             {
-                m_Entries = entries;
-            }
-
-            public void Preload()
-            {
-                //Dummy for the interface
-            }
-
-            public int Count { get { return (int)m_Entries.Count; } }
-            public ulong Address(int index) { return m_Entries.StartAddress[index]; }
-            public ulong Size(int index) { return (ulong)m_Entries.Bytes.Count(index); }
-            public DynamicArray<byte> Bytes(int index) { return m_Entries.Bytes[index]; }
-            public MemorySectionType SectionType(int index) { return m_Entries.SectionType[index]; }
-        }
-
-        public class SortedManagedObjectsCache : ISortedEntriesCache
-        {
-            CachedSnapshot m_Snapshot;
-            int[] m_Sorting;
-
-            public SortedManagedObjectsCache(CachedSnapshot snapshot)
-            {
-                m_Snapshot = snapshot;
-            }
-
-            public void Preload()
-            {
-                if (m_Sorting == null)
+                if (!m_Sorting.IsCreated)
                 {
-                    m_Sorting = new int[m_Snapshot.CrawledData.ManagedObjects.Count];
-
-                    for (int i = 0; i < m_Sorting.Length; ++i)
+                    m_Sorting = new DynamicArray<long>(Count, Allocator.Persistent);
+                    var count = m_Sorting.Count;
+                    for (long i = 0; i < count; ++i)
                         m_Sorting[i] = i;
-
-                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.CrawledData.ManagedObjects[x].PtrObject.CompareTo(m_Snapshot.CrawledData.ManagedObjects[y].PtrObject));
+                    var comparer = Comparer;
+                    DynamicArrayAlgorithms.IntrospectiveSort(0, Count, ref comparer);
                 }
+                m_Loaded = true;
             }
 
-            ManagedObjectInfo this[int index]
+            public abstract ulong Size(long index);
+
+            public virtual void Dispose()
             {
-                get
-                {
-                    Preload();
-                    return m_Snapshot.CrawledData.ManagedObjects[m_Sorting[index]];
-                }
+                m_Sorting.Dispose();
             }
 
-            public int Count { get { return (int)m_Snapshot.CrawledData.ManagedObjects.Count; } }
-
-            public ulong Address(int index) { return this[index].PtrObject; }
-            public ulong Size(int index) { return (ulong)this[index].Size; }
+            /// <summary>
+            /// Uses <see cref="DynamicArrayAlgorithms.BinarySearch"/> to quickly find an item
+            /// which has a start <see cref="Address(long)"/> matching the provided <paramref name="address"/>,
+            /// or, if <paramref name="onlyDirectAddressMatches"/> is false, where the <paramref name="address"/> falls between
+            /// the items start <see cref="Address(long)"/> and last address (using <see cref="Size(long)"/>).
+            ///
+            /// If there are 0 sized items at the address, the last item will be returned.
+            /// </summary>
+            /// <param name="address"></param>
+            /// <param name="onlyDirectAddressMatches"></param>
+            /// <remarks> CAUTION: For data where regions can overlap, e.g. <seealso cref="SortedNativeMemoryRegionEntriesCache"/>
+            /// this will find the deepest nested region, not any potential enclosing regions.</remarks>
+            /// <returns> Index of the value within the <seealso cref="IndirectlySortedEntriesCache"/>.
+            /// -1 means the item wasn't found.</returns>
+            public long Find(ulong address, bool onlyDirectAddressMatches)
+            {
+                var idx = DynamicArrayAlgorithms.BinarySearch(this, address);
+                if (idx < 0)
+                {
+                    // -1 means the address is smaller than the first Address, early out with -1
+                    if (idx == -1 || onlyDirectAddressMatches)
+                        return -1;
+                    // otherwise, a negative Index just means there was no match of the any address range (yet matching with a range of size 0 if the address matches)
+                    // and ~idx - 1 will give us the index to the next smaller Address
+                    idx = ~idx - 1;
+                }
+                var foundAddress = Address(idx);
+                if (address == foundAddress)
+                    return idx;
+                if (onlyDirectAddressMatches)
+                    return -1;
+                var size = Size(idx);
+                if (address > foundAddress && (address < (foundAddress + size) || size == 0))
+                {
+                    return idx;
+                }
+                return -1;
+            }
         }
 
-        public class SortedNativeAllocationsCache : ISortedEntriesCache
+        /// <summary>
+        /// User for entry caches that don't have any overlaps and no items of size 0 (or if, not right next to each other,
+        /// i.e. <see cref="SortedNativeObjects"/> are fine to use this instead of <see cref="IndirectlySortedEntriesCacheSortedByAddressAndSizeArray"/>
+        /// as while some Native Objects may report a size of 0, their addresses will never match
+        /// </summary>
+        public abstract class IndirectlySortedEntriesCacheSortedByAddressArray : IndirectlySortedEntriesCache<DynamicArrayAlgorithms.IndexedArrayValueComparer<ulong>>
         {
-            CachedSnapshot m_Snapshot;
-            int[] m_Sorting;
-
-            public SortedNativeAllocationsCache(CachedSnapshot snapshot)
-            {
-                m_Snapshot = snapshot;
-            }
-
-            public void Preload()
-            {
-                if (m_Sorting == null)
-                {
-                    m_Sorting = new int[m_Snapshot.NativeAllocations.Address.Count];
-
-                    for (int i = 0; i < m_Sorting.Length; ++i)
-                        m_Sorting[i] = i;
-
-                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.NativeAllocations.Address[x].CompareTo(m_Snapshot.NativeAllocations.Address[y]));
-                }
-            }
-
-            int this[int index]
-            {
-                get
-                {
-                    Preload();
-                    return m_Sorting[index];
-                }
-            }
-
-            public int Count { get { return (int)m_Snapshot.NativeAllocations.Count; } }
-            public ulong Address(int index) { return m_Snapshot.NativeAllocations.Address[this[index]]; }
-            public ulong Size(int index) { return m_Snapshot.NativeAllocations.Size[this[index]]; }
-            public int MemoryRegionIndex(int index) { return m_Snapshot.NativeAllocations.MemoryRegionIndex[this[index]]; }
-            public long RootReferenceId(int index) { return m_Snapshot.NativeAllocations.RootReferenceId[this[index]]; }
-            public long AllocationSiteId(int index) { return m_Snapshot.NativeAllocations.AllocationSiteId[this[index]]; }
-            public int OverheadSize(int index) { return m_Snapshot.NativeAllocations.OverheadSize[this[index]]; }
-            public int PaddingSize(int index) { return m_Snapshot.NativeAllocations.PaddingSize[this[index]]; }
+            protected unsafe override DynamicArrayAlgorithms.IndexedArrayValueComparer<ulong> SortingComparer =>
+                new DynamicArrayAlgorithms.IndexedArrayValueComparer<ulong>(in Addresses);
+            public IndirectlySortedEntriesCacheSortedByAddressArray(CachedSnapshot snapshot) : base(snapshot) { }
+            protected abstract ref readonly DynamicArray<ulong> Addresses { get; }
+            public override ulong Address(long index) => Addresses[this[index]];
         }
 
-        public class SortedNativeObjectsCache : ISortedEntriesCache
+        /// <summary>
+        /// Used for entry caches that can have overlapping regions or those which border right next to each other while having sizes of 0
+        /// </summary>
+        public abstract class IndirectlySortedEntriesCacheSortedByAddressAndSizeArray : IndirectlySortedEntriesCache<DynamicArrayAlgorithms.IndexedArrayRangeValueComparer<ulong>>
         {
-            CachedSnapshot m_Snapshot;
-            int[] m_Sorting;
+            protected unsafe override DynamicArrayAlgorithms.IndexedArrayRangeValueComparer<ulong> SortingComparer =>
+                new DynamicArrayAlgorithms.IndexedArrayRangeValueComparer<ulong>(in Addresses, in Sizes);
+            public IndirectlySortedEntriesCacheSortedByAddressAndSizeArray(CachedSnapshot snapshot) : base(snapshot) { }
+            protected abstract ref readonly DynamicArray<ulong> Addresses { get; }
+            protected abstract ref readonly DynamicArray<ulong> Sizes { get; }
+            public override ulong Address(long index) => Addresses[this[index]];
+            public override ulong Size(long index) => Sizes[this[index]];
+        }
 
-            public SortedNativeObjectsCache(CachedSnapshot snapshot)
+
+        public class SortedNativeMemoryRegionEntriesCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArray
+        {
+            public readonly DynamicArray<byte> RegionHierarchLayer;
+            public SortedNativeMemoryRegionEntriesCache(CachedSnapshot snapshot) : base(snapshot)
             {
-                m_Snapshot = snapshot;
+                RegionHierarchLayer = new DynamicArray<byte>(Count, Allocator.Persistent);
             }
 
-            public void Preload()
+            public override long Count => m_Snapshot.NativeMemoryRegions.Count;
+
+            protected override ref readonly DynamicArray<ulong> Addresses => ref m_Snapshot.NativeMemoryRegions.AddressBase;
+            protected override ref readonly DynamicArray<ulong> Sizes => ref m_Snapshot.NativeMemoryRegions.AddressSize;
+            public string Name(long index) => m_Snapshot.NativeMemoryRegions.MemoryRegionName[this[index]];
+            public int UnsortedParentRegionIndex(long index) => m_Snapshot.NativeMemoryRegions.ParentIndex[this[index]];
+            public int UnsortedFirstAllocationIndex(long index) => m_Snapshot.NativeMemoryRegions.FirstAllocationIndex[this[index]];
+            public int UnsortedNumAllocations(long index) => m_Snapshot.NativeMemoryRegions.NumAllocations[this[index]];
+
+            public override void Preload()
             {
-                if (m_Sorting == null)
+                base.Preload();
+                var count = Count;
+                if (count <= 0)
+                    return;
+
+                using var regionLayerStack = new DynamicArray<(sbyte, ulong)>(10, Allocator.Temp, memClear: false);
+                regionLayerStack.Clear(stomp: false);
+                regionLayerStack.Push(new(-1, Address(count - 1) + Size(count - 1)));
+                for (long i = 0; i < count; i++)
                 {
-                    m_Sorting = new int[m_Snapshot.NativeObjects.NativeObjectAddress.Count];
+                    // avoid the copy
+                    ref readonly var enclosingRegion = ref regionLayerStack.Peek();
+                    var regionEnd = Address(i) + Size(i);
 
-                    for (int i = 0; i < m_Sorting.Length; ++i)
-                        m_Sorting[i] = i;
+                    while (regionEnd > enclosingRegion.Item2)
+                    {
+                        // pop layer stack until the enclosung region encompases this region
+                        regionLayerStack.Pop();
+                        enclosingRegion = ref regionLayerStack.Peek();
+                    }
 
-                    Array.Sort(m_Sorting, (x, y) => m_Snapshot.NativeObjects.NativeObjectAddress[x].CompareTo(m_Snapshot.NativeObjects.NativeObjectAddress[y]));
+                    var currentLayer = enclosingRegion.Item1;
+                    regionLayerStack.Push(new(++currentLayer, Address(i)));
+                    RegionHierarchLayer[i] = (byte)currentLayer;
+                }
+            }
+            public override void Dispose()
+            {
+                base.Dispose();
+                RegionHierarchLayer.Dispose();
+            }
+        }
+
+        public class SortedManagedObjectsCache : IndirectlySortedEntriesCache<SortedManagedObjectsCache.IndexedManagedObjectAddressComparer>
+        {
+            /// <summary>
+            /// This comparer is used to sort <seealso cref="IndirectlySortedEntriesCache.m_Sorting"/>
+            /// (which is array of indices of, in the cas of this class, all <seealso cref="ManagedData.ManagedObjects"/>)
+            /// based on the address of each object.
+            ///
+            /// This helper struct is needed as <seealso cref="ManagedObjectInfo"/> does not implement <seealso cref="IComparable{ManagedObjectInfo}"/>
+            /// as it would be unclear what parameters it would compare by, and if it would forcibly be the address, that could be rather confusing.
+            /// Especially since it is only needed here.
+            /// </summary>
+            public unsafe readonly struct IndexedManagedObjectAddressComparer : IRefComparer<long>
+            {
+                readonly ManagedObjectInfo* m_Ptr;
+                public IndexedManagedObjectAddressComparer(in DynamicArray<ManagedObjectInfo> managedObjectInfos)
+                {
+                    m_Ptr = managedObjectInfos.GetUnsafeTypedPtr();
+                }
+
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public int Compare(ref long objectAIndex, ref long objectBIndex)
+                {
+                    // managed objects can't have a negative size, or be nested within other managed objects, so we don't need to compare sizes as well
+                    return m_Ptr[objectAIndex].PtrObject.CompareTo(m_Ptr[objectBIndex].PtrObject);
                 }
             }
 
-            int this[int index]
-            {
-                get
-                {
-                    Preload();
-                    return m_Sorting[index];
-                }
-            }
+            public SortedManagedObjectsCache(CachedSnapshot snapshot) : base(snapshot) { }
 
-            public int Count { get { return (int)m_Snapshot.NativeObjects.Count; } }
-            public ulong Address(int index) { return m_Snapshot.NativeObjects.NativeObjectAddress[this[index]]; }
-            public ulong Size(int index) { return m_Snapshot.NativeObjects.Size[this[index]]; }
-            public string Name(int index) { return m_Snapshot.NativeObjects.ObjectName[this[index]]; }
-            public int InstanceId(int index) { return m_Snapshot.NativeObjects.InstanceId[this[index]]; }
-            public int NativeTypeArrayIndex(int index) { return m_Snapshot.NativeObjects.NativeTypeArrayIndex[this[index]]; }
-            public HideFlags HideFlags(int index) { return m_Snapshot.NativeObjects.HideFlags[this[index]]; }
-            public ObjectFlags Flags(int index) { return m_Snapshot.NativeObjects.Flags[this[index]]; }
-            public long RootReferenceId(int index) { return m_Snapshot.NativeObjects.RootReferenceId[this[index]]; }
-            public int Refcount(int index) { return m_Snapshot.NativeObjects.RefCount[this[index]]; }
-            public int ManagedObjectIndex(int index) { return m_Snapshot.NativeObjects.ManagedObjectIndex[this[index]]; }
+
+            public override long Count => m_Snapshot.CrawledData.ManagedObjects.Count;
+
+            protected override IndexedManagedObjectAddressComparer SortingComparer => new IndexedManagedObjectAddressComparer(in m_Snapshot.CrawledData.ManagedObjects);
+
+            public override ulong Address(long index) => m_Snapshot.CrawledData.ManagedObjects[this[index]].PtrObject;
+            public override ulong Size(long index) => (ulong)m_Snapshot.CrawledData.ManagedObjects[this[index]].Size;
+        }
+
+        public class SortedNativeAllocationsCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArray
+        {
+            public SortedNativeAllocationsCache(CachedSnapshot snapshot) : base(snapshot) { }
+
+            public override long Count => m_Snapshot.NativeAllocations.Count;
+
+            protected override ref readonly DynamicArray<ulong> Addresses => ref m_Snapshot.NativeAllocations.Address;
+            protected override ref readonly DynamicArray<ulong> Sizes => ref m_Snapshot.NativeAllocations.Size;
+
+            public int MemoryRegionIndex(long index) => m_Snapshot.NativeAllocations.MemoryRegionIndex[this[index]];
+            public long RootReferenceId(long index) => m_Snapshot.NativeAllocations.RootReferenceId[this[index]];
+            public long AllocationSiteId(long index) => m_Snapshot.NativeAllocations.AllocationSiteId[this[index]];
+            public int OverheadSize(long index) => m_Snapshot.NativeAllocations.OverheadSize[this[index]];
+            public int PaddingSize(long index) => m_Snapshot.NativeAllocations.PaddingSize[this[index]];
+        }
+
+        public class SortedNativeObjectsCache : IndirectlySortedEntriesCacheSortedByAddressArray
+        {
+            public SortedNativeObjectsCache(CachedSnapshot snapshot) : base(snapshot) { }
+            public override long Count => m_Snapshot.NativeObjects.Count;
+
+            protected override ref readonly DynamicArray<ulong> Addresses => ref m_Snapshot.NativeObjects.NativeObjectAddress;
+            public override ulong Size(long index) => m_Snapshot.NativeObjects.Size[this[index]];
+
+            public string Name(long index) => m_Snapshot.NativeObjects.ObjectName[this[index]];
+            public int InstanceId(long index) => m_Snapshot.NativeObjects.InstanceId[this[index]];
+            public int NativeTypeArrayIndex(long index) => m_Snapshot.NativeObjects.NativeTypeArrayIndex[this[index]];
+            public HideFlags HideFlags(long index) => m_Snapshot.NativeObjects.HideFlags[this[index]];
+            public ObjectFlags Flags(long index) => m_Snapshot.NativeObjects.Flags[this[index]];
+            public long RootReferenceId(long index) => m_Snapshot.NativeObjects.RootReferenceId[this[index]];
+            public int Refcount(long index) => m_Snapshot.NativeObjects.RefCount[this[index]];
+            public int ManagedObjectIndex(long index) => m_Snapshot.NativeObjects.ManagedObjectIndex[this[index]];
         }
 
 
@@ -2393,10 +2433,8 @@ namespace Unity.MemoryProfiler.Editor
                 else if (typeof(T) == typeof(BitArray))
                 {
                     byte[] temp = new byte[actualLength];
-                    ulong handle = 0;
-                    void* dstPtr = UnsafeUtility.PinGCArrayAndGetDataAddress(temp, out handle);
-                    UnsafeUtility.MemCpy(dstPtr, srcPtr, actualLength);
-                    UnsafeUtility.ReleaseGCObject(handle);
+                    fixed (byte* dstPtr = temp)
+                        UnsafeUtility.MemCpy(dstPtr, srcPtr, actualLength);
 
                     var arr = new BitArray(temp);
                     elements[i] = arr as T;
@@ -2404,34 +2442,38 @@ namespace Unity.MemoryProfiler.Editor
                 else
                 {
                     Debug.LogError($"Use {nameof(NestedDynamicArray<byte>)} instead");
-                    object arr = null;
                     if (typeof(T) == typeof(byte[]))
                     {
-                        arr = new byte[actualLength];
+                        var arr = new byte[actualLength];
+                        fixed (void* dstPtr = arr)
+                            UnsafeUtility.MemCpy(dstPtr, srcPtr, actualLength);
+                        elements[i] = arr as T;
                     }
                     else if (typeof(T) == typeof(int[]))
                     {
-                        arr = new int[actualLength / UnsafeUtility.SizeOf<int>()];
+                        var arr = new int[actualLength / UnsafeUtility.SizeOf<int>()];
+                        fixed (void* dstPtr = arr)
+                            UnsafeUtility.MemCpy(dstPtr, srcPtr, actualLength);
+                        elements[i] = arr as T;
                     }
                     else if (typeof(T) == typeof(ulong[]))
                     {
-                        arr = new ulong[actualLength / UnsafeUtility.SizeOf<ulong>()];
+                        var arr = new ulong[actualLength / UnsafeUtility.SizeOf<ulong>()];
+                        fixed (void* dstPtr = arr)
+                            UnsafeUtility.MemCpy(dstPtr, srcPtr, actualLength);
+                        elements[i] = arr as T;
                     }
                     else if (typeof(T) == typeof(long[]))
                     {
-                        arr = new long[actualLength / UnsafeUtility.SizeOf<long>()];
+                        var arr = new long[actualLength / UnsafeUtility.SizeOf<long>()];
+                        fixed (void* dstPtr = arr)
+                            UnsafeUtility.MemCpy(dstPtr, srcPtr, actualLength);
+                        elements[i] = arr as T;
                     }
                     else
                     {
                         Debug.LogErrorFormat("Unsuported type provided for conversion, type name: {0}", typeof(T).FullName);
-                        return;
                     }
-
-                    ulong handle = 0;
-                    void* dstPtr = UnsafeUtility.PinGCArrayAndGetDataAddress(arr as Array, out handle);
-                    UnsafeUtility.MemCpy(dstPtr, srcPtr, actualLength);
-                    UnsafeUtility.ReleaseGCObject(handle);
-                    elements[i] = arr as T;
                 }
             }
         }
@@ -2476,6 +2518,8 @@ namespace Unity.MemoryProfiler.Editor
             {
                 get => (long)(m_Data & kIndexMask);
             }
+
+            public bool Valid => Id != SourceId.None;
 
             public SourceIndex(SourceId source, long index)
             {
@@ -3074,7 +3118,7 @@ namespace Unity.MemoryProfiler.Editor
                     Convert.ToInt32(m_Snapshot.CrawledData.ManagedObjects.Count),
                     (long i) =>
                     {
-                        var info = m_Snapshot.CrawledData.ManagedObjects[i];
+                        ref readonly var info = ref m_Snapshot.CrawledData.ManagedObjects[i];
                         var address = info.PtrObject;
                         var size = (ulong)info.Size;
                         bool valid = (size > 0);
@@ -3208,6 +3252,7 @@ namespace Unity.MemoryProfiler.Editor
                     Type = type;
                 }
 
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public int CompareTo(NativeGfxResourceRegion other)
                 {
                     // MemoryType.Device before MemoryType.Private

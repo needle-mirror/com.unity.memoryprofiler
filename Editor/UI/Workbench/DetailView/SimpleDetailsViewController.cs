@@ -60,11 +60,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_DescriptionText.value = m_Description;
             m_DescriptionText.isReadOnly = true;
-            m_DescriptionText.RegisterCallback<FocusInEvent>((evt) =>
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<
-                    MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel,
-                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DetailsSelectableLabelWasSelected));
-
             m_DocumentationButton.clickable.clicked += OpenDocumentation;
             m_DocumentationButton.tooltip = UIContentData.TextContent.OpenManualTooltip;
             UIElementsHelper.SetVisibility(m_DocumentationButton, !string.IsNullOrEmpty(m_DocumentationURL));
@@ -73,6 +68,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         void OpenDocumentation()
         {
             Application.OpenURL(m_DocumentationURL);
+
+            // Track documentation open count in the details view
+            MemoryProfilerAnalytics.AddSelectionDetailsViewInteraction(MemoryProfilerAnalytics.SelectionDetailsViewInteraction.DocumentationOpenCount);
         }
     }
 }

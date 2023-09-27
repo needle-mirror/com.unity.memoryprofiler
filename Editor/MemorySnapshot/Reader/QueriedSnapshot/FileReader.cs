@@ -7,6 +7,7 @@ using Unity.MemoryProfiler.Editor.Format.LowLevel.IO;
 using Unity.Profiling;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Containers;
+using System.Collections.Generic;
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
@@ -255,6 +256,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 }
             }
         }
+
         public NestedDynamicSizedArrayReadOperation<T> AsyncReadDynamicSizedArray<T>(EntryType entry, long offset, long count, Allocator allocator) where T : unmanaged
         {
             Checks.CheckEntryTypeFormatIsValidAndThrow(EntryFormat.DynamicSizeElementArray, GetEntryFormat(entry));
@@ -263,26 +265,68 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 unsafe
                 {
                     var entryCount = GetEntryCount(entry);
-                    using (var offsets = new DynamicArray<long>(entryCount + 1, Allocator.TempJob))
+                    using var offsets = new DynamicArray<long>(entryCount + 1, allocator);
+
+                    GetEntryOffsets(entry, offsets);
+                    if (count < entryCount)
                     {
-                        GetEntryOffsets(entry, offsets);
-                        if (count < entryCount)
-                        {
-                            using (var offsets2 = new DynamicArray<long>(count + 1, Allocator.TempJob))
-                            {
-                                UnsafeUtility.MemCpyReplicate(offsets2.GetUnsafePtr(), offsets.GetUnsafeTypedPtr() + offset, sizeof(long), (int)count);
-                                offsets.Resize(count, false);
-                                UnsafeUtility.MemCpyReplicate(offsets.GetUnsafePtr(), offsets2.GetUnsafePtr(), sizeof(long), (int)count);
-                            }
-                        }
-                        var bufferSize = offsets.Back() - offsets[0];
-                        var data = new DynamicArray<byte>(bufferSize, allocator);
-                        var readOp = AsyncRead(entry, data, 0, count, includeOffsets: false);
-                        NestedDynamicArray<T> buffer = new NestedDynamicArray<T>(offsets, data.Reinterpret<T>());
-                        return new NestedDynamicSizedArrayReadOperation<T>(readOp, buffer);
+                        using var offsets2 = new DynamicArray<long>(count + 1, Allocator.TempJob);
+                        UnsafeUtility.MemCpyReplicate(offsets2.GetUnsafePtr(), offsets.GetUnsafeTypedPtr() + offset, sizeof(long), (int)count);
+                        offsets.Resize(count, false);
+                        UnsafeUtility.MemCpyReplicate(offsets.GetUnsafePtr(), offsets2.GetUnsafePtr(), sizeof(long), (int)count);
                     }
+                    var currentStartOffsetIndex = 0L;
+                    var remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
+
+                    using var blocks = new DynamicArray<NestedSectionBlock>(1, Allocator.TempJob);
+                    blocks.Clear(false);
+
+                    while (remainingBufferSize > int.MaxValue)
+                    {
+                        var firstOffsetIndexOfNextBlock = offsets.Count - 1;
+                        var startOffset = offsets[currentStartOffsetIndex];
+
+                        // reduce block size until it is less than int.MaxValue but not less than one element
+                        while (offsets[firstOffsetIndexOfNextBlock] - startOffset > int.MaxValue
+                            && firstOffsetIndexOfNextBlock - 1 > currentStartOffsetIndex)
+                            --firstOffsetIndexOfNextBlock;
+                        blocks.Push(new NestedSectionBlock { StartOffsetIndex = currentStartOffsetIndex, NextOffsetStartIndexOrEndOfLastSectionOffset = firstOffsetIndexOfNextBlock });
+                        currentStartOffsetIndex = firstOffsetIndexOfNextBlock;
+                        remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
+                    }
+
+                    if (currentStartOffsetIndex < offsets.Count - 1)
+                    {
+                        // add remaining/last/potentially only block
+                        blocks.Push(new NestedSectionBlock { StartOffsetIndex = currentStartOffsetIndex, NextOffsetStartIndexOrEndOfLastSectionOffset = offsets.Count - 1 });
+                    }
+
+                    var dataBlocks = new DynamicArray<DynamicArray<T>>(blocks.Count, allocator);
+                    dataBlocks.Clear(false);
+
+                    var readOps = new List<GenericReadOperation>((int)blocks.Count);
+
+                    for (int i = 0; i < blocks.Count; i++)
+                    {
+                        var block = blocks[i];
+                        var bufferSize = offsets[block.NextOffsetStartIndexOrEndOfLastSectionOffset] - offsets[block.StartOffsetIndex];
+                        var data = new DynamicArray<byte>(bufferSize, allocator);
+                        var readOp = AsyncRead(entry, data, block.StartOffsetIndex, block.OffsetCount, includeOffsets: false);
+                        dataBlocks.Push(data.Reinterpret<T>());
+                        readOps.Add(readOp);
+                    }
+
+                    NestedDynamicArray<T> buffer = new NestedDynamicArray<T>(offsets, dataBlocks);
+                    return new NestedDynamicSizedArrayReadOperation<T>(readOps, buffer);
                 }
             }
+        }
+
+        struct NestedSectionBlock
+        {
+            public long StartOffsetIndex;
+            public long NextOffsetStartIndexOrEndOfLastSectionOffset;
+            public long OffsetCount => NextOffsetStartIndexOrEndOfLastSectionOffset - StartOffsetIndex;
         }
 
         unsafe ReadError InternalOpen(string filePath)

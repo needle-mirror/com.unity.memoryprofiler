@@ -162,9 +162,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             managedFieldInspectorFoldout.SetValueWithoutNotify(SessionState.GetBool(managedFieldInspectorFoldoutSessionStateKey, true));
             managedFieldInspectorFoldout.RegisterValueChangedCallback((evt) =>
             {
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                    evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectInspectorSectionWasRevealed :
-                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectInspectorSectionWasHidden);
                 SessionState.SetBool(managedFieldInspectorFoldoutSessionStateKey, evt.newValue);
             });
 
@@ -178,8 +175,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_Description = detailsPanelRoot.Q<TextField>("selected-item-details__item-description");
             m_Description.isReadOnly = true;
-            m_Description.RegisterCallback<FocusInEvent>((evt) => MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DetailsSelectableLabelWasSelected));
             UIElementsHelper.SetVisibility(m_Description, false);
 
             m_DocumentationButton = detailsPanelRoot.Q<Button>("selected-item-details__item-documentation-button");
@@ -218,9 +213,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_PreviewFoldout.SetValueWithoutNotify(SessionState.GetBool(previewFoldoutSessionStateKey, true));
             m_PreviewFoldout.RegisterValueChangedCallback((evt) =>
             {
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                    evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasRevealed :
-                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.PreviewSectionWasHidden);
                 SessionState.SetBool(previewFoldoutSessionStateKey, evt.newValue);
             });
 
@@ -320,23 +312,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case CopyDetailsOption.FullTitle:
                     EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer =
                         m_NonObjectTitle ? m_Title.text : m_UnityObjectTitle.GetTitle(MemoryProfilerSettings.MemorySnapshotTruncateTypes);
-                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedFullTitleFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedFullTitleViaButton);
                     break;
                 case CopyDetailsOption.NativeObjectName:
                     EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer = m_UnityObjectTitle.NativeObjectName;
-                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeObjectNameFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeObjectNameViaButton);
                     break;
                 case CopyDetailsOption.ManagedTypeName:
                     EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer = m_UnityObjectTitle.ManagedTypeName;
-                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedManagedTypeNameFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedManagedTypeNameViaButton);
                     break;
                 case CopyDetailsOption.NativeTypeName:
                     EditorGUIUtility.systemCopyBuffer = EditorGUIUtility.systemCopyBuffer = m_UnityObjectTitle.NativeTypeName;
-                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                        contextMenu ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeTypeNameFromContextMenu : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.CopiedNativeTypeNameViaButton);
                     break;
                 default:
                     break;
@@ -359,31 +343,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             groupData.Foldout.RegisterValueChangedCallback((evt) =>
             {
                 SessionState.SetBool(foldoutSessionStateKey, evt.newValue);
-                switch (name)
-                {
-                    case GroupNameBasic:
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.BasicSectionWasRevealed :
-                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.BasicSectionWasHidden);
-                        break;
-                    case GroupNameHelp:
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.HelpSectionWasRevealed :
-                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.HelpSectionWasHidden);
-                        break;
-                    case GroupNameAdvanced:
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.AdvancedSectionWasRevealed :
-                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.AdvancedSectionWasHidden);
-                        break;
-                    case GroupNameDebug:
-                        MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                            evt.newValue ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DebugSectionWasRevealed :
-                            MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DebugSectionWasHidden);
-                        break;
-                    default:
-                        break;
-                }
             });
             groupData.Foldout.text = name;
             m_DetailsGroups.Add(groupData);
@@ -396,6 +355,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         void OpenDocumentation()
         {
             Application.OpenURL(m_DocumentationURL);
+            // Track documentation open count in the details view
+            MemoryProfilerAnalytics.AddSelectionDetailsViewInteraction(MemoryProfilerAnalytics.SelectionDetailsViewInteraction.DocumentationOpenCount);
         }
 
         void OnSelectInEditor()
@@ -403,8 +364,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_FoundObjectInEditor != null)
             {
                 EditorAssetFinderUtility.SelectObject(m_FoundObjectInEditor);
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                    IsSceneObject(m_FoundObjectInEditor) ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectSceneObjectInEditorButtonClicked : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectAssetInEditorButtonClicked);
+
+                // Track button click count
+                MemoryProfilerAnalytics.AddSelectionDetailsViewInteraction(MemoryProfilerAnalytics.SelectionDetailsViewInteraction.SelectInEditorButtonClickCount);
             }
         }
 
@@ -419,8 +381,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 EditorAssetFinderUtility.SetEditorSearchFilterForObject(m_CachedSnapshot, m_SelectedUnityObject);
 
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                    m_SelectedUnityObject.IsSceneObject ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SearchInSceneButtonClicked : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SearchInProjectButtonClicked);
+                // Track button click count
+                MemoryProfilerAnalytics.AddSelectionDetailsViewInteraction(MemoryProfilerAnalytics.SelectionDetailsViewInteraction.SearchInEditorButtonClickCount);
             }
         }
 
@@ -429,8 +391,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_SelectedUnityObject.IsValid)
             {
                 EditorAssetFinderUtility.OpenQuickSearch(m_CachedSnapshot, m_SelectedUnityObject);
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                    m_SelectedUnityObject.IsSceneObject ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.QuickSearchForSceneObjectButtonClicked : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.QuickSearchForAssetButtonClicked);
+
+                // Track button click count
+                MemoryProfilerAnalytics.AddSelectionDetailsViewInteraction(MemoryProfilerAnalytics.SelectionDetailsViewInteraction.QuickSearchButtonClickCount);
             }
         }
 
@@ -488,9 +451,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             var titleLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__label");
             var contentLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__content");
             var selectableLabel = groupedItem.Q<TextField>("selected-item-details__grouped-item__content_selectable-label");
-            selectableLabel.RegisterCallback<FocusInEvent>((evt) => MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.DetailsSelectableLabelWasSelected));
-
             UIElementsHelper.SwitchVisibility(selectableLabel, contentLabel, options.HasFlag(SelectedItemDynamicElementOptions.SelectableLabel));
             if (options.HasFlag(SelectedItemDynamicElementOptions.ShowTitle))
                 titleLabel.text = $"{title}:";
@@ -550,21 +510,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SearchInEditorButton.text = searchButtonLabel.text;
                 m_SearchInEditorButton.tooltip = searchButtonLabel.tooltip;
                 UIElementsHelper.SetVisibility(m_SearchInEditorButton, true);
-#if UNITY_2021_2_OR_NEWER || QUICK_SEARCH_AVAILABLE
+                m_SearchInEditorButton.SetEnabled(true);
                 UIElementsHelper.SetVisibility(m_QuickSearchButton, true);
-                m_SearchInEditorButton.SetEnabled(true);
-#endif
-                m_SearchInEditorButton.SetEnabled(true);
+                m_QuickSearchButton.SetEnabled(true);
             }
             else
             {
                 m_SearchInEditorButton.text = TextContent.SearchButtonCantSearch.text;
                 UIElementsHelper.SetVisibility(m_SearchInEditorButton, true);
                 m_SearchInEditorButton.SetEnabled(false);
-#if UNITY_2021_2_OR_NEWER || QUICK_SEARCH_AVAILABLE
                 UIElementsHelper.SetVisibility(m_QuickSearchButton, true);
-                m_SearchInEditorButton.SetEnabled(false);
-#endif
+                m_QuickSearchButton.SetEnabled(true);
                 // not all supported Unity versions show tool-tips for disabled controls yet. m_UI.Setting the tool-tip on the enclosing UI Element works as a workaround.
                 m_SearchInEditorButtonHolder.tooltip = TextContent.SearchButtonCantSearch.tooltip;
             }

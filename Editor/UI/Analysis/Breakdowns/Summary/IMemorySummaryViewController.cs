@@ -2,7 +2,7 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal interface IMemorySummaryViewController
+    internal interface IMemorySummaryViewController : IDisposable
     {
         event Action<MemorySummaryModel, int> OnRowSelected;
 
@@ -10,5 +10,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void ClearSelection();
         ViewController MakeSelection(int rowId);
+        void Update();
     }
 }

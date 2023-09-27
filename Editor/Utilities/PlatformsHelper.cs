@@ -19,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor
         public const RuntimePlatform EmbeddedLinuxX64 = (RuntimePlatform)41 /*RuntimePlatform.EmbeddedLinuxX64*/;
         public const RuntimePlatform EmbeddedLinuxX86 = (RuntimePlatform)42 /*RuntimePlatform.EmbeddedLinuxX86*/;
 
-        static readonly RuntimePlatform[] k_PlatformsIgnoreResidentMemory = new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch };
+        static readonly RuntimePlatform[] k_PlatformsHideResidentMemory = new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch, RuntimePlatform.WebGLPlayer };
 
         public static BuildTarget GetBuildTarget(this RuntimePlatform runtimePlatform)
         {
@@ -182,6 +182,12 @@ namespace Unity.MemoryProfiler.Editor
                     name = "DedicatedServer";
                     break;
 #endif
+
+#if UNITY_2023_1_OR_NEWER
+                case RuntimePlatform.LinuxHeadlessSimulation:
+                    name = "LinuxHeadlessSimulation";
+                    break;
+#endif
                 default:
                 {
                     var buildTargetGroup = BuildPipeline.GetBuildTargetGroup(platform.GetBuildTarget());
@@ -204,9 +210,11 @@ namespace Unity.MemoryProfiler.Editor
             return "BuildSettings." + name + " On.png";
         }
 
+        /// Platforms on which we don't show detailed resident memory breakdown.
+        /// It could because information is unreliable or doesn't make much sense (all memory is resident).
         public static bool IsResidentMemoryBlacklistedPlatform(RuntimePlatform platform)
         {
-            return Array.IndexOf(k_PlatformsIgnoreResidentMemory, platform) != -1;
+            return Array.IndexOf(k_PlatformsHideResidentMemory, platform) != -1;
         }
     }
 }

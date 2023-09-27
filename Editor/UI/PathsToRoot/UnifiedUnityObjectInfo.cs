@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.UIContentData;
-using UnityEditor;
-using UnityEditor.IMGUI.Controls;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -31,71 +25,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Derived Meta Types:
         public bool IsSceneObjectType => IsComponentType || IsGameObjectType || IsTransformType;
         public bool IsAssetObjectType => IsValid && !IsSceneObjectType;
-
-#if !UNITY_2021_2_OR_NEWER // TODO: || QUICK_SEARCH_AVAILABLE
-        public string GetFullyQualifiedManagedTypeName(CachedSnapshot snapshot)
-        {
-            if (!HasManagedType)
-                return null;
-            return System.Reflection.Assembly.CreateQualifiedName(snapshot.TypeDescriptions.Assembly[ManagedTypeIndex], ManagedTypeName);
-        }
-
-        public Type GetManagedSystemType(CachedSnapshot snapshot)
-        {
-            if (!HasManagedType)
-            {
-                Type type = null;
-                foreach (var assemblyName in snapshot.TypeDescriptions.UniqueCurrentlyAvailableUnityAssemblyNames)
-                {
-                    var assembly = System.Reflection.Assembly.Load(assemblyName);
-                    type = assembly.GetType("UnityEngine." + NativeTypeName);
-                    if (type != null)
-                        break;
-                    type = assembly.GetType("UnityEditor." + NativeTypeName);
-                    if (type != null)
-                        break;
-                }
-                if (type != null)
-                {
-                    return type;
-                }
-                //var type = typeof(UnityEngine.Object).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(AudioClip).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(Animation).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(ParticleSystem).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(MonoScript).Assembly.GetType("UnityEditor." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(BoxCollider).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(BoxCollider2D).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(UnityEngine.AI.NavMesh).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(AssetBundle).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                //type = typeof(AssetBundle).Assembly.GetType("UnityEngine." + NativeTypeName);
-                //if (type != null)
-                //    return type;
-                Debug.Log("Couldn't find Type for " + NativeTypeName);
-                return null;
-            }
-            return Type.GetType(GetFullyQualifiedManagedTypeName(snapshot));
-        }
-
-#endif
 
         public UnifiedType(CachedSnapshot snapshot, int nativeTypeIndex)
         {

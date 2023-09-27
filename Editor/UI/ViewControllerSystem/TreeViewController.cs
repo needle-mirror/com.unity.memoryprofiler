@@ -66,7 +66,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (SearchField != null)
             {
                 SearchField.RegisterValueChangedCallback(OnSearchValueChanged);
-                SearchField.RegisterCallback<FocusOutEvent>(OnSearchFocusLost);
             }
 
 #if UNITY_2022_2_OR_NEWER
@@ -119,30 +118,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
 
             BuildModelAsync();
-
-            // Analytics
-            {
-                using var enumerator = sortedColumns.GetEnumerator();
-                while (enumerator.MoveNext())
-                {
-                    var sortDescription = enumerator.Current;
-                    if (sortDescription == null)
-                        continue;
-
-                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.SortedColumnEvent>();
-                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.SortedColumnEvent()
-                    {
-                        viewName = MemoryProfilerAnalytics.GetAnalyticsViewNameForOpenPage(),
-                        Ascending = sortDescription.direction == SortDirection.Ascending,
-                        shown = sortDescription.columnIndex,
-                        fileName = sortDescription.columnName
-                    });
-                    MemoryProfilerAnalytics.AddInteractionCountToEvent<
-                        MemoryProfilerAnalytics.InteractionsInPage,
-                        MemoryProfilerAnalytics.PageInteractionType>(
-                        MemoryProfilerAnalytics.PageInteractionType.TableSortingWasChanged);
-                }
-            }
         }
 
         void OnSearchValueChanged(ChangeEvent<string> evt)
@@ -155,12 +130,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else if (IsViewLoaded)
                 BuildModelAsync();
-        }
-
-        void OnSearchFocusLost(FocusOutEvent evt)
-        {
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
-                MemoryProfilerAnalytics.PageInteractionType.SearchInPageWasUsed);
         }
 
         void GenerateContextMenu(ContextualMenuPopulateEvent evt, Column column)

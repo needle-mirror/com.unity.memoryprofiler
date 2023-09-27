@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class AnalysisTabBarController : TabBarController, IAnalysisViewSelectable
+    internal class AnalysisTabBarController : TabBarController, IAnalysisViewSelectable
     {
         const string k_UxmlAssetGuid = "c6e4b2cc6ed5ca245a88ee690b17b4c0";
         const string k_UssClass_Dark = "analysis-tab-bar-view__dark";
@@ -67,6 +68,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             return view;
         }
 
+        protected override void SelectedIndexChanged(int selectedIndex)
+        {
+            var analyticsPageName = m_Options[selectedIndex].DisplayName;
+            if (m_CompareSnapshot != null)
+                analyticsPageName = TextContent.GetComparisonViewName(analyticsPageName);
+
+            MemoryProfilerAnalytics.SendOpenViewEvent(analyticsPageName, false);
+        }
+
         protected override void ViewLoaded()
         {
             base.ViewLoaded();
@@ -99,23 +109,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             tabBarItem.AddToClassList("analysis-tab-bar-view__tab-bar-item");
             tabBarItem.RegisterClickEvent(() =>
             {
-                // Stop Collecting interaction events for the old page and send them off
-                MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
-                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedPageEvent>();
                 SelectedIndex = viewControllerIndex;
-                var viewName = m_Options[SelectedIndex].AnalyticsPageName;
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedPageEvent() { viewName = viewName });
-                // Start collecting interaction events for this page
-                MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInPage>(new MemoryProfilerAnalytics.InteractionsInPage() { viewName = viewName });
             });
 
             return tabBarItem;
         }
 
-        void OpenHelpDocumentation()
+        static void OpenHelpDocumentation()
         {
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInPage, MemoryProfilerAnalytics.PageInteractionType>(
-                MemoryProfilerAnalytics.PageInteractionType.DocumentationOpened);
             Application.OpenURL(UIContentData.DocumentationUrls.AnalysisWindowHelp);
         }
 
@@ -126,18 +127,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             const string allTrackedMemoryDescription = "A breakdown of all tracked memory that Unity knows about.";
             m_Options = new List<Option>()
             {
-                new Option("Summary",
+                new Option(TextContent.SummaryViewName,
                     new SummaryViewController(m_SelectionDetails, this, snapshot, null) { TabController = this }),
-                new Option("Unity Objects",
+                new Option(TextContent.UnityObjectsViewName,
                     new UnityObjectsBreakdownViewController(snapshot, unityObjectsDescription, m_SelectionDetails),
                     unityObjectsDescription),
-                new Option("All Of Memory",
+                new Option(TextContent.AllOfMemoryViewName,
                     new AllTrackedMemoryBreakdownViewController(snapshot, allTrackedMemoryDescription, m_SelectionDetails),
                     allTrackedMemoryDescription),
             };
 
             if (MemoryProfilerSettings.ShowMemoryMapView)
-                m_Options.Add(new Option("Memory Map", new MemoryMapBreakdownViewController(snapshot, m_SelectionDetails)));
+                m_Options.Add(new Option(TextContent.MemoryMapViewName, new MemoryMapBreakdownViewController(snapshot, m_SelectionDetails)));
         }
 
         // Create a model containing the available Analysis options when comparing two snapshots.
@@ -148,25 +149,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_Options = new List<Option>()
             {
-                new Option("Summary",
-                    new SummaryViewController(m_SelectionDetails, this, baseSnapshot, comparedSnapshot) { TabController = this },
-                    analyticsPageName: "Summary Comparison"),
-                new Option("Unity Objects",
+                new Option(TextContent.SummaryViewName,
+                    new SummaryViewController(m_SelectionDetails, this, baseSnapshot, comparedSnapshot) { TabController = this }),
+                new Option(TextContent.UnityObjectsViewName,
                     new UnityObjectsComparisonViewController(
                         baseSnapshot,
                         comparedSnapshot,
                         unityObjectsComparisonDescription,
                         m_SelectionDetails),
-                    unityObjectsComparisonDescription,
-                    "Unity Objects Comparison"),
-                new Option("All Of Memory",
+                    unityObjectsComparisonDescription),
+                new Option(TextContent.AllOfMemoryViewName,
                     new AllTrackedMemoryComparisonViewController(
                         baseSnapshot,
                         comparedSnapshot,
                         allTrackedMemoryComparisonDescription,
                         m_SelectionDetails),
-                    allTrackedMemoryComparisonDescription,
-                    "All Of Memory Comparison")
+                    allTrackedMemoryComparisonDescription)
             };
         }
 
@@ -193,15 +191,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         readonly struct Option
         {
-            public Option(string displayName, IViewControllerWithVisibilityEvents viewController, string description = null, string analyticsPageName = null)
+            public Option(string displayName, IViewControllerWithVisibilityEvents viewController, string description = null)
             {
                 DisplayName = displayName;
                 ViewController = viewController;
                 Description = description;
-
-                if (string.IsNullOrEmpty(analyticsPageName))
-                    analyticsPageName = DisplayName;
-                AnalyticsPageName = analyticsPageName;
             }
 
             public string DisplayName { get; }
@@ -209,8 +203,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             public IViewControllerWithVisibilityEvents ViewController { get; }
 
             public string Description { get; }
-
-            public string AnalyticsPageName { get; }
         }
     }
 }

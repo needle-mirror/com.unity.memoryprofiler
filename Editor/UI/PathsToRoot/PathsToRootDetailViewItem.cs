@@ -64,12 +64,12 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             needsIcon = other.needsIcon;
         }
 
-        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, PathsToRootDetailTreeViewItem potentialParent) : this(data, cachedSnapshot)
+        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, PathsToRootDetailTreeViewItem potentialParent, bool truncateTypeNames) : this(data, cachedSnapshot, truncateTypeNames)
         {
             HasCircularReference = CircularReferenceCheck(potentialParent);
         }
 
-        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot)
+        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames)
         {
             id = s_IdGenerator++;
             depth = -1;
@@ -80,7 +80,11 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             {
                 TypeName = data.GenerateTypeName(cachedSnapshot);
                 TruncatedTypeName = PathsToRootDetailView.TruncateTypeName(TypeName);
-                displayName = GetDisplayName(data, cachedSnapshot);
+                // PathsToRootDetailTreeView will choose whether to show TypeName or TruncatedTypeName
+                // It thereby updates the view immediately on switching the settings
+                // GetDisplayName is a bit more involved and will only in a few cases include the type name
+                // currently, that display name will not get updated immediately as the setting changes
+                displayName = GetDisplayName(data, cachedSnapshot, truncateTypeNames);
                 SetObjectFlagsDataAndToolTip(data, cachedSnapshot);
             }
             else
@@ -92,7 +96,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
         }
 
-        string GetDisplayName(ObjectData data, CachedSnapshot cachedSnapshot)
+        string GetDisplayName(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames)
         {
             ManagedObjectInfo managedObjectInfo;
             ObjectData displayObject = Data.displayObject;
@@ -126,11 +130,11 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     }
                     return $"[0x{displayObject.hostManagedObjectPtr:x8}]";
                 case ObjectDataType.Array:
-                    return displayObject.GenerateArrayDescription(cachedSnapshot);
+                    return displayObject.GenerateArrayDescription(cachedSnapshot, truncateTypeName: truncateTypeNames);
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
                     if (displayObject.IsField()) return displayObject.GetFieldDescription(cachedSnapshot);
-                    if (displayObject.IsArrayItem()) return displayObject.GenerateArrayDescription(cachedSnapshot);
+                    if (displayObject.IsArrayItem()) return displayObject.GenerateArrayDescription(cachedSnapshot, truncateTypeName: truncateTypeNames);
                     managedObjectInfo = displayObject.GetManagedObject(cachedSnapshot);
                     if (managedObjectInfo.NativeObjectIndex != -1)
                     {
@@ -139,7 +143,11 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
                     return $"Unknown {displayObject.dataType}. Is not a field or array item";
                 case ObjectDataType.Type:
-                    return $"Static field type reference {cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex]}";
+                    var fieldName = string.Empty;
+                    if (data.IsField())
+                        fieldName = $".{data.GetFieldName(cachedSnapshot)}";
+                    var typeName = truncateTypeNames ? TruncatedTypeName : TypeName;
+                    return $"Static field type reference on {typeName}{fieldName}";
                 default:
                     throw new ArgumentOutOfRangeException();
             }

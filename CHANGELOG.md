@@ -7,13 +7,35 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.0-pre.3] - 2023-09-27
+
+### Fixed
+- Fixed an exception on capturing when the default snapshot storage path was used (./MemoryCaptures) but did not exist. It now gets created if it is missing. Custom set storage paths will still not be created as issues with these need user input to get resolved properly.
+- Fixed an ArgumentOutOfRangeException in ManagedObjectInspector on selecting some object entries in the All of Memory and Unity Objects table. The field inspector UI was trying to display the managed field values of static fields that hadn't been initialized.
+- Fixed Snapshot opening triggering a synchronous search via SearchService to initialize it for the Select, Find and Asset Preview functionality. As that could trigger SearchService to start indexing, this might have lead to longer stalls on opening snapshots.
+- Fixed string rendering when strings included the ´\r´ character ([PROFB-113](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-113)).
+- Fixed a crash on opening snapshots with very large managed memory usage ([PROFB-156](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-156)).
+- Fixed messaging for resident memory breakdown data availability. Detailed resident memory breakdown data is available for snapshots taken from Unity versions 2023.1 or newer.
+- Fixed the Unity Object and All Of Memory table UI so that the table mode dropdown does not disappear in a narrow window size. ([PROFB-110](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-110))
+- Disabled resident memory visualization in "Unity Objects" and "All of Memory" tables for WebGL platform. WebGL doesn't provide residency status.
+- Fixed bug that detailed information isn't showed for graphics resources.
+- Fixed a bug when you can't switch snapshot if snapshot was previously open in compare mode.
+- Fixed a managed memory leak in the Memory Profiler Module UI that the package inserts into the Profiler Window ([PROFB-160](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-160)). Also reduced the impact of a Mesh memory leak caused by UI TK ([UUM-46520](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-46520)).
+- Fixed the display of the memory usage bar diagrams in the Memory Profiler Module UI that the package inserts into the Profiler Window ([PRFOB-165](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-165)).
+- Fixed issue with Unity Objects view that caused some managed objects not to group and shown as separate items.
+
+### Changed
+- Documentation updated.
+- The "Search In Project" button now searches in the Assets folder _and_ in Packages (related to ([PROFB-54](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-54))).
+- Improved the performance of selecting items in the All Of Memory and Unity Objects tables for objects with managed memory. This affected in particular objects which have a lot of entries (their own or nested fields) displayed in their Managed Fields in the Selection Details panel. Beyond improving the performance in general, 'Continue...' entries, which can be clicked to get further entries added to the view, now not only appear in fields 4 layers down and for big arrays, but also after a total of 1000 field entries have been added to the view.
+
 ## [1.1.0-pre.1] - 2023-05-04
 
 ### Added
 - Added thumbnailing for screenshots to improve startup speed.
 
 ### Changed
-- Deprecated accidentially exposed as public IComparableItemData interface.
+- Deprecated accidentally exposed as public IComparableItemData interface.
 - Updated window icon.
 
 ### Fixed
@@ -32,8 +54,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed Selection Details foldouts so that they retain their expansion status for the duration of an Editor session and not change on every selection change.
 - Fixed screenshots remaining after deleting snapshots.
 - Fixed situations where the highlighted element in tables did not reflect the displayed selection but could not be clicked to show its details in the selection, particularly when the selected row item would change due to search filtering the table, switching back to a previously visited view.
-- Fixed leaks of native UnsafeUtility.Malloc(Persistent) allocations that occured when the Editor recompiled code while a snapshot was open.
-- Fixed leaks of Persistent NativeArray allocations via the Snapshot FileReader occuring with every (attempted) opening of a snapshot.
+- Fixed leaks of native UnsafeUtility.Malloc(Persistent) allocations that occurred when the Editor recompiled code while a snapshot was open.
+- Fixed leaks of Persistent NativeArray allocations via the Snapshot FileReader occurring with every (attempted) opening of a snapshot.
 - Fixed Unity Objects view not showing graphics resources for snapshots made with Unity 2022.1 and older
 - Added a tooltip for graphics items in All of Memory Table in "Resident" and "Allocated and Resident" views for a better explanation of why some elements are grayed out
 - Removed not-actionable console warning for iOS captures about reported overlapping Native Objects allocations
@@ -96,7 +118,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.0.0-pre.2] - 2022-05-05
 
 ### Changed
-- Changed details view UI to hide references section if selected item doesn't have refrences.
+- Changed details view UI to hide references section if selected item doesn't have references.
 
 ### Fixed
 - Fixed a crash in DynamicArray.Resize [(Case 1426543)](https://issuetracker.unity3d.com/product/unity/issues/guid/1426543/).
@@ -183,21 +205,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
  - Fixed issue where filters would be added to the spreadsheet tables and could not be removed.
  - Fixed issue where selecting something in the references tree view would cause the spreadsheet to repaint and lose latent selection.
  - Fixed Duplicate entries appearing in searches in the reference view.
- - Fixed NotImplementedException being thrown when traversing history from the fragmentation panel to a highlevel element breakdown selection.
+ - Fixed NotImplementedException being thrown when traversing history from the fragmentation panel to a high-level element breakdown selection.
  - Fixed the main selection not being recreated in the references view when navigating back in history from other views to the details panel.
  - Fixed issue where removing filters would leave the wrong selection in the table view.
- - Fixed refernces view selection causing table expansion state to reset.
+ - Fixed references view selection causing table expansion state to reset.
  - Fixed Errors and Exceptions breaking the Memory Profiler Window when minimizing, maximizing or docking and undocking it.
  - Improved "Select in Editor" search accuracy for Assets and Scene Objects in 2021.1 or newer editors.
  - Improved "Open in Quick Search" search string when searching for Scene Objects in 2021.1 or newer editors.
 
 ### Changed
  - Changed Snapshot preview screen-shot textures to get compressed in memory to reduce memory overhead.
- - Changed Typename truncation so that all typnames are truncated not just the initial typename.
- - Changed the Referenced By treeview to not contain the selected object.
+ - Changed Type name truncation so that all type names are truncated not just the initial type name.
+ - Changed the Referenced By tree view to not contain the selected object.
    - The selected object that the references are calculated for are now displayed above the tree view.
    - The Referenced By button now show the number of direct connections in its label.
- - The import buttons has been moved to left side of the memory profiler window toolber.
+ - The import buttons has been moved to left side of the memory profiler window toolbar.
  - The snapshots panel toggle text has been removed.
  - The details panel toggle text has been removed and the icon has been changed to use the inspector icon.
 

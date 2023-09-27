@@ -1,4 +1,3 @@
-#define ENABLE_MEMORY_PROFILER_DEBUG
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

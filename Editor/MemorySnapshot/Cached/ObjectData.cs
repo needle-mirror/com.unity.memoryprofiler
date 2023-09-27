@@ -1,8 +1,10 @@
 using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+#if ENABLE_MEMORY_PROFILER_DEBUG
+using Unity.MemoryProfiler.Editor.Diagnostics;
+#endif
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
@@ -68,7 +70,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 if (Parent != null && !Parent.expandToTarget)
                 {
-                    return Parent.Obj;
+                    return Parent.Obj.displayObject;
                 }
                 return this;
             }
@@ -418,6 +420,19 @@ namespace Unity.MemoryProfiler.Editor
         // should be called only when IsField() return true
         public string GetFieldName(CachedSnapshot snapshot)
         {
+            if (!IsField())
+            {
+                Debug.LogError("GetFieldName called on ObjectData that does not represent a field.");
+                return "";
+            }
+            if (Parent.Obj.IsArrayItem())
+            {
+                return $"{Parent.Obj.GenerateArrayDescription(snapshot, truncateTypeName: false, includeTypeName: false)}.{snapshot.FieldDescriptions.FieldDescriptionName[Parent.iField]}";
+            }
+            else if (Parent.Obj.IsField())
+            {
+                return $"{Parent.Obj.GetFieldName(snapshot)}.{snapshot.FieldDescriptions.FieldDescriptionName[Parent.iField]}";
+            }
             return snapshot.FieldDescriptions.FieldDescriptionName[Parent.iField];
         }
 
@@ -443,13 +458,19 @@ namespace Unity.MemoryProfiler.Editor
         public ObjectData GetInstanceFieldByIndex(CachedSnapshot snapshot, int i)
         {
             int iField = snapshot.TypeDescriptions.FieldIndicesInstance[managedTypeIndex][i];
-            return GetInstanceFieldBySnapshotFieldIndex(snapshot, iField, true);
+            return GetFieldByFieldDescriptionsIndex(snapshot, iField, true);
         }
 
         // Returns a new ObjectData pointing to the object's (that this ObjectData is currently pointing at) field
         // using a field index from snapshot.fieldDescriptions
-        public ObjectData GetInstanceFieldBySnapshotFieldIndex(CachedSnapshot snapshot, int iField, bool expandToTarget)
+        public ObjectData GetFieldByFieldDescriptionsIndex(CachedSnapshot snapshot, int iField, bool expandToTarget,
+            int valueTypeFieldOwningITypeDescription = -1, int valueTypeFieldIndex = -1, int addionalValueTypeFieldOffset = 0)
         {
+            bool fieldResidesOnNestedValueTypeField = valueTypeFieldOwningITypeDescription >= 0;
+#if ENABLE_MEMORY_PROFILER_DEBUG
+            if (!fieldResidesOnNestedValueTypeField)
+                Checks.CheckEquals(addionalValueTypeFieldOffset, 0);
+#endif
             ObjectData obj;
             ulong objectPtr;
 
@@ -498,14 +519,14 @@ namespace Unity.MemoryProfiler.Editor
 
             if (isStatic)
             {
-                //the field requested might come from a base class. make sure we are using the right staticFieldBytes.
                 var iOwningType = obj.m_data.managed.iType;
+                //the field requested might come from a base class. make sure we are using the right staticFieldBytes.
                 while (iOwningType >= 0)
                 {
                     var fieldIndex = Array.FindIndex(snapshot.TypeDescriptions.fieldIndicesOwnedStatic[iOwningType], x => x == iField);
                     if (fieldIndex >= 0)
                     {
-                        //field iField is owned by type iCurrentBase
+                        //field iField is owned by type iOwningType
                         break;
                     }
                     iOwningType = snapshot.TypeDescriptions.BaseOrElementTypeIndex[iOwningType];
@@ -522,8 +543,43 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                o.m_data.managed.objectPtr = objectPtr;// m_data.managed.objectPtr;
+                o.m_data.managed.objectPtr = objectPtr;
                 o.managedObjectData = obj.managedObjectData.Add((ulong)fieldOffset);
+            }
+
+            if (fieldResidesOnNestedValueTypeField)
+            {
+                // if fieldResidesOnNestedValueTypeField is true, we know that the field is on a value type within the fieldIndicesOwnedStatic.
+                // We know the value type that contains this field as well as the field index, but we don't know the entire chain of potentially nested value types.
+                // That chain needs reconstructing.
+
+                // Cyclic struct layouts are forbidden so as soon as the parent's type matches the the Value Type owning the field,
+                // the full (nested) value type chain has been successfully reconsturced.
+                if (obj.m_data.managed.iType != valueTypeFieldOwningITypeDescription)
+                {
+                    // as long as the chain has not yet been reconstructed, recurse through the value type fields until it is.
+                    addionalValueTypeFieldOffset -= fieldOffset;
+                    var targetFieldOffset = addionalValueTypeFieldOffset + snapshot.FieldDescriptions.Offset[valueTypeFieldIndex] - (int)snapshot.VirtualMachineInformation.ObjectHeaderSize;
+                    var fields = snapshot.TypeDescriptions.FieldIndicesInstance[fieldType];
+                    for (int i = 0; i < fields.Length; i++)
+                    {
+                        var field = fields[i];
+                        if (valueTypeFieldIndex != field)
+                        {
+                            var offset = snapshot.FieldDescriptions.Offset[field] - (int)snapshot.VirtualMachineInformation.ObjectHeaderSize;
+                            if (targetFieldOffset < offset)
+                                continue;
+                            var type = snapshot.FieldDescriptions.TypeIndex[field];
+
+                            var size = snapshot.TypeDescriptions.HasFlag(type, TypeFlags.kValueType) ? snapshot.TypeDescriptions.Size[type] : (int)snapshot.VirtualMachineInformation.PointerSize;
+                            if (targetFieldOffset >= offset + size)
+                                continue;
+                        }
+                        return o.GetFieldByFieldDescriptionsIndex(snapshot, field, expandToTarget, valueTypeFieldOwningITypeDescription, valueTypeFieldIndex, addionalValueTypeFieldOffset);
+                    }
+                    Debug.LogError("Nested Value Type Field was not found");
+                    return Invalid;
+                }
             }
             return o;
         }
@@ -608,6 +664,8 @@ namespace Unity.MemoryProfiler.Editor
                         return new SourceIndex(SourceIndex.SourceId.ManagedObject, idx);
                     break;
                 }
+                case ObjectDataType.Type:
+                    return new SourceIndex(SourceIndex.SourceId.ManagedType, m_data.managed.iType);
                 case ObjectDataType.NativeObject:
                     return new SourceIndex(SourceIndex.SourceId.NativeObject, m_data.native.index);
             }
@@ -645,7 +703,7 @@ namespace Unity.MemoryProfiler.Editor
                     return default(ManagedObjectInfo);
                 }
                 default:
-                    throw new Exception("GetManagedObjectSize was called on a instance of ObjectData which does not contain an managed object.");
+                    throw new Exception("GetManagedObject was called on a instance of ObjectData which does not contain an managed object.");
             }
         }
 
@@ -770,9 +828,61 @@ namespace Unity.MemoryProfiler.Editor
             return ret + $" on managed object [0x{hostManagedObjectPtr:x8}]";
         }
 
-        internal string GenerateArrayDescription(CachedSnapshot cachedSnapshot)
+        const string k_ArrayClosedSqBrackets = "[]";
+        internal string GenerateArrayDescription(CachedSnapshot cachedSnapshot, bool truncateTypeName = false, bool includeTypeName = true)
         {
-            return $"{cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex]}[{arrayIndex}]";
+            var arrayObject = IsArrayItem() ? Parent.Obj : this;
+            var arrayTypeName = cachedSnapshot.TypeDescriptions.TypeDescriptionName[arrayObject.managedTypeIndex];
+
+            var name = includeTypeName ? arrayTypeName : string.Empty;
+            name = truncateTypeName ? PathsToRootDetailView.TruncateTypeName(name) : name;
+
+            var sb = new System.Text.StringBuilder(name);
+
+            if (hostManagedObjectPtr != 0)
+            {
+                var arrayInfo = arrayObject.GetArrayInfo(cachedSnapshot);
+                var rankString = arrayIndex >= 0 ? arrayInfo.IndexToRankedString(arrayIndex) : arrayInfo.ArrayRankToString();
+                switch (arrayInfo.Rank.Length)
+                {
+                    case 1:
+                        int nestedArrayCount = CountArrayOfArrays(arrayTypeName);
+                        sb.Replace(k_ArrayClosedSqBrackets, string.Empty);
+                        sb.Append('[');
+                        sb.Append(rankString);
+                        sb.Append(']');
+                        for (int i = 1; i < nestedArrayCount; ++i)
+                        {
+                            sb.Append(k_ArrayClosedSqBrackets);
+                        }
+                        break;
+                    default:
+                        sb.Append('[');
+                        sb.Append(rankString);
+                        sb.Append(']');
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        int CountArrayOfArrays(string typename)
+        {
+            int count = 0;
+
+            int iter = 0;
+            while (true)
+            {
+                int idxFound = typename.IndexOf(k_ArrayClosedSqBrackets, iter);
+                if (idxFound == -1)
+                    break;
+                ++count;
+                iter = idxFound + k_ArrayClosedSqBrackets.Length;
+                if (iter >= typename.Length)
+                    break;
+            }
+
+            return count;
         }
 
         public string GenerateTypeName(CachedSnapshot cachedSnapshot)
@@ -802,7 +912,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
                 case ObjectDataType.Type:
-                    return "Type";
+                    return $"Type {cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex]}";
                 case ObjectDataType.NativeObject:
                 {
                     int iType = cachedSnapshot.NativeObjects.NativeTypeArrayIndex[displayObject.nativeObjectIndex];
@@ -824,6 +934,8 @@ namespace Unity.MemoryProfiler.Editor
                     return FromManagedObjectIndex(snapshot, (int)source.Index);
                 case SourceIndex.SourceId.ManagedType:
                     return FromManagedType(snapshot, (int)source.Index);
+                case SourceIndex.SourceId.GfxResource:
+                    return FromGfxResourceIndex(snapshot, (int)source.Index);
                 default:
                     return ObjectData.Invalid;
             }
@@ -836,6 +948,19 @@ namespace Unity.MemoryProfiler.Editor
             o.m_dataType = ObjectDataType.Type;
             o.managedObjectData = new BytesAndOffset(snapshot.TypeDescriptions.StaticFieldBytes[iType], snapshot.VirtualMachineInformation.PointerSize);
             return o;
+        }
+
+        public static ObjectData FromGfxResourceIndex(CachedSnapshot snapshot, int index)
+        {
+            var rootReferenceId = snapshot.NativeGfxResourceReferences.RootId[index];
+            if (rootReferenceId <= 0)
+                return ObjectData.Invalid;
+
+            // Lookup native object index associated with memory label root
+            if (!snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var nativeObjectIndex))
+                return ObjectData.Invalid;
+
+            return FromNativeObjectIndex(snapshot, nativeObjectIndex);
         }
 
         //index from an imaginary array composed of native objects followed by managed objects.
@@ -868,7 +993,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static ObjectData FromManagedObjectInfo(CachedSnapshot snapshot, ManagedObjectInfo moi)
         {
-            if (moi.ITypeDescription < 0)
+            if (!moi.IsKnownType)
                 return ObjectData.Invalid;
             ObjectData o = new ObjectData();
             o.m_dataType = TypeToDataType(snapshot, moi.ITypeDescription);// ObjectDataType.Object;
@@ -882,7 +1007,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (index < 0 || index >= snapshot.CrawledData.ManagedObjects.Count)
                 return ObjectData.Invalid;
-            var moi = snapshot.CrawledData.ManagedObjects[index];
+            ref readonly var moi = ref snapshot.CrawledData.ManagedObjects[index];
 
             if (index < snapshot.GcHandles.Count)
             {
@@ -910,10 +1035,10 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                ObjectData o = new ObjectData();
+                var o = new ObjectData();
                 o.m_data.managed.objectPtr = ptr;
                 o.managedObjectData = snapshot.ManagedHeapSections.Find(ptr, snapshot.VirtualMachineInformation);
-                if (ManagedDataCrawler.TryParseObjectHeader(snapshot, new ManagedDataCrawler.StackCrawlData() { Ptr = ptr }, out var info, o.managedObjectData))
+                if (ManagedDataCrawler.TryParseObjectHeader(snapshot, ptr, out var info, o.managedObjectData))
                 {
                     if (asTypeIndex >= 0)
                     {

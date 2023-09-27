@@ -12,7 +12,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         EntryFormat GetEntryFormat(EntryType type);
         long GetSizeForEntryRange(EntryType entry, long offset, long count, bool includeOffsets = true);
         uint GetEntryCount(EntryType entry);
-        unsafe void GetEntryOffsets(EntryType entry, DynamicArray<long> buffer);
+        void GetEntryOffsets(EntryType entry, DynamicArray<long> buffer);
         GenericReadOperation Read(EntryType entry, DynamicArray<byte> buffer, long offset, long count, bool includeOffsets = true);
         GenericReadOperation Read(EntryType entry, long offset, long count, Allocator allocator, bool includeOffsets = true);
         unsafe ReadError ReadUnsafe(EntryType entry, void* buffer, long bufferLength, long offset, long count, bool includeOffsets = true);

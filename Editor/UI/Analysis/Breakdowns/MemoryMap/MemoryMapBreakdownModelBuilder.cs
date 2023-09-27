@@ -118,7 +118,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         return "Reserved";
                     return "Managed Heap";
                 case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
-                    var managedObjects = snapshot.CrawledData.ManagedObjects;
+                    ref readonly var managedObjects = ref snapshot.CrawledData.ManagedObjects;
                     var managedTypeIndex = managedObjects[item.Source.Index].ITypeDescription;
                     if (managedTypeIndex < 0)
                         return "Managed Object";

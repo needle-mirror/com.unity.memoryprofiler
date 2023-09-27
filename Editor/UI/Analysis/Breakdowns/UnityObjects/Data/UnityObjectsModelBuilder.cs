@@ -42,10 +42,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected static bool CanBuildBreakdownForSnapshot(CachedSnapshot snapshot)
         {
-            // TargetAndMemoryInfo is required to obtain the total snapshot memory size.
-            if (!snapshot.HasTargetAndMemoryInfo)
-                return false;
-
             return true;
         }
 
@@ -272,9 +268,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 totalMemoryInSnapshot = new MemorySize(memoryStats.Value.TotalVirtualMemory, 0);
 
             // Add graphics resources separately, as we don't have them in memory map.
-            var snapshotUnityVersion = snapshot.MetaData.UnityVersion.Split('.');
-            var snapshotUnityVersionYear = int.Parse(snapshotUnityVersion[0]);
-            if (snapshot.HasGfxResourceReferencesAndAllocators && snapshotUnityVersionYear >= 2023)
+            if (snapshot.HasGfxResourceReferencesAndAllocators
+                && snapshot.MetaData.TargetInfo.HasValue
+                && snapshot.MetaData.UnityVersionMajor >= 2023)
                 AddGraphicsResources(snapshot, nativeObject2Size);
             else
                 AddLegacyGraphicsResources(snapshot, nativeObject2Size);
@@ -437,8 +433,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 );
 
                 // Add node to corresponding type's list of Unity Objects.
+                // - disambiguatedTypeIndexToTypeObjectsMap / nonDisambiguatedObjectsOfDisambiguatedNativeTypes lists
+                // for objects types defined in BuildListOfNativeUnityObjectBaseTypesToDisambiguateByManagedType
+                // - type based map for the rest
                 var nativeTypeSourceIndex = new SourceIndex(SourceIndex.SourceId.NativeType, typeIndex);
-                if (nativeUnityObjectBaseTypesToDisambiguateByManagedType.Contains(nativeTypeSourceIndex) && args.DisambiguateByInstanceId)
+                if (nativeUnityObjectBaseTypesToDisambiguateByManagedType.Contains(nativeTypeSourceIndex))
                 {
                     if(managedTypeIndex >= 0)
                     {
@@ -455,8 +454,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                     AddObjectToTypeMap(typeIndexToTypeObjectsMap, nativeTypeSourceIndex, nativeObjectName, item, args);
                 }
             }
-
-            return;
         }
 
         void AddObjectToTypeMap(

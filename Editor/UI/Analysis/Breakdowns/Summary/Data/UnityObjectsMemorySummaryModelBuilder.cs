@@ -115,7 +115,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
                     case SourceIndex.SourceId.ManagedObject:
                     {
-                        var managedObjects = cs.CrawledData.ManagedObjects;
+                        ref readonly var managedObjects = ref cs.CrawledData.ManagedObjects;
                         var nativeObjectIndex = managedObjects[source.Index].NativeObjectIndex;
                         if (nativeObjectIndex <= 0)
                             return;

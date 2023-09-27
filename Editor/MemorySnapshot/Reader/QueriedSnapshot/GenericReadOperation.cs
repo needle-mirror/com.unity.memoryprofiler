@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.IO.LowLevel.Unsafe;
@@ -82,9 +84,18 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         }
     }
 
-    unsafe class GenericReadOperation : CustomYieldInstruction, IDisposable
+    interface IGenericReadOperation : IEnumerator, IDisposable
     {
-        public ReadOperation ReadOperation;
+        bool keepWaiting { get; }
+        ReadError Error { get; }
+        DynamicArray<byte> Result { get; }
+        void Complete();
+        bool IsDone { get; }
+    }
+
+    unsafe class GenericReadOperation : CustomYieldInstruction, IGenericReadOperation
+    {
+        ReadOperation ReadOperation;
         internal GenericReadOperation(ReadOperation readOperation)
         {
             ReadOperation = readOperation;
@@ -104,29 +115,97 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         public void Dispose() => ReadOperation.Dispose();
     }
 
-    unsafe class NestedDynamicSizedArrayReadOperation<T> : GenericReadOperation where T : unmanaged
+    unsafe class NestedDynamicSizedArrayReadOperation<T> : CustomYieldInstruction, IGenericReadOperation where T : unmanaged
     {
         bool m_DoneReading;
         NestedDynamicArray<T> m_NestedArrayStructure;
+        List<GenericReadOperation> m_ReadOperations;
         /// <summary>
         /// Preliminary access to the nested dynamic sized array is safe for sorting the elements (without reading the content) or to get the count.
         /// </summary>
         internal ref NestedDynamicArray<T> UnsafeAccessToNestedDynamicSizedArray { get => ref m_NestedArrayStructure; }
-        internal NestedDynamicSizedArrayReadOperation(GenericReadOperation genericReadOperation, NestedDynamicArray<T> nestedArrayStructure) : base(genericReadOperation.ReadOperation)
+
+        public ReadError Error
         {
+            get
+            {
+                foreach (var readOp in m_ReadOperations)
+                {
+                    if (readOp.Error != ReadError.None)
+                    {
+                        return readOp.Error;
+                    }
+                }
+                return ReadError.None;
+            }
+        }
+
+        public DynamicArray<byte> Result => throw new NotImplementedException();
+
+        public bool IsDone
+        {
+            get
+            {
+                foreach (var readOp in m_ReadOperations)
+                {
+                    if (!readOp.IsDone)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
+        public override bool keepWaiting
+        {
+            get
+            {
+                foreach (var readOp in m_ReadOperations)
+                {
+                    if (readOp.keepWaiting)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        internal NestedDynamicSizedArrayReadOperation(List<GenericReadOperation> genericReadOperations, NestedDynamicArray<T> nestedArrayStructure)
+        {
+            m_ReadOperations = genericReadOperations;
             m_NestedArrayStructure = nestedArrayStructure;
         }
 
         internal NestedDynamicArray<T> CompleteReadAndGetNestedResults()
         {
-            if (!m_DoneReading && !ReadOperation.IsDone)
+            if (!m_DoneReading)
             {
-                ReadOperation.Complete();
-                Checks.CheckEquals(true, ReadOperation.Result.IsCreated);
-                ReadOperation.Dispose();
+                if (!IsDone)
+                {
+                    foreach (var readOp in m_ReadOperations)
+                    {
+                        readOp.Complete();
+                        Checks.CheckEquals(true, readOp.Result.IsCreated);
+                        readOp.Dispose();
+                    }
+                }
                 m_DoneReading = true;
             }
             return m_NestedArrayStructure;
+        }
+
+        public void Complete() => CompleteReadAndGetNestedResults();
+
+        public void Dispose()
+        {
+            if (m_DoneReading)
+                return;
+            foreach (var readOp in m_ReadOperations)
+            {
+                readOp.Dispose();
+            }
         }
     }
 }

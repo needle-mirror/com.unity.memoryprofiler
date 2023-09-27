@@ -25,8 +25,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         const int k_MaxDepthIncrement = 3;
         const int k_MaxArrayIncrement = 20;
+        const int k_MaxTotalItemProcessingIncrement = 1000;
 
-        public static bool HidePointers { get; private set; } = true;
+        public static bool HidePointers { get => true; }
 
         internal struct ReferencePendingProcessing
         {
@@ -151,12 +152,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             rowHeight = 20f;
             MemoryProfilerSettings.TruncateStateChanged += OnTruncateStateChanged;
             Reload();
-
-            multiColumnHeader.TruncationChangedViaThisHeader += (truncate) =>
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                    truncate ? MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTypeNameTruncationWasEnabled : MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTypeNameTruncationWasDisabled);
-
-            multiColumnHeader.sortingChanged += OnSortingChanged;
         }
 
         void OnTruncateStateChanged()
@@ -192,6 +187,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void ProcessQueue(int maxDepth)
         {
+            var processed = 0;
             // TODO: switch to proper lazy initialization of the tree past a certain depth
             while (m_ReferencesPendingProcessing.Count > 0)
             {
@@ -199,7 +195,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (currentItem.Root.children == null)
                     currentItem.Root.children = new List<TreeViewItem>();
-                if (currentItem.Root.depth > maxDepth)
+                if (++processed > k_MaxTotalItemProcessingIncrement || currentItem.Root.depth > maxDepth)
                 {
                     // emergency break for product stability
                     // TODO: Lazy expand instead
@@ -261,18 +257,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ReferencesPendingProcessing.Enqueue(pendingProcessing);
                 ProcessQueue(pendingProcessing.Root.depth + k_MaxDepthIncrement);
                 Reload();
-                MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                    MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectShowMoreLinkWasClicked);
             }
             else
             {
                 SetSelection(new List<int> { treeViewId }, TreeViewSelectionOptions.RevealAndFrame);
-                if (recursiveSelection)
-                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                        MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectRecursiveInNotesWasClicked);
-                else
-                    MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                        MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectDuplicateInNotesWasClicked);
             }
         }
 
@@ -295,7 +283,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 // if we are adding multiline object info and the object type does not match the field type, add it in brackets.
                 // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
-                item.Root.Value = $"({snapshot.TypeDescriptions.TypeDescriptionName[item.ObjectData.managedTypeIndex]})";
+                var actualTypeName = snapshot.TypeDescriptions.TypeDescriptionName[item.ObjectData.managedTypeIndex];
+                item.Root.Value = FormatFieldValueWithContentTypeNotMatchingFieldType(null, actualTypeName);
             }
 
             var fieldList = BuildFieldList(item.ObjectData, snapshot);
@@ -304,7 +293,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             for (var i = 0; i < elementCount; i++)
             {
                 ProcessField(new ReferencePendingProcessing(item.Root,
-                    item.ObjectData.GetInstanceFieldBySnapshotFieldIndex(snapshot, fieldList[i], false), fieldList, i)
+                    item.ObjectData.GetFieldByFieldDescriptionsIndex(snapshot, fieldList[i], false), fieldList, i)
                 , snapshot);
             }
         }
@@ -326,12 +315,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     if (referencedObject.dataType == ObjectDataType.BoxedValue)
                     {
                         referencedObject = referencedObject.GetBoxedValue(snapshot, true);
-                        // if we are adding single line object info and the object type does not match the field type (e.g. because of boxing), add it in brackets.
-                        // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
-                        v = $"{GetValue(referencedObject)} ({snapshot.TypeDescriptions.TypeDescriptionName[actualFielTypeIdx]})";
                     }
                     if (actualFielTypeIdx != typeIdx)
                     {
+                        // if we are adding single line object info and the object type does not match the field type (e.g. because of boxing), add it in brackets.
+                        // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
+                        var actualTypeName = snapshot.TypeDescriptions.TypeDescriptionName[actualFielTypeIdx];
+                        v = FormatFieldValueWithContentTypeNotMatchingFieldType(GetValue(referencedObject), actualTypeName);
                     }
                 }
             }
@@ -349,7 +339,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             else
             {
                 Debug.Assert(info.ObjectData.IsArrayItem());
-                name = GetArrayEntryName(info.ObjectData.Parent.Obj, info.ObjectData, info.ArrayInfo, typeName, info.Root, snapshot);
+
+                name = GetArrayEntryName(info.ObjectData.Parent.Obj, info.ObjectData, info.ArrayInfo,
+                    truncateTypeNames ? PathsToRootDetailView.TruncateTypeName(typeName) : typeName,
+                    info.Root, snapshot);
             }
 
             var childItem = new ManagedObjectInspectorItem(m_InspectorID, name, typeIdx, typeName, v, isStatic, GetIdentifyingPointer(info.ObjectData, snapshot), fieldSize);
@@ -393,8 +386,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var data = cs.ManagedHeapSections.Find(pointer, cs.VirtualMachineInformation);
                 if (data.IsValid)
                 {
-                    bool wasAlreadyCrawled;
-                    var moi = ManagedDataCrawler.ParseObjectHeader(cs, new ManagedDataCrawler.StackCrawlData() { Ptr = pointer }, out wasAlreadyCrawled, true, data);
+                    var moi = ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data);
                     if (moi.IsValid())
                     {
                         m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(childItem, ObjectData.FromManagedObjectInfo(cs, moi)));
@@ -405,16 +397,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                     else
                     {
                         int iHeapSection = -1;
-                        for (int iManageHeapSection = 0; iManageHeapSection < cs.SortedManagedHeapEntries.Count; iManageHeapSection++)
+                        for (int iManageHeapSection = 0; iManageHeapSection < cs.ManagedHeapSections.Count; iManageHeapSection++)
                         {
-                            if (cs.SortedManagedHeapEntries.Address(iManageHeapSection) + cs.SortedManagedHeapEntries.Size(iManageHeapSection) < pointer)
+                            if (cs.ManagedHeapSections.StartAddress[iManageHeapSection] + cs.ManagedHeapSections.SectionSize[iManageHeapSection] < pointer)
                                 continue;
-                            if (cs.SortedManagedHeapEntries.Address(iManageHeapSection) < pointer)
+                            if (cs.ManagedHeapSections.StartAddress[iManageHeapSection] < pointer)
                             {
                                 iHeapSection = iManageHeapSection;
                             }
                             break;
                         }
+
+                        // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
+                        if (HidePointers && string.IsNullOrEmpty(value))
+                            value = string.Format(DetailFormatter.PointerFormatString, pointer);
 
                         var bytes = "";
                         var maxBytesAvailable = (ulong)data.Bytes.Count - data.Offset;
@@ -423,12 +419,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                             bytes += data.Bytes[(long)data.Offset + b].ToString("X") + " ";
                         }
                         // lets get some debug info
-                        if (cs.SortedManagedHeapEntries.SectionType(iHeapSection) == CachedSnapshot.MemorySectionType.GarbageCollector)
+                        if (cs.ManagedHeapSections.SectionType[iHeapSection] == CachedSnapshot.MemorySectionType.GarbageCollector)
                             // some unsafe pointer outside of a fixed? Sounds Dangerous
-                            childItem.Value = "(IntPtr) -> Managed Heap @" + value + " Data: " + bytes;
+                            childItem.Value = $"(IntPtr) -> Managed Heap @{value} Data: {bytes}";
                         else
                             // likely pointing at some Mono Object, e.g. vtable or the like
-                            childItem.Value = "(IntPtr) -> Virtual Machine @" + value + " Data: " + bytes;
+                            childItem.Value = $"(IntPtr) -> Virtual Machine @{value} Data: {bytes}";
                     }
                 }
                 else
@@ -450,46 +446,47 @@ namespace Unity.MemoryProfiler.Editor.UI
                 childItem.Value = "Invalid";
                 return;
             }
-            int nativeRegion = -1;
+            // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
+            if (HidePointers && string.IsNullOrEmpty(value))
+                value = string.Format(DetailFormatter.PointerFormatString, pointer);
             string nativeRegionPath = null;
             bool buildFullNativePath = false;
-            for (int iRegion = 0; iRegion < cs.SortedNativeRegionsEntries.Count; iRegion++)
-            {
-                if (cs.SortedNativeRegionsEntries.Address(iRegion) + cs.SortedNativeRegionsEntries.Size(iRegion) < pointer)
-                    continue;
-                if (cs.SortedNativeRegionsEntries.Address(iRegion) <= pointer)
-                {
-                    // found a region, continue searching though, there could be a sub-region
-                    nativeRegion = iRegion;
-                    if (nativeRegionPath == null || !buildFullNativePath)
-                        nativeRegionPath = cs.SortedNativeRegionsEntries.Name(iRegion);
-                    else
-                        nativeRegionPath += " / " + cs.SortedNativeRegionsEntries.Name(iRegion);
-                }
-                if (cs.SortedNativeRegionsEntries.Address(iRegion) + cs.SortedNativeRegionsEntries.Size(iRegion) > pointer)
-                    break;
-            }
+            var nativeRegion = cs.SortedNativeRegionsEntries.Find(pointer, onlyDirectAddressMatches: false);
             if (nativeRegion >= 0)
             {
-                int nativeAllocation = -1;
-                for (int iAlloc = 0; iAlloc < cs.SortedNativeAllocations.Count; iAlloc++)
+                nativeRegionPath = cs.SortedNativeRegionsEntries.Name(nativeRegion);
+
+                if (buildFullNativePath)
                 {
-                    if (cs.SortedNativeAllocations.Address(iAlloc) + cs.SortedNativeAllocations.Size(iAlloc) < pointer)
-                        continue;
-                    if (cs.SortedNativeAllocations.Address(iAlloc) <= pointer)
+                    var foundRegionInLayer = cs.SortedNativeRegionsEntries.RegionHierarchLayer[nativeRegion];
+                    if (foundRegionInLayer > 0)
                     {
-                        // found an allocation
-                        nativeAllocation = iAlloc;
+                        // search backwards for parent regions.
+                        for (var iRegion = nativeRegion - 1; iRegion >= 0; iRegion--)
+                        {
+                            if (cs.SortedNativeRegionsEntries.RegionHierarchLayer[iRegion] >= foundRegionInLayer
+                                || cs.SortedNativeRegionsEntries.Address(iRegion) + cs.SortedNativeRegionsEntries.Size(iRegion) < pointer)
+                                continue;
+                            if (cs.SortedNativeRegionsEntries.Address(iRegion) <= pointer)
+                            {
+                                nativeRegionPath += $"{cs.SortedNativeRegionsEntries.Name(iRegion)} / {nativeRegionPath}";
+                                foundRegionInLayer = cs.SortedNativeRegionsEntries.RegionHierarchLayer[nativeRegion];
+                                // found a parent region, continue searching if it is not on layer 0 though as there should be another parent-region enclosing this one
+                                if (foundRegionInLayer == 0)
+                                    break;
+                            }
+                        }
                     }
-                    break;
                 }
+
+                var nativeAllocation = cs.SortedNativeAllocations.Find(pointer, onlyDirectAddressMatches: false);
                 if (nativeAllocation >= 0)
                 {
                     var rootReference = cs.SortedNativeAllocations.RootReferenceId(nativeAllocation);
                     var allocationName = value;
                     if (rootReference < cs.NativeRootReferences.Count)
                     {
-                        allocationName = cs.NativeRootReferences.AreaName[rootReference] + " / " + cs.NativeRootReferences.ObjectName[rootReference] + " / " + value;
+                        allocationName = $"{cs.NativeRootReferences.AreaName[rootReference]} / {cs.NativeRootReferences.ObjectName[rootReference]} / {value}";
                     }
                     var nativeObjectItem = new ManagedObjectInspectorItem(m_InspectorID, nativeFieldName, -1, nativeAllocationTypeName,
                         allocationName, false, pointer, cs.SortedNativeAllocations.Size(nativeAllocation));
@@ -499,7 +496,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 else
                 {
-                    var nativeObjectItem = new ManagedObjectInspectorItem(m_InspectorID, nativeFieldName, -1, "Native Region", nativeRegionPath + " / " + value, false, pointer, 0ul);
+                    var nativeObjectItem = new ManagedObjectInspectorItem(m_InspectorID, nativeFieldName, -1, "Native Region", $"{nativeRegionPath} / {value}", false, pointer, 0ul);
                     nativeObjectItem.depth = childItem.depth + 1;
                     childItem.AddChild(nativeObjectItem);
                     //Debug.LogError("Managed Object Inspector found a possible pointer to Native Memory that the crawler missed!");
@@ -508,7 +505,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else
             {
                 // This pointer points out of range! Could be IL2CPP Virtual Machine Memory but it could just be entirely broken
-                childItem.Value = nativeFieldName + " -> Not in Tracked Memory! @" + value;
+                childItem.Value = $"{nativeFieldName} -> Not in Tracked Memory! @{value}";
             }
         }
 
@@ -657,8 +654,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 if (countOfGenericOpen == countOfGenericClose && fieldRootEntry.TypeName.EndsWith(">"))
                 {
-                    // only parse types named "NativeArrays" that that end on the generic bracke they opened for the Native Array.
-                    // E.g. Avoid parsing Unity.Collections.NativeArray<System.Int32>[] or a speculative
+                    // only parse types named "NativeArrays" that that end on the generic bracket they opened for the Native Array.
+                    // E.g. Avoid parsing Unity.Collections.NativeArray<System.Int32>[]
                     if (field.managedObjectData.TryReadPointer(out var pointerToMBufferData) == BytesAndOffset.PtrReadError.Success)
                     {
                         FindNativeAllocationOrRegion(cs, pointerToMBufferData, fieldRootEntry, fieldRootEntry.Value, "m_Buffer", "void*");
@@ -675,7 +672,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ProcessField(new ReferencePendingProcessing(fieldRootEntry, childField, cs.TypeDescriptions.FieldIndicesInstance[fieldRootEntry.ManagedTypeIndex], 0), cs);
                 var fieldInfo = fieldRootEntry.children[0] as ManagedObjectInspectorItem;
                 // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
-                fieldRootEntry.Value = $"{fieldInfo.Value} ({fieldInfo.TypeName})";
+                fieldRootEntry.Value = FormatFieldValueWithContentTypeNotMatchingFieldType(fieldInfo.Value, fieldInfo.TypeName);
                 fieldRootEntry.children.Clear();
             }
             else if ((field.dataType == ObjectDataType.Value &&
@@ -700,7 +697,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool GetFirstInstanceFieldIfValueType(CachedSnapshot cs, ObjectData field, int fieldRootManagedTypeIndex, out ObjectData firstField)
         {
-            firstField = field.GetInstanceFieldBySnapshotFieldIndex(cs, cs.TypeDescriptions.FieldIndicesInstance[fieldRootManagedTypeIndex][0], false);
+            firstField = field.GetFieldByFieldDescriptionsIndex(cs, cs.TypeDescriptions.FieldIndicesInstance[fieldRootManagedTypeIndex][0], false);
             return firstField.dataType == ObjectDataType.Value;
         }
 
@@ -763,8 +760,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var referencedObject = referencedObjects[i];
                 if (referencedObject.isNative)
                 {
-                    // For now, don't go recursive on Native Object <-> Native Object
-                    //if (referencedObject.nativeObjectIndex >= 0)
+                    // For now, don't go deeper on Native Object <-> Native Object
+                    //if (referencedObject.nativeObjectIndex >= 0 && referencedObject.nativeObjectIndex != nativeObjectData.nativeObjectIndex)
                     //    m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing { objectData = referencedObject, root = root });
                     continue;
                 }
@@ -783,20 +780,38 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        string FormatFieldValueWithContentTypeNotMatchingFieldType(string value, string actualTypeName)
+        {
+            if (truncateTypeNames)
+                actualTypeName = PathsToRootDetailView.TruncateTypeName(actualTypeName);
+            if (value == null)
+                return $"({actualTypeName})";
+            else
+                return $"{value} ({actualTypeName})";
+        }
+
         string GetValue(ObjectData od)
         {
             if (!od.IsValid)
                 return "failed";
+            if (od.managedObjectData.Bytes.Count == 0
+                && m_CachedSnapshot.FieldDescriptions.IsStatic[od.fieldIndex] == 1
+                && m_CachedSnapshot.TypeDescriptions.HasStaticFieldData(od.managedTypeIndex))
+            {
+                return "uninitialized static field data";
+            }
             switch (od.dataType)
             {
                 case ObjectDataType.BoxedValue:
-                    return m_Formatter.FormatValueType(od.GetBoxedValue(m_CachedSnapshot, true), false);
+                    return m_Formatter.FormatValueType(od.GetBoxedValue(m_CachedSnapshot, true), false, truncateTypeNames);
                 case ObjectDataType.Value:
-                    return m_Formatter.FormatValueType(od, false);
+                    return (HidePointers && od.managedTypeIndex == m_CachedSnapshot.TypeDescriptions.ITypeIntPtr) ?
+                        string.Empty
+                        : m_Formatter.FormatValueType(od, false, truncateTypeNames);
                 case ObjectDataType.Object:
-                    return m_Formatter.FormatObject(od, false);
+                    return m_Formatter.FormatObject(od, false, truncateTypeNames);
                 case ObjectDataType.Array:
-                    return m_Formatter.FormatArray(od);
+                    return m_Formatter.FormatArray(od, truncateTypeNames);
                 case ObjectDataType.ReferenceObject:
                 {
                     ulong ptr = od.GetReferencePointer();
@@ -810,8 +825,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         if (!o.IsValid)
                             return "failed to read object";
                         if (o.dataType == ObjectDataType.BoxedValue)
-                            return m_Formatter.FormatValueType(o.GetBoxedValue(m_CachedSnapshot, true), false);
-                        return m_Formatter.FormatObject(o, false);
+                            return m_Formatter.FormatValueType(o.GetBoxedValue(m_CachedSnapshot, true), false, truncateTypeNames);
+                        return m_Formatter.FormatObject(o, false, truncateTypeNames);
                     }
                 }
                 case ObjectDataType.ReferenceArray:
@@ -824,12 +839,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var arr = ObjectData.FromManagedPointer(m_CachedSnapshot, ptr);
                     if (!arr.IsValid)
                         return "failed to read pointer";
-                    return m_Formatter.FormatArray(arr);
+                    return m_Formatter.FormatArray(arr, truncateTypeNames);
                 }
                 case ObjectDataType.Type:
                     return m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
                 case ObjectDataType.NativeObject:
-                    return m_Formatter.FormatPointer(m_CachedSnapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
+                    return HidePointers ? string.Empty : m_Formatter.FormatPointer(m_CachedSnapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
                 default:
                     return "<uninitialized type>";
             }
@@ -992,41 +1007,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             };
             return new MultiColumnHeaderState(columns);
-        }
-
-        protected override void SelectionChanged(IList<int> selectedIds)
-        {
-            base.SelectionChanged(selectedIds);
-
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.SelectionInManagedObjectTableWasUsed);
-        }
-
-        protected override void ExpandedStateChanged()
-        {
-            base.ExpandedStateChanged();
-
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTreeViewElementWasRevealed);
-        }
-
-        void OnSortingChanged(MultiColumnHeader multiColumnHeader)
-        {
-            // this table is currently unsortable. This is here in case we change our minds about that eventually.
-            MemoryProfilerAnalytics.AddInteractionCountToEvent<MemoryProfilerAnalytics.InteractionsInSelectionDetailsPanel, MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType>(
-                MemoryProfilerAnalytics.SelectionDetailsPanelInteractionType.ManagedObjectTableSortingWasChanged);
-
-            if (multiColumnHeader != null && multiColumnHeader.sortedColumnIndex != -1)
-            {
-                MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.SortedColumnEvent>();
-                MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.SortedColumnEvent()
-                {
-                    viewName = "Managed Object Inspector",
-                    Ascending = multiColumnHeader.IsSortedAscending(multiColumnHeader.sortedColumnIndex),
-                    shown = multiColumnHeader.sortedColumnIndex,
-                    fileName = multiColumnHeader.GetColumn(multiColumnHeader.sortedColumnIndex).headerContent.text
-                });
-            }
         }
     }
 }

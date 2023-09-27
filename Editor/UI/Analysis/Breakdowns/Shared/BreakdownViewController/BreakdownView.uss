@@ -38,11 +38,18 @@
 {
     flex-grow: 1;
     flex-shrink: 1;
+    flex-wrap: wrap;
     max-width: 600px;
+}
+
+#breakdown-view__mode-dropdown > Label
+{
+    white-space: normal;
 }
 
 #breakdown-view__search-field
 {
+    flex-shrink: 1;
     height: 14px;
     margin: 0px;
     padding: 4px;

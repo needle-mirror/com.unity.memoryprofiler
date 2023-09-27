@@ -70,9 +70,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         bool CanBuildBreakdownForSnapshot(CachedSnapshot snapshot)
         {
-            if (!snapshot.HasTargetAndMemoryInfo)
-                return false;
-
             return true;
         }
 
@@ -233,7 +230,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 context.UntrackedRegionsName2SizeMap[UntrackedGroupName] = new MemorySize(memoryStats.Value.TotalVirtualMemory - context.Total.Committed, 0);
                 context.Total = new MemorySize(memoryStats.Value.TotalVirtualMemory, 0);
             }
-
             // Add graphics resources to context separately, as we don't have them in memory map.
             // We compile different sources, trying to come with reasonable results:
             // - Platform-specific reported usage (memoryStats.Value.GraphicsUsedMemory)
@@ -241,12 +237,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             // - Estimated size of all tracked graphics resources created
             // after that we reassign "untracked" memory to the estimated graphics resources size
             {
+                var graphicsUsedMemory = memoryStats?.GraphicsUsedMemory ?? 0;
                 // Compensate if system regions graphics regions are smaller than platform-reported value
                 var untrackedToReassign = new MemorySize();
-                if (args.BreakdownGfxResources && (context.UntrackedGraphicsResources.Committed < memoryStats.Value.GraphicsUsedMemory))
+                if (args.BreakdownGfxResources && (context.UntrackedGraphicsResources.Committed < graphicsUsedMemory))
                 {
-                    untrackedToReassign = new MemorySize(memoryStats.Value.GraphicsUsedMemory - context.UntrackedGraphicsResources.Committed, 0);
-                    context.UntrackedGraphicsResources = new MemorySize(memoryStats.Value.GraphicsUsedMemory, 0);
+                    untrackedToReassign = new MemorySize(graphicsUsedMemory - context.UntrackedGraphicsResources.Committed, 0);
+                    context.UntrackedGraphicsResources = new MemorySize(graphicsUsedMemory, 0);
                 }
 
                 // Add estimated resources
@@ -391,7 +388,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (!NameFilter(args, name))
                 return;
 
-            var managedObject = snapshot.CrawledData.ManagedObjects[source.Index];
+            ref readonly var managedObject = ref snapshot.CrawledData.ManagedObjects[source.Index];
             var nativeObjectIndex = managedObject.NativeObjectIndex;
             string id = null;
             if (type2Name2ObjectsMap != null && nativeObjectIndex > 0)
@@ -434,13 +431,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             if(id != null)
             {
                 var namedObjectsOfThisType = type2Name2ObjectsMap.GetOrAdd(groupSource);
-                var objects = namedObjectsOfThisType.GetOrAdd(name);
-                objects.Add(treeItem);
+                namedObjectsOfThisType.GetAndAddToListOrCreateList(name, treeItem);
             }
             else
             {
-                var typeObjects = typeObjectsMap.GetOrAdd(groupSource);
-                typeObjects.Add(treeItem);
+                typeObjectsMap.GetAndAddToListOrCreateList(groupSource, treeItem);
             }
         }
 
@@ -837,8 +832,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 );
 
                 // Add object to corresponding type entry in map.
-                var groupItemsList = group2itemsMap.GetOrAdd(itemGroupKey);
-                groupItemsList.Add(treeItem);
+                group2itemsMap.GetAndAddToListOrCreateList(itemGroupKey, treeItem);
             }
         }
 
@@ -877,8 +871,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 );
                 // Add object to corresponding type entry in map.
                 var itemNameGroup = typeGroup2NameGroup2ItemsMap.GetOrAdd(itemGroupId);
-                var groupItemsList = itemNameGroup.GetOrAdd(itemName);
-                groupItemsList.Add(treeItem);
+                itemNameGroup.GetAndAddToListOrCreateList(itemName, treeItem);
             }
         }
 

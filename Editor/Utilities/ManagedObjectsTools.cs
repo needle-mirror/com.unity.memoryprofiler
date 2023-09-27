@@ -10,6 +10,8 @@ namespace Unity.MemoryProfiler.Editor
         public const string ProduceManagedObjectNameMarkerName = "ManagedObjectTools.ProduceManagedObjectName";
         static ProfilerMarker s_ProduceManagedObjectName = new ProfilerMarker(ProduceManagedObjectNameMarkerName);
 
+        static readonly string k_PointerFormatString = $"{DetailFormatter.PointerFormatString} {{1}}";
+
         internal static string ProduceManagedObjectName(this ManagedObjectInfo managedObjectInfo, CachedSnapshot snapshot, bool addInstanceId = false)
         {
             using var marker = s_ProduceManagedObjectName.Auto();
@@ -28,8 +30,8 @@ namespace Unity.MemoryProfiler.Editor
             else if (managedObjectInfo.ITypeDescription == snapshot.TypeDescriptions.ITypeCharArray)
                 value = managedObjectInfo.ReadFirstCharArrayLine(snapshot, true);
             else if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.ContainsKey(managedObjectInfo.ITypeDescription))
-                return String.Format("0x{0:X16} {1}", managedObjectInfo.PtrObject, TextContent.LeakedManagedShellHint);
-            return String.Format("0x{0:X16} {1}", managedObjectInfo.PtrObject, value);
+                return String.Format(k_PointerFormatString, managedObjectInfo.PtrObject, TextContent.LeakedManagedShellHint);
+            return String.Format(k_PointerFormatString, managedObjectInfo.PtrObject, value);
         }
     }
 }

@@ -15,7 +15,7 @@
     "defineConstraints": [],
     "versionDefines": [
         {
-            "name": "unity",
+            "name": "Unity",
             "expression": "2022.2.0a12",
             "define": "MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY"
         }

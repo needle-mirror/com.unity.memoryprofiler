@@ -106,6 +106,7 @@ namespace Unity.MemoryProfiler.Editor
                     str = str.Substring(0, Math.Min(str.Length, maxCharsInLine));
                 }
                 str = str.Replace("\n", "\\n");
+                str = str.Replace("\r", "\\r");
                 str += Elipsis;
             }
             if (addQuotes)

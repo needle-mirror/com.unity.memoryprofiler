@@ -2,25 +2,104 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.MemoryProfiler.Editor.Containers.Memory;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
-    unsafe struct DynamicArray<T> : IDisposable, IEnumerable<T> where T : unmanaged
+    unsafe interface ILongIndexedContainer<T> : IEnumerable<T>
+        where T : unmanaged
     {
-        void* m_Data;
+        public long Count { get; }
+
+        public long Capacity { get; }
+        public bool IsCreated { get; }
+
+        public ref T this[long idx] { get; }
+
+        public T* GetUnsafeTypedPtr();
+        public void* GetUnsafePtr();
+    }
+
+    /// <summary>
+    /// DynamicArrayRef is a readonly, lighter weight, non owning, sub-data, possibly type-converting, handle/view into a <see cref="DynamicArray{T}"/>.
+    /// It is used, in particular, for <seealso cref="NestedDynamicArray{T}"/>, where it provides simple views into the nested data
+    /// while using a similar API structure using the same <see cref="ILongIndexedContainer{T}"/> interface as <see cref="DynamicArray{T}"/>
+    /// while not implying ownership, nor allowing growing or
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    [StructLayout(LayoutKind.Sequential)]
+    unsafe readonly struct DynamicArrayRef<T> : ILongIndexedContainer<T> where T : unmanaged
+    {
+        [NativeDisableUnsafePtrRestriction]
+        readonly T* m_Data;
+        readonly long m_Size;
+
+        public readonly long Count => m_Size;
+        public readonly long Capacity => Count;
+
+        public readonly bool IsCreated { get; }
+        public readonly T* GetUnsafeTypedPtr() => m_Data;
+
+        public readonly void* GetUnsafePtr() => m_Data;
+
+        public readonly ref T this[long idx]
+        {
+            get
+            {
+                Checks.CheckIndexOutOfBoundsAndThrow(idx, Count);
+                return ref m_Data[idx];
+            }
+        }
+
+        public static implicit operator DynamicArrayRef<T>(DynamicArray<T> dynamicArray)
+            => ConvertExistingDataToDynamicArrayRef(dynamicArray);
+
+        public static unsafe DynamicArrayRef<T> ConvertExistingDataToDynamicArrayRef(DynamicArray<T> dynamicArray)
+        {
+            return (dynamicArray.Count == 0 || !dynamicArray.IsCreated) ?
+                new DynamicArrayRef<T>(null, 0, dynamicArray.IsCreated) :
+                new DynamicArrayRef<T>(dynamicArray.GetUnsafeTypedPtr(), dynamicArray.Count, dynamicArray.IsCreated);
+        }
+
+        public static unsafe DynamicArrayRef<T> ConvertExistingDataToDynamicArrayRef(T* dataPointer, long length)
+        {
+            return new DynamicArrayRef<T>(dataPointer, length, true);
+        }
+
+        unsafe DynamicArrayRef(T* data, long lendth, bool isCreated)
+        {
+            m_Data = data;
+            m_Size = lendth;
+            IsCreated = isCreated;
+        }
+
+        public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<T>(this);
+
+        readonly IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <summary>
+    /// <see cref="NativeArray{T}"/> is int indexed, but the kind of data amounts that the Memory Profiler
+    /// needs to be able to handle when dealing with memory snapshots needs to be able to handle more than <see cref="int.MaxValue"/> items.
+    /// Additionally, this data structure can also grow and be used as a stack.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    unsafe struct DynamicArray<T> : ILongIndexedContainer<T>, IDisposable where T : unmanaged
+    {
+        [NativeDisableUnsafePtrRestriction]
+        T* m_Data;
         long m_Capacity;
-        public long Count { get; private set; }
+        public long Count { readonly get; private set; }
 
         Allocator m_Allocator;
-        public Allocator Allocator => m_Allocator;
+        public readonly Allocator Allocator => m_Allocator;
 
         public long Capacity
         {
-            get { return m_Capacity; }
+            readonly get { return m_Capacity; }
             set
             {
                 Checks.CheckEquals(true, IsCreated);
@@ -28,7 +107,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        public bool IsCreated { get; private set; }
+        public bool IsCreated { readonly get; private set; }
 
         public DynamicArray(Allocator allocator) : this(0, allocator) { }
 
@@ -41,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             if (initialSize != 0)
             {
                 var allocSize = initialSize * UnsafeUtility.SizeOf<T>();
-                m_Data = UnsafeUtility.Malloc(allocSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
+                m_Data = (T*)UnsafeUtility.Malloc(allocSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
                 if (memClear)
                     UnsafeUtility.MemClear(m_Data, allocSize);
             }
@@ -66,7 +145,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return Reinterpret<U>(UnsafeUtility.SizeOf<T>());
         }
 
-        public DynamicArray<U> Reinterpret<U>(int expectedTypeSize) where U : unmanaged
+        DynamicArray<U> Reinterpret<U>(int expectedTypeSize) where U : unmanaged
         {
             long tSize = UnsafeUtility.SizeOf<T>();
             long uSize = UnsafeUtility.SizeOf<U>();
@@ -85,7 +164,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
             return new DynamicArray<U>()
             {
-                m_Data = m_Data,
+                m_Data = (U*)m_Data,
                 IsCreated = true,
                 Count = uCount,
                 m_Capacity = uCap,
@@ -99,35 +178,27 @@ namespace Unity.MemoryProfiler.Editor.Containers
             Resize(arr.Length, false);
             unsafe
             {
-                ulong handle;
-                void* src = UnsafeUtility.PinGCArrayAndGetDataAddress(arr, out handle);
-                UnsafeUtility.MemCpy(m_Data, src, UnsafeUtility.SizeOf<T>() * arr.LongLength);
-                UnsafeUtility.ReleaseGCObject(handle);
+                fixed (void* src = arr)
+                    UnsafeUtility.MemCpy(m_Data, src, UnsafeUtility.SizeOf<T>() * arr.LongLength);
             }
         }
 
-        public T this[long idx]
+        public readonly ref T this[long idx]
         {
             get
             {
                 Checks.CheckEquals(true, IsCreated);
                 Checks.CheckIndexOutOfBoundsAndThrow(idx, Count);
-                return ((T*)m_Data)[idx];
-            }
-            set
-            {
-                Checks.CheckEquals(true, IsCreated);
-                Checks.CheckIndexOutOfBoundsAndThrow(idx, Count);
-                UnsafeDataUtility.WriteArrayElement(m_Data, idx, ref value);
+                return ref (m_Data)[idx];
             }
         }
 
-        public void* GetUnsafePtr() { return m_Data; }
+        public readonly void* GetUnsafePtr() { return m_Data; }
 
-        public T* GetUnsafeTypedPtr() { return (T*)m_Data; }
+        public readonly T* GetUnsafeTypedPtr() { return m_Data; }
 
         [MethodImpl(256)]
-        public T Back()
+        public readonly T Back()
         {
             Checks.CheckEquals(true, IsCreated);
             return this[Count - 1];
@@ -155,8 +226,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
             {
                 if (m_Allocator == Allocator.None)
                     throw new NotSupportedException("Resizing a DynamicArray that acts as a slice of another DynamicArray is not allowed");
-                int elemSize = UnsafeUtility.SizeOf<T>();
-                void* newMem = UnsafeUtility.Malloc(newCapacity * elemSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
+                var elemSize = UnsafeUtility.SizeOf<T>();
+                var newMem = (T*)UnsafeUtility.Malloc(newCapacity * elemSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
 
                 if (m_Data != null)
                 {
@@ -172,16 +243,19 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public void Push(T value)
         {
             Checks.CheckEquals(true, IsCreated);
-            if (Count + 1 >= m_Capacity)
+            if (Count + 1 > m_Capacity)
                 ResizeInternalBuffer(Math.Max(m_Capacity, 1) * 2, false);
-            this[++Count - 1] = value;
+            this[Count++] = value;
         }
 
         public T Pop()
         {
-            var ret = this[Count - 1];
-            --Count;
-            return ret;
+            return this[--Count];
+        }
+
+        public readonly ref T Peek()
+        {
+            return ref this[Count - 1];
         }
 
         public void Clear(bool stomp)
@@ -213,45 +287,40 @@ namespace Unity.MemoryProfiler.Editor.Containers
             IsCreated = false;
         }
 
-        public IEnumerator<T> GetEnumerator()
+        public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<T>(this);
+
+        readonly IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    unsafe struct DynamicArrayEnumerator<T> : IEnumerator<T>
+        where T : unmanaged
+    {
+        public readonly T Current => nextIndex == 0 ? default : m_Array[nextIndex - 1];
+
+        readonly object IEnumerator.Current => Current;
+
+        ILongIndexedContainer<T> m_Array;
+        long nextIndex;
+
+        public DynamicArrayEnumerator(ILongIndexedContainer<T> array)
         {
-            return new DynamicArrayEnumerator(this);
+            m_Array = array;
+            nextIndex = 0;
         }
 
-        IEnumerator IEnumerable.GetEnumerator()
+        public void Dispose()
         {
-            return GetEnumerator();
+            m_Array = default;
         }
 
-        struct DynamicArrayEnumerator : IEnumerator<T>
+        public bool MoveNext()
         {
-            public T Current => nextIndex == 0 ? default : m_Array[nextIndex - 1];
+            return ++nextIndex < m_Array.Count;
+        }
 
-            object IEnumerator.Current => Current;
-
-            DynamicArray<T> m_Array;
-            long nextIndex;
-
-            public DynamicArrayEnumerator(DynamicArray<T> array)
-            {
-                m_Array = array;
-                nextIndex = 0;
-            }
-
-            public void Dispose()
-            {
-                m_Array = default;
-            }
-
-            public bool MoveNext()
-            {
-                return ++nextIndex < m_Array.Count;
-            }
-
-            public void Reset()
-            {
-                nextIndex = 0;
-            }
+        public void Reset()
+        {
+            nextIndex = 0;
         }
     }
 }

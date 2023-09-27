@@ -80,7 +80,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             { "Texture2D", AvailableMetaDataTypes.Texture2D },
         };
 
-        static List<(string, string)> MetaDataStringFactory(DynamicArray<byte> bytes, AvailableMetaDataTypes key, CachedSnapshot cs)
+        static List<(string, string)> MetaDataStringFactory(ILongIndexedContainer<byte> bytes, AvailableMetaDataTypes key, CachedSnapshot cs)
         {
             switch (key)
             {
@@ -153,7 +153,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return version == kPackageFormatVersion;
         }
 
-        public unsafe TextureMetaData(DynamicArray<byte> bytes)
+        public unsafe TextureMetaData(ILongIndexedContainer<byte> bytes)
         {
             byte* ptr = bytes.GetUnsafeTypedPtr();
             int pos = 0;
@@ -212,7 +212,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public int streamingInfoSize;
         public string streamingPath;
 
-        public unsafe Texture2DMetaData(DynamicArray<byte> bytes)
+        public unsafe Texture2DMetaData(ILongIndexedContainer<byte> bytes)
         {
             byte* ptr = bytes.GetUnsafeTypedPtr();
             int pos = 0;
@@ -294,7 +294,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         Byte[] channeldimensions;
         Byte[] channelStreams;
 
-        public unsafe MeshMetaData(DynamicArray<byte> bytes)
+        public unsafe MeshMetaData(ILongIndexedContainer<byte> bytes)
         {
             byte* ptr = bytes.GetUnsafeTypedPtr();
             int pos = 0;
@@ -419,7 +419,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             public BitIndices boolFlags;
         }
 
-        public unsafe RenderTextureMetaData(DynamicArray<byte> bytes)
+        public unsafe RenderTextureMetaData(ILongIndexedContainer<byte> bytes)
         {
             ScaledWidth = ScaledHeight = 0;
 
@@ -571,7 +571,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             public BitIndices boolFlags;
         }
 
-        public unsafe AudioClipMetaData(DynamicArray<byte> bytes)
+        public unsafe AudioClipMetaData(ILongIndexedContainer<byte> bytes)
         {
             byte* ptr = bytes.GetUnsafeTypedPtr();
             int pos = 0;
@@ -635,7 +635,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public UInt64 NumVariants;
 
-        public unsafe ShaderMetaData(DynamicArray<byte> bytes)
+        public unsafe ShaderMetaData(ILongIndexedContainer<byte> bytes)
         {
             byte* ptr = bytes.GetUnsafeTypedPtr();
             int pos = 0;

@@ -1,4 +1,5 @@
 using System;
+using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Format;
 
 namespace Unity.MemoryProfiler.Editor
@@ -171,13 +172,13 @@ namespace Unity.MemoryProfiler.Editor
             {
                 length = 1;
                 int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
-                for (int i = 0; i != rank; i++)
+                for (int i = 0; i < rank; i++)
                 {
                     length *= cursor.ReadInt32();
                     cursor = cursor.Add(8);
                 }
             }
-
+            Checks.IsTrue(length >= 0);
             return length;
         }
 
@@ -186,11 +187,10 @@ namespace Unity.MemoryProfiler.Editor
             var arrayLength = ReadArrayLength(data, address, iTypeDescriptionArrayType);
 
             var virtualMachineInformation = data.VirtualMachineInformation;
-            var ti = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
-            var ai = data.TypeDescriptions.TypeIndex2ArrayIndex(ti);
-            var isValueType = data.TypeDescriptions.HasFlag(ai, TypeFlags.kValueType);
+            var typeIndex = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
+            var isValueType = data.TypeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
 
-            var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[ai] : virtualMachineInformation.PointerSize;
+            var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[typeIndex] : virtualMachineInformation.PointerSize;
             return (int)(virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength);
         }
 
@@ -199,15 +199,14 @@ namespace Unity.MemoryProfiler.Editor
             var arrayLength = ReadArrayLength(data, arrayData, iTypeDescriptionArrayType);
             var virtualMachineInformation = data.VirtualMachineInformation;
 
-            var ti = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
-            if (ti == -1) // check added as element type index can be -1 if we are dealing with a class member (eg: Dictionary.Entry) whose type is uninitialized due to their generic data not getting inflated a.k.a unused types
+            var typeIndex = data.TypeDescriptions.BaseOrElementTypeIndex[iTypeDescriptionArrayType];
+            if (typeIndex == -1) // check added as element type index can be -1 if we are dealing with a class member (eg: Dictionary.Entry) whose type is uninitialized due to their generic data not getting inflated a.k.a unused types
             {
-                ti = iTypeDescriptionArrayType;
+                typeIndex = iTypeDescriptionArrayType;
             }
 
-            var ai = data.TypeDescriptions.TypeIndex2ArrayIndex(ti);
-            var isValueType = data.TypeDescriptions.HasFlag(ai, TypeFlags.kValueType);
-            var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[ai] : virtualMachineInformation.PointerSize;
+            var isValueType = data.TypeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
+            var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[typeIndex] : virtualMachineInformation.PointerSize;
 
             return (int)(virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength);
         }

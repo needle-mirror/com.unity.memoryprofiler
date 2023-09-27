@@ -33,6 +33,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         UnityObjectsMemoryInEditorSummaryModelBuilder m_UnityObjectsBreakdownModelBuilder;
 
         // View
+        VisualElement m_Root;
         VisualElement m_NoDataView;
         VisualElement m_EditorWarningLabel;
         Button m_InstallPackageButton;
@@ -47,6 +48,31 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         bool m_DataAvailable;
         ProfilerMemoryView m_ViewMode;
+
+        // -1 could be misinterpreted as current frame. Never set this to -1 though and only the actual frame index
+        UniqueFrameId m_FrameIdOfLastBuildModel = new UniqueFrameId(-2, 0, -1f);
+        /// <summary>
+        /// We don't have public API access to the current session id, nor if the Profiler session was restarted within the session.
+        /// using just the FrameIndex is therefore not enough to determine if two frames are the same or different.
+        /// This is still not an _entrely_ guaranteed unique fingerprint, but way more accurate than just the FrameIndex.
+        /// </summary>
+        readonly struct UniqueFrameId : IEquatable<UniqueFrameId>
+        {
+            public readonly long FrameIndex;
+            public readonly ulong FrameStartTimeNS;
+            public readonly float FrameDurationMS;
+            public UniqueFrameId(long frameIndex, ulong frameStartTimeNS, float frameDurationMS)
+            {
+                FrameIndex = frameIndex;
+                FrameStartTimeNS = frameStartTimeNS;
+                FrameDurationMS = frameDurationMS;
+            }
+            public readonly bool Equals(UniqueFrameId other)
+            {
+                return FrameIndex == other.FrameIndex && FrameStartTimeNS == other.FrameStartTimeNS && FrameDurationMS == other.FrameDurationMS;
+            }
+        }
+
         List<IMemorySummaryViewController> m_WidgetControllers;
 
         public MemoryProfilerModuleViewController(ProfilerWindow profilerWindow, MemoryProfilerModuleOverride overrideModule)
@@ -67,6 +93,14 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
             m_ConnectionState?.Dispose();
             m_ConnectionState = null;
+            if(m_WidgetControllers != null)
+            {
+                foreach (var controller in m_WidgetControllers)
+                {
+                    controller?.Dispose();
+                }
+                m_WidgetControllers = null;
+            }
         }
 
         protected override VisualElement CreateView()
@@ -98,6 +132,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             m_DeviceMemoryBreakdown = view.Q<VisualElement>("memory-profiler-module__content__system");
             m_CommittedMemoryBreakdown = view.Q<VisualElement>("memory-profiler-module__content__total");
             m_UnityObjectsBreakdown = view.Q<VisualElement>("memory-profiler-module__content__unity-objects");
+            m_Root = view;
         }
 
         void SetupView()
@@ -133,6 +168,9 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         {
             // Don't update if there is no state change
             var frame = ProfilerWindow.selectedFrameIndex;
+            if(frame == -1)
+                frame = ProfilerDriver.lastFrameIndex;
+
             bool isDataAvailable = CheckMemoryStatsAvailablity(frame);
             if (!force && (isDataAvailable == m_DataAvailable) && (mode == m_ViewMode))
                 return;
@@ -152,27 +190,68 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         void UpdateWidgetsFrame(long frame)
         {
+            // -1 is the current/latest frame
+            if (frame == -1)
+                frame = ProfilerWindow.lastAvailableFrameIndex;
+
+            if(Event.current?.type == EventType.Layout)
+            {
+                // don't change the layout during layout. Schedule the update for later
+                m_Root.schedule.Execute(() => UpdateWidgetsFrame(frame));
+                return;
+            }
+
+            if (CheckMemoryStatsAvailablity(frame))
+            {
+                using var m_FrameDataView = ProfilerDriver.GetRawFrameDataView((int)frame, 0);
+                var frameId = new UniqueFrameId(frame, m_FrameDataView.frameStartTimeNs, m_FrameDataView.frameTimeMs);
+
+                if (m_FrameIdOfLastBuildModel.Equals(frameId))
+                   return;
+                m_FrameIdOfLastBuildModel = frameId;
+            }
+            else
+                m_FrameIdOfLastBuildModel = new UniqueFrameId(-2, 0, -1);
+
             UpdateViewState(m_ViewMode, false);
+
             if (!m_DataAvailable)
                 return;
 
-/*          Commented out until we get physical memory size into profiler stream
-            m_DeviceMemoryBreakdown.Clear();
-            m_DeviceBreakdownModelBuilder = new DeviceMemoryInEditorWidgetModelBuilder() { Frame = frame };
-            AddController(m_DeviceMemoryBreakdown, new DeviceMemoryBreakdownViewController(m_DeviceBreakdownModelBuilder)); */
-            UIElementsHelper.SetVisibility(m_DeviceMemoryBreakdown.parent, false);
-
-            m_CommittedBreakdownModelBuilder = new AllMemoryInEditorSummaryModelBuilder() { Frame = frame };
-            AddController(m_CommittedMemoryBreakdown, new GenericMemorySummaryViewController(m_CommittedBreakdownModelBuilder, false) {
-                TotalLabelFormat = "Total allocated memory: {0}",
-                Selectable = false
-            });
-            m_UnityObjectsBreakdownModelBuilder = new UnityObjectsMemoryInEditorSummaryModelBuilder() { Frame = frame };
-            AddController(m_UnityObjectsBreakdown, new GenericMemorySummaryViewController(m_UnityObjectsBreakdownModelBuilder, false)
+            if (m_CommittedBreakdownModelBuilder != null)
             {
-                TotalLabelFormat = null,
-                Selectable = false
-            });
+                // Hidden until we get physical memory size into profiler stream
+                UIElementsHelper.SetVisibility(m_DeviceMemoryBreakdown.parent, false);
+
+                m_CommittedBreakdownModelBuilder.Frame = frame;
+                m_UnityObjectsBreakdownModelBuilder.Frame = frame;
+                foreach (var widget in m_WidgetControllers)
+                {
+                    widget.Update();
+                }
+            }
+            else
+            {
+                //Commented out until we get physical memory size into profiler stream
+                //m_DeviceMemoryBreakdown.Clear();
+                //m_DeviceBreakdownModelBuilder = new DeviceMemoryInEditorWidgetModelBuilder() { Frame = frame };
+                //AddController(m_DeviceMemoryBreakdown, new DeviceMemoryBreakdownViewController(m_DeviceBreakdownModelBuilder));
+                UIElementsHelper.SetVisibility(m_DeviceMemoryBreakdown.parent, false);
+
+                m_CommittedBreakdownModelBuilder = new AllMemoryInEditorSummaryModelBuilder() { Frame = -1 };
+                AddController(m_CommittedMemoryBreakdown, new GenericMemorySummaryViewController(m_CommittedBreakdownModelBuilder, false)
+                {
+                    TotalLabelFormat = "Total allocated memory: {0}",
+                    Selectable = false
+                });
+                m_UnityObjectsBreakdownModelBuilder = new UnityObjectsMemoryInEditorSummaryModelBuilder() { Frame = -1 };
+                AddController(m_UnityObjectsBreakdown, new GenericMemorySummaryViewController(m_UnityObjectsBreakdownModelBuilder, false)
+                {
+                    TotalLabelFormat = null,
+                    Selectable = false
+                });
+
+            }
         }
 
         void AddController<T>(VisualElement root, T controller) where T : ViewController, IMemorySummaryViewController
@@ -184,6 +263,11 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         bool CheckMemoryStatsAvailablity(long frameIndex)
         {
+            if(frameIndex == -1)
+            {
+                // -1 means is the current frame, if there is one
+                frameIndex = ProfilerWindow.lastAvailableFrameIndex;
+            }
             if (frameIndex < 0)
                 return false;
             if (frameIndex < ProfilerWindow.firstAvailableFrameIndex || frameIndex > ProfilerWindow.lastAvailableFrameIndex)

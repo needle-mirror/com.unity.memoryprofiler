@@ -18,3 +18,4 @@
   * [Total memory use](total-memory-use.md)
   * [Find memory leaks](find-memory-leaks.md)
   * [Managed Shell Objects](managed-shell-objects.md)
+  * [Memory on device](memory-on-device.md)

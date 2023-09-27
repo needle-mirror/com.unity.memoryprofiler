@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Security;
 using Unity.MemoryProfiler.Editor.Containers;
 using UnityEngine;
@@ -8,52 +9,38 @@ namespace Unity.MemoryProfiler.Editor
 {
 
     /// <summary>
-    /// <see cref="BitConverter"/> can't deal with byte pointers or <see cref="DynamicArray{T}"/> so this class is a copy of its functions that the Memory Profiler uses, but converted to take DynamicArray<byte> values.
+    /// <see cref="BitConverter"/> can't deal with byte pointers or <see cref="ILongIndexedContainer{T}"/> so this class is a copy of its functions that the Memory Profiler uses, but converted to take ILongIndexedContainer<byte> values.
     /// </summary>
     internal static class BitConverterExt
     {
         /// <summary>
         /// Returns a Unicode character converted from two bytes at a specified position
-        /// in a DynamicArray of bytes.
+        /// in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>A character formed by two bytes beginning at startIndex.</returns>
-        /// <exception cref="ArgumentNullException">The DynamicArray value is not created.</exception>
+        /// <exception cref="ArgumentNullException">The ILongIndexedContainer value is not created.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex equals the length of value minus 1.</exception>
-        public static char ToChar(DynamicArray<byte> value, ulong startIndex)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static char ToChar(ILongIndexedContainer<byte> value, ulong startIndex)
         {
-            if (!value.IsCreated)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
-
-            if (startIndex < 0 || startIndex >= (ulong)value.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(startIndex), $"{nameof(startIndex)} is out of range at {startIndex} on a length of {value.Count}");
-            }
-
-            if (startIndex > (ulong)value.Count - 2)
-            {
-                throw new ArgumentException("Start index plus lenght is bigger than array is long", nameof(startIndex));
-            }
-
             return (char)ToInt16(value, startIndex);
         }
 
         /// <summary>
         /// Returns a 16-bit signed integer converted from two bytes at a specified position
-        /// in a DynamicArray of bytes.
+        /// in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>A 16-bit signed integer formed by two bytes beginning at startIndex.</returns>
-        /// <exception cref="ArgumentNullException">The DynamicArray value is not created.</exception>
+        /// <exception cref="ArgumentNullException">The ILongIndexedContainer value is not created.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex equals the length of value minus 1.</exception>
         [SecuritySafeCritical]
-        public unsafe static short ToInt16(DynamicArray<byte> value, ulong startIndex)
+        public unsafe static short ToInt16(ILongIndexedContainer<byte> value, ulong startIndex)
         {
             if (!value.IsCreated)
             {
@@ -89,17 +76,17 @@ namespace Unity.MemoryProfiler.Editor
 
         /// <summary>
         /// Returns a 32-bit signed integer converted from four bytes at a specified position
-        /// in a DynamicArray of bytes.
+        /// in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>A 32-bit signed integer formed by four bytes beginning at startIndex.</returns>
-        /// <exception cref="ArgumentNullException">The DynamicArray value is not created.</exception>
+        /// <exception cref="ArgumentNullException">The ILongIndexedContainer value is not created.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 3, and is less
         /// than or equal to the length of value minus 1.</exception>
         [SecuritySafeCritical]
-        public unsafe static int ToInt32(DynamicArray<byte> value, ulong startIndex)
+        public unsafe static int ToInt32(ILongIndexedContainer<byte> value, ulong startIndex)
         {
             if (!value.IsCreated)
             {
@@ -135,18 +122,18 @@ namespace Unity.MemoryProfiler.Editor
 
         /// <summary>
         /// Returns a 64-bit signed integer converted from eight bytes at a specified position
-        /// in a DynamicArray of bytes.
+        /// in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns></returns>
-        /// <exception cref="ArgumentNullException">The DynamicArray value is not created.</exception>
+        /// <exception cref="ArgumentNullException">The ILongIndexedContainer value is not created.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 7, and is less
         /// than or equal to the length of value minus 1.</exception>
         [SecuritySafeCritical]
 
-        public unsafe static long ToInt64(DynamicArray<byte> value, ulong startIndex)
+        public unsafe static long ToInt64(ILongIndexedContainer<byte> value, ulong startIndex)
         {
             if (!value.IsCreated)
             {
@@ -186,176 +173,102 @@ namespace Unity.MemoryProfiler.Editor
 
         /// <summary>
         /// Returns a 16-bit unsigned integer converted from two bytes at a specified position
-        /// in a DynamicArray of bytes.
+        /// in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>A 16-bit unsigned integer formed by two bytes beginning at startIndex.</returns>
         /// <exception cref="ArgumentNullException"></exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex equals the length of value minus 1.</exception>
-
-        public static ushort ToUInt16(DynamicArray<byte> value, ulong startIndex)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ushort ToUInt16(ILongIndexedContainer<byte> value, ulong startIndex)
         {
-            if (!value.IsCreated)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
-
-            if (startIndex < 0 || startIndex >= (ulong)value.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(startIndex), $"{nameof(startIndex)} is out of range at {startIndex} on a length of {value.Count}");
-            }
-
-            if (startIndex > (ulong)value.Count - 2)
-            {
-                throw new ArgumentException("Start index plus lenght is bigger than array is long", nameof(startIndex));
-            }
-
             return (ushort)ToInt16(value, startIndex);
         }
 
         /// <summary>
         /// Returns a 32-bit unsigned integer converted from four bytes at a specified position
-        /// in a DynamicArray of bytes.
+        /// in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>A 32-bit unsigned integer formed by four bytes beginning at startIndex.</returns>
         /// <exception cref="ArgumentNullException">value is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 3, and is less
         /// than or equal to the length of value minus 1.</exception>
-        public static uint ToUInt32(DynamicArray<byte> value, ulong startIndex)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static uint ToUInt32(ILongIndexedContainer<byte> value, ulong startIndex)
         {
-            if (!value.IsCreated)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
-
-            if (startIndex < 0 || startIndex >= (ulong)value.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(startIndex), $"{nameof(startIndex)} is out of range at {startIndex} on a length of {value.Count}");
-            }
-
-            if (startIndex > (ulong)value.Count - 4)
-            {
-                throw new ArgumentException("Start index plus lenght is bigger than array is long", nameof(startIndex));
-            }
-
             return (uint)ToInt32(value, startIndex);
         }
 
         /// <summary>
         /// Returns a 64-bit unsigned integer converted from eight bytes at a specified position
-        /// in a DynamicArray of bytes.
+        /// in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>A 64-bit unsigned integer formed by the eight bytes beginning at startIndex.</returns>
         /// <exception cref="ArgumentNullException">value is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 7, and is less
         /// than or equal to the length of value minus 1.</exception>
-        public static ulong ToUInt64(DynamicArray<byte> value, ulong startIndex)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong ToUInt64(ILongIndexedContainer<byte> value, ulong startIndex)
         {
-            if (!value.IsCreated)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
-
-            if (startIndex < 0 || startIndex >= (ulong)value.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(startIndex), $"{nameof(startIndex)} is out of range at {startIndex} on a length of {value.Count}");
-            }
-
-            if (startIndex > (ulong)value.Count - 8)
-            {
-                throw new ArgumentException("Start index plus lenght is bigger than array is long", nameof(startIndex));
-            }
-
             return (ulong)ToInt64(value, startIndex);
         }
 
         /// <summary>
         /// Returns a single-precision floating point number converted from four bytes at
-        /// a specified position in a DynamicArray of bytes.
+        /// a specified position in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException">value is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 3, and is less
         /// than or equal to the length of value minus 1. </exception>
-        [SecuritySafeCritical]
-
-        public unsafe static float ToSingle(DynamicArray<byte> value, ulong startIndex)
+        [SecuritySafeCritical, MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe static float ToSingle(ILongIndexedContainer<byte> value, ulong startIndex)
         {
-            if (!value.IsCreated)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
-
-            if (startIndex < 0 || startIndex >= (ulong)value.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(startIndex), $"{nameof(startIndex)} is out of range at {startIndex} on a length of {value.Count}");
-            }
-
-            if (startIndex > (ulong)value.Count - 4)
-            {
-                throw new ArgumentException("Start index plus lenght is bigger than array is long", nameof(startIndex));
-            }
-
             int num = ToInt32(value, startIndex);
             return *(float*)(&num);
         }
 
         /// <summary>
         /// Returns a double-precision floating point number converted from eight bytes at
-        /// a specified position in a DynamicArray of bytes.
+        /// a specified position in a ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>A double precision floating point number formed by eight bytes beginning at startIndex.</returns>
         /// <exception cref="ArgumentNullException">value is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 7, and is less
         /// than or equal to the length of value minus 1.</exception>
-        [SecuritySafeCritical]
+        [SecuritySafeCritical, MethodImpl(MethodImplOptions.AggressiveInlining)]
 
-        public unsafe static double ToDouble(DynamicArray<byte> value, ulong startIndex)
+        public unsafe static double ToDouble(ILongIndexedContainer<byte> value, ulong startIndex)
         {
-            if (!value.IsCreated)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
-
-            if (startIndex < 0 || startIndex >= (ulong)value.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(startIndex), $"{nameof(startIndex)} is out of range at {startIndex} on a length of {value.Count}");
-            }
-
-            if (startIndex > (ulong)value.Count - 8)
-            {
-                throw new ArgumentException("Start index plus lenght is bigger than array is long", nameof(startIndex));
-            }
-
             long num = ToInt64(value, startIndex);
             return *(double*)(&num);
         }
 
         /// <summary>
         /// Returns a Boolean value converted from the byte at a specified position in a
-        /// DynamicArray of bytes.
+        /// ILongIndexedContainer of bytes.
         /// </summary>
-        /// <param name="value">A DynamicArray of bytes to parse.</param>
+        /// <param name="value">A ILongIndexedContainer of bytes to parse.</param>
         /// <param name="startIndex">The starting position within value.</param>
         /// <returns>true if the byte at startIndex in value is nonzero; otherwise, false.</returns>
         /// <exception cref="ArgumentNullException">value is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
 
-        public static bool ToBoolean(DynamicArray<byte> value, ulong startIndex)
+        public static bool ToBoolean(ILongIndexedContainer<byte> value, ulong startIndex)
         {
             if (!value.IsCreated)
             {

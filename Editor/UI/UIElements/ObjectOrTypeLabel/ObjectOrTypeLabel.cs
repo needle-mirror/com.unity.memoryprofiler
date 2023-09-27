@@ -350,6 +350,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     SetLabelData(cs, typeName, objectName);
                     break;
                 }
+                case CachedSnapshot.SourceIndex.SourceId.GfxResource:
+                {
+                    var od = ObjectData.FromGfxResourceIndex(cs, (int)source.Index);
+                    ShowIcons(true);
+                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
+                    break;
+                }
                 default:
                     throw new ArgumentOutOfRangeException();
             }

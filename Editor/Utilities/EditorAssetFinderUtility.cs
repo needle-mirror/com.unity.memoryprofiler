@@ -3,14 +3,64 @@ using System.Reflection;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
-#if UNITY_2021_2_OR_NEWER
 using UnityEditor.Search;
-#endif
 using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Unity.MemoryProfiler.Editor
 {
+    /// <summary>
+    /// Split out so that <see cref="MemoryProfilerAnalytics"/> doesn't accidentally trigger search
+    /// initialization by triggering the static initializer for <see cref="EditorAssetFinderUtility"/>.
+    /// </summary>
+    internal static class EditorSessionUtility
+    {
+        static MethodInfo s_GetLocalGuid = null;
+        public static bool InstanceIdPingingSupportedByUnityVersion => s_GetLocalGuid != null;
+        public static uint CurrentSessionId => InstanceIdPingingSupportedByUnityVersion ? (uint)s_GetLocalGuid.Invoke(null, null) : uint.MaxValue;
+        static EditorSessionUtility()
+        {
+            var editorAssembly = typeof(EditorGUIUtility).Assembly;
+            s_GetLocalGuid = editorAssembly.GetType("UnityEditor.EditorConnectionInternal").GetMethod("GetLocalGuid");
+        }
+    }
+
+    /// <summary>
+    /// Split out so that the Test Project can doesn't accidentally trigger async search
+    /// by triggering the static initializer for <see cref="EditorAssetFinderUtility"/>.
+    /// </summary>
+    internal static class QuickSearchUtility
+    {
+        public const string SearchProviderIdScene = "scene";
+        public const string SearchProviderIdAsset = "asset";
+        public const string SearchProviderIdAssetDatabase = "adb";
+
+        // Quick Search only needs initializing once per session, not after every domain reload
+        static bool QuickSearchInitialized
+        {
+            get => SessionState.GetBool("com.unity.memoryprofiler.quicksearch.initialized", false);
+            set => SessionState.SetBool("com.unity.memoryprofiler.quicksearch.initialized", value);
+        }
+
+        public static void InitializeQuickSearch(bool async = true)
+        {
+            if (QuickSearchInitialized)
+                return;
+            // Initialize quick search
+            using var context = SearchService.CreateContext(providerIds: new[] { SearchProviderIdScene, SearchProviderIdAsset, SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
+            if (async)
+            {
+                // Initialize Async, preferred path, should be triggered by e.g. opening the Memory Profiler window
+                SearchService.Request(context, (context, items) => QuickSearchInitialized = true);
+            }
+            else
+            {
+                // Initialize Synchronously should ideally only fire for search tests during their initialization
+                using var search = SearchService.Request(context, SearchFlags.Synchronous);
+            }
+        }
+    }
+
     internal static class EditorAssetFinderUtility
     {
         public struct Findings : IDisposable
@@ -67,23 +117,15 @@ namespace Unity.MemoryProfiler.Editor
             TypeIssues,
         }
 
-        const string k_SearchProviderIdScene = "scene";
-        const string k_SearchProviderIdAsset = "asset";
-        const string k_SearchProviderIdAssetDatabase = "adb";
 
-        static MethodInfo s_GetLocalGuid = null;
         static MethodInfo s_SetProjectSearch = null;
         static MethodInfo s_SetSceneHiearchySearch = null;
         static Type s_SceneHieararchyWindowType = null;
         static Type s_ProjectBrowserWindowType = null;
 
-        public static bool InstanceIdPingingSupportedByUnityVersion => s_GetLocalGuid != null;
-        public static uint CurrentSessionId => InstanceIdPingingSupportedByUnityVersion ? (uint)s_GetLocalGuid.Invoke(null, null) : uint.MaxValue;
-
         static EditorAssetFinderUtility()
         {
             var editorAssembly = typeof(EditorGUIUtility).Assembly;
-            s_GetLocalGuid = editorAssembly.GetType("UnityEditor.EditorConnectionInternal").GetMethod("GetLocalGuid");
             s_SceneHieararchyWindowType = editorAssembly.GetType("UnityEditor.SceneHierarchyWindow");
             s_SetSceneHiearchySearch = s_SceneHieararchyWindowType.GetMethod("SetSearchFilter", BindingFlags.Instance | BindingFlags.NonPublic);
             s_ProjectBrowserWindowType = editorAssembly.GetType("UnityEditor.ProjectBrowser");
@@ -100,10 +142,7 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
-
-            // Initialize quick search
-            using var context = SearchService.CreateContext(providerIds: new[] { k_SearchProviderIdScene, k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
-            using var search = SearchService.Request(context, SearchFlags.Synchronous);
+            QuickSearchUtility.InitializeQuickSearch(async: false);
         }
 
         static EditorWindow GetProjectBrowserWindow(bool focusIt = false)
@@ -129,12 +168,12 @@ namespace Unity.MemoryProfiler.Editor
 
         public static bool CanPingByInstanceId(uint sessionId)
         {
-            return InstanceIdPingingSupportedByUnityVersion && CurrentSessionId == sessionId;
+            return EditorSessionUtility.InstanceIdPingingSupportedByUnityVersion && EditorSessionUtility.CurrentSessionId == sessionId;
         }
 
         public static void Ping(int instanceId, uint sessionId, bool logWarning = true)
         {
-            if (!InstanceIdPingingSupportedByUnityVersion)
+            if (!EditorSessionUtility.InstanceIdPingingSupportedByUnityVersion)
             {
                 if (logWarning)
                     UnityEngine.Debug.LogWarning(TextContent.InstanceIdPingingOnlyWorksInNewerUnityVersions);
@@ -148,14 +187,14 @@ namespace Unity.MemoryProfiler.Editor
                 EditorGUIUtility.PingObject(instanceId);
             }
             else if (logWarning)
-                UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, CurrentSessionId, sessionId);
+                UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, EditorSessionUtility.CurrentSessionId, sessionId);
         }
 
         public static Findings FindObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
             // If the object belongs to the same session there is a chance that it is still loaded and can be used based on the InstanceID
             // (e.g. Texture)
-            if (snapshot.MetaData.SessionGUID == CurrentSessionId)
+            if (snapshot.MetaData.SessionGUID == EditorSessionUtility.CurrentSessionId)
             {
                 var findings = FindByInstanceID(snapshot, unifiedUnityObjectInfo);
                 if (findings.FailReason != SearchFailReason.NotFound)
@@ -215,7 +254,7 @@ namespace Unity.MemoryProfiler.Editor
             //maybe eventually join the contexts and filter later.
             SearchItem searchItem = null;
             SearchContext context = SearchService.CreateContext(
-                providerIds: new string[] { k_SearchProviderIdAsset, k_SearchProviderIdAssetDatabase },
+                providerIds: new string[] { QuickSearchUtility.SearchProviderIdAsset, QuickSearchUtility.SearchProviderIdAssetDatabase },
                 searchText: searchString);
             using (var search = SearchService.Request(context, SearchFlags.Synchronous))
             {
@@ -288,7 +327,7 @@ namespace Unity.MemoryProfiler.Editor
                 // TODO: with captured Scene Roots changes, double check the open scene names
                 // if they mismatch, return;
             }
-            using (var context = SearchService.CreateContext(providerId: k_SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo)))
+            using (var context = SearchService.CreateContext(providerId: QuickSearchUtility.SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo)))
             {
                 using (var search = SearchService.Request(context, SearchFlags.Synchronous))
                 {
@@ -404,7 +443,7 @@ namespace Unity.MemoryProfiler.Editor
             return typeMismatch;
         }
 
-        static string ConstructSearchString(UnifiedUnityObjectInfo unifiedUnityObjectInfo, bool quickSearchSceneObjectSearch = false)
+        static string ConstructSearchString(UnifiedUnityObjectInfo unifiedUnityObjectInfo, bool quickSearchSceneObjectSearch = false, bool searchAllInProjectBrowser = false)
         {
             var searchString = unifiedUnityObjectInfo.NativeObjectName;
 
@@ -427,6 +466,10 @@ namespace Unity.MemoryProfiler.Editor
             }
             else if (unifiedUnityObjectInfo.Type.HasNativeType)
                 searchString += " t:" + unifiedUnityObjectInfo.Type.NativeTypeName;
+
+            // Set Project Browser search to search in Assets and Package folders with "a:all"
+            if (searchAllInProjectBrowser)
+                searchString += " a:all";
             return searchString;
         }
 
@@ -462,15 +505,14 @@ namespace Unity.MemoryProfiler.Editor
             }
             if (selectedUnityObject.IsPersistentAsset)
             {
-                SetProjectSearch(ConstructSearchString(selectedUnityObject));
+                SetProjectSearch(ConstructSearchString(selectedUnityObject, searchAllInProjectBrowser: true));
             }
         }
 
         public static ISearchView OpenQuickSearch(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var context = SearchService.CreateContext(/*providerIds: providerIds,*/ searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.Type.IsSceneObjectType));
+            var context = SearchService.CreateContext(searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.Type.IsSceneObjectType));
             var state = new SearchViewState(context);
-            // Will only work once Case 1400665 is resolved and this trunk change-set landed: 25685e01ef1d
             state.group = selectedUnityObject.IsSceneObject ? "scene" : "asset";
             return SearchService.ShowWindow(state);
         }

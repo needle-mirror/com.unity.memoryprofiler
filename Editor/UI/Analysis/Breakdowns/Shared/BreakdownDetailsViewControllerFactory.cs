@@ -35,7 +35,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion => new SimpleDetailsViewController(name, TextContent.NativeMemoryRegionDescription, string.Empty),
 
                 CachedSnapshot.SourceIndex.SourceId.NativeObject or
-                CachedSnapshot.SourceIndex.SourceId.ManagedObject => new ObjectDetailsViewController(snapshot, source),
+                CachedSnapshot.SourceIndex.SourceId.ManagedObject or
+                CachedSnapshot.SourceIndex.SourceId.GfxResource => new ObjectDetailsViewController(snapshot, source),
 
                 CachedSnapshot.SourceIndex.SourceId.NativeType or
                 CachedSnapshot.SourceIndex.SourceId.ManagedType or

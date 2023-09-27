@@ -9,13 +9,9 @@ namespace Unity.MemoryProfiler.Editor
         public int ITypeDescription;
         public int Size;
         public int RefCount;
-
-        public bool IsKnownType()
-        {
-            return ITypeDescription >= 0;
-        }
-
         public BytesAndOffset data;
+
+        public bool IsKnownType => ITypeDescription >= 0;
 
         public bool IsValid()
         {

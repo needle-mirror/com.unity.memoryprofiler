@@ -39,7 +39,7 @@ namespace Unity.MemoryProfiler.Editor.Format.LowLevel.IO
 
         public ReadHandle Read(ReadCommand* readCmds, uint cmdCount, ReadMode mode = ReadMode.Async)
         {
-            var handle = AsyncReadManager.Read(FilePath, readCmds, cmdCount);
+            var handle = AsyncReadManager.Read(FilePath, readCmds, cmdCount, subsystem: AssetLoadingSubsystem.FileInfo);
 
             if (mode == ReadMode.Blocking)
                 handle.JobHandle.Complete();

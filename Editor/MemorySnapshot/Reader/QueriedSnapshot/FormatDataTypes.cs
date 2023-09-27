@@ -5,22 +5,13 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
+using Unity.Profiling.Memory;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace Unity.MemoryProfiler.Editor.Format
 {
-    [Flags]
-    internal enum CaptureFlags : uint
-    {
-        ManagedObjects = 1 << 0,
-        NativeObjects = 1 << 1,
-        NativeAllocations = 1 << 2,
-        NativeAllocationSites = 1 << 3,
-        NativeStackTraces = 1 << 4,
-    }
-
     internal class MetaData
     {
         const string k_UnknownPlatform = "Unknown Platform";
@@ -43,15 +34,26 @@ namespace Unity.MemoryProfiler.Editor.Format
 
         [NonSerialized] // to be shown in UI as e.g. $"Unity version '{MetaData.UnityVersion}'" to clarify that this is not the project version
         public string UnityVersion;
+        public int UnityVersionMajor = -1;
         public const uint InvalidSessionGUID = 0;
+        public CaptureFlags CaptureFlags;
+
         public MetaData(IFileReader reader)
         {
             unsafe
             {
                 Checks.CheckEquals(true, reader.HasOpenFile);
 
-                //common meta path
-                var op = reader.Read(QueriedSnapshot.EntryType.Metadata_UserMetadata, 0, 1, Allocator.TempJob);
+                //common meta path, step 1: read the capture flags in
+                {
+                    using var flagsOp = reader.Read(EntryType.Metadata_CaptureFlags, 0, 1, Allocator.TempJob);
+                    using var flags = flagsOp.Result;
+                    CaptureFlags = flags.Reinterpret<CaptureFlags>()[0]; // This data is uint32_t, but so is the enum
+                }
+
+                //common meta path, step 2: read the legacy metadata
+                using var op = reader.Read(EntryType.Metadata_UserMetadata, 0, 1, Allocator.TempJob);
+
                 using (var legacyBuffer = op.Result)
                 {
                     if (reader.FormatVersion >= FormatVersion.ProfileTargetInfoAndMemStatsVersion)
@@ -197,6 +199,9 @@ namespace Unity.MemoryProfiler.Editor.Format
             meta.SessionGUID = targetInfo.SessionGUID;
             meta.ProductName = targetInfo.ProductName;
             meta.UnityVersion = targetInfo.UnityVersion;
+            var snapshotUnityVersion = meta.UnityVersion.Split('.');
+            if (snapshotUnityVersion.Length > 0)
+                meta.UnityVersionMajor = int.Parse(snapshotUnityVersion[0]);
         }
     }
 

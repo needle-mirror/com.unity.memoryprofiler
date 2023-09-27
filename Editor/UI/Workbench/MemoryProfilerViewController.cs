@@ -1,4 +1,5 @@
 using System;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -17,10 +18,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifierAnalysisViewContainer = "memory-profiler-view__analysis-view__container";
         const string k_UxmlIdentifierSnapshotFilesListSplitter = "memory-profiler-view__snapshot-view__splitter";
         const string k_UxmlIdentifierDetailsSplitter = "memory-profiler-view__details-view__splitter";
-
-        const string k_AnalyticsId_SummarySingleViewId = "Summary(Default)";
-        const string k_AnalyticsId_SummaryCompareViewId = "Summary Comparison(Default)";
-        const string k_AnalyticsId_NoDataViewId = "No Data";
 
         // State
         PlayerConnectionService m_PlayerConnectionService;
@@ -41,6 +38,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         SnapshotFilesListViewController m_SnapshotFilesListViewController;
         DetailsViewController m_DetailsViewController;
         ViewController m_AnalysisViewController;
+
+        // Testing facility
+        internal ViewController AnalysisViewController => m_AnalysisViewController;
 
         public MemoryProfilerViewController(PlayerConnectionService playerConnectionService, SnapshotDataService snapshotDataService)
         {
@@ -127,54 +127,31 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_AnalysisViewController = null;
             m_AnalysisViewContainer.Clear();
 
-            // Stop Collecting interaction events for the old page and send them off
-            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
-            MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.OpenedPageEvent>();
-
             // Create new analysis controller
-            var viewKeyForAnalytics = string.Empty;
+            string viewKeyForAnalytics;
             if ((m_SnapshotDataService.Base != null) || (m_SnapshotDataService.Compared != null))
             {
                 var baseSnapshot = m_SnapshotDataService.Base;
                 var comparedSnapshot = m_SnapshotDataService.CompareMode ? m_SnapshotDataService.Compared : null;
                 m_AnalysisViewController = new AnalysisTabBarController(m_DetailsViewController, baseSnapshot, comparedSnapshot);
 
-                // Compare view activation analytics
+                viewKeyForAnalytics = TextContent.SummaryViewName;
                 if (comparedSnapshot != null)
-                {
-                    viewKeyForAnalytics = k_AnalyticsId_SummaryCompareViewId;
-
-                    MemoryProfilerAnalytics.StartEvent<MemoryProfilerAnalytics.DiffedSnapshotEvent>();
-                    var sameSesssion = (baseSnapshot.MetaData.SessionGUID == comparedSnapshot.MetaData.SessionGUID) && (baseSnapshot.MetaData.SessionGUID != Format.MetaData.InvalidSessionGUID);
-                    var baseSnapshotDetails = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(baseSnapshot);
-                    var compareSnapshotDetails = MemoryProfilerAnalytics.GetSnapshotProjectAndUnityVersionDetails(comparedSnapshot);
-                    if (baseSnapshot.MetaData.Platform == comparedSnapshot.MetaData.Platform)
-                    {
-                        baseSnapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SamePlatformAsDiff;
-                        compareSnapshotDetails |= MemoryProfilerAnalytics.SnapshotProjectAndUnityVersionDetails.SamePlatformAsDiff;
-                    }
-                    MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.DiffedSnapshotEvent() { sameSessionDiff = sameSesssion, captureInfoA = baseSnapshotDetails, captureInfoB = compareSnapshotDetails });
-                }
-                else
-                {
-                    viewKeyForAnalytics = k_AnalyticsId_SummarySingleViewId;
-                }
+                    viewKeyForAnalytics = TextContent.GetComparisonViewName(viewKeyForAnalytics);
             }
             else
             {
-                viewKeyForAnalytics = k_AnalyticsId_NoDataViewId;
-
                 var noDataViewController = new NoDataViewController();
                 noDataViewController.TakeSnapshotSelected += m_PlayerConnectionService.TakeCapture;
                 m_AnalysisViewController = noDataViewController;
+
+                viewKeyForAnalytics = "No Data";
             }
 
-            m_AnalysisViewContainer.Add(m_AnalysisViewController.View);
+            // Send default view updated event
+            MemoryProfilerAnalytics.SendOpenViewEvent(viewKeyForAnalytics, true);
 
-            // End page open event and start collecting interaction events for the new page
-            MemoryProfilerAnalytics.EndEvent(new MemoryProfilerAnalytics.OpenedPageEvent() { viewName = viewKeyForAnalytics });
-            MemoryProfilerAnalytics.EndEventWithMetadata<MemoryProfilerAnalytics.InteractionsInPage>();
-            MemoryProfilerAnalytics.StartEventWithMetaData<MemoryProfilerAnalytics.InteractionsInPage>(new MemoryProfilerAnalytics.InteractionsInPage() { viewName = viewKeyForAnalytics });
+            m_AnalysisViewContainer.Add(m_AnalysisViewController.View);
         }
 
         void CompareViewChanged()

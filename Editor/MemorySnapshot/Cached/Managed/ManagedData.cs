@@ -1,14 +1,17 @@
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Unity.MemoryProfiler.Editor.Containers;
+using Unity.MemoryProfiler.Editor.Extensions;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    class ManagedData
+    class ManagedData : IDisposable
     {
         public bool Crawled { private set; get; }
-        const int k_ManagedObjectBlockSize = 32768;
         const int k_ManagedConnectionsBlockSize = 65536;
-        public BlockList<ManagedObjectInfo> ManagedObjects { private set; get; }
+        DynamicArray<ManagedObjectInfo> m_ManagedObjects;
+        public ref DynamicArray<ManagedObjectInfo> ManagedObjects => ref m_ManagedObjects;
         public Dictionary<ulong, int> MangedObjectIndexByAddress { private set; get; } = new Dictionary<ulong, int>();
         public BlockList<ManagedConnection> Connections { private set; get; }
         public Dictionary<int, int> NativeUnityObjectTypeIndexToManagedBaseTypeIndex { get; private set; } = new Dictionary<int, int>();
@@ -17,10 +20,9 @@ namespace Unity.MemoryProfiler.Editor
         public ulong ActiveHeapMemoryUsage { private set; get; }
         public ulong ActiveHeapMemoryEmptySpace { private set; get; }
         public ulong AbandonedManagedObjectActiveHeapMemoryUsage { private set; get; }
-        // ConnectionsMappedToUnifiedIndex and ConnectionsMappedToNativeIndex are derived structure used in accelerating searches in the details view
-        public Dictionary<long, List<int>> ConnectionsToMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
-        public Dictionary<long, List<int>> ConnectionsFromMappedToUnifiedIndex { private set; get; } = new Dictionary<long, List<int>>();
-        public Dictionary<long, List<int>> ConnectionsMappedToNativeIndex { private set; get; } = new Dictionary<long, List<int>>();
+        // ConnectionsToMappedToSourceIndex and ConnectionsFromMappedToSourceIndex are derived structure used in accelerating searches in the details view
+        public Dictionary<CachedSnapshot.SourceIndex, List<int>> ConnectionsToMappedToSourceIndex { private set; get; } = new Dictionary<CachedSnapshot.SourceIndex, List<int>>();
+        public Dictionary<CachedSnapshot.SourceIndex, List<int>> ConnectionsFromMappedToSourceIndex { private set; get; } = new Dictionary<CachedSnapshot.SourceIndex, List<int>>();
 
 #if DEBUG_VALIDATION
         // This Dictionary block is here to make the investigations for PROF-2420 easier.
@@ -30,7 +32,8 @@ namespace Unity.MemoryProfiler.Editor
         public ManagedData(long rawGcHandleCount, long rawConnectionsCount)
         {
             //compute initial block counts for larger snapshots
-            ManagedObjects = new BlockList<ManagedObjectInfo>(k_ManagedObjectBlockSize, rawGcHandleCount);
+            m_ManagedObjects = new DynamicArray<ManagedObjectInfo>(rawGcHandleCount, Collections.Allocator.Persistent, true);
+            m_ManagedObjects.Clear(false);
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsBlockSize, rawConnectionsCount);
         }
 
@@ -74,32 +77,32 @@ namespace Unity.MemoryProfiler.Editor
 
         public void CreateConnectionMaps(CachedSnapshot cs)
         {
+            // presumably, we'll never have more connections than int max but technically, Connections is long indexed.
+            Debug.Assert(Connections.Count < int.MaxValue);
             for (var i = 0; i < Connections.Count; i++)
             {
-                var key = Connections[i].GetUnifiedIndexTo(cs);
-                if (ConnectionsToMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
-                    unifiedIndexList.Add(i);
-                else
-                    ConnectionsToMappedToUnifiedIndex[key] = new List<int> { i };
-            }
+                ConnectionsToMappedToSourceIndex.GetAndAddToListOrCreateList(Connections[i].IndexTo, i);
 
-            for (var i = 0; i < Connections.Count; i++)
-            {
-                var key = Connections[i].GetUnifiedIndexFrom(cs);
-                if (ConnectionsFromMappedToUnifiedIndex.TryGetValue(key, out var unifiedIndexList))
-                    unifiedIndexList.Add(i);
-                else
-                    ConnectionsFromMappedToUnifiedIndex[key] = new List<int> { i };
-            }
+                ConnectionsFromMappedToSourceIndex.GetAndAddToListOrCreateList(Connections[i].IndexFrom, i);
 
-            for (var i = 0; i < Connections.Count; i++)
-            {
-                var key = Connections[i].UnityEngineNativeObjectIndex;
-                if (ConnectionsMappedToNativeIndex.TryGetValue(key, out var nativeObjectList))
-                    nativeObjectList.Add(i);
-                else
-                    ConnectionsMappedToNativeIndex[key] = new List<int> { i };
+                // Technically all Native <-> Managed Object connections are bidirectional but only registered as a managed connection
+                // in the direction Native -> Managed. Thus their inverse lookup should technically be added below for completeness
+                // Practically that'd be confusing with the naming of these maps and if any users expect the mapped connection's
+                // IndexTo and IndexFrom SourceId to match their lookup key's SourceId, that'd be confusing.
+                // Also, all current users (i.e. ObjectConnection) of these maps are aware of the bidirectionallity and handle that
+                // explicitly themselves.
+                //if (Connections[i].IndexFrom.Id == CachedSnapshot.SourceIndex.SourceId.NativeObject
+                //    && Connections[i].IndexTo.Id == CachedSnapshot.SourceIndex.SourceId.ManagedObject)
+                //{
+                //    ConnectionsToMappedToSourceIndex.AddToOrCreateList(Connections[i].IndexFrom, i);
+                //    ConnectionsFromMappedToSourceIndex.AddToOrCreateList(Connections[i].IndexTo, i);
+                //}
             }
+        }
+
+        public void Dispose()
+        {
+            ManagedObjects.Dispose();
         }
     }
 

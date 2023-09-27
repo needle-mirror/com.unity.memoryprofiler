@@ -29,6 +29,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case CachedSnapshot.SourceIndex.SourceId.NativeObject:
                 case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                case CachedSnapshot.SourceIndex.SourceId.GfxResource:
                     HandleObjectDetails(type);
                     break;
                 case CachedSnapshot.SourceIndex.SourceId.NativeType:
