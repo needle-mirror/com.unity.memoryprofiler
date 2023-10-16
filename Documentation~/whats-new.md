@@ -1,6 +1,6 @@
-# What's new in version 1.1.0-pre.3
+# What's new in version 1.1.0
 
-Summary of changes in Memory Profiler version 1.1.0-pre.3.
+Summary of changes in Memory Profiler version 1.1.0 (formerly 1.1.0-pre.3).
 
 ### Fixed
 - Fixed an exception on capturing when the default snapshot storage path was used (./MemoryCaptures) but did not exist. It now gets created if it is missing. Custom set storage paths will still not be created as issues with these need user input to get resolved properly.

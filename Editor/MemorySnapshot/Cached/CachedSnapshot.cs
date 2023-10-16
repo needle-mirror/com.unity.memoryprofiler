@@ -2917,6 +2917,8 @@ namespace Unity.MemoryProfiler.Editor
                                     var name = m_Snapshot.SystemMemoryRegions.RegionName[source.Index];
                                     if (name.StartsWith("[anon:dalvik-"))
                                         return PointType.AndroidRuntime;
+                                    else if (name.StartsWith("/dev/ashmem/dalvik-"))
+                                        return PointType.AndroidRuntime;
                                     else if (name.StartsWith("/dev/"))
                                         return PointType.Device;
                                     break;
