@@ -31,17 +31,33 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Progress = 0.0f;
             m_IsComplete = 1;
 
-            // Make sure that when we are recompiling we won't end up with a lingering progress bar
+#if !ENABLE_CORECLR
             AppDomain.CurrentDomain.DomainUnload += OnDomainUnload;
+#endif
         }
 
-        private void OnDomainUnload(object sender, EventArgs args)
+#if ENABLE_CORECLR
+        [Unity.Scripting.LifecycleManagement.BeforeAssemblyUnloading]
+        static void BeforeAssemblyUnloading()
         {
-            if (m_DidDraw == 1)
+            ClearOnDomainUnload();
+        }
+#else
+        // Needs to be static to be called by the domain unload event
+        static void OnDomainUnload(object sender, EventArgs args)
+        {
+            ClearOnDomainUnload();
+            AppDomain.CurrentDomain.DomainUnload -= OnDomainUnload;
+        }
+#endif
+
+        static void ClearOnDomainUnload()
+        {
+            if (instance?.m_DidDraw == 1)
             {
                 EditorUtility.ClearProgressBar();
             }
-            AppDomain.CurrentDomain.DomainUnload -= OnDomainUnload;
+            s_Instance = null;
         }
 
         public static void ShowBar(string title)

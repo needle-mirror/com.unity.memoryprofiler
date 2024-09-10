@@ -31,7 +31,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
     /// </summary>
     /// <typeparam name="T"></typeparam>
     [StructLayout(LayoutKind.Sequential)]
-    unsafe readonly struct DynamicArrayRef<T> : ILongIndexedContainer<T> where T : unmanaged
+    unsafe readonly struct DynamicArrayRef<T> : IEquatable<DynamicArrayRef<T>>, ILongIndexedContainer<T> where T : unmanaged
     {
         [NativeDisableUnsafePtrRestriction]
         readonly T* m_Data;
@@ -79,6 +79,31 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<T>(this);
 
         readonly IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public readonly int GetHashCode(DynamicArrayRef<T> obj) => obj.GetHashCode();
+
+        public override int GetHashCode()
+        {
+            if (!IsCreated || Count == 0)
+                return HashCode.Combine(Count, IsCreated);
+            var hash = this[0].GetHashCode();
+            for (long i = 1; i < Count; i++)
+            {
+                hash = HashCode.Combine(hash, this[i]);
+            }
+            return hash;
+        }
+
+        public readonly bool Equals(DynamicArrayRef<T> other)
+        {
+            if (m_Data == other.m_Data)
+                return true;
+
+            if (Count != other.Count)
+                return false;
+
+            return UnsafeUtility.MemCmp(m_Data, other.m_Data, UnsafeUtility.SizeOf<T>() * Count) == 0;
+        }
     }
 
     /// <summary>

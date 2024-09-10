@@ -7,11 +7,11 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         public CachedSnapshot SourceSnapshot { get; }
 
-        public int Value => m_InstanceID;
+        public InstanceID Value => m_InstanceID;
 
-        readonly int m_InstanceID;
+        readonly InstanceID m_InstanceID;
 
-        MatchesInstanceIdFilter(int InstanceID, CachedSnapshot sourceSnapshot)
+        MatchesInstanceIdFilter(InstanceID InstanceID, CachedSnapshot sourceSnapshot)
         {
             m_InstanceID = InstanceID;
             SourceSnapshot = sourceSnapshot;
@@ -23,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <param name="instanceId"></param>
         /// <param name="sourceSnapshot">Needed for disambiguation in comparisons. Should only be null for limited cases such as user initiated searches.</param>
         /// <returns>null if not a valid filter, otherwise a <see cref="MatchesInstanceIdFilter"/> that fits the passed parameters.</returns>
-        public static MatchesInstanceIdFilter Create(int instanceId, CachedSnapshot sourceSnapshot)
+        public static MatchesInstanceIdFilter Create(InstanceID instanceId, CachedSnapshot sourceSnapshot)
         {
 #if DEBUG_VALIDATION
             // Cannot create a text filter without passing a snapshot for disambiguation in comparisons
@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// that the index could not relate to the snapshot that this filter's Instance ID relates to.
         /// Returns true if '<paramref name="instanceID"/>' is equal to the filter's InstanceID.
         /// Otherwise, returns false.</returns>
-        public bool Passes(int instanceID, CachedSnapshot snapshot = null)
+        public bool Passes(InstanceID instanceID, CachedSnapshot snapshot = null)
         {
             // if snapshots are provided, the sessiong GUID needs to match. Instance IDs stay valid accross sessions.
             if (snapshot != null && SourceSnapshot != null &&

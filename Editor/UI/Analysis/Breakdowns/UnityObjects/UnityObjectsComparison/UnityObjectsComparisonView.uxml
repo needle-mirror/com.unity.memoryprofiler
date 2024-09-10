@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="unity-objects-comparison-view">
+        <Style src="UnityObjectsComparisonView.uss"/>
+        <engine:VisualElement name="unity-objects-comparison-view__search-field-container">
+            <engine:Label name="unity-objects-comparison-view__description-label"/>
+            <editor:ToolbarSearchField name="unity-objects-comparison-view__search-field"/>
+        </engine:VisualElement>
+        <engine:VisualElement class="unity-objects-comparison-view__snapshot-size-bar">
+            <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="A"/>
+            <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="unity-objects-comparison-view__base-total-size-bar"/>
+        </engine:VisualElement>
+        <engine:VisualElement class="unity-objects-comparison-view__snapshot-size-bar">
+            <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="B"/>
+            <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="unity-objects-comparison-view__compared-total-size-bar"/>
+        </engine:VisualElement>
+        <engine:TwoPaneSplitView name="unity-objects-comparison-view__split-view" orientation="vertical" fixed-pane-index="1">
+            <engine:VisualElement name="unity-objects-comparison-view__primary">
+                <engine:MultiColumnTreeView name="unity-objects-comparison-view__tree-view" sorting-enabled="true">
+                    <engine:Columns reorderable="false">
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__description" resizable="true" stretchable="false" optional="false" width="400px"/>
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__count-delta" resizable="true" stretchable="true"/>
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__size-delta-bar" resizable="true" stretchable="true"/>
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__size-delta" resizable="true" stretchable="true"/>
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__total-size-in-a" resizable="true" stretchable="true"/>
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__total-size-in-b" resizable="true" stretchable="true"/>
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__count-in-a" resizable="true" stretchable="true"/>
+                        <engine:Column name="unity-objects-comparison-view__tree-view__column__count-in-b" resizable="true" stretchable="true"/>
+                    </engine:Columns>
+                    <engine:SortColumnDescriptions>
+                        <engine:SortColumnDescription column-name="unity-objects-comparison-view__tree-view__column__size-delta-bar" direction="descending"/>
+                    </engine:SortColumnDescriptions>
+                </engine:MultiColumnTreeView>
+                <editor:Toolbar name="unity-objects-comparison-view__footer-toolbar">
+                    <engine:Toggle name="unity-objects-comparison-view__toolbar__flatten-toggle"/>
+                    <engine:Toggle name="unity-objects-comparison-view__toolbar__unchanged-toggle"/>
+                </editor:Toolbar>
+                <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="unity-objects-comparison-view__loading-overlay"/>
+            </engine:VisualElement>
+            <engine:VisualElement name="unity-objects-comparison-view__secondary">
+                <engine:VisualElement name="unity-objects-comparison-view__secondary__base">
+                    <engine:VisualElement class="unity-objects-comparison-view__secondary__title-container">
+                        <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="A"/>
+                        <engine:Label name="unity-objects-comparison-view__secondary__base-title-label" class="unity-objects-comparison-view__secondary__title-label"/>
+                        <engine:Label name="unity-objects-comparison-view__secondary__base-description-label" class="unity-objects-comparison-view__secondary__description-label"/>
+                    </engine:VisualElement>
+                    <engine:VisualElement name="unity-objects-comparison-view__secondary__base-table-container"/>
+                </engine:VisualElement>
+                <engine:VisualElement name="unity-objects-comparison-view__secondary__compared">
+                    <engine:VisualElement class="unity-objects-comparison-view__secondary__title-container">
+                        <engine:Label class="memory-profile-snapshotfile__tag__label memory-profile-snapshotfile__tag__label__large" text="B"/>
+                        <engine:Label name="unity-objects-comparison-view__secondary__compared-title-label" class="unity-objects-comparison-view__secondary__title-label"/>
+                        <engine:Label name="unity-objects-comparison-view__secondary__compared-description-label" class="unity-objects-comparison-view__secondary__description-label"/>
+                    </engine:VisualElement>
+                    <engine:VisualElement name="unity-objects-comparison-view__secondary__compared-table-container"/>
+                </engine:VisualElement>
+            </engine:VisualElement>
+        </engine:TwoPaneSplitView>
+        <engine:Label name="unity-objects-comparison-view__error-label"/>
+    </engine:VisualElement>
+
+</engine:UXML>

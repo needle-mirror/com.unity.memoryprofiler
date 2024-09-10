@@ -35,6 +35,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public const string UntrackedGroupName = "Untracked";
         const string k_UntrackedEstimatedGroupName = SummaryTextContent.kAllMemoryCategoryUntrackedEstimated;
         const string k_ExecutablesGroupName = "Executables & Mapped";
+        const string k_UntrackedGraphicsName = "Graphics";
 
         const string k_AndroidRuntime = "Android Runtime";
 
@@ -200,7 +201,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         ProcessNativeObject(snapshot, source, memorySize, filterArgs, context.NativeObjectIndex2SizeMap);
                         break;
                     case SourceIndex.SourceId.NativeAllocation:
-                        ProcessNativeAllocation(snapshot, source, memorySize, filterArgs, context.NativeObjectIndex2SizeMap, context.NativeRootReference2SizeMap);
+                        ProcessNativeAllocation(snapshot, source, memorySize, filterArgs, context.NativeObjectIndex2SizeMap, context.NativeRootReference2SizeMap, context);
                         break;
                     case SourceIndex.SourceId.NativeMemoryRegion:
                         ProcessNativeRegion(snapshot, source, memorySize, filterArgs, context.NativeRegionName2SizeMap);
@@ -227,7 +228,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             var memoryStats = snapshot.MetaData.TargetMemoryStats;
             if (memoryStats.HasValue && !snapshot.HasSystemMemoryRegionsInfo && (memoryStats.Value.TotalVirtualMemory > 0))
             {
-                context.UntrackedRegionsName2SizeMap[UntrackedGroupName] = new MemorySize(memoryStats.Value.TotalVirtualMemory - context.Total.Committed, 0);
+                var untracked = context.Total.Committed > memoryStats.Value.TotalVirtualMemory ? 0 : memoryStats.Value.TotalVirtualMemory - context.Total.Committed;
+
+                context.UntrackedRegionsName2SizeMap[UntrackedGroupName] = new MemorySize(untracked, 0);
                 context.Total = new MemorySize(memoryStats.Value.TotalVirtualMemory, 0);
             }
             // Add graphics resources to context separately, as we don't have them in memory map.
@@ -265,9 +268,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
                 }
 
-                // Add untracked graphics resources to map
+                // Add untracked graphics resources to untracked map
                 if (context.UntrackedGraphicsResources.Committed > 0)
-                    AddItemSizeToMap(context.GfxObjectIndex2SizeMap, new SourceIndex(), context.UntrackedGraphicsResources);
+                    AddItemSizeToMap(context.UntrackedRegionsName2SizeMap, k_UntrackedGraphicsName, context.UntrackedGraphicsResources);
 
                 // Reduce untracked
                 if (untrackedToReassign.Committed > 0)
@@ -326,7 +329,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             MemorySize size,
             in BuildArgs args,
             Dictionary<SourceIndex, MemorySize> nativeObjectIndex2TotalMap,
-            Dictionary<SourceIndex, MemorySize> nativeRootReference2TotalMap)
+            Dictionary<SourceIndex, MemorySize> nativeRootReference2TotalMap,
+            BuildContext context)
         {
             var nativeAllocations = snapshot.NativeAllocations;
             var rootReferenceId = nativeAllocations.RootReferenceId[source.Index];
@@ -355,7 +359,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (!NameFilter(args, name))
                 return;
 
-            AddItemSizeToMap(nativeRootReference2TotalMap, groupSource, size);
+            // Attribute VM root to managed VM, rather than to native root references.
+            if (groupSource.Index == snapshot.NativeRootReferences.VMRootReferenceIndex)
+                context.ManagedMemoryVM += size;
+            else
+                AddItemSizeToMap(nativeRootReference2TotalMap, groupSource, size);
         }
 
         void ProcessNativeRegion(
@@ -757,8 +765,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return new SourceIndex();
 
                 var rootReferenceId = nativeGfxResourceReferences.RootId[x.Index];
-                if (nativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var nativeObjectIndex))
-                    return new SourceIndex(SourceIndex.SourceId.NativeType, nativeObjects.NativeTypeArrayIndex[nativeObjectIndex]);
+                if (rootReferenceId > 0)
+                {
+                    if (nativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var nativeObjectIndex))
+                        return new SourceIndex(SourceIndex.SourceId.NativeType, nativeObjects.NativeTypeArrayIndex[nativeObjectIndex]);
+
+                    // If the allocation is not associated with any native object, try use subsystem root to identify it.
+                    if (snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out long groupIndex))
+                        return new SourceIndex(SourceIndex.SourceId.NativeRootReference, groupIndex);
+                }
+
                 return new SourceIndex();
             }
             string ObjectIndex2Name(SourceIndex x) => x.GetName(snapshot);

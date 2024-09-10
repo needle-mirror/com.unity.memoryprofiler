@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd"
+    xsi:schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd">
+
+    <VisualElement name="memory-summary__legend__column">
+        <VisualElement name="memory-summary__legend__column-controls">
+            <VisualElement name="memory-summary__legend__column-controls-header">
+                <VisualElement name="memory-summary__legend__header-icon" class="memory-profile-snapshotfile__tag__container">
+                    <Label  name="memory-summary__legend__header-icon-text" class="memory-profile-snapshotfile__tag__label" text="A" display-tooltip-when-elided="true"/>
+                </VisualElement>
+            </VisualElement>
+        </VisualElement>
+
+        <VisualElement class="memory-summary__legend__top-border" />
+        <VisualElement name="memory-summary__legend__cells" />
+        <VisualElement class="memory-summary__legend__bottom-border" />
+    </VisualElement>
+</UXML>

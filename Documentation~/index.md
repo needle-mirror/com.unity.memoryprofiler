@@ -34,7 +34,7 @@ When you install the Memory Profiler package, Unity automatically installs the [
 
 The memory snapshots you take with the Memory Profiler UI or the [Memory Profiler API](https://docs.unity3d.com/Documentation/ScriptReference/Profiling.Memory.Experimental.MemoryProfiler.html) contain the entire contents of the managed heap of the Player or Editor instance you are capturing.
 
-You can see most of the data through the Memory Profiler UI, with the exception of managed allocations that do not have a garbage collection handle. These allocations might be related to Mono type data, leaked managed data, or allocations that the garbage collector has already collected and released but the memory section they were located in hasn’t been overwritten with new data. The latter happens because garbage-collected memory is not "stomped" for performance reasons.
+You can see most of the data through the Memory Profiler UI, with the exception of managed allocations that do not have a garbage collection handle. These allocations might be related to Mono type data, or allocations that the garbage collector has already collected and released but the memory section they were located in has not been overwritten with new data yet. The latter happens because garbage-collected memory is not "stomped" for performance reasons.
 
 The kind of data that you can explore in areas such as the __All Managed Objects__ view gives you an idea of what data could be included in the memory snapshot. The Memory profiler includes any object instance of a class, all fields on that object, as well as the class’ statics excluding literals such as const values.
 

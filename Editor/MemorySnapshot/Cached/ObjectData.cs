@@ -52,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor
             m_data.managed.iType = iType;
         }
 
-        public static int InvalidInstanceID
+        public static InstanceID InvalidInstanceID
         {
             get
             {
@@ -183,7 +183,7 @@ namespace Unity.MemoryProfiler.Editor
                         }
                         break;
                 }
-                return 0;
+                return -1;
             }
         }
         public bool dataIncludeObjectHeader
@@ -206,6 +206,7 @@ namespace Unity.MemoryProfiler.Editor
                 throw new Exception("Bad datatype");
             }
         }
+
         public bool IsValid
         {
             get
@@ -213,6 +214,45 @@ namespace Unity.MemoryProfiler.Editor
                 return m_dataType != ObjectDataType.Unknown;//return data.IsValid;
             }
         }
+
+        public bool HasValidFieldOrArrayElementData(CachedSnapshot cs)
+        {
+            if (IsField() || IsArrayItem())
+            {
+                if (Parent.Obj.dataType == ObjectDataType.ReferenceObject)
+                {
+                    unsafe
+                    {
+                        if (Parent.Obj.managedObjectData.Bytes.GetUnsafePtr() == managedObjectData.Bytes.GetUnsafePtr()
+                            && managedObjectData.TryReadPointer(out var ptr) == BytesAndOffset.PtrReadError.Success)
+                        {
+                            managedObjectData = cs.ManagedHeapSections.Find(ptr, cs.VirtualMachineInformation);
+                        }
+                    }
+                }
+                switch (m_dataType)
+                {
+                    case ObjectDataType.Value:
+                        return (managedObjectData.IsValid && managedObjectData.Bytes.IsCreated
+                            && (managedObjectData.Bytes.Count - (long)managedObjectData.Offset) >= cs.TypeDescriptions.Size[managedTypeIndex]);
+                    case ObjectDataType.ReferenceObject:
+                    case ObjectDataType.ReferenceArray:
+                    case ObjectDataType.Object:
+                    case ObjectDataType.Array:
+                    case ObjectDataType.BoxedValue:
+                    case ObjectDataType.Type:
+                        return (!managedObjectData.IsValid || !managedObjectData.Bytes.IsCreated
+                            || ((ulong)managedObjectData.Bytes.Count - managedObjectData.Offset) >= 8UL);
+                    case ObjectDataType.NativeObject:
+                        return true;
+                    case ObjectDataType.Unknown:
+                    default:
+                        return false;
+                }
+            }
+            return false;
+        }
+
 
         public ObjectFlags GetFlags(CachedSnapshot cs)
         {
@@ -584,7 +624,7 @@ namespace Unity.MemoryProfiler.Editor
             return o;
         }
 
-        public int GetInstanceID(CachedSnapshot snapshot)
+        public InstanceID GetInstanceID(CachedSnapshot snapshot)
         {
             int nativeIndex = nativeObjectIndex;
             if (nativeIndex < 0)
@@ -673,6 +713,29 @@ namespace Unity.MemoryProfiler.Editor
             return new SourceIndex();
         }
 
+        public ObjectData GetReferencedObject(CachedSnapshot snapshot)
+        {
+            switch (dataType)
+            {
+                case ObjectDataType.ReferenceObject:
+                case ObjectDataType.ReferenceArray:
+                {
+                    ulong refPtr = GetReferencePointer();
+                    if (refPtr == 0)
+                        return ObjectData.Invalid;
+                    var obj = ObjectData.FromManagedPointer(snapshot, refPtr);
+                    if (obj.IsValid)
+                    {
+                        obj.Parent = Parent;
+                    }
+                    //do not throw, if the ref pointer is not valid the object might have been null-ed
+                    return obj;
+                }
+                default:
+                    throw new Exception("GetManagedObject was called on a instance of ObjectData which does not contain an managed object.");
+            }
+        }
+
         public ManagedObjectInfo GetManagedObject(CachedSnapshot snapshot)
         {
             switch (dataType)
@@ -695,7 +758,7 @@ namespace Unity.MemoryProfiler.Editor
                     ulong refPtr = GetReferencePointer();
                     if (refPtr == 0)
                         return default(ManagedObjectInfo);
-                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(GetReferencePointer(), out idx))
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(refPtr, out idx))
                     {
                         return snapshot.CrawledData.ManagedObjects[idx];
                     }
@@ -828,61 +891,11 @@ namespace Unity.MemoryProfiler.Editor
             return ret + $" on managed object [0x{hostManagedObjectPtr:x8}]";
         }
 
-        const string k_ArrayClosedSqBrackets = "[]";
         internal string GenerateArrayDescription(CachedSnapshot cachedSnapshot, bool truncateTypeName = false, bool includeTypeName = true)
         {
             var arrayObject = IsArrayItem() ? Parent.Obj : this;
-            var arrayTypeName = cachedSnapshot.TypeDescriptions.TypeDescriptionName[arrayObject.managedTypeIndex];
-
-            var name = includeTypeName ? arrayTypeName : string.Empty;
-            name = truncateTypeName ? PathsToRootDetailView.TruncateTypeName(name) : name;
-
-            var sb = new System.Text.StringBuilder(name);
-
-            if (hostManagedObjectPtr != 0)
-            {
-                var arrayInfo = arrayObject.GetArrayInfo(cachedSnapshot);
-                var rankString = arrayIndex >= 0 ? arrayInfo.IndexToRankedString(arrayIndex) : arrayInfo.ArrayRankToString();
-                switch (arrayInfo.Rank.Length)
-                {
-                    case 1:
-                        int nestedArrayCount = CountArrayOfArrays(arrayTypeName);
-                        sb.Replace(k_ArrayClosedSqBrackets, string.Empty);
-                        sb.Append('[');
-                        sb.Append(rankString);
-                        sb.Append(']');
-                        for (int i = 1; i < nestedArrayCount; ++i)
-                        {
-                            sb.Append(k_ArrayClosedSqBrackets);
-                        }
-                        break;
-                    default:
-                        sb.Append('[');
-                        sb.Append(rankString);
-                        sb.Append(']');
-                        break;
-                }
-            }
-            return sb.ToString();
-        }
-
-        int CountArrayOfArrays(string typename)
-        {
-            int count = 0;
-
-            int iter = 0;
-            while (true)
-            {
-                int idxFound = typename.IndexOf(k_ArrayClosedSqBrackets, iter);
-                if (idxFound == -1)
-                    break;
-                ++count;
-                iter = idxFound + k_ArrayClosedSqBrackets.Length;
-                if (iter >= typename.Length)
-                    break;
-            }
-
-            return count;
+            var arrayInfo = arrayObject.GetArrayInfo(cachedSnapshot);
+            return arrayInfo.GenerateArrayDescription(cachedSnapshot, arrayIndex, truncateTypeName, includeTypeName);
         }
 
         public string GenerateTypeName(CachedSnapshot cachedSnapshot)
@@ -1110,10 +1123,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool IsTransform(CachedSnapshot cs)
         {
-            var id = cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex];
-            if (id == cs.NativeTypes.TransformIdx || id == cs.NativeTypes.GameObjectIdx)
-                return cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex] == cs.NativeTypes.TransformIdx;
-            return false;
+            return cs.NativeTypes.IsTransformOrRectTransform(cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex]);
         }
 
         public bool IsRootTransform(CachedSnapshot cs)

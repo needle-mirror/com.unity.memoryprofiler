@@ -2,6 +2,8 @@ using System;
 using UnityEditor;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.UIContentData;
+using System.Collections.Generic;
+using System.Text;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -103,7 +105,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Managed Size", EditorUtility.FormatBytes(managedSize), $"{managedSize:N0} B");
             if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array)
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).Length.ToString());
+                var arrayInfo = m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", arrayInfo.Length.ToString());
+                if (arrayInfo.Rank.Length > 1)
+                {
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Rank", m_CurrentSelectionObjectData.GenerateArrayDescription(m_CachedSnapshot, includeTypeName: false));
+                    for (int i = 0; i < arrayInfo.Rank.Length; i++)
+                    {
+                        if (arrayInfo.Rank[i] == 0)
+                        {
+                            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Potential Logic Flaw?", "This multidimensional array has a zero sized dimension and therefore no elements. Is this intended?");
+                            break;
+                        }
+                    }
+                }
             }
             else if (type.ManagedTypeIndex == m_CachedSnapshot.TypeDescriptions.ITypeString)
             {
@@ -128,6 +143,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (heldByGCHandle)
                 {
                     if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array && m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).Length == 0 &&
+                        m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).Rank.Length == 1 &&
                         m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[m_CurrentSelectionObjectData.managedTypeIndex].StartsWith("Unity"))
                     {
                         m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UsedByNativeCodeStatus, TextContent.UsedByNativeCodeHint);
@@ -235,7 +251,164 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_UI.SetManagedObjectInspector(selectedUnityObject.ManagedObjectData);
             }
+            if (selectedUnityObject.HasNativeSide && m_CachedSnapshot.NativeCallstackSymbols.Count > 0)
+                AddCallStacksInfoToUI(selectedUnityObject);
         }
+
+        void AddCallStacksInfoToUI(UnifiedUnityObjectInfo selectedUnityObject)
+        {
+            var rootId = m_CachedSnapshot.NativeObjects.RootReferenceId[selectedUnityObject.NativeObjectIndex];
+            var areaAndObjectName = m_CachedSnapshot.NativeAllocations.ProduceAllocationNameForRootReferenceId(m_CachedSnapshot, rootId, higlevelObjectNameOnlyIfAvailable: false);
+            var callstackCount = 0L;
+            var furthercallstackCount = 0L;
+            var allocationCount = 0L;
+
+            List<(string, string, string)> BuildCallStackTexts(long maxEntries, out long callstackCount, out long furthercallstackCount, out long allocationCount, bool forCopy = false)
+            {
+                var callStacks = new DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo>(10, Collections.Allocator.Temp);
+                callStacks.Clear(false);
+                callstackCount = furthercallstackCount = allocationCount = 0;
+
+                var callStackTexts = new List<(string, string, string)>((int)maxEntries);
+                BuildCallStackInfo(
+                    ref callStackTexts, ref allocationCount, ref callstackCount, ref furthercallstackCount, ref callStacks,
+                    rootId, areaAndObjectName, maxUniqueEntries: maxEntries,
+                    clickableCallStacks: forCopy ? false : MemoryProfilerSettings.ClickableCallStacks,
+                    simplifyCallStacks: forCopy ? false : MemoryProfilerSettings.AddressInCallStacks);
+
+                callStacks.Dispose();
+                return callStackTexts;
+            }
+
+            var callStackTexts = BuildCallStackTexts(10, out callstackCount, out furthercallstackCount, out allocationCount);
+            if (callstackCount == 0)
+                return;
+
+            void CopyAllCallStacksToClipboard(List<(string, string, string)> callStackTexts)
+            {
+                StringBuilder stringBuilder = new StringBuilder();
+                foreach (var item in callStackTexts)
+                {
+                    stringBuilder.AppendFormat("{0}\n{1}{2}\n\n", item.Item1, item.Item2, item.Item3);
+                }
+                EditorGUIUtility.systemCopyBuffer = stringBuilder.ToString();
+            }
+
+            var copyButtonText = $"Copy {(furthercallstackCount > 0 ? "First " : (callstackCount > 1 ? "All " : ""))}{callstackCount} Call Stack{(callstackCount > 1 ? "s" : "")}";
+
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, copyButtonText, copyButtonText, copyButtonText + " to the clipboard.",
+                SelectedItemDynamicElementOptions.Button, () => CopyAllCallStacksToClipboard(BuildCallStackTexts(callstackCount, out var _, out var _, out var _, forCopy: true)));
+
+            if (furthercallstackCount > 0)
+            {
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, $"Copy All Call Stacks", "Copy All Call Stacks", $"Copy All {callstackCount + furthercallstackCount} Call Stacks to the clipboard.",
+                    SelectedItemDynamicElementOptions.Button, () => CopyAllCallStacksToClipboard(BuildCallStackTexts(callstackCount + furthercallstackCount, out var _, out var _, out var _, forCopy: true)));
+
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, $"Further Call Stacks", furthercallstackCount.ToString());
+            }
+
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, "Allocations Count", allocationCount.ToString());
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, $"{(furthercallstackCount > 0 ? "Shown " : "")}Call Stacks", callstackCount.ToString());
+
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, "Clickable Call Stacks", "Clickable Call Stacks",
+                "Call Stacks can either be clickable (leading to the source file) or selectable. Toggle this off if you want them to be selectable.",
+                SelectedItemDynamicElementOptions.Toggle | (MemoryProfilerSettings.ClickableCallStacks ? SelectedItemDynamicElementOptions.ToggleOn : 0), () =>
+               {
+                   MemoryProfilerSettings.ClickableCallStacks = !MemoryProfilerSettings.ClickableCallStacks;
+                   m_UI.ClearGroup(SelectedItemDetailsPanel.GroupNameCallStacks);
+                   AddCallStacksInfoToUI(selectedUnityObject);
+               });
+
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, "Show Address in Call Stacks", "Show Address in Call Stacks",
+                "Show or hide Address in Call Stacks.",
+                SelectedItemDynamicElementOptions.Toggle | (MemoryProfilerSettings.AddressInCallStacks ? SelectedItemDynamicElementOptions.ToggleOn : 0), () =>
+               {
+                   MemoryProfilerSettings.AddressInCallStacks = !MemoryProfilerSettings.AddressInCallStacks;
+                   m_UI.ClearGroup(SelectedItemDetailsPanel.GroupNameCallStacks);
+                   AddCallStacksInfoToUI(selectedUnityObject);
+               });
+
+
+            const bool k_UseFullDetailsPanelWidth = true;
+            foreach (var text in callStackTexts)
+            {
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks,
+                    text.Item1, k_UseFullDetailsPanelWidth ? $"{text.Item2}{text.Item3}" : text.Item2 + text.Item3, options:
+                    (k_UseFullDetailsPanelWidth ? 0 : SelectedItemDynamicElementOptions.ShowTitle) | SelectedItemDynamicElementOptions.SubFoldout |
+                    // TextField (which enables Selectable Label) does not properly support rich text, so these options are mutually exclusive
+                    (MemoryProfilerSettings.ClickableCallStacks ? SelectedItemDynamicElementOptions.EnableRichText : SelectedItemDynamicElementOptions.SelectableLabel)
+                    );
+            }
+
+        }
+
+        /// <summary>
+        /// Builds the call stack info for the given rootId and adds it to the given lists.
+        /// </summary>
+        /// <param name="callStackTexts"></param>
+        /// <param name="allocationCount"></param>
+        /// <param name="callstackCount"></param>
+        /// <param name="furtherCallstacks">pass -1 if you don't care to know, though then the <paramref name="allocationCount"/> might also be under reported</param>
+        /// <param name="callStacks"></param>
+        /// <param name="rootId"></param>
+        /// <param name="areaAndObjectName"></param>
+        /// <param name="startIndex"></param>
+        void BuildCallStackInfo(ref List<(string, string, string)> callStackTexts, ref long allocationCount,
+            ref long callstackCount, ref long furtherCallstacks,
+            ref DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo> callStacks, long rootId,
+            string areaAndObjectName, long startIndex = 0, long maxUniqueEntries = 10, bool clickableCallStacks = true, bool simplifyCallStacks = true)
+        {
+            for (long i = startIndex; i < m_CachedSnapshot.NativeAllocations.RootReferenceId.Count; i++)
+            {
+                if (m_CachedSnapshot.NativeAllocations.RootReferenceId[i] == rootId)
+                {
+                    ++allocationCount;
+                    var siteId = m_CachedSnapshot.NativeAllocations.AllocationSiteId[i];
+                    if (siteId >= 0)
+                    {
+                        var callstackInfo = m_CachedSnapshot.NativeAllocationSites.GetCallStackInfo(siteId);
+                        var address = m_CachedSnapshot.NativeAllocations.Address[i];
+                        var regionIndex = m_CachedSnapshot.NativeAllocations.MemoryRegionIndex[i];
+                        var region = m_CachedSnapshot.NativeMemoryRegions.MemoryRegionName[regionIndex];
+                        var isNew = true;
+                        for (long j = 0; j < callStacks.Count; j++)
+                        {
+                            if (callStacks[j].Equals(callstackInfo))
+                            {
+                                var texts = callStackTexts[(int)j];
+                                texts.Item2 += $"\nAnd Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}";
+                                callStackTexts[(int)j] = texts;
+                                isNew = false;
+                                break;
+                            }
+                        }
+                        if (!isNew)
+                            continue;
+
+                        if (callStackTexts.Count >= maxUniqueEntries)
+                        {
+                            if (furtherCallstacks == -1)
+                            {
+                                --allocationCount;
+                                break;
+                            }
+                            ++furtherCallstacks;
+                            continue;
+                        }
+                        var callstack = m_CachedSnapshot.NativeAllocationSites.GetReadableCallstack(
+                            m_CachedSnapshot.NativeCallstackSymbols, callstackInfo.Index, simplifyCallStacks: simplifyCallStacks, clickableCallStacks: clickableCallStacks);
+                        if (!string.IsNullOrEmpty(callstack))
+                        {
+                            callStackTexts.Add((
+                                $"Call Stack {++callstackCount}",
+                                $"Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}",
+                                $"\n\n{callstack}"));
+                        }
+                    }
+                }
+            }
+        }
+
 
         internal void HandleGroupDetails(string title, string description)
         {

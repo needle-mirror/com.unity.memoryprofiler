@@ -12,6 +12,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifierTitle = k_UxmlIdentifier + "__title";
         const string k_UxmlIdentifierNativeTypeLabel = k_UxmlIdentifier + "__desc__native-type";
         const string k_UxmlIdentifierManagedTypeLabel = k_UxmlIdentifier + "__desc__managed-type";
+        const string k_UxmlIdentifierManagedAssemblyLabel = k_UxmlIdentifier + "__desc__managed-assembly";
         const string k_UxmlIdentifierChildrenCount = k_UxmlIdentifier + "__desc__children-count";
 
         // State
@@ -23,6 +24,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         ObjectOrTypeLabel m_TitleLabel;
         Label m_NativeTypeLabel;
         Label m_ManagedTypeLabel;
+        Label m_ManagedAssemblyLabel;
         Label m_ChildrenCountLabel;
 
         public TypeDetailsViewController(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, int childrenCount)
@@ -54,6 +56,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TitleLabel = view.Q<ObjectOrTypeLabel>(k_UxmlIdentifierTitle);
             m_NativeTypeLabel = view.Q<Label>(k_UxmlIdentifierNativeTypeLabel);
             m_ManagedTypeLabel = view.Q<Label>(k_UxmlIdentifierManagedTypeLabel);
+            m_ManagedAssemblyLabel = view.Q<Label>(k_UxmlIdentifierManagedAssemblyLabel);
             m_ChildrenCountLabel = view.Q<Label>(k_UxmlIdentifierChildrenCount);
         }
 
@@ -65,26 +68,44 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case CachedSnapshot.SourceIndex.SourceId.NativeType:
                 {
-                    m_NativeTypeLabel.text = m_Snapshot.NativeTypes.TypeName[m_DataSource.Index];
-                    if (m_Snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryGetValue((int)m_DataSource.Index, out var managedTypeIndex))
-                        m_ManagedTypeLabel.text = m_Snapshot.TypeDescriptions.TypeDescriptionName[managedTypeIndex];
+                    SetNativeTypeInfo(true, m_DataSource.Index);
+                    SetManagedTypeInfo(m_Snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryGetValue((int)m_DataSource.Index, out var managedTypeIndex), managedTypeIndex);
                     break;
                 }
                 case CachedSnapshot.SourceIndex.SourceId.ManagedType:
                 {
-                    m_ManagedTypeLabel.text = m_Snapshot.TypeDescriptions.TypeDescriptionName[m_DataSource.Index];
-                    if (m_Snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue((int)m_DataSource.Index, out var nativeTypeIndex) && nativeTypeIndex >= 0)
-                        m_NativeTypeLabel.text = m_Snapshot.NativeTypes.TypeName[nativeTypeIndex];
+                    SetManagedTypeInfo(true, m_DataSource.Index);
+                    SetNativeTypeInfo(m_Snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue((int)m_DataSource.Index, out var nativeTypeIndex) && nativeTypeIndex >= 0, nativeTypeIndex);
                     break;
                 }
                 case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
                     m_NativeTypeLabel.text = m_Snapshot.NativeRootReferences.ObjectName[m_DataSource.Index];
+                    UIElementsHelper.SetVisibility(m_NativeTypeLabel, true);
+                    SetManagedTypeInfo(false, m_DataSource.Index);
                     break;
                 default:
                     break;
             }
 
             m_ChildrenCountLabel.text = m_ChildrenCount.ToString();
+        }
+
+        void SetManagedTypeInfo(bool visible, long typeIndex)
+        {
+            UIElementsHelper.SetVisibility(m_ManagedAssemblyLabel, visible);
+            UIElementsHelper.SetVisibility(m_ManagedTypeLabel, visible);
+            if (!visible)
+                return;
+            m_ManagedTypeLabel.text = m_Snapshot.TypeDescriptions.TypeDescriptionName[typeIndex];
+            m_ManagedAssemblyLabel.text = m_Snapshot.TypeDescriptions.Assembly[typeIndex];
+        }
+
+        void SetNativeTypeInfo(bool visible, long typeIndex)
+        {
+            UIElementsHelper.SetVisibility(m_NativeTypeLabel, visible);
+            if (!visible)
+                return;
+            m_NativeTypeLabel.text = m_Snapshot.NativeTypes.TypeName[typeIndex];
         }
     }
 }

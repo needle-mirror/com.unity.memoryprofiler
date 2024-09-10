@@ -7,12 +7,15 @@ using Unity.Profiling;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.MemoryProfiler.Editor.UI;
+using UnityEditor;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Unity.MemoryProfiler.Editor
 {
     interface ISnapshotDataService
     {
-        void SyncSnapshotsFolder();
+        void SetSnapshotsFolderDirty();
         void UnloadAll();
         string GetSnapshotFolderPath();
     }
@@ -20,7 +23,6 @@ namespace Unity.MemoryProfiler.Editor
     internal class SnapshotDataService : IDisposable, ISnapshotDataService
     {
         const string k_SnapshotFileExtension = ".snap";
-        const string k_SessionNameTempalte = "Session {0}";
 
         static ProfilerMarker s_CrawlManagedData = new ProfilerMarker("CrawlManagedData");
 
@@ -28,18 +30,87 @@ namespace Unity.MemoryProfiler.Editor
         CachedSnapshot m_BaseSnapshot;
         CachedSnapshot m_ComparedSnapshot;
 
-        string m_SnapshotsFolderPath;
-        List<SnapshotFileModel> m_AllSnapshots;
-        Dictionary<uint, string> m_SessionNames;
-        AsyncWorker<List<SnapshotFileModel>> m_BuildAllSnapshotsWorker;
+        SnapshotFileListModel m_SnapshotFileListModel;
+        AsyncWorker<SnapshotFileListModel> m_BuildAllSnapshotsWorker;
+        FileSystemWatcherUnity m_SnapshotFolderWatcher;
+        bool m_SnapshotFolderIsDirty;
+        [NonSerialized]
+        bool m_Disposed;
+
+        public bool SnapshotListModelIsUpToDate
+        {
+            get
+            {
+                if (m_SnapshotFolderIsDirty || m_SnapshotFileListModel == null || m_SnapshotFolderWatcher == null)
+                {
+                    return false;
+                }
+                m_SnapshotFolderWatcher.Refresh();
+                return m_SnapshotFileListModel.SnapshotDirectoryLastWriteTimestampUtc >= m_SnapshotFolderWatcher.Directory.LastWriteTimeUtc;
+            }
+        }
 
         public SnapshotDataService()
         {
-            m_AllSnapshots = new List<SnapshotFileModel>();
-            m_SessionNames = new Dictionary<uint, string>();
-            m_SnapshotsFolderPath = MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath;
+            var allSnapshots = new List<SnapshotFileModel>();
+            // Build an empty list model
+            var listBuilder = new SnapshotFileListModelBuilder(allSnapshots, DateTime.MinValue);
+            m_SnapshotFileListModel = listBuilder.Build();
 
+            EditorApplication.update -= Update;
+            EditorApplication.update += Update;
+            MemoryProfilerSettings.SnapshotStoragePathChanged += SetupSnapshotFolderWatcher;
+
+            SetupSnapshotFolderWatcher();
             SyncSnapshotsFolder();
+        }
+
+        void Update()
+        {
+            if (m_Disposed)
+            {
+                // Disposing might happen while the Update calls are being cycled through,
+                // so the previous deregistration might not have affected the list of event subscribers currently being called yet.
+                // Just for good measure, deregister again here though.
+                EditorApplication.update -= Update;
+                return;
+            }
+
+            if (m_SnapshotFolderIsDirty)
+                SyncSnapshotsFolder();
+        }
+
+        void DirectoryChanged(FileSystemWatcherUnity.State state, object exception)
+        {
+            switch (state)
+            {
+                case FileSystemWatcherUnity.State.None:
+                    break;
+                case FileSystemWatcherUnity.State.Changed:
+                    SetSnapshotsFolderDirty();
+                    break;
+                case FileSystemWatcherUnity.State.DirectoryDeleted:
+                    SetupSnapshotFolderWatcher();
+                    break;
+                case FileSystemWatcherUnity.State.Exception:
+                    Debug.LogException(exception as Exception);
+                    SetupSnapshotFolderWatcher();
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        void SetupSnapshotFolderWatcher()
+        {
+            var path = GetSnapshotFolderPath();
+
+            m_SnapshotFolderWatcher?.Dispose();
+            m_SnapshotFolderWatcher = new FileSystemWatcherUnity(path);
+            m_SnapshotFolderWatcher.Changed += DirectoryChanged;
+
+            // Always assume the directory is dirty after setup
+            m_SnapshotFolderIsDirty = true;
         }
 
         public bool CompareMode
@@ -57,8 +128,9 @@ namespace Unity.MemoryProfiler.Editor
 
         public CachedSnapshot Base => m_BaseSnapshot;
         public CachedSnapshot Compared => m_ComparedSnapshot;
-        public IReadOnlyList<SnapshotFileModel> AllSnapshots => m_AllSnapshots;
-        public IReadOnlyDictionary<uint, string> SessionNames => m_SessionNames;
+        public IReadOnlyList<SnapshotFileModel> AllSnapshots => m_SnapshotFileListModel.AllSnapshots;
+        public IReadOnlyDictionary<uint, string> SessionNames => m_SnapshotFileListModel.SessionNames;
+        public SnapshotFileListModel FullSnapshotList => m_SnapshotFileListModel;
 
         public event Action CompareModeChanged;
         public event Action LoadedSnapshotsChanged;
@@ -197,21 +269,35 @@ namespace Unity.MemoryProfiler.Editor
             return true;
         }
 
+        public void SetSnapshotsFolderDirty()
+        {
+            m_SnapshotFolderIsDirty = true;
+        }
+
         public void SyncSnapshotsFolder()
         {
+            if (m_Disposed)
+                throw new ObjectDisposedException(nameof(SnapshotDataService));
+
             m_BuildAllSnapshotsWorker?.Dispose();
             m_BuildAllSnapshotsWorker = null;
 
-            m_BuildAllSnapshotsWorker = new AsyncWorker<List<SnapshotFileModel>>();
-            m_BuildAllSnapshotsWorker.Execute(() =>
+            m_BuildAllSnapshotsWorker = new AsyncWorker<SnapshotFileListModel>();
+            // Check and store updated state
+            m_SnapshotFolderWatcher.Refresh();
+            // grab a copy of the directory so that a directory change on main thread will not bleed into the worker thread
+            var snapshotDirectory = m_SnapshotFolderWatcher.Directory;
+            // pre-declare directory as clean, because it will be once the worker is done
+            m_SnapshotFolderIsDirty = false;
+            m_BuildAllSnapshotsWorker.Execute((token) =>
             {
                 try
                 {
-                    return BuildSnapshotsInfo(m_SnapshotsFolderPath, AllSnapshots);
+                    return BuildSnapshotsInfo(token, snapshotDirectory, AllSnapshots);
                 }
-                catch (System.Threading.ThreadAbortException)
+                catch (TaskCanceledException)
                 {
-                    // We expect a ThreadAbortException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
+                    // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
                     return null;
                 }
                 catch (Exception _e)
@@ -228,43 +314,18 @@ namespace Unity.MemoryProfiler.Editor
                 // Update on success
                 if (result != null)
                 {
-                    m_AllSnapshots = result;
-                    UpdateSessionIds();
-                    AllSnapshotsChanged?.Invoke();
+                    if (result.Equals(m_SnapshotFileListModel))
+                    {
+                        m_SnapshotFileListModel.UpdateTimeStamp(result.SnapshotDirectoryLastWriteTimestampUtc);
+                    }
+                    else
+                    {
+                        // only really update if there is an actual change
+                        m_SnapshotFileListModel = result;
+                        AllSnapshotsChanged?.Invoke();
+                    }
                 }
             });
-        }
-
-        /// <summary>
-        /// A utility function that makes a sorted list of snapshots sessions and dictionary of sorted list of snapshots inside each session
-        /// </summary>
-        /// <param name="snapshots">List of all snapshots to process</param>
-        /// <param name="sortedSessionIds">Returned list of sorted sessions</param>
-        /// <param name="sessionsMap">Returned dictionary of lists for each session id</param>
-        /// <returns>True if successeful</returns>
-        public static bool MakeSortedSessionsListIds(in IReadOnlyList<SnapshotFileModel> snapshots, out List<uint> sortedSessionIds, out Dictionary<uint, IGrouping<uint, SnapshotFileModel>> sessionsMap)
-        {
-            if (snapshots.Count <= 0)
-            {
-                sortedSessionIds = null;
-                sessionsMap = null;
-                return false;
-            }
-
-            // Pre-sort snapshots
-            var sortedSnapshots = new List<SnapshotFileModel>(snapshots);
-            sortedSnapshots.Sort((l, r) => l.Timestamp.CompareTo(r.Timestamp));
-
-            // Group snapshots by sessionId
-            var _sessionsMap = sortedSnapshots.ToLookup(x => x.SessionId).ToDictionary(x => x.Key);
-
-            // Sort sessionId list so that generated names order is the same as visual order in UI
-            var _sortedSessionIds = _sessionsMap.Keys.ToList();
-            _sortedSessionIds.Sort((l, r) => _sessionsMap[l].First().Timestamp.CompareTo(_sessionsMap[r].First().Timestamp));
-
-            sessionsMap = _sessionsMap;
-            sortedSessionIds = _sortedSessionIds;
-            return true;
         }
 
         static CachedSnapshot LoadSnapshot(FileReader file)
@@ -275,25 +336,31 @@ namespace Unity.MemoryProfiler.Editor
             using var loadSnapshotEvent = MemoryProfilerAnalytics.BeginLoadSnapshotEvent();
 
             ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(file.FullPath)));
-            var cachedSnapshot = new CachedSnapshot(file);
-            using (s_CrawlManagedData.Auto())
+            try
             {
-                var crawling = ManagedDataCrawler.Crawl(cachedSnapshot);
-                crawling.MoveNext(); //start execution
-
-                var status = crawling.Current as EnumerationStatus;
-                float progressPerStep = 1.0f / status.StepCount;
-                while (crawling.MoveNext())
+                var cachedSnapshot = new CachedSnapshot(file);
+                using (s_CrawlManagedData.Auto())
                 {
-                    ProgressBarDisplay.UpdateProgress(status.CurrentStep * progressPerStep, status.StepStatus);
+                    var crawling = ManagedDataCrawler.Crawl(cachedSnapshot);
+                    crawling.MoveNext(); //start execution
+
+                    var status = crawling.Current as EnumerationStatus;
+                    float progressPerStep = 1.0f / status.StepCount;
+                    while (crawling.MoveNext())
+                    {
+                        ProgressBarDisplay.UpdateProgress(status.CurrentStep * progressPerStep, status.StepStatus);
+                    }
                 }
+                loadSnapshotEvent.SetResult(cachedSnapshot);
+                return cachedSnapshot;
             }
-
-            loadSnapshotEvent.SetResult(cachedSnapshot);
-
-            ProgressBarDisplay.ClearBar();
-
-            return cachedSnapshot;
+            // Don't let an exception prevent the progress bar from being cleared.
+            // Otherwise debugging the Editor when exceptions happen becomes really annoying as it's hard to get rid of manually,
+            // and also it'll muddy bug reports as people will overlook the logged Exception and report infinite opening times instead.
+            finally
+            {
+                ProgressBarDisplay.ClearBar();
+            }
         }
 
         static void UnloadSnapshot(ref CachedSnapshot snapshot)
@@ -305,34 +372,15 @@ namespace Unity.MemoryProfiler.Editor
             snapshot = null;
         }
 
-        /// <summary>
-        /// Maps all sessions to the unique SessionId and generates session names
-        /// </summary>
-        void UpdateSessionIds()
-        {
-            m_SessionNames = new Dictionary<uint, string>();
-
-            if (!MakeSortedSessionsListIds(m_AllSnapshots, out var sortedSessionIds, out var sessionsMap))
-                return;
-
-            // Make session name based on the sorted order
-            uint generatedSessionId = 1;
-            foreach (var sessionId in sortedSessionIds)
-            {
-                var children = sessionsMap[sessionId];
-                var sessionName = string.Format(k_SessionNameTempalte, generatedSessionId);
-                m_SessionNames[sessionId] = sessionName;
-                generatedSessionId++;
-            }
-        }
-
-        static List<SnapshotFileModel> BuildSnapshotsInfo(string snapshotsPath, IReadOnlyList<SnapshotFileModel> snapshotInfos)
+        static SnapshotFileListModel BuildSnapshotsInfo(CancellationToken token, DirectoryInfo snapshotsDirectory, IReadOnlyList<SnapshotFileModel> snapshotInfos)
         {
             var snapshotsMap = snapshotInfos.ToDictionary(x => x.FullPath, x => x);
 
-            var results = new List<SnapshotFileModel>();
-            foreach (var snapshotFile in GetSnapshotFiles(snapshotsPath))
+            var allSnapshots = new List<SnapshotFileModel>();
+            foreach (var snapshotFile in GetSnapshotFiles(snapshotsDirectory))
             {
+                if (token.IsCancellationRequested)
+                    return null;
                 if (!snapshotsMap.TryGetValue(snapshotFile, out var snapshotsFile))
                 {
                     var builder = new SnapshotFileModelBuilder(snapshotFile);
@@ -340,19 +388,31 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
                 if (snapshotsFile != null)
-                    results.Add(snapshotsFile);
+                    allSnapshots.Add(snapshotsFile);
             }
 
-            return results;
+            if (token.IsCancellationRequested)
+                return null;
+
+            var snapshotFileListBuilder = new SnapshotFileListModelBuilder(allSnapshots, snapshotsDirectory.LastWriteTimeUtc);
+            var snapshotFileListModel = snapshotFileListBuilder.Build();
+            return snapshotFileListModel;
         }
 
-        static IEnumerable<string> GetSnapshotFiles(string rootPath)
+        static IEnumerable<string> GetSnapshotFiles(DirectoryInfo directory)
         {
-            if (!Directory.Exists(rootPath))
+            try
+            {
+                if (!directory.Exists)
+                    yield break;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Failed to fetch snapshots from: {directory.FullName}\n{e}");
                 yield break;
+            }
 
-            var directory = new DirectoryInfo(rootPath);
-            var filesEnum = directory.GetFiles('*' + k_SnapshotFileExtension, SearchOption.TopDirectoryOnly);
+            var filesEnum = directory.GetFiles('*' + k_SnapshotFileExtension, SearchOption.AllDirectories);
             foreach (var file in filesEnum)
                 yield return file.FullName;
         }
@@ -372,8 +432,18 @@ namespace Unity.MemoryProfiler.Editor
 
         public void Dispose()
         {
+            m_Disposed = true;
             // Unload without notify
             LoadedSnapshotsChanged = null;
+
+            m_BuildAllSnapshotsWorker?.Dispose();
+            m_BuildAllSnapshotsWorker = null;
+
+            m_SnapshotFolderWatcher?.Dispose();
+            m_SnapshotFolderWatcher = null;
+
+            EditorApplication.update -= Update;
+            MemoryProfilerSettings.SnapshotStoragePathChanged -= SetSnapshotsFolderDirty;
             UnloadAll();
         }
 

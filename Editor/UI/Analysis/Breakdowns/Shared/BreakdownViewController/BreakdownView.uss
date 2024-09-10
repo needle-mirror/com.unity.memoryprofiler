@@ -39,12 +39,17 @@
     flex-grow: 1;
     flex-shrink: 1;
     flex-wrap: wrap;
-    max-width: 600px;
+    max-width: 620px;
 }
 
 #breakdown-view__mode-dropdown > Label
 {
     white-space: normal;
+}
+
+#breakdown-view__mode-dropdown PopupTextElement
+{
+    text-overflow: ellipsis;
 }
 
 #breakdown-view__search-field

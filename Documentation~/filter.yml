@@ -1,5 +1,10 @@
 apiRules:
     - exclude:
+        hasAttribute:
+            uid: System.ComponentModel.EditorBrowsableAttribute
+            ctorArguments:
+                - System.ComponentModel.EditorBrowsableState.Never
+    - exclude:
         # inherited Object methods
         uidRegex: ^System\.Object\..*$
         type: Method
@@ -27,13 +32,19 @@ apiRules:
         uidRegex: ^$
         type: Namespace
     - exclude:
-        uidRegex: test$
+        uidRegex: ^.*test$
         type: Namespace
     - exclude:
-        uidRegex: Tests
+        uidRegex: ^.*Tests$
         type: Namespace
     - exclude:
-        uidRegex: \.Testing
+        uidRegex: ^.*Tests\.*$
+        type: Namespace
+    - exclude:
+        uidRegex: ^.*\.Tests.*$
+        type: Namespace
+    - exclude:
+        uidRegex: ^.*\.Testing.*$
         type: Namespace
     - exclude:
         uidRegex: \.Dispose$

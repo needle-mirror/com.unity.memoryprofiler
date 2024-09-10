@@ -1,7 +1,15 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" mui="Unity.MemoryProfiler.Editor.UI" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" memory="Unity.MemoryProfiler.Editor" memoryUI="Unity.MemoryProfiler.Editor.UI" noNamespaceSchemaLocation="../../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
     <ui:VisualElement name="selected-item-details__grouped-item__container" text="Basic" class="selected-item-details__grouped-item__container">
         <ui:Label name="selected-item-details__grouped-item__label" class="selected-item-details__grouped-item__label" />
-        <ui:Label name="selected-item-details__grouped-item__content" class="selected-item-details__grouped-item__content" />
+        <ui:Button parse-escape-sequences="true" display-tooltip-when-elided="true" name="selected-item-details__grouped-item__button" class="selected-item-details__grouped-item__button" />
+        <ui:Toggle parse-escape-sequences="true" display-tooltip-when-elided="true" name="selected-item-details__grouped-item__toggle" class="selected-item-details__grouped-item__toggle" />
+        <ui:Label name="selected-item-details__grouped-item__content" class="selected-item-details__grouped-item__content" multiline="true" enable-rich-text="false" selectable="true"/>
+        <ui:Label name="selected-item-details__grouped-item__content_rich-text-label" class="selected-item-details__grouped-item__content" enable-rich-text="true" selectable="true"/>
         <ui:TextField name="selected-item-details__grouped-item__content_selectable-label" multiline="true" readonly="true" class="selected-item-details__grouped-item__content selectable-label" enable-rich-text="false"/>
+        <ui:TextField name="selected-item-details__grouped-item__content_rich-text-selectable-label" multiline="true" readonly="true" class="selected-item-details__grouped-item__content selectable-label" enable-rich-text="true"/>
     </ui:VisualElement>
+    <ui:Foldout name="selected-item-details__group__grouped-item__foldout" text="Basic" class="selected-item-details__group__grouped-item__foldout">
+        <ui:VisualElement name="selected-item-details__group__grouped-item__foldout__content" class="selected-item-details__group__grouped-item__foldout__content">
+        </ui:VisualElement>
+    </ui:Foldout>
 </ui:UXML>

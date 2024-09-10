@@ -73,7 +73,7 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         // Formats "[ptr]" or "null" if ptr == 0
-        public string FormatPointer(ulong ptr)
+        public static string FormatPointer(ulong ptr)
         {
             return ptr == 0 ? k_NullPtrAddr : string.Format(PointerFormatString, ptr);
         }

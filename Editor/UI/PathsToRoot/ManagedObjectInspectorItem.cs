@@ -1,7 +1,11 @@
 using System.Collections.Generic;
-using UnityEditor.IMGUI.Controls;
 using UnityEditor;
 using System.Runtime.CompilerServices;
+#if INSTANCE_ID_CHANGED
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
+#else
+using UnityEditor.IMGUI.Controls;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -89,6 +93,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                     {
                         if (*ptr == '0' && *(ptr + 1) == 'x')
                             value = string.Empty;
+                        else
+                            Value = value;
                     }
                 }
             }

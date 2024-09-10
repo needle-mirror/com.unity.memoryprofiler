@@ -3,7 +3,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class BackgroundPattern : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    internal partial class BackgroundPattern : VisualElement
     {
         static readonly ushort[] k_Indices = new ushort[] { 0, 1, 2, 1, 3, 2, };
         static readonly CustomStyleProperty<Texture2D> s_PatternProperty = new CustomStyleProperty<Texture2D>("--unity-pattern");
@@ -19,6 +22,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             RegisterCallback<CustomStyleResolvedEvent>(OnCustomStyleResolved);
         }
 
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public float Scale
         {
             get => m_Scale;
@@ -164,6 +170,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Instantiates a <see cref="BackgroundPattern"/> using the data read from a UXML file.
         /// </summary>
@@ -184,5 +191,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ((BackgroundPattern)ve).Init(scale);
             }
         }
+#endif
     }
 }

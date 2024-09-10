@@ -36,10 +36,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 IsUnityObjectType = true;
                 NativeTypeIndex = nativeTypeIndex;
-                IsMonoBehaviourType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.MonoBehaviourIdx);
-                IsComponentType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.ComponentIdx);
-                IsGameObjectType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.GameObjectIdx);
-                IsTransformType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.TransformIdx);
+                IsMonoBehaviourType = snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.MonoBehaviourIdx);
+                IsComponentType = snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.ComponentIdx);
+                IsGameObjectType = snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.GameObjectIdx);
+                IsTransformType = snapshot.NativeTypes.IsTransformOrRectTransform(NativeTypeIndex);
                 NativeTypeName = snapshot.NativeTypes.TypeName[NativeTypeIndex];
 
                 if (snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryGetValue(NativeTypeIndex, out ManagedTypeIndex))
@@ -114,10 +114,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (IsUnityObjectType && NativeTypeIndex >= 0)
             {
-                IsMonoBehaviourType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.MonoBehaviourIdx);
-                IsComponentType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.ComponentIdx);
-                IsGameObjectType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.GameObjectIdx);
-                IsTransformType = snapshot.NativeTypes.DerivesFrom(NativeTypeIndex, snapshot.NativeTypes.TransformIdx);
+                IsMonoBehaviourType = snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.MonoBehaviourIdx);
+                IsComponentType = snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.ComponentIdx);
+                IsGameObjectType = snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.GameObjectIdx);
+                IsTransformType = snapshot.NativeTypes.IsTransformOrRectTransform(NativeTypeIndex) || /*Is the rest here necessary?*/ snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.TransformIdx) || snapshot.NativeTypes.IsOrDerivesFrom(NativeTypeIndex, snapshot.NativeTypes.RectTransformIdx);
                 NativeTypeName = snapshot.NativeTypes.TypeName[NativeTypeIndex];
             }
             else
@@ -161,14 +161,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // Native Object Only info
         public bool HasNativeSide => NativeObjectIndex != -1;
-        public readonly int InstanceId;
+        public readonly InstanceID InstanceId;
         public readonly ulong NativeSize;
         public readonly string NativeObjectName;
         public readonly HideFlags HideFlags;
         public readonly Format.ObjectFlags Flags;
         public readonly int NativeRefCount;
         public bool IsPersistentAsset => Flags.HasFlag(Format.ObjectFlags.IsPersistent) && !IsManager;
-        public bool IsRuntimeCreated => InstanceId < 0;
+        public bool IsRuntimeCreated => InstanceId.IsRuntimeCreated();
         public bool IsManager => Flags.HasFlag(Format.ObjectFlags.IsManager);
         public bool IsDontUnload => Flags.HasFlag(Format.ObjectFlags.IsDontDestroyOnLoad) || HideFlags.HasFlag(HideFlags.DontUnloadUnusedAsset);
 
@@ -189,7 +189,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 NativeObjectData = default;
                 ManagedObjectData = default;
                 ManagedObjectIndex = -1;
-                InstanceId = 0;
+                InstanceId = InstanceID.None;
                 NativeSize = 0;
                 NativeObjectName = string.Empty;
                 HideFlags = 0;
@@ -235,7 +235,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else
             {
-                InstanceId = 0;
+                InstanceId = InstanceID.None;
                 NativeSize = 0;
                 NativeObjectName = string.Empty;
                 HideFlags = 0;

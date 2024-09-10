@@ -52,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                     while (offsets[i] + sizeInByte > endOfCurrentDataBlock)
                     {
                         dataBlockOffset = endOfCurrentDataBlock;
-                        start = (byte*)m_Data[dataBlockIndex].GetUnsafePtr();
+                        start = (byte*)m_Data[++dataBlockIndex].GetUnsafePtr();
                         endOfCurrentDataBlock += m_Data[dataBlockIndex].Count * sizeof(T);
                     }
                     var offset = offsets[i] - dataBlockOffset;

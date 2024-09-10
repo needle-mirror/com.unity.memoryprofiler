@@ -49,11 +49,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ScreenshotsManager = new ScreenshotsManager();
         }
 
-        public void RefreshScreenshotsOnSceneChange()
-        {
-            m_ScreenshotsManager.Invalidate();
-        }
-
         protected override VisualElement LoadView()
         {
             var view = ViewControllerUtility.LoadVisualTreeFromUxml(k_UxmlAssetGuid);
@@ -184,6 +179,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_DetailsViewController.SetCollapsed(true);
                 m_DetailsSplitter.CollapseChild(1);
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+
+            m_ScreenshotsManager?.Dispose();
+            m_ScreenshotsManager = null;
         }
     }
 }

@@ -269,7 +269,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 if (isOrCouldBeAUnityObject)
                 {
-                    int instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
+                    var instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
                     // TODO: Add index to a list of Managed Unity Objects here
                     var heapSection = snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation);
                     if (!heapSection.IsValid)
@@ -741,6 +741,11 @@ namespace Unity.MemoryProfiler.Editor
                 info.PtrTypeInfo = ptrIdentity;
                 info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
 
+                if (info.ITypeDescription >= 0 && (long)boHeader.Offset + snapshot.TypeDescriptions.Size[info.ITypeDescription] > boHeader.Bytes.Count)
+                {
+                    // invalid heap byte data. Resolution failed.
+                    info.ITypeDescription = -1;
+                }
                 if (info.ITypeDescription < 0)
                 {
                     var boIdentity = heap.Find(ptrIdentity, snapshot.VirtualMachineInformation);
@@ -749,7 +754,7 @@ namespace Unity.MemoryProfiler.Editor
                         boIdentity.TryReadPointer(out var ptrTypeInfo);
                         info.PtrTypeInfo = ptrTypeInfo;
                         info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
-                        resolveFailed = info.ITypeDescription < 0;
+                        resolveFailed = info.ITypeDescription < 0 || (long)boHeader.Offset + snapshot.TypeDescriptions.Size[info.ITypeDescription] > boHeader.Bytes.Count;
                     }
                     else
                     {

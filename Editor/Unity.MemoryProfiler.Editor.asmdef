@@ -19,6 +19,11 @@
             "name": "Unity",
             "expression": "2022.2.0a13",
             "define": "MEMORY_PROFILER_API_PUBLIC"
+        },
+        {
+            "name": "Unity",
+            "expression": "7000.0.0a1",
+            "define": "INSTANCE_ID_CHANGED"
         }
     ],
     "noEngineReferences": false

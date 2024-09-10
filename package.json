@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -16,18 +16,18 @@
     "com.unity.editorcoroutines": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.0"
+    "com.unity.memoryprofiler.tests": "1.1.1"
   },
   "_upm": {
-    "changelog": "- Bump version to 1.1.0 from 1.1.0-pre.3."
+    "changelog": "### Added\n- Added the name of the assembly to the Type details when selecting a Managed Type group.\n\n### Fixed\n- Fixed navigating with arrow keys not updating reference list in All of Memory view ([PROFB-153](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-153)).\n- Fixed retention of Snapshot list expansion and scroll state so that it does not expand all items unexpectedly but remembers which sessions were collapsed and which extended ([PROFB-196](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-196)).\n- Fixed dropdown text being clipped when \"Allocated and Resident Memory on Device\" was selected.\n- Fixed an issue whereby graphics allocations not associated with a native object would display under a \"No Name\" category in the All of Memory table.\n- Fixed issues with selecting array objects, or objects that had managed fields with arrays, when the arrays where multidimensional with one or more dimensions of size 0.\n- Fixed exception when opening the Unity Objects table in Comparison mode when there are multiple MonoBehaviour or ScriptableObject types with the same name but from different assemblies.\n- Fixed exception when opening the All Of Memory table in Comparison mode when either of the snapshots is from a pre 2022.2 runtime and the untracked amount is negative.\n- Fixed an ArgumentOutOfRangeException when inspecting some Managed Objects ([PROFB-223](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-223)).\n- Fixed longer string values not being displayed in the Managed Fields Inspector.\n- Fixed an issue that caused IL2CPP VM memory to not be calculated correctly in the Summary and All Of Memory table.\n- Remove deprecated UxmlFactory/UxmlTraits API usage on Unity 6.\n- Add divider on \"Capture\" toolbar button dropdown.\n- Reattributed IL2CPP VM memory from Native to Managed in the All Of Memory table.\n\n### Changed\n- Allowed Snapshots to reside in Subfolders within the configured memory snapshot path.\n- Improved Snapshots folder monitoring: Changes to the folder are now reflected in the Editor without it requiring to acquire focus first.\n- Improved display of managed arrays in the Selected Item Details and Managed Fields."
   },
   "upmCi": {
-    "footprint": "ed4d5e93d4b9be7892562e3968526ec7bc9de32d"
+    "footprint": "87a49cb7bbba436a755ba4a103ceb3c36a97b869"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "2297acd0384cc2f42d24e670a5990104bedc19c5"
+    "revision": "9dd462014d02e2a36426b27a5fe4aff8187c7aa4"
   }
 }

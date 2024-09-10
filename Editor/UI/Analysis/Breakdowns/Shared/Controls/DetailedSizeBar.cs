@@ -5,7 +5,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     // A UI Component used to display a size quantity as a fraction of a whole, such as on the Unity Objects breakdown tables.
     // Contains a progress bar to visually show the relative size, along with a footer that contains two labels for describing the values, one left-aligned and one right-aligned.
-    class DetailedSizeBar : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    partial class DetailedSizeBar : VisualElement
     {
         const string k_UxmlClass = "detailed-size-bar";
         const string k_UxmlClass_BarContainer = "detailed-size-bar__bar-container";
@@ -95,7 +98,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             TotalLabel.displayTooltipWhenElided = false;
         }
 
+#if !UNITY_6000_0_OR_NEWER
         public new class UxmlFactory : UxmlFactory<DetailedSizeBar> {}
+#endif
     }
 }
 #endif

@@ -3,9 +3,15 @@ using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
-using UnityEditor.IMGUI.Controls;
-using UnityEngine;
+using UnityEditorInternal;
+using UnityEngine.UIElements.Experimental;
 using UnityEngine.UIElements;
+using UnityEngine;
+#if INSTANCE_ID_CHANGED
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#else
+using UnityEditor.IMGUI.Controls;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -15,6 +21,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         PlaceFirstInGroup = 1 << 0,
         SelectableLabel = 1 << 1,
         ShowTitle = 1 << 2,
+        EnableRichText = 1 << 3,
+        Button = 1 << 5,
+        Toggle = 1 << 6,
+        ToggleOn = 1 << 7,
+        SubFoldout = 1 << 8,
     }
     internal class SelectedItemDetailsPanel : IDisposable
     {
@@ -44,7 +55,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         List<ManagedObjectInspector> m_ManagedObjectInspectors = new List<ManagedObjectInspector>();
-        List<VisualElement> m_ManagedObjectInspectorContainors = new List<VisualElement>();
+        List<VisualElement> m_ManagedObjectInspectorContainers = new List<VisualElement>();
 
         CachedSnapshot m_CachedSnapshot;
         UnifiedUnityObjectInfo m_SelectedUnityObject;
@@ -134,7 +145,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public void Clear()
             {
+                var foldoutState = Foldout.value;
                 Content.Clear();
+
+                var foldoutSessionStateKey = SelectedItemDetailsPanel.GetFoldoutSessionStateKey(Foldout.text);
+                SessionState.SetBool(foldoutSessionStateKey, foldoutState);
             }
         }
         public const string GroupNameBasic = "Basic";
@@ -142,6 +157,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public const string GroupNameHelp = "Help";
         public const string GroupNameAdvanced = "Advanced";
         public const string GroupNameDebug = "Debug"; // Only useful for Memory Profiler developers or _maybe_ for bug reports
+        public const string GroupNameCallStacks = "Call Stack Info"; // Only useful for captures from Players and Editors build from source code with RECORD_ALLOCATION_SITES and ENABLE_STACKS_ON_ALL_ALLOCS defined
 
 
         public SelectedItemDetailsPanel(CachedSnapshot cachedSnapshot, VisualElement detailsPanelRoot)
@@ -156,7 +172,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 detailsContainer.style.minHeight = m_ManagedObjectInspectors[0].totalHeight;
                 m_ManagedObjectInspectors[0].DoGUI(detailsContainer.contentRect);
             };
-            m_ManagedObjectInspectorContainors.Add(managedFieldInspectorFoldout);
+            m_ManagedObjectInspectorContainers.Add(managedFieldInspectorFoldout);
 
             var managedFieldInspectorFoldoutSessionStateKey = GetFoldoutSessionStateKey(managedFieldInspectorFoldout.text);
             managedFieldInspectorFoldout.SetValueWithoutNotify(SessionState.GetBool(managedFieldInspectorFoldoutSessionStateKey, true));
@@ -165,7 +181,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SessionState.SetBool(managedFieldInspectorFoldoutSessionStateKey, evt.newValue);
             });
 
-            UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainors[0], false);
+            UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainers[0], false);
 
             m_Title = detailsPanelRoot.Q<Label>("selected-item-details__item-title");
             m_Title.AddManipulator(new ContextualMenuManipulator(evt => ShowCopyMenu(evt, contextMenu: true)));
@@ -223,6 +239,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             CreateDetailsGroup(GroupNameHelp);
             CreateDetailsGroup(GroupNameAdvanced, false);
             CreateDetailsGroup(GroupNameDebug, false);
+            if (cachedSnapshot.NativeCallstackSymbols.Count > 0)
+                CreateDetailsGroup(GroupNameCallStacks);
             m_SelectedItemDetailsGroupedItemUxmlPathViewTree = UIElementsHelper.LoadAssetByGUID(k_UxmlAssetGuidSelectedItemDetailsGroupedItem);
         }
 
@@ -327,7 +345,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        string GetFoldoutSessionStateKey(string foldoutName) => $"com.unity.memoryprofiler.{nameof(SelectedItemDetailsPanel)}.foldout.{foldoutName}";
+        static string GetFoldoutSessionStateKey(string foldoutName) => $"com.unity.memoryprofiler.{nameof(SelectedItemDetailsPanel)}.foldout.{foldoutName}";
 
         DetailsGroup CreateDetailsGroup(string name, bool expansionDefaultState = true)
         {
@@ -435,7 +453,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return groupItem;
         }
 
-        public void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel)
+        public void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel, Action onInteraction = null)
         {
             if (groupName == GroupNameDebug && !ShowDebugInfo)
                 return;
@@ -444,14 +462,66 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var groupedItem = m_SelectedItemDetailsGroupedItemUxmlPathViewTree.Clone();
             groupedItem.Q("selected-item-details__grouped-item__container").AddToClassList($"selected-item-details__grouped-item__{title.ToLower()}");
+
+            var subFoldout = groupedItem.Q<Foldout>("selected-item-details__group__grouped-item__foldout");
+            UIElementsHelper.SetVisibility(subFoldout, options.HasFlag(SelectedItemDynamicElementOptions.SubFoldout));
+            if (options.HasFlag(SelectedItemDynamicElementOptions.SubFoldout))
+            {
+                // reparent everything under the foldout and make that the container item to be added to the group
+                subFoldout.Add(groupedItem);
+                groupedItem = subFoldout;
+                subFoldout.text = title;
+            }
+
             if (options.HasFlag(SelectedItemDynamicElementOptions.PlaceFirstInGroup))
                 groupItem.Content.Insert(0, groupedItem);
             else
                 groupItem.Content.Add(groupedItem);
             var titleLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__label");
-            var contentLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__content");
-            var selectableLabel = groupedItem.Q<TextField>("selected-item-details__grouped-item__content_selectable-label");
-            UIElementsHelper.SwitchVisibility(selectableLabel, contentLabel, options.HasFlag(SelectedItemDynamicElementOptions.SelectableLabel));
+            var button = groupedItem.Q<Button>("selected-item-details__grouped-item__button");
+            UIElementsHelper.SetVisibility(button, false);
+
+            var toggle = groupedItem.Q<Toggle>("selected-item-details__grouped-item__toggle");
+            UIElementsHelper.SetVisibility(toggle, false);
+
+            var simpleTextContentLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__content");
+            var richTextContentLabel = groupedItem.Q<Label>("selected-item-details__grouped-item__content_rich-text-label");
+
+            richTextContentLabel.RegisterCallback<PointerDownLinkTagEvent>(OnDescriptionLabelLinkSelected);
+            richTextContentLabel.RegisterCallback<PointerOverLinkTagEvent>(OnLabelLinkPointerOver);
+            richTextContentLabel.RegisterCallback<PointerOutLinkTagEvent>(OnLabelLinkPointerOut);
+            var usedContentLabel = options.HasFlag(SelectedItemDynamicElementOptions.EnableRichText) ? richTextContentLabel : simpleTextContentLabel;
+
+            var simpleTextSelectableLabel = groupedItem.Q<TextField>("selected-item-details__grouped-item__content_selectable-label");
+            var richTextSelectableLabel = groupedItem.Q<TextField>("selected-item-details__grouped-item__content_rich-text-selectable-label");
+
+            richTextSelectableLabel.RegisterCallback<PointerDownLinkTagEvent>(OnDescriptionLabelLinkSelected);
+            richTextSelectableLabel.RegisterCallback<PointerOverLinkTagEvent>(OnLabelLinkPointerOver);
+            richTextSelectableLabel.RegisterCallback<PointerOutLinkTagEvent>(OnLabelLinkPointerOut);
+            var usedSelectableLabel = options.HasFlag(SelectedItemDynamicElementOptions.EnableRichText) ? richTextSelectableLabel : simpleTextSelectableLabel;
+            if (options.HasFlag(SelectedItemDynamicElementOptions.SelectableLabel))
+            {
+                UIElementsHelper.SetVisibility(simpleTextContentLabel, false);
+                UIElementsHelper.SetVisibility(richTextContentLabel, false);
+
+                if (options.HasFlag(SelectedItemDynamicElementOptions.EnableRichText))
+                {
+                    UIElementsHelper.SetVisibility(simpleTextSelectableLabel, false);
+                    UIElementsHelper.SetVisibility(richTextSelectableLabel, true);
+                }
+                else
+                {
+                    UIElementsHelper.SetVisibility(simpleTextSelectableLabel, true);
+                    UIElementsHelper.SetVisibility(richTextSelectableLabel, false);
+                }
+            }
+            else
+            {
+                UIElementsHelper.SwitchVisibility(richTextContentLabel, simpleTextContentLabel, options.HasFlag(SelectedItemDynamicElementOptions.EnableRichText));
+                UIElementsHelper.SetVisibility(simpleTextSelectableLabel, false);
+                UIElementsHelper.SetVisibility(richTextSelectableLabel, false);
+            }
+
             if (options.HasFlag(SelectedItemDynamicElementOptions.ShowTitle))
                 titleLabel.text = $"{title}:";
             else
@@ -460,19 +530,90 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             if (options.HasFlag(SelectedItemDynamicElementOptions.SelectableLabel))
             {
-                selectableLabel.SetValueWithoutNotify(content);
+                usedSelectableLabel.SetValueWithoutNotify(content);
                 if (!options.HasFlag(SelectedItemDynamicElementOptions.ShowTitle))
-                    selectableLabel.AddToClassList("selected-item-details__grouped-item__content-without-label");
+                    usedSelectableLabel.AddToClassList("selected-item-details__grouped-item__content-without-label");
+            }
+            else if (options.HasFlag(SelectedItemDynamicElementOptions.Button))
+            {
+                UIElementsHelper.SetVisibility(button, true);
+                button.text = content;
+                button.tooltip = tooltip;
+                if (onInteraction != null)
+                    button.clickable.clicked += onInteraction;
+                else
+                    Debug.LogError("No interaction defined for button");
+            }
+            else if (options.HasFlag(SelectedItemDynamicElementOptions.Toggle))
+            {
+                UIElementsHelper.SetVisibility(toggle, true);
+                toggle.SetValueWithoutNotify(options.HasFlag(SelectedItemDynamicElementOptions.ToggleOn));
+                toggle.text = content;
+                toggle.tooltip = tooltip;
+                if (onInteraction != null)
+                    toggle.RegisterValueChangedCallback((v) => onInteraction());
+                else
+                    Debug.LogError("No interaction defined for toggle");
             }
             else
             {
-                contentLabel.text = content;
+                usedContentLabel.text = content;
                 if (!options.HasFlag(SelectedItemDynamicElementOptions.ShowTitle))
-                    selectableLabel.AddToClassList("selected-item-details__grouped-item__content-without-label");
+                    usedContentLabel.AddToClassList("selected-item-details__grouped-item__content-without-label");
             }
 
             if (!string.IsNullOrEmpty(tooltip))
                 groupedItem.tooltip = tooltip;
+        }
+
+        static ReadOnlySpan<Char> ParseOutLinkParameter(ReadOnlySpan<char> link, string parameterPrefeix)
+        {
+            var indexOfParameterStart = link.IndexOf(parameterPrefeix) + parameterPrefeix.Length;
+            var param = link.Slice(indexOfParameterStart);
+            var indexOfParameterEnd = param.IndexOf("'");
+            return param.Slice(0, indexOfParameterEnd);
+        }
+
+        void OnDescriptionLabelLinkSelected(PointerDownLinkTagEvent evt)
+        {
+            var link = evt.linkID.AsSpan();
+            const string k_linkPrefix = "href='";
+            const string k_linePrefix = "line='";
+            var lineNumber = int.Parse(ParseOutLinkParameter(link, k_linePrefix));
+            var path = ParseOutLinkParameter(link, k_linkPrefix).ToString();
+            switch (evt.button)
+            {
+                case 0:
+                    if (!InternalEditorUtility.TryOpenErrorFileFromConsole(path, lineNumber))
+                    {
+                        if (!InternalEditorUtility.OpenFileAtLineExternal(path, lineNumber))
+                        {
+                            const string k_linkUrlPrefix = "file://";
+                            Application.OpenURL(k_linkUrlPrefix + path);
+                            Debug.LogError($"Failed to open file {path} at line {lineNumber}. Try rightclicking to copy to clipboard instead.");
+                        }
+                    }
+                    break;
+                case 1:
+                {
+                    GenericMenu menu = new GenericMenu();
+                    menu.AddItem(new GUIContent("Copy File Path"), false, () => EditorGUIUtility.systemCopyBuffer = path);
+                    menu.AddItem(new GUIContent("Copy File Path and Line"), false, () => EditorGUIUtility.systemCopyBuffer = $"{path}:{lineNumber}");
+                    menu.AddItem(new GUIContent("Copy Line Number"), false, () => EditorGUIUtility.systemCopyBuffer = lineNumber.ToString());
+                    menu.ShowAsContext();
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+
+        void OnLabelLinkPointerOver(PointerOverLinkTagEvent evt)
+        {
+        }
+
+        void OnLabelLinkPointerOut(PointerOutLinkTagEvent evt)
+        {
         }
 
         public void SetItemName(string name)
@@ -590,7 +731,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public void SetManagedObjectInspector(ObjectData objectInfo, int indexOfInspector = 0)
         {
-            UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainors[indexOfInspector], true);
+            UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainers[indexOfInspector], true);
             m_ManagedObjectInspectors[0].SetupManagedObject(m_CachedSnapshot, objectInfo);
         }
 
@@ -613,6 +754,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             Clear();
         }
 
+        public void ClearGroup(string groupName)
+        {
+            if (m_ActiveDetailsGroupsByGroupName.TryGetValue(groupName, out var group))
+            {
+                group.Clear();
+            }
+        }
+
         public void Clear()
         {
             m_SelectedUnityObject = default;
@@ -623,7 +772,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     inspector?.Clear();
                 }
             }
-            UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainors[0], false);
+            UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainers[0], false);
             m_DynamicElements.Clear();
             m_FoundObjectInEditor = null;
             m_SearchInEditorButton.tooltip = null;

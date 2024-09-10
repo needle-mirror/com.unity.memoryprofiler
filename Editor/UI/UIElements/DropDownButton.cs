@@ -5,7 +5,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class DropDownButton : Button
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    internal partial class DropDownButton : Button
     {
         const string k_StyleClass = "drop-down-button";
         const string k_BaseArrowStyleClass = "unity-base-popup-field__arrow";
@@ -16,6 +19,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         [SerializeField]
         string m_Text;
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public string ButtonText
         {
             get => m_Text;
@@ -46,6 +53,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.text = "";
         }
 
+#if !UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Instantiates a <see cref="DropDownButton"/> using the data read from a UXML file.
         /// </summary>
@@ -72,5 +80,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 button.Init();
             }
         }
+#endif
     }
 }

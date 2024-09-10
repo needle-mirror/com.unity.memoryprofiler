@@ -65,8 +65,7 @@ namespace Unity.MemoryProfiler.Editor
                 snapshotMetadata.TargetInfo.HasValue,
                 totalCommitted,
                 totalResident,
-                maxAvailable,
-                snapshotMetadata.Screenshot);
+                maxAvailable);
         }
     }
 }

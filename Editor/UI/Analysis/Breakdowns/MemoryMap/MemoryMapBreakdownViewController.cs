@@ -1,7 +1,6 @@
 #if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
-using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -113,7 +112,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var args = new MemoryMapBreakdownModelBuilder.BuildArgs(nameFilter);
             var sortDescriptors = BuildSortDescriptorsFromTreeView();
             m_BuildModelWorker = new AsyncWorker<MemoryMapBreakdownModel>();
-            m_BuildModelWorker.Execute(() =>
+            m_BuildModelWorker.Execute((token) =>
             {
                 try
                 {
@@ -121,6 +120,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var modelBuilder = new MemoryMapBreakdownModelBuilder();
                     var model = modelBuilder.Build(snapshot, args);
 
+                    token.ThrowIfCancellationRequested();
                     // Sort it according to the current sort descriptors.
                     model.Sort(sortDescriptors);
 
@@ -130,9 +130,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     return null;
                 }
-                catch (System.Threading.ThreadAbortException)
+                catch (OperationCanceledException)
                 {
-                    // We expect a ThreadAbortException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
+                    // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
                     return null;
                 }
                 catch (Exception ex)

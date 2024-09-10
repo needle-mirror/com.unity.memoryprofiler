@@ -107,13 +107,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                     summary.GraphicsAndDrivers = new MemorySize(summary.GraphicsAndDrivers.Committed + delta, 0);
                     summary.EstimatedGraphicsAndDrivers = true;
                 }
+                else
+                {
+                    // Move untracked graphics memory to untracked category.
+                    var untrackedGraphics = summary.GraphicsAndDrivers.Committed - memoryStats.Value.GraphicsUsedMemory;
+                    summary.Untracked = new MemorySize(summary.Untracked.Committed + untrackedGraphics, 0);
+                    summary.GraphicsAndDrivers = new MemorySize(summary.GraphicsAndDrivers.Committed - untrackedGraphics, 0);
+                    summary.EstimatedGraphicsAndDrivers = true;
+                }
             }
 
             // Add Mono or IL2CPP VM allocations
-            // Mono VM size is a sum of all reported VM allocations plus scripting memory label overheads
-            // IL2CPP VM size comes entirely from the scripting memory label
-            ulong scriptingNativeTracked = cs.NativeMemoryLabels?.GetLabelSize("ScriptingNativeRuntime") ?? 0;
-            ReassignMemoryToAnotherCategory(ref summary.Managed, ref summary.Native, scriptingNativeTracked);
+            var vmRootSize = cs.NativeRootReferences.AccumulatedSizeOfVMRoot;
+            ReassignMemoryToAnotherCategory(ref summary.Managed, ref summary.Native, vmRootSize);
         }
 
         bool HasResidentMemory()

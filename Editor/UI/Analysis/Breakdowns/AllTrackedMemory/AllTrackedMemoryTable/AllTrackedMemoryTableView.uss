@@ -1,0 +1,107 @@
+.all-tracked-memory-table-view__dark:root
+{
+  --all-tracked-memory-table-view__tree-view__background-color: #3E3E3E;
+  --all-tracked-memory-table-view__tree-view__border-color: #232323;
+  --all-tracked-memory-table-view__loading-overlay__background-color: rgba(35, 35, 35, 0.8);
+}
+
+.all-tracked-memory-table-view__light:root
+{
+  --all-tracked-memory-table-view__tree-view__background-color: #C8C8C8;
+  --all-tracked-memory-table-view__tree-view__border-color: #999999;
+  --all-tracked-memory-table-view__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
+}
+
+#all-tracked-memory-table-view
+{
+    flex-grow: 1;
+}
+
+#all-tracked-memory-table-view__tree-view__main-container
+{
+    flex-grow: 1;
+}
+
+#all-tracked-memory-table-view__tree-view
+{
+    background-color: var(--all-tracked-memory-table-view__tree-view__background-color);
+    border-color: var(--all-tracked-memory-table-view__tree-view__border-color);
+    border-top-width: 1px;
+    flex-grow: 1;
+}
+
+#all-tracked-memory-table-view__tree-view .unity-multi-column-header
+{
+    margin: 2px 8px;
+}
+
+#all-tracked-memory-table-view__tree-view #unity-content-viewport
+{
+    margin: 0px 8px;
+}
+
+#all-tracked-memory-table-view__tree-view .size-bar-cell
+{
+    margin-top: 3px;
+    margin-bottom: 3px;
+    background-color: rgb(83, 83, 83);
+    flex-grow: 1;
+}
+
+#all-tracked-memory-table-view__loading-overlay
+{
+    align-items: center;
+    background-color: var(--all-tracked-memory-table-view__loading-overlay__background-color);
+    bottom: 0px;
+    justify-content: center;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    transition-duration: 0.23s;
+    transition-property: opacity;
+    transition-timing-function: ease-out;
+}
+
+#all-tracked-memory-table-view__loading-overlay:enabled
+{
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+}
+
+#all-tracked-memory-table-view__loading-overlay:disabled
+{
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+}
+
+#all-tracked-memory-table-view__loading-overlay ActivityIndicator
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Loading.png');
+    height: 16px;
+    width: 16px;
+}
+
+#all-tracked-memory-table-view__error-label
+{
+    -unity-text-align: middle-center;
+    background-color: var(--all-tracked-memory-table-view__loading-overlay__background-color);
+    bottom: 0px;
+    display: none;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    visibility: hidden;
+}
+
+#all-tracked-memory-table-view .memory-bar-element
+{
+    flex-grow: 1;
+    border-width: 1px;
+    border-color: rgb(83, 83, 83);
+
+    min-width: 6px;
+}

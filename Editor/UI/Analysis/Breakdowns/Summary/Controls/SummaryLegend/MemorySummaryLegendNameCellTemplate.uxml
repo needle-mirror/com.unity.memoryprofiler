@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="UnityEngine.UIElements"
+    xsi:noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd"
+    xsi:schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd">
+
+    <VisualElement name="memory-summary__legend__name-and-color" class="memory-summary__legend__name-and-color memory-summary__legend__row">
+        <VisualElement name="memory-summary__legend__color-box" class="memory-summary__legend__color-box background-color__memory-summary-category__unity-other">
+            <VisualElement name="memory-summary__legend__color-box__unused" class="memory-summary__legend__color-box__unused" />
+        </VisualElement>
+        <Label name="memory-summary__legend__name" text="Unity/Other" display-tooltip-when-elided="true" />
+        <Label name="memory-summary__legend__used-reserved" text="(In use / Reserved)" display-tooltip-when-elided="true" class="memory-summary__legend__used-reserved-label" />
+    </VisualElement>
+</UXML>

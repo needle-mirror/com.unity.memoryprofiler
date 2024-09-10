@@ -207,7 +207,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var compareArgs = new TreeComparisonBuilder.BuildArgs(m_UnchangedToggle.value);
             var sortComparison = BuildSortComparisonFromTreeView();
             m_BuildModelWorker = new AsyncWorker<ComparisonTableModel>();
-            m_BuildModelWorker.Execute(() =>
+            m_BuildModelWorker.Execute((token) =>
             {
                 try
                 {
@@ -218,6 +218,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         args,
                         compareArgs);
 
+                    token.ThrowIfCancellationRequested();
                     // Sort it according to the current sort descriptors.
                     model.Sort(sortComparison);
 
@@ -227,9 +228,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     return null;
                 }
-                catch (System.Threading.ThreadAbortException)
+                catch (OperationCanceledException)
                 {
-                    // We expect a ThreadAbortException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
+                    // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
                     return null;
                 }
                 catch (Exception _e)

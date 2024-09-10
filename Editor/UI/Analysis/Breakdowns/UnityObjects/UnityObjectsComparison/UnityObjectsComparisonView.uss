@@ -1,0 +1,292 @@
+.unity-objects-comparison-view__dark:root
+{
+  --unity-objects-comparison-view__snapshot-size-bar__background-color: #5A5A5A;
+  --unity-objects-comparison-view__snapshot-size-bar__fill-background-color: #F0F0F0;
+  --unity-objects-comparison-view__snapshot-size-bar__remainer-color: #232323;
+  --unity-objects-comparison-view__tree-view__background-color: #3E3E3E;
+  --unity-objects-comparison-view__tree-view__border-color: #232323;
+  --unity-objects-comparison-view__loading-overlay__background-color: rgba(35, 35, 35, 0.8);
+  --unity-objects-comparison-view__tree-view__dark-cell__background-color: #313131;
+}
+
+.unity-objects-comparison-view__light:root
+{
+  --unity-objects-comparison-view__snapshot-size-bar__background-color: #CBCBCB;
+  --unity-objects-comparison-view__snapshot-size-bar__fill-background-color: white;
+  --unity-objects-comparison-view__snapshot-size-bar__remainer-color: #AAAAAA;
+  --unity-objects-comparison-view__tree-view__background-color: #C8C8C8;
+  --unity-objects-comparison-view__tree-view__border-color: #999999;
+  --unity-objects-comparison-view__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
+  --unity-objects-comparison-view__tree-view__dark-cell__background-color: #AAAAAA;
+}
+
+.unity-multi-column-view__row-container:checked > .unity-multi-column-view__cell > .dark-tree-view-cell
+{
+  --unity-objects-comparison-view__tree-view__dark-cell__background-color: transparent;
+}
+
+.unity-multi-column-view__row-container:hover > .unity-multi-column-view__cell > .dark-tree-view-cell
+{
+  --unity-objects-comparison-view__tree-view__dark-cell__background-color: transparent;
+}
+
+#unity-objects-comparison-view
+{
+    flex-grow: 1;
+    margin-top: 16px;
+}
+
+#unity-objects-comparison-view__search-field-container
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    margin: 0px 16px 16px 16px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#unity-objects-comparison-view__description-label
+{
+    flex-shrink: 1;
+    margin-right: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#unity-objects-comparison-view__search-field
+{
+    height: 14px;
+    margin: 0px;
+    padding: 4px;
+    width: 40%;
+}
+
+#unity-objects-comparison-view__search-field TextField
+{
+    padding-left: 4px;
+}
+
+#unity-objects-comparison-view__search-field TextElement
+{
+    font-size: 12px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar
+{
+    flex-direction: row;
+    margin: 4px 16px 0px 16px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar > .memory-profile-snapshotfile__tag__label__large
+{
+    margin-top: 4px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .detailed-size-bar
+{
+    flex-grow: 1;
+    margin-left: 4px;
+    margin-top: 4px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .detailed-size-bar__bar-container
+{
+    flex-direction: row;
+    flex-grow: 1;
+    height: 14px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .detailed-size-bar__bar
+{
+    flex-grow: 0;
+    height: 14px;
+    margin: 0px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .detailed-size-bar__bar-remainder
+{
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 2px;
+    background-color: var(--unity-objects-comparison-view__snapshot-size-bar__remainer-color);
+    height: 14px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .detailed-size-bar__size-label
+{
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .detailed-size-bar__total-label
+{
+    margin-left: 16px;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .detailed-size-bar__footer
+{
+    margin: 8px 0px;
+}
+
+#unity-objects-comparison-view__primary
+{
+    padding: 16px;
+    min-height: 120px;
+}
+
+#unity-objects-comparison-view__tree-view
+{
+    background-color: var(--unity-objects-comparison-view__tree-view__background-color);
+    border-color: var(--unity-objects-comparison-view__tree-view__border-color);
+    border-top-width: 1px;
+    flex-grow: 1;
+}
+
+#unity-objects-comparison-view__tree-view
+{
+    flex-grow: 1;
+}
+
+#unity-objects-comparison-view__tree-view .unity-multi-column-header
+{
+    margin: 2px 8px;
+}
+
+#unity-objects-comparison-view__tree-view #unity-content-viewport
+{
+    margin: 0px 8px;
+}
+
+.dark-tree-view-cell
+{
+    background-color: var(--unity-objects-comparison-view__tree-view__dark-cell__background-color);
+}
+
+#unity-objects-comparison-view__footer-toolbar
+{
+    border-top-width: 1px;
+    height: 32px;
+}
+
+#unity-objects-comparison-view__toolbar__flatten-toggle
+{
+    padding: 0px 12px;
+}
+
+.unity-toggle__text
+{
+    padding-left: 4px;
+}
+
+#unity-objects-comparison-view__loading-overlay
+{
+    align-items: center;
+    background-color: var(--unity-objects-comparison-view__loading-overlay__background-color);
+    bottom: 0px;
+    justify-content: center;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    transition-duration: 0.23s;
+    transition-property: opacity;
+    transition-timing-function: ease-out;
+}
+
+#unity-objects-comparison-view__loading-overlay:enabled
+{
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+}
+
+#unity-objects-comparison-view__loading-overlay:disabled
+{
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+}
+
+#unity-objects-comparison-view__loading-overlay ActivityIndicator
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Loading.png');
+    height: 16px;
+    width: 16px;
+}
+
+#unity-objects-comparison-view__secondary
+{
+    flex-direction: row;
+    padding: 16px;
+    min-height: 120px;
+}
+
+.unity-objects-comparison-view__secondary__title-container
+{
+    align-items: center;
+    flex-direction: row;
+}
+
+.unity-objects-comparison-view__secondary__title-label
+{
+    font-size: 18px;
+    padding: 8px 0px;
+}
+
+.unity-objects-comparison-view__secondary__description-label
+{
+    -unity-text-align: middle-right;
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#unity-objects-comparison-view__secondary__base
+{
+    margin-right: 8px;
+    width: 50%;
+}
+
+#unity-objects-comparison-view__secondary__base-table-container
+{
+    flex-grow: 1;
+}
+
+#unity-objects-comparison-view__secondary__compared
+{
+    margin-left: 8px;
+    width: 50%;
+}
+
+#unity-objects-comparison-view__secondary__compared-table-container
+{
+    flex-grow: 1;
+}
+
+#unity-objects-comparison-view__secondary MultiColumnTreeView
+{
+    height: 120px;
+}
+
+#unity-objects-comparison-view__error-label
+{
+    -unity-text-align: middle-center;
+    background-color: var(--unity-objects-comparison-view__loading-overlay__background-color);
+    bottom: 0px;
+    display: none;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    visibility: hidden;
+}
+
+.unity-objects-comparison-view__snapshot-size-bar .memory-bar-element__committed-bar
+{
+    background-color: #D6D6D6;
+}

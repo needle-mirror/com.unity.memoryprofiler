@@ -8,7 +8,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class ObjectOrTypeLabel : VisualElement, IDisposable
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    internal partial class ObjectOrTypeLabel : VisualElement, IDisposable
     {
         const string k_UxmlAssetGuid = "d5780d6f2a7371a48bd79da612d8b6c4";
 
@@ -26,6 +29,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         DataType m_DataType = DataType.UnifiedUnityObject;
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public DataType Type
         {
             get { return m_DataType; }
@@ -96,6 +103,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         string m_ManagedTypeName = string.Empty;
 
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public string ManagedTypeName
         {
             get
@@ -111,6 +121,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         string m_NativeTypeName = string.Empty;
 
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public string NativeTypeName
         {
             get
@@ -126,6 +139,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         string m_NativeObjectName = string.Empty;
 
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public string NativeObjectName
         {
             get
@@ -388,6 +404,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             NativeObjectName = m_NativeObjectName;
         }
 
+
+#if !UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Instantiates a <see cref="ObjectOrTypeLabel"/> using the data read from a UXML file.
         /// </summary>
@@ -427,5 +445,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 objectOrTypeLabel.NativeTypeName = nativeType;
             }
         }
+#endif
     }
 }

@@ -3,7 +3,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class ActivityIndicatorOverlay : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    partial class ActivityIndicatorOverlay : VisualElement
     {
         readonly ActivityIndicator m_ActivityIndicator;
 
@@ -25,7 +28,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetEnabled(false);
         }
 
+#if !UNITY_6000_0_OR_NEWER
         public new class UxmlFactory : UxmlFactory<ActivityIndicatorOverlay> {}
+#endif
     }
 }
 #endif

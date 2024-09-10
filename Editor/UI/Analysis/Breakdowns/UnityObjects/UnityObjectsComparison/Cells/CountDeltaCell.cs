@@ -3,7 +3,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class CountDeltaCell : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    partial class CountDeltaCell : VisualElement
     {
         const string k_UxmlAssetGuid = "196a7eaa275d6374fac3957485130321";
         const string k_UxmlIdentifier_Label = "count-delta-cell__label";
@@ -41,7 +44,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             AddToClassList("dark-tree-view-cell");
         }
 
+#if !UNITY_6000_0_OR_NEWER
         public new class UxmlFactory : UxmlFactory<CountDeltaCell> {}
+#endif
     }
 }
 #endif

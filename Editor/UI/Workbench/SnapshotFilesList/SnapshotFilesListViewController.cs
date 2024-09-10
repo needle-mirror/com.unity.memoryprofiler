@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine.UIElements;
 using Unity.MemoryProfiler.Editor.UI;
 using TreeView = UnityEngine.UIElements.TreeView;
+using UnityEditor;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -11,6 +12,8 @@ namespace Unity.MemoryProfiler.Editor
     {
         const string k_UxmlAssetGuid = "87018144588dc0643b5a69ad32eb2571";
         const string k_UxmlTreeItemGuid = "ff52c1ab702481a49a414c311d8c6914";
+        const string k_TreePersistencyKey = "com.unity.memoryprofiler.snapshotfileslistviewcontroller.treeview";
+        const string k_TreePersistencyItemIdsKey = "com.unity.memoryprofiler.snapshotfileslistviewcontroller.treeview.itemids";
 
         const string k_UxmlTreeView = "memory-profiler-snapshots__tree-view";
         const string k_UxmlNoSnapshotsHint = "memory-profiler-snapshots__no-snapshots-message";
@@ -76,6 +79,7 @@ namespace Unity.MemoryProfiler.Editor
             // If a selection was made via the Tree View controls, e.g. by starting a click on a snapshot and ending it outside of it, clear it.
             // Without this, users could end up with a blue selection highlight on a snapshot that wasn't opened.
             m_SnapshotsCollection.selectedIndicesChanged += (a) => m_SnapshotsCollection.ClearSelection();
+            m_SnapshotsCollection.viewDataKey = k_TreePersistencyKey;
             m_NoSnapshotsMessage = view.Q(k_UxmlNoSnapshotsHint);
         }
 
@@ -95,35 +99,72 @@ namespace Unity.MemoryProfiler.Editor
             m_SnapshotsCollection.bindItem = BindTreeItem;
             m_SnapshotsCollection.unbindItem = UnbindTreeItem;
 
-            if (!SnapshotDataService.MakeSortedSessionsListIds(m_SnapshotDataService.AllSnapshots, out var sortedSessionsList, out var snapshotsSessionsMap))
+            var fullSnapshotList = m_SnapshotDataService.FullSnapshotList;
+            if (fullSnapshotList.AllSnapshots.Count == 0)
             {
                 m_SnapshotsCollection.SetRootItems(new List<TreeViewItemData<SnapshotItemData>>());
                 return;
             }
 
             // Build tree
-            int itemId = 0;
             var tree = new List<TreeViewItemData<SnapshotItemData>>();
-            foreach (var sessionId in sortedSessionsList)
+            var usedIds = new HashSet<int>();
+            foreach (var sessionId in fullSnapshotList.SortedSessionIds)
+            {
+                // add all session ids to usedIds so we can avoid duplicates in their children
+                var sessionTreeItemId = (int)sessionId;
+                usedIds.Add(sessionTreeItemId);
+            }
+
+            var oldItemEntries = new HashSet<int>(SessionState.GetIntArray(k_TreePersistencyItemIdsKey, new int[0]));
+            var sessionsToExpand = new HashSet<int>();
+            foreach (var sessionId in fullSnapshotList.SortedSessionIds)
             {
                 // Add all snapshots with the same session id
-                var children = snapshotsSessionsMap[sessionId];
+                var children = fullSnapshotList.SessionsMap[sessionId];
+                var sessionTreeItemId = (int)sessionId;
                 var childrenItems = new List<TreeViewItemData<SnapshotItemData>>();
                 foreach (var child in children)
                 {
-                    childrenItems.Add(new TreeViewItemData<SnapshotItemData>(itemId++, new SnapshotItemData(child.Name, false, child)));
+                    // generate a persistent tree item id based on the session ID and the snapshot file name.
+                    var snapshotTreeItemId = sessionTreeItemId + child.Name.GetHashCode();
+
+                    // in case of snapshotId clashes, increment it until it is unique
+                    while (usedIds.Contains(snapshotTreeItemId))
+                        snapshotTreeItemId++;
+
+                    usedIds.Add(snapshotTreeItemId);
+                    childrenItems.Add(new TreeViewItemData<SnapshotItemData>(snapshotTreeItemId, new SnapshotItemData(child.Name, false, child)));
+
+                    if (!oldItemEntries.Contains(snapshotTreeItemId))
+                        // There's been an addition/name change in the snapshots of this session, so we need to expand it to show that change
+                        // There is a minor chance of false positives here when we have to increment the id more often than before due to clashes,
+                        // but it's not a likely scenario, nor a big deal
+                        sessionsToExpand.Add(sessionTreeItemId);
                 }
 
                 // Generate session name
                 var sessionName = String.Format($"{m_SnapshotDataService.SessionNames[sessionId]} - {children.First().ProductName}");
-                var groupItem = new TreeViewItemData<SnapshotItemData>(itemId++, new SnapshotItemData(sessionName, true, null), childrenItems);
+                var groupItem = new TreeViewItemData<SnapshotItemData>(sessionTreeItemId, new SnapshotItemData(sessionName, true, null), childrenItems);
                 tree.Add(groupItem);
             }
 
+            SessionState.SetIntArray(k_TreePersistencyItemIdsKey, usedIds.ToArray());
+
             m_SnapshotsCollection.SetRootItems(tree);
-            // Expand everything next frame, as otherwise
-            // TreeView might expand it wrongly
-            m_SnapshotsCollection.schedule.Execute(() => m_SnapshotsCollection.ExpandAll());
+            m_SnapshotsCollection.RefreshItems();
+            if (sessionsToExpand.Count > 0)
+            {
+                // Expand everything next frame, as otherwise
+                // TreeView might expand it wrongly
+                m_SnapshotsCollection.schedule.Execute(() =>
+                {
+                    foreach (var id in sessionsToExpand)
+                    {
+                        m_SnapshotsCollection.ExpandItem(id);
+                    }
+                });
+            }
         }
 
         VisualElement MakeTreeItem()

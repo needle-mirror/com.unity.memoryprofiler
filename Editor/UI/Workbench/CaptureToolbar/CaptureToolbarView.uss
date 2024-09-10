@@ -1,4 +1,4 @@
-.memory-profiler__light:root
+.capture-toolbar-view__light:root
 {
     --button-background-color-normal-hover: rgb(177, 177, 177);
     --button-background-color-checked-hover: rgb(219, 219, 219);
@@ -8,11 +8,11 @@
     --button-arrow-background-color-checked-hover: rgb(152, 152, 149);
 }
 
-.memory-profiler__dark:root
+.capture-toolbar-view__dark:root
 {
     --button-background-color-normal-hover: rgb(85, 85, 85);
     --button-background-color-checked-hover: rgb(94, 94, 94);
-    --button-arrow-background-color-normal: rgb(40, 40, 40);
+    --button-arrow-background-color-normal: #232323;
     --button-arrow-background-color-normal-hover: rgb(53, 53, 53);
     --button-arrow-background-color-checked: rgb(50, 50, 50);
     --button-arrow-background-color-checked-hover: rgb(57, 57, 57);
@@ -142,7 +142,7 @@
     margin-right: 0;
     padding-right: 0;
     padding-top: 0;
-    padding-left: 2px;
+    padding-left: 4px;
     flex-shrink: 0;
 }
 
@@ -166,18 +166,14 @@
 
 .drop-down-toggle__drop-down-part__arrow-icon
 {
-    margin-left: 3px;
-    margin-right: 5px;
-    margin-top: 3px;
-    margin-bottom: 3px;
-    padding-left: 3px;
-    border-left-width: 1px;
+    margin: 3px 0px;
+    padding: 0px 3px;
+    border-width: 0px 1px;
 }
 
 .drop-down-toggle > Label
 {
-    margin-top: 1px;
-    padding-top: 2px;
+    margin-left: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
 }

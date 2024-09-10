@@ -48,6 +48,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ScreenshotsManager = screenshotsManager;
         }
 
+        void ScreenshotRefresh()
+        {
+            ScreenshotImage?.MarkDirtyRepaint();
+        }
+
         public string TotalResidentFormat
         {
             get => m_TotalResidentFormat;
@@ -105,14 +110,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             var dateAsString = m_Model.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
             m_Date.text = dateAsString;
 
-            m_Screenshot.image = m_Model.Screenshot;
             m_Screenshot.scaleMode = ScaleMode.ScaleToFit;
 
             var screenshotPath = Path.ChangeExtension(Model.FullPath, ".png");
             if (File.Exists(screenshotPath))
             {
-                var image = m_ScreenshotsManager.Enqueue(screenshotPath);
-                ScreenshotImage.image = image;
+                var image = m_ScreenshotsManager.Enqueue(screenshotPath, ScreenshotRefresh);
+                m_Screenshot.image = image;
             }
 
             RefreshTotal();

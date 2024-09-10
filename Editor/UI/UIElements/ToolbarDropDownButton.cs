@@ -5,7 +5,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class ToolbarDropDownButton : DropDownButton
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    internal partial class ToolbarDropDownButton : DropDownButton
     {
         const string k_StyleClass = "unity-toolbar-menu";
         const string k_ToolbarButtonStyleClass = "unity-toolbar-button";
@@ -23,6 +26,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.Init();
         }
 
+#if !UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Instantiates a <see cref="ToolbarDropDownButton"/> using the data read from a UXML file.
         /// </summary>
@@ -46,5 +50,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 button.Init();
             }
         }
+#endif
     }
 }

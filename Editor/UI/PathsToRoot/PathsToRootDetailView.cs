@@ -8,7 +8,13 @@ using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEngine.UIElements;
+#if INSTANCE_ID_CHANGED
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#else
 using TreeView = UnityEditor.IMGUI.Controls.TreeView;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 {
@@ -610,6 +616,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         void NoObject(CachedSnapshot cs, ref PathsToRootDetailTreeViewItem tree)
         {
             CurrentSelection = default;
+            m_CurrentSelection = -1;
             tree = CreateRootItem();
         }
 
@@ -776,6 +783,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     break;
                 case PathsToRootViewGUIState.SearchComplete:
                     OnGUI(rect);
+                    if (m_BackgroundThreadState == BackGroundThreadState.Analyze)
+                        Repaint(); // Update UI while the BG thread finishes up - PROFB-153.
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();

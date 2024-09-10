@@ -29,5 +29,10 @@ namespace Unity.MemoryProfiler.Editor
         {
             return ManagedHeapArrayDataTools.ArrayRankToString(Rank);
         }
+
+        internal string GenerateArrayDescription(CachedSnapshot cachedSnapshot, int arrayIndex, bool truncateTypeName, bool includeTypeName)
+        {
+            return ManagedHeapArrayDataTools.GenerateArrayDescription(cachedSnapshot, this, arrayIndex, truncateTypeName, includeTypeName);
+        }
     }
 }

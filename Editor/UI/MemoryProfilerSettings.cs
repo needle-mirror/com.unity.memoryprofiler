@@ -23,6 +23,8 @@ namespace Unity.MemoryProfiler.Editor
         const string k_MemoryProfilerPackageOverridesMemoryModuleUIEditorPerf = "Unity.MemoryProfiler.Editor.MemoryProfilerPackageOverridesMemoryModuleUI";
         const string k_DefaultPath = "./MemoryCaptures";
         const string k_TruncateTypes = "Unity.MemoryProfiler.Editor.MemoryProfilerTruncateTypes";
+        const string k_ClickableCallStacks = "Unity.MemoryProfiler.Editor.MemoryProfilerClickableCallStacks";
+        const string k_AddressInCallStacks = "Unity.MemoryProfiler.Editor.MemoryProfilerAddressInCallStacks";
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
         const string k_ShowReservedMemoryBreakdown = "Unity.MemoryProfiler.Editor.ShowReservedMemoryBreakdown";
         const string k_ShowMemoryMapView = "Unity.MemoryProfiler.Editor.ShowMemoryMapView";
@@ -34,11 +36,12 @@ namespace Unity.MemoryProfiler.Editor
         const string k_ObjectDetailsReferenceSectionSizeKey = "Unity.MemoryProfiler.Editor.MemoryProfilerObjectDetailsReferenceSectionSize";
 
         public static event Action TruncateStateChanged;
+        public static event Action SnapshotStoragePathChanged;
 
         internal static class FeatureFlags
         {
             // For By Status and Path From Roots
-            public static bool GenerateTransformTreesForByStatusTable_2022_09 => false;
+            public static bool GenerateTransformTreesForByStatusTable_2022_09 { get; set; } = false;
         }
 
         public static string MemorySnapshotStoragePath
@@ -49,7 +52,10 @@ namespace Unity.MemoryProfiler.Editor
             }
             set
             {
+                var notify = MemorySnapshotStoragePath != value;
                 EditorPrefs.SetString(k_SnapshotPathEditorPerf, value);
+                if (notify)
+                    SnapshotStoragePathChanged?.Invoke();
             }
         }
 
@@ -64,6 +70,30 @@ namespace Unity.MemoryProfiler.Editor
             private set
             {
                 EditorPrefs.SetBool(k_TruncateTypes, value);
+            }
+        }
+
+        public static bool ClickableCallStacks
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_ClickableCallStacks, true);
+            }
+            set
+            {
+                EditorPrefs.SetBool(k_ClickableCallStacks, value);
+            }
+        }
+
+        public static bool AddressInCallStacks
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_AddressInCallStacks);
+            }
+            set
+            {
+                EditorPrefs.SetBool(k_AddressInCallStacks, value);
             }
         }
 
@@ -124,7 +154,7 @@ namespace Unity.MemoryProfiler.Editor
                 try
                 {
                     //will throw for invalid paths
-                    Path.GetFullPath(res);
+                    res = Path.GetFullPath(res);
                 }
                 catch (Exception)
                 {

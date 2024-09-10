@@ -12,6 +12,8 @@ namespace Unity.MemoryProfiler.Editor
     internal class CaptureToolbarViewController : ViewController
     {
         const string k_UxmlAssetGuid = "5d1afd1dbd49ed94a9b738d9b174701f";
+        const string k_UssClass_Dark = "capture-toolbar-view__dark";
+        const string k_UssClass_Light = "capture-toolbar-view__light";
         const string k_UxmlIdentifierSnapshotsToggle = "memory-profiler-view__toolbar__snaphsot-window-toggle";
         const string k_UxmlIdentifierDetailsToggle = "memory-profiler-view__toolbar__details-toggle";
         const string k_UxmlIdentifierCaptureButton = "memory-profiler-view__toolbar__capture-button";
@@ -50,6 +52,9 @@ namespace Unity.MemoryProfiler.Editor
             var view = ViewControllerUtility.LoadVisualTreeFromUxml(k_UxmlAssetGuid);
             if (view == null)
                 throw new InvalidOperationException("Unable to create view from Uxml. Uxml must contain at least one child element.");
+
+            var themeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
+            view.AddToClassList(themeUssClass);
 
             GatherReferencesInView(view);
 
@@ -112,7 +117,7 @@ namespace Unity.MemoryProfiler.Editor
             MemoryProfilerSettings.LastImportPath = path;
 
             if (!m_SnapshotDataService.Import(path))
-                Debug.LogFormat($"{path} has already been imported or locked.");
+                Debug.LogFormat($"{path} has already been imported or is locked.");
         }
 
         void UpdateTargetSelection()

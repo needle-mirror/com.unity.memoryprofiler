@@ -1,0 +1,23 @@
+#all-tracked-memory-description-cell
+{
+    flex-grow: 1;
+}
+
+#all-tracked-memory-description-cell__container
+{
+    flex-direction: row;
+    flex-grow: 1;
+}
+
+#all-tracked-memory-description-cell__label
+{
+    -unity-text-align: middle-left;
+    margin-left: 4px;
+}
+
+#all-tracked-memory-description-cell__secondary-label
+{
+    -unity-text-align: middle-left;
+    color: gray;
+    margin-left: 4px;
+}

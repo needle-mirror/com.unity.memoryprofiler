@@ -4,7 +4,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class DeltaBarCell : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    partial class DeltaBarCell : VisualElement
     {
         const string k_UxmlAssetGuid = "44d6ee5b4285ab849bc6a0c4e6c7f526";
         const string k_UxmlIdentifier_NegativeBar = "delta-bar-cell__negative-bar";
@@ -41,7 +44,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_PositiveBar.visible = positiveProgress != 0f;
         }
 
+#if !UNITY_6000_0_OR_NEWER
         public new class UxmlFactory : UxmlFactory<DeltaBarCell> {}
+#endif
     }
 }
 #endif

@@ -3,7 +3,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class ProgressBar : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    partial class ProgressBar : VisualElement
     {
         const string k_UxmlClass = "progress-bar";
         const string k_UxmlClass_Fill = "progress-bar__fill";
@@ -33,6 +36,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             Fill.style.width = new StyleLength(Length.Percent(clampedProgress * 100));
         }
 
+#if !UNITY_6000_0_OR_NEWER
         public new class UxmlFactory : UxmlFactory<ProgressBar> { }
+#endif
     }
 }

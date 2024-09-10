@@ -7,7 +7,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class InfoBox : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    internal partial class InfoBox : VisualElement
     {
         const string k_UxmlAssetGuid = "3212e6591d8f2cf4d86dcc1b3687cf9d";
 
@@ -19,6 +22,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         IssueType m_IssueLevel = IssueType.Info;
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public IssueType IssueLevel
         {
             get { return m_IssueLevel; }
@@ -46,6 +53,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         string m_MessageContent = string.Empty;
 
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public string Message
         {
             get
@@ -67,6 +77,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         string m_DocumentationLink = null;
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public string DocumentationLink
         {
             get { return m_DocumentationLink; }
@@ -128,6 +142,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Application.OpenURL(DocumentationLink);
         }
 
+#if !UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Instantiates a <see cref="InfoBox"/> using the data read from a UXML file.
         /// </summary>
@@ -165,5 +180,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 infoBox.Init();
             }
         }
+#endif
     }
 }

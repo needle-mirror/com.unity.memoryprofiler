@@ -113,6 +113,18 @@
     margin-bottom: 10px;
 }
 
+.selected-item-details__group__grouped-item__foldout
+{
+    -unity-font-style: bold;
+    flex-shrink: 0;
+    margin-bottom: 0px;
+}
+
+.selected-item-details__group__grouped-item__foldout > .unity-foldout__content
+{
+    padding-left: 15px;
+}
+
 .selected-item-details__group__content {
     padding-left: 15px;
 }

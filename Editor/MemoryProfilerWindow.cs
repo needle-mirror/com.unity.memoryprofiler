@@ -1,9 +1,6 @@
 using System.Runtime.CompilerServices;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEditor;
-using UnityEditor.SceneManagement;
-using UnityEditorInternal;
 using Unity.MemoryProfiler.Editor.UI;
 
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.Tests")]
@@ -11,7 +8,6 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal class MemoryProfilerWindow : EditorWindow
     {
-        bool m_PrevApplicationFocusState;
         bool m_WindowInitialized = false;
 
         SnapshotDataService m_SnapshotDataService;
@@ -51,9 +47,6 @@ namespace Unity.MemoryProfiler.Editor
 
             // Analytics
             MemoryProfilerAnalytics.EnableAnalytics();
-            m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
-            EditorApplication.update += PollForApplicationFocus;
-            EditorSceneManager.activeSceneChangedInEditMode += RefreshScreenshotsOnSceneChange;
 
             m_ProfilerViewController = new MemoryProfilerViewController(m_PlayerConnectionService, m_SnapshotDataService);
             this.rootVisualElement.Add(m_ProfilerViewController.View);
@@ -67,30 +60,12 @@ namespace Unity.MemoryProfiler.Editor
             Init();
         }
 
-        void PollForApplicationFocus()
-        {
-            if (m_PrevApplicationFocusState != InternalEditorUtility.isApplicationActive)
-            {
-                m_SnapshotDataService.SyncSnapshotsFolder();
-                m_PrevApplicationFocusState = InternalEditorUtility.isApplicationActive;
-            }
-        }
-
-        void RefreshScreenshotsOnSceneChange(Scene sceneA, Scene sceneB)
-        {
-            // We need to refresh screenshot textures as they get collected on scene change
-            m_ProfilerViewController.RefreshScreenshotsOnSceneChange();
-        }
-
         void OnDisable()
         {
             m_WindowInitialized = false;
 
             m_ProfilerViewController?.Dispose();
             m_ProfilerViewController = null;
-
-            EditorApplication.update -= PollForApplicationFocus;
-            EditorSceneManager.activeSceneChangedInEditMode -= RefreshScreenshotsOnSceneChange;
 
             m_PlayerConnectionService?.Dispose();
             m_PlayerConnectionService = null;

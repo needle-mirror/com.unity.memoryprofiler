@@ -14,6 +14,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         SystemMemoryRegionsVersion = 16, // adds system memory regions information
         // below are present from 2023.1+
         SystemMemoryResidentPagesVersion = 17, // adds system memory resident pages information
+        InstanceIDAsAStruct = 18 // Updated InstanceIDs from int to struct
     };
 
     interface IReader

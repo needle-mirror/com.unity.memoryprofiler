@@ -1,8 +1,12 @@
 using System;
 using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEditor.IMGUI.Controls;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
+#if INSTANCE_ID_CHANGED
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#else
+using UnityEditor.IMGUI.Controls;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {

@@ -147,7 +147,8 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 return 0;
 
             var entryData = m_Entries[(int)entry];
-            Checks.CheckIndexOutOfBoundsAndThrow(offset, entryData.Count);
+            Checks.CheckIndexInRangeAndThrow(offset, entryData.Count);
+            Checks.CheckIndexInRangeAndThrow(offset + count, entryData.Count);
 
             return entryData.ComputeByteSizeForEntryRange(offset, count, includeOffsets);
         }
@@ -265,6 +266,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 unsafe
                 {
                     var entryCount = GetEntryCount(entry);
+                    // entryCount + 1 as the first entry is offset 0 and the last is the total size
                     using var offsets = new DynamicArray<long>(entryCount + 1, allocator);
 
                     GetEntryOffsets(entry, offsets);
@@ -732,8 +734,10 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             for (int i = 0; i < elementCount; ++i)
             {
                 var e = new ElementRead();
-                e.start = entry.GetAdditionalStoragePtr()[i + elementOffset];
-                e.end = i + elementOffset + 1 == entry.Count ? (long)entry.Header.HeaderMeta : entry.GetAdditionalStoragePtr()[i + elementOffset + 1];
+                var indexOfStartOffset = i + elementOffset;
+                e.start = entry.GetAdditionalStoragePtr()[indexOfStartOffset];
+                var indexOfEndOffset = indexOfStartOffset + 1;
+                e.end = indexOfEndOffset == entry.Count ? (long)entry.Header.HeaderMeta : entry.GetAdditionalStoragePtr()[indexOfEndOffset];
                 e.readDst = dst;
                 var readOffset = ProcessDynamicSizeElement(ref chunkReads, ref block, e);
                 dst += readOffset;

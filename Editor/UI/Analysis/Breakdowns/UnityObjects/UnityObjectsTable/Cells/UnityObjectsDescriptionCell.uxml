@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <Unity.MemoryProfiler.Editor.UI:UnityObjectsDescriptionCell name="unity-objects-description-cell">
+        <Style src="UnityObjectsDescriptionCell.uss"/>
+        <engine:VisualElement name="unity-objects-description-cell__container">
+            <engine:VisualElement name="unity-objects-description-cell__icon"/>
+            <engine:Label name="unity-objects-description-cell__label" enable-rich-text="false"/>
+            <engine:Label name="unity-objects-description-cell__secondary-label"/>
+        </engine:VisualElement>
+    </Unity.MemoryProfiler.Editor.UI:UnityObjectsDescriptionCell>
+
+</engine:UXML>

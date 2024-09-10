@@ -7,7 +7,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class Ribbon : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    internal partial class Ribbon : VisualElement
     {
         const string k_UxmlAssetGuid = "1778119d7c1cfb4439c2941f9591fd35";
 
@@ -25,6 +28,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         Align m_Alignment;
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public Align Alignment
         {
             get { return m_Alignment; }
@@ -50,8 +57,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public bool ShowHelpButton { get; private set; }
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public bool ShowMenuButton { get; private set; }
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public int InitialOption { get; private set; }
 
         public int m_CurrentOption = 0;
@@ -196,6 +214,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Content.SwitchClasses(classToAdd: k_ClassLeftAligned, classToRemove: k_ClassCenterAligned);
         }
 
+#if !UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Instantiates a <see cref="Ribbon"/> using the data read from a UXML file.
         /// </summary>
@@ -237,5 +256,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ((Ribbon)ve).Init();
             }
         }
+#endif
     }
 }

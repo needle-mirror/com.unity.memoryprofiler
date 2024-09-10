@@ -48,10 +48,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             CalculateTotal(cs, out res);
 
-            // We add `ScriptingNativeRuntime` as IL2CPP reports memory to memory manager under that label
-            ulong scriptingNativeTracked = cs.NativeMemoryLabels?.GetLabelSize("ScriptingNativeRuntime") ?? 0;
-            res.VM += scriptingNativeTracked;
-            res.Total += scriptingNativeTracked;
+            // Add VM root.
+            var vmRootSize = cs.NativeRootReferences.AccumulatedSizeOfVMRoot;
+            res.VM += vmRootSize;
+            res.Total += vmRootSize;
         }
 
         static void CalculateTotal(CachedSnapshot cs, out Summary res)

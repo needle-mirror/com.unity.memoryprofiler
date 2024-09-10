@@ -1,6 +1,3 @@
-using System;
-using UnityEngine;
-
 namespace Unity.MemoryProfiler.Editor.UI
 {
     static class SummaryTextContent
@@ -28,7 +25,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// Managed Memory summary
         /// </summary>
         public const string kManagedMemoryTitle = "Managed Heap Utilization";
-        public const string kManagedMemoryDescription = "Displays a breakdown of the memory that Unity manages which you can't affect, such as memory in the managed heap, memory used by a virtual machine, or any empty memory pre-allocated for similar purposes.";
+        public const string kManagedMemoryDescription = "Displays a breakdown of the memory that Unity's Scripting VM manages, which includes managed heap memory used for Managed Objects, Empty Heap Space that might've previously been used by Objects or been reserved during the last heap expansion, and memory used by a virtual machine itself.";
         public const string kManagedMemoryCategoryVM = "Virtual Machine";
         public const string kManagedMemoryCategoryObjects = "Objects";
         public const string kManagedMemoryCategoryFreeHeap = "Empty Heap Space";

@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
-using UnityEditor;
-using UnityEditor.Build.Player;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
+#if INSTANCE_ID_CHANGED
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -321,11 +324,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                         // if we are adding single line object info and the object type does not match the field type (e.g. because of boxing), add it in brackets.
                         // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
                         var actualTypeName = snapshot.TypeDescriptions.TypeDescriptionName[actualFielTypeIdx];
-                        v = FormatFieldValueWithContentTypeNotMatchingFieldType(GetValue(referencedObject), actualTypeName);
+                        v = FormatFieldValueWithContentTypeNotMatchingFieldType(GetValue(referencedObject, info.Root), actualTypeName);
                     }
                 }
             }
-            v ??= GetValue(info.ObjectData);
+            v ??= GetValue(info.ObjectData, info.Root);
             var typeName = snapshot.TypeDescriptions.TypeDescriptionName[typeIdx];
             var fieldSize = GetFieldSize(snapshot, info.ObjectData);
             string name;
@@ -372,12 +375,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
             }
 
-            int objectIdentifyer;
-            if (cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(pointer, out objectIdentifyer))
+            if (cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(pointer, out var objectIdentifyer))
             {
                 m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(childItem, ObjectData.FromManagedObjectIndex(cs, objectIdentifyer)));
             }
-            else if (cs.NativeObjects.NativeObjectAddressToInstanceId.TryGetValue(pointer, out objectIdentifyer))
+            else if (cs.NativeObjects.NativeObjectAddressToInstanceId.TryGetValue(pointer, out var _))
             {
                 EnqueueNativeObject(childItem, pointer, cs);
             }
@@ -386,6 +388,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var data = cs.ManagedHeapSections.Find(pointer, cs.VirtualMachineInformation);
                 if (data.IsValid)
                 {
+                    // TODO: caveat these objects as "potential managed objects" as beyond them fitting into the managed heap, we can't be sure they are actually managed objects or just random bytes pointed to.
                     var moi = ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data);
                     if (moi.IsValid())
                     {
@@ -401,7 +404,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         {
                             if (cs.ManagedHeapSections.StartAddress[iManageHeapSection] + cs.ManagedHeapSections.SectionSize[iManageHeapSection] < pointer)
                                 continue;
-                            if (cs.ManagedHeapSections.StartAddress[iManageHeapSection] < pointer)
+                            if (cs.ManagedHeapSections.StartAddress[iManageHeapSection] <= pointer && cs.ManagedHeapSections.StartAddress[iManageHeapSection] + cs.ManagedHeapSections.SectionSize[iManageHeapSection] > pointer)
                             {
                                 iHeapSection = iManageHeapSection;
                             }
@@ -410,7 +413,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                         // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
                         if (HidePointers && string.IsNullOrEmpty(value))
-                            value = string.Format(DetailFormatter.PointerFormatString, pointer);
+                            value = DetailFormatter.FormatPointer(pointer);
 
                         var bytes = "";
                         var maxBytesAvailable = (ulong)data.Bytes.Count - data.Offset;
@@ -448,7 +451,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
             if (HidePointers && string.IsNullOrEmpty(value))
-                value = string.Format(DetailFormatter.PointerFormatString, pointer);
+                value = DetailFormatter.FormatPointer(pointer);
             string nativeRegionPath = null;
             bool buildFullNativePath = false;
             var nativeRegion = cs.SortedNativeRegionsEntries.Find(pointer, onlyDirectAddressMatches: false);
@@ -544,12 +547,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return false;
             if (obj.dataType == ObjectDataType.ReferenceObject || obj.dataType == ObjectDataType.ReferenceArray)
             {
-                var managedObjectInfo = obj.GetManagedObject(cs);
-                if (!managedObjectInfo.IsValid())
+                var validObj = obj.GetReferencedObject(cs);
+                if (!validObj.IsValid)
                     return false;
-                obj = ObjectData.FromManagedObjectIndex(cs, managedObjectInfo.ManagedObjectIndex);
-                if (!obj.IsValid)
-                    return false;
+                obj = validObj;
             }
             return true;
         }
@@ -729,7 +730,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
             if (!cs.NativeObjects.NativeObjectAddressToInstanceId.ContainsKey(address)) return;
             var instanceId = cs.NativeObjects.NativeObjectAddressToInstanceId[address];
-            if (instanceId == 0)
+            if (instanceId == InstanceID.None)
                 return;
             var index = cs.NativeObjects.InstanceId2Index[instanceId];
             var nativeObjectData = ObjectData.FromNativeObjectIndex(cs, index);
@@ -765,7 +766,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     //    m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing { objectData = referencedObject, root = root });
                     continue;
                 }
-                var v = GetValue(referencedObject);
+                var v = GetValue(referencedObject, root);
                 var name = "Native Reference";
                 var typename = referencedObject.GenerateTypeName(cs);
                 var childItem = new ManagedObjectInspectorItem(m_InspectorID, name, -1, typename, v, false, referencedObject.GetObjectPointer(cs), 0ul);
@@ -790,10 +791,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return $"{value} ({actualTypeName})";
         }
 
-        string GetValue(ObjectData od)
+        string GetValue(ObjectData od, ManagedObjectInspectorItem parent)
         {
-            if (!od.IsValid)
-                return "failed";
+            if (!od.IsValid || !od.HasValidFieldOrArrayElementData(m_CachedSnapshot))
+                return "failed to read data";
             if (od.managedObjectData.Bytes.Count == 0
                 && m_CachedSnapshot.FieldDescriptions.IsStatic[od.fieldIndex] == 1
                 && m_CachedSnapshot.TypeDescriptions.HasStaticFieldData(od.managedTypeIndex))
@@ -844,7 +845,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case ObjectDataType.Type:
                     return m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[od.managedTypeIndex];
                 case ObjectDataType.NativeObject:
-                    return HidePointers ? string.Empty : m_Formatter.FormatPointer(m_CachedSnapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
+                    return HidePointers ? string.Empty : DetailFormatter.FormatPointer(m_CachedSnapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
                 default:
                     return "<uninitialized type>";
             }

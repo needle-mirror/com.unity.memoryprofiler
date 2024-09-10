@@ -61,7 +61,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 var residentSize = 0UL;
                 if (systemRegion.HasValue && snapshot.HasSystemMemoryResidentPages)
-                    residentSize = snapshot.SystemMemoryResidentPages.CalculateResidentMemory(systemRegion.Value.Index, item.Address, size);
+                    residentSize = snapshot.SystemMemoryResidentPages.CalculateResidentMemory(systemRegion.Value.Index, item.Address, size, item.Source.Id);
 
                 var treeNode = new MemoryMapBreakdownModel.ItemData(
                     name,

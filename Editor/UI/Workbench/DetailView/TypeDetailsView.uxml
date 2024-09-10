@@ -17,6 +17,11 @@
                 </engine:VisualElement>
 
                 <engine:VisualElement class="memory-profiler-type-details__desc__group">
+                    <engine:Label text="Managed Assembly:" class="memory-profiler-type-details__desc__group-label"/>
+                    <engine:Label name="memory-profiler-type-details__desc__managed-assembly" class="memory-profiler-type-details__desc__group-label"/>
+                </engine:VisualElement>
+
+                <engine:VisualElement class="memory-profiler-type-details__desc__group">
                     <engine:Label text="Native Type:" class="memory-profiler-type-details__desc__group-label"/>
                     <engine:Label name="memory-profiler-type-details__desc__native-type" class="memory-profiler-type-details__desc__group-label"/>
                 </engine:VisualElement>

@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using UnityEditor;
+using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
 namespace Unity.MemoryProfiler.Editor
@@ -191,14 +191,15 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         /// <summary>
-        /// Tries to get all instance IDs of Transform Components connected to the passed in Transform Component's instance ID.
+        /// Tries to get all instance IDs of Transform Components connected to the passed in Transform Component's instance ID,
+        /// except those that bridge connections between prefabs and instances (and Editor behavioural artefact unrelated to a GameObject's Transform Hierarchy).
         /// </summary>
         /// <param name="snapshot"></param>
         /// <param name="transformInstanceID">The instance ID of the Transform to check</param>
         /// <param name="parentTransformInstanceIdToIgnore">If you are only looking for child transforms, pass in the parent ID so it will be ignored. -1 if no parent should be ignored.</param>
         /// <param name="outInstanceIds">The connected instanceIDs if any where found, otherwise it is empty.</param>
         /// <returns>Returns True if connected Transform IDs were found, False if not.</returns>
-        public static bool TryGetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, int transformInstanceID, int parentTransformInstanceIdToIgnore, ref HashSet<int> outInstanceIds)
+        public static bool TryGetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, InstanceID transformInstanceID, InstanceID parentTransformInstanceIdToIgnore, ref HashSet<InstanceID> outInstanceIds)
         {
             var found = outInstanceIds;
             found.Clear();
@@ -209,8 +210,14 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     var possiblyConnectedTransform = ObjectData.FromSourceLink(snapshot, connection);
                     var instanceIdOfPossibleConnection = possiblyConnectedTransform.GetInstanceID(snapshot);
-                    if (possiblyConnectedTransform.isNative && snapshot.NativeTypes.TransformIdx == snapshot.NativeObjects.NativeTypeArrayIndex[possiblyConnectedTransform.nativeObjectIndex]
-                        && instanceIdOfPossibleConnection != NativeObjectEntriesCache.InstanceIDNone && instanceIdOfPossibleConnection != parentTransformInstanceIdToIgnore && instanceIdOfPossibleConnection != transformInstanceID)
+                    if (possiblyConnectedTransform.isNative && snapshot.NativeTypes.IsTransformOrRectTransform(snapshot.NativeObjects.NativeTypeArrayIndex[possiblyConnectedTransform.nativeObjectIndex])
+                        && instanceIdOfPossibleConnection != NativeObjectEntriesCache.InstanceIDNone && instanceIdOfPossibleConnection != parentTransformInstanceIdToIgnore && instanceIdOfPossibleConnection != transformInstanceID
+                        // Skip connections that jump from prefab to instance or vice versa.
+                        // Those connections are Editor artefacts and not relevant to the Transform Hierarchy.
+                        // The most reliable way to detect such connections is to check if the persistent flag status of the connected objects is the not same,
+                        // i.e. the prefab would be persistent, the instance not.
+                        && snapshot.NativeObjects.Flags[transformToSearchConnectionsFor.nativeObjectIndex].HasFlag(Format.ObjectFlags.IsPersistent)
+                        == snapshot.NativeObjects.Flags[possiblyConnectedTransform.nativeObjectIndex].HasFlag(Format.ObjectFlags.IsPersistent))
                         found.Add(instanceIdOfPossibleConnection);
                 }
                 return found.Count > 0;
@@ -218,7 +225,7 @@ namespace Unity.MemoryProfiler.Editor
             return false;
         }
 
-        public static int GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, int instanceID)
+        public static InstanceID GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, InstanceID instanceID)
         {
             var transform = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.InstanceId2Index[instanceID]);
             if (snapshot.Connections.ReferenceTo.TryGetValue(transform.GetSourceLink(snapshot), out var list))

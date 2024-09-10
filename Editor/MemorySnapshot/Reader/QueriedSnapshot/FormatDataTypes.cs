@@ -23,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         public string Platform;
         public string PlatformExtra;
         public bool IsEditorCapture;
-        public Texture2D Screenshot;
+
         public uint SessionGUID { get; internal set; }
         [NonSerialized]
         public string ProductName;
@@ -38,6 +38,12 @@ namespace Unity.MemoryProfiler.Editor.Format
         public const uint InvalidSessionGUID = 0;
         public CaptureFlags CaptureFlags;
 
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="importLegacyScreenshot">Set to true if you want legacy screenshots to be imported.
+        /// If you do, remember to DestroyImmediate the generated texture that gets stored in <see cref="LegacyFormatEncodedScreenshot"/>.</param>
         public MetaData(IFileReader reader)
         {
             unsafe
@@ -86,7 +92,6 @@ namespace Unity.MemoryProfiler.Editor.Format
             {
                 meta.Content = "";
                 meta.Platform = k_UnknownPlatform;
-                meta.Screenshot = null;
                 return;
             }
             byte* bufferPtr = buffer.GetUnsafeTypedPtr();
@@ -127,32 +132,6 @@ namespace Unity.MemoryProfiler.Editor.Format
                 offset += copySize;
                 if (offset >= buffer.Count)
                     return;
-            }
-
-            contentLength = *(int*)(bufferPtr + offset);
-            offset += sizeof(int);
-
-            if (contentLength == 0)
-                meta.Screenshot = null;
-            else
-            {
-                byte[] pixels = new byte[contentLength]; //texturePixels
-                fixed (byte* pxPtr = pixels)
-                {
-                    UnsafeUtility.MemCpy(pxPtr, bufferPtr + offset, contentLength);
-                }
-                offset += contentLength;
-
-                int width = *(int*)(bufferPtr + offset);
-                offset += sizeof(int);
-                int height = *(int*)(bufferPtr + offset);
-                offset += sizeof(int);
-                int format = *(int*)(bufferPtr + offset);
-                offset += sizeof(int);
-
-                meta.Screenshot = new Texture2D(width, height, (TextureFormat)format, false);
-                meta.Screenshot.LoadRawTextureData(pixels);
-                meta.Screenshot.Apply();
             }
         }
 

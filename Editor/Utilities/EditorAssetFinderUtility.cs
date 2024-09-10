@@ -171,7 +171,7 @@ namespace Unity.MemoryProfiler.Editor
             return EditorSessionUtility.InstanceIdPingingSupportedByUnityVersion && EditorSessionUtility.CurrentSessionId == sessionId;
         }
 
-        public static void Ping(int instanceId, uint sessionId, bool logWarning = true)
+        public static void Ping(InstanceID instanceId, uint sessionId, bool logWarning = true)
         {
             if (!EditorSessionUtility.InstanceIdPingingSupportedByUnityVersion)
             {
@@ -182,12 +182,39 @@ namespace Unity.MemoryProfiler.Editor
 
             if (CanPingByInstanceId(sessionId))
             {
-                Selection.instanceIDs = new int[0];
-                Selection.activeInstanceID = instanceId;
-                EditorGUIUtility.PingObject(instanceId);
+                ClearInstanceIdSelection();
+                SetActiveInstanceId(instanceId);
+                PingByInstanceId(instanceId);
             }
             else if (logWarning)
                 UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, EditorSessionUtility.CurrentSessionId, sessionId);
+        }
+
+        static void ClearInstanceIdSelection()
+        {
+#if !INSTANCE_ID_CHANGED
+            Selection.instanceIDs = new int[0];
+#else
+            Selection.instanceIDs = new InstanceID[0];
+#endif
+        }
+
+        static void SetActiveInstanceId(InstanceID instanceId)
+        {
+#if !INSTANCE_ID_CHANGED
+            Selection.activeInstanceID = (int)(ulong)instanceId;
+#else
+            Selection.activeInstanceID = instanceId;
+#endif
+        }
+
+        static void PingByInstanceId(InstanceID instanceId)
+        {
+#if !INSTANCE_ID_CHANGED
+            EditorGUIUtility.PingObject((int)(ulong)instanceId);
+#else
+            EditorGUIUtility.PingObject(instanceId);
+#endif
         }
 
         public static Findings FindObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
@@ -226,8 +253,8 @@ namespace Unity.MemoryProfiler.Editor
         {
             var oldSelection = Selection.instanceIDs;
             var oldActiveSelection = Selection.activeInstanceID;
-            Selection.instanceIDs = new int[0];
-            Selection.activeInstanceID = unifiedUnityObjectInfo.InstanceId;
+            ClearInstanceIdSelection();
+            SetActiveInstanceId(unifiedUnityObjectInfo.InstanceId);
             if (Selection.activeObject != null)
             {
                 var typeMismatch = CheckTypeMismatch(Selection.activeObject, unifiedUnityObjectInfo, snapshot);
@@ -400,11 +427,10 @@ namespace Unity.MemoryProfiler.Editor
                 return null;
 
             var editor = UnityEditor.Editor.CreateEditor(obj);
-            string guid;
             long fileId;
             string assetPath = null;
             Texture2D preview = null;
-            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(obj, out guid, out fileId))
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(obj, out var guid, out fileId))
             {
                 assetPath = AssetDatabase.GUIDToAssetPath(guid);
             }

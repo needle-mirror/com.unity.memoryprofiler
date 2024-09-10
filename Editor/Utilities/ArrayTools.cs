@@ -1,11 +1,14 @@
 using System;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 
 namespace Unity.MemoryProfiler.Editor
 {
     internal static class ManagedHeapArrayDataTools
     {
+        const string k_ArrayClosedSqBrackets = "[]";
+
         public static ArrayInfo GetArrayInfo(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
             var virtualMachineInformation = data.VirtualMachineInformation;
@@ -94,24 +97,34 @@ namespace Unity.MemoryProfiler.Editor
 
         public static string ArrayRankIndexToString(int[] rankLength, int index)
         {
-            string o = "";
-            int remainder = index;
-            for (int i = 1; i < rankLength.Length; ++i)
+            var o = "";
+            var remainder = index;
+            // go through the ranks, back to front. i.e. for the array int[2,2,2], index 1 is [0,0,1]
+            for (int i = rankLength.Length - 1; i > 0; i--)
             {
-                if (o.Length > 0)
-                {
-                    o += ", ";
-                }
                 var l = rankLength[i];
-                int rankIndex = remainder / l;
-                o += rankIndex.ToString();
-                remainder = remainder - rankIndex * l;
+                switch (l)
+                {
+                    case 0:
+                        // Apparently (https://unity.slack.com/archives/CHVTMBEF5/p1706904839459539?thread_ts=1706808095.762939&cid=CHVTMBEF5)
+                        // you can have 0 length multidimensional arrays...
+                        // Practically, there are zero elements in these so all of this is null and void
+                        return $"Invalid Index into zero sized array: {index}. Array Ranks: {ArrayRankToString(rankLength)}";
+
+                    case 1:
+                        o = ", 0" + o;
+                        break;
+
+                    default:
+                        var rankIndex = remainder % l;
+                        o = ", " + rankIndex.ToString() + o;
+                        remainder /= l;
+                        break;
+                }
             }
-            if (o.Length > 0)
-            {
-                o += ", ";
-            }
-            o += remainder;
+            if (remainder >= rankLength[0])
+                return $"Invalid Index: {index}. Array {(rankLength.Length > 1 ? "Ranks" : "Length")}: {ArrayRankToString(rankLength)}";
+            o = remainder + o;
             return o;
         }
 
@@ -209,6 +222,64 @@ namespace Unity.MemoryProfiler.Editor
             var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[typeIndex] : virtualMachineInformation.PointerSize;
 
             return (int)(virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength);
+        }
+
+        internal static string GenerateArrayDescription(CachedSnapshot cachedSnapshot, ArrayInfo arrayInfo, int arrayIndex, bool truncateTypeName, bool includeTypeName)
+        {
+            var arrayTypeName = cachedSnapshot.TypeDescriptions.TypeDescriptionName[arrayInfo.ArrayTypeDescription];
+            var name = includeTypeName ? arrayTypeName : string.Empty;
+            name = truncateTypeName ? PathsToRootDetailView.TruncateTypeName(name) : name;
+            var sb = new System.Text.StringBuilder(name);
+            var rankString = arrayIndex >= 0 ? arrayInfo.IndexToRankedString(arrayIndex) : arrayInfo.ArrayRankToString();
+            switch (arrayInfo.Rank.Length)
+            {
+                case 1:
+                    int nestedArrayCount = CountArrayOfArrays(arrayTypeName);
+                    sb.Replace(k_ArrayClosedSqBrackets, string.Empty);
+                    sb.Append('[');
+                    sb.Append(rankString);
+                    sb.Append(']');
+                    for (int i = 1; i < nestedArrayCount; ++i)
+                    {
+                        sb.Append(k_ArrayClosedSqBrackets);
+                    }
+                    break;
+                default:
+                    var lastOpen = name.LastIndexOf('[');
+                    var lastClose = name.LastIndexOf(']');
+                    if (lastOpen >= 0)
+                    {
+                        sb.Remove(lastOpen + 1, lastClose - lastOpen - 1);
+                        sb.Insert(lastOpen + 1, rankString);
+                    }
+                    else
+                    {
+                        sb.Append('[');
+                        sb.Append(rankString);
+                        sb.Append(']');
+                    }
+                    break;
+            }
+            return sb.ToString();
+        }
+
+        static int CountArrayOfArrays(string typename)
+        {
+            int count = 0;
+
+            int iter = 0;
+            while (true)
+            {
+                int idxFound = typename.IndexOf(k_ArrayClosedSqBrackets, iter);
+                if (idxFound == -1)
+                    break;
+                ++count;
+                iter = idxFound + k_ArrayClosedSqBrackets.Length;
+                if (iter >= typename.Length)
+                    break;
+            }
+
+            return count;
         }
     }
 }

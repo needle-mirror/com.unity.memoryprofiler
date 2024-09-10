@@ -286,8 +286,7 @@ namespace Unity.MemoryProfiler.Editor
 
             ProgressBarDisplay.ClearBar();
 
-            if (snapshotCaptureResult)
-                m_SnapshotDataService.SyncSnapshotsFolder();
+            m_SnapshotDataService.SetSnapshotsFolderDirty();
 
             m_CaptureInProgress = false;
         }

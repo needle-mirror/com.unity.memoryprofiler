@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    internal class SnapshotFileModel
+    internal class SnapshotFileModel : IEquatable<SnapshotFileModel>
     {
         public SnapshotFileModel(
             string name,
@@ -17,8 +17,7 @@ namespace Unity.MemoryProfiler.Editor
             bool memoryInformationAvailable,
             ulong totalAllocated,
             ulong totalResident,
-            ulong maxAvailable,
-            Texture screenshot)
+            ulong maxAvailable)
         {
             Name = name;
             FullPath = fullPath;
@@ -33,8 +32,6 @@ namespace Unity.MemoryProfiler.Editor
             TotalAllocatedMemory = totalAllocated;
             TotalResidentMemory = totalResident;
             MaxAvailableMemory = maxAvailable;
-
-            Screenshot = screenshot;
         }
 
         public string Name { get; }
@@ -51,6 +48,21 @@ namespace Unity.MemoryProfiler.Editor
         public ulong TotalResidentMemory { get; }
         public ulong MaxAvailableMemory { get; }
 
-        public Texture Screenshot { get; }
+        public bool Equals(SnapshotFileModel other)
+        {
+            return other != null &&
+                Name == other.Name &&
+                FullPath == other.FullPath &&
+                ProductName == other.ProductName &&
+                SessionId == other.SessionId &&
+                Timestamp == other.Timestamp &&
+                Platform == other.Platform &&
+                EditorPlatform == other.EditorPlatform &&
+                UnityVersion == other.UnityVersion &&
+                MemoryInformationAvailable == other.MemoryInformationAvailable &&
+                TotalAllocatedMemory == other.TotalAllocatedMemory &&
+                TotalResidentMemory == other.TotalResidentMemory &&
+                MaxAvailableMemory == other.MaxAvailableMemory;
+        }
     }
 }

@@ -14,7 +14,10 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// For everything else use MemoryBar, as it's a subclass that
     /// provides usage bar with container
     /// </summary>
-    class MemoryBarElement : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    partial class MemoryBarElement : VisualElement
     {
         const string k_UxmlClass = "memory-bar-element";
         const string k_UxmlClass_BaseBar = k_UxmlClass + "__committed-bar";
@@ -136,6 +139,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 AddToClassList(k_UxmlClass_InnerBarVisible);
         }
 
+#if !UNITY_6000_0_OR_NEWER
         public new class UxmlFactory : UxmlFactory<MemoryBarElement> { }
+#endif
     }
 }

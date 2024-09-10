@@ -4,20 +4,21 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.EditorCoroutines.Editor;
-using Unity.MemoryProfiler.Editor;
 using UnityEditor;
 
-internal class ScreenshotsManager
+internal class ScreenshotsManager : IDisposable
 {
     readonly struct Request
     {
         public readonly string FilePath;
         public readonly Texture2D Texture;
+        public readonly Action CallbackOnUpdate;
 
-        public Request(string filePath, Texture2D texture)
+        public Request(string filePath, Texture2D texture, Action callbackOnUpdate)
         {
             FilePath = filePath;
             Texture = texture;
+            CallbackOnUpdate = callbackOnUpdate;
         }
     }
 
@@ -96,15 +97,18 @@ internal class ScreenshotsManager
         }
     }
 
-    public Texture Enqueue(string fileName)
+    public Texture Enqueue(string fileName, Action callbackOnUpdate)
     {
         if (m_LoadedTextures.TryGetValue(fileName, out var texture))
             return texture;
 
         texture = new Texture2D(1, 1, TextureFormat.RGB24, false);
+        texture.name = fileName;
+        // Avoid the texture being unloaded on scene changes. Also, regardless of the hideflags, the ScreenshotManager is responsible for the destruction of this Texture.
+        texture.hideFlags = HideFlags.HideAndDontSave;
         m_LoadedTextures.Add(fileName, texture);
 
-        var request = new Request(fileName, texture);
+        var request = new Request(fileName, texture, callbackOnUpdate);
         m_Queue.Enqueue(request);
 
         if (m_Loader == null)
@@ -113,11 +117,20 @@ internal class ScreenshotsManager
         return texture;
     }
 
-    public void Invalidate()
+    public void Dispose()
     {
         if (m_Loader != null)
             EditorCoroutineUtility.StopCoroutine(m_Loader);
 
+        // The manager created the textures, it is responsible for cleaning them up
+        foreach (var queueItem in m_Queue)
+        {
+            UnityEngine.Object.DestroyImmediate(queueItem.Texture);
+        }
+        foreach (var loadedTexture in m_LoadedTextures.Values)
+        {
+            UnityEngine.Object.DestroyImmediate(loadedTexture);
+        }
         m_Queue.Clear();
         m_LoadedTextures.Clear();
     }
@@ -194,6 +207,7 @@ internal class ScreenshotsManager
             }
 
             request.Texture.name = request.FilePath;
+            request.CallbackOnUpdate?.Invoke();
             ScreenshotLoaded?.Invoke(request.FilePath);
         }
 

@@ -2,7 +2,6 @@ using System;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.UIContentData;
-using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -16,6 +15,9 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (!bytes.IsCreated)
                 throw new ArgumentException(nameof(bytes), $"{nameof(bytes)} does not contain any data.");
+            // TODO: Enable after landing Array jobification (PR #562) and fix remaining issues where this would throw.
+            //if (bytes.Count > 0 && (ulong)bytes.Count < offset)
+            //    throw new ArgumentOutOfRangeException(nameof(offset), $"{nameof(offset)} is out of range.");
             Bytes = bytes;
             PointerSize = pointerSize;
             Offset = offset;

@@ -5,9 +5,16 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    internal class RibbonButton : Button
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    internal partial class RibbonButton : Button
     {
         bool m_Toggled;
+
+#if UNITY_6000_0_OR_NEWER
+        [UxmlAttribute]
+#endif
         public bool Toggled
         {
             get { return m_Toggled; }
@@ -59,6 +66,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_CachedOriginalTooltip = tooltip;
         }
 
+
+#if !UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Instantiates a <see cref="Ribbon"/> using the data read from a UXML file.
         /// </summary>
@@ -93,5 +102,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ((RibbonButton)ve).Init();
             }
         }
+#endif
     }
 }

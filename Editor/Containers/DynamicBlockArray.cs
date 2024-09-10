@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public void* mem;
     }
 
-    unsafe struct DynamicBlockArray<T> : IDisposable where T : struct
+    unsafe struct DynamicBlockArray<T> : IDisposable where T : unmanaged
     {
         public const int k_InitialBlockSlots = 8;
         MemBlock* m_BlockList;
@@ -59,7 +59,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public DynamicBlockArray(int blockSize, int initialCapacity)
         {
-            Checks.CheckEquals(true, UnsafeUtility.IsBlittable<T>());
+            Checks.CheckEquals(true, UnsafeUtility.IsUnmanaged<T>());
             m_BlockSize = blockSize;
             uint preAllocatedBlockCount = ComputeBlockCount((uint)initialCapacity, m_BlockSize);
             m_Capacity = preAllocatedBlockCount * (uint)m_BlockSize;

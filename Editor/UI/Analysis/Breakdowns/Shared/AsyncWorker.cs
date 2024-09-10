@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
 using System.Threading;
+using System.Threading.Tasks;
 using Unity.EditorCoroutines.Editor;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -20,19 +22,24 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected abstract void Dispose(bool disposing);
     }
 
+    // This is a workaround for UUM-12988 and will (after the release of com.unity.editorcoroutines@1.0.1) be able to be deleted.
+    internal class AsyncWorkerCoroutineDummyObject : ScriptableObject { }
+
     class AsyncWorker<T> : BaseAsyncWorker
     {
-        Func<T> m_Execution;
+        Func<CancellationToken, T> m_Execution;
         Action<T> m_Completion;
         T m_Result;
         bool m_Completed;
         EditorCoroutine m_WaitForExecutionCompletion;
-        Thread m_Thread;
+        Task m_Task;
+        CancellationTokenSource m_CancellationTokenSource;
         bool m_Disposed;
+        AsyncWorkerCoroutineDummyObject m_DummyObject;
 
-        public void Execute(Func<T> execution, Action<T> completion)
+        public void Execute(Func<CancellationToken, T> execution, Action<T> completion)
         {
-            if (m_Thread != null)
+            if (m_Task != null)
                 throw new InvalidOperationException("Async worker is already executing.");
 
             m_Execution = execution;
@@ -45,12 +52,19 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             Interlocked.Increment(ref s_ActiveInstanceCount);
 
+            // Create a dummy object as a handle for immediate abortion of the coroutine.
+            // This is a workaround for UUM-12988 and will (after the release of com.unity.editorcoroutines@1.0.1) be able to be deleted.
+            m_DummyObject = ScriptableObject.CreateInstance<AsyncWorkerCoroutineDummyObject>();
+            m_DummyObject.hideFlags = HideFlags.HideAndDontSave;
+
+            m_CancellationTokenSource = new CancellationTokenSource();
+
             // Start a coroutine to invoke the completion handler on the main thread when the work is completed.
-            m_WaitForExecutionCompletion = EditorCoroutineUtility.StartCoroutine(WaitForExecutionCompletion(), this);
+            m_WaitForExecutionCompletion = EditorCoroutineUtility.StartCoroutine(WaitForExecutionCompletion(m_CancellationTokenSource.Token), m_DummyObject);
 
             // Begin the work on a new thread.
-            m_Thread = new Thread(WorkerThreadStart);
-            m_Thread.Start();
+            m_Task = new Task(WorkerThreadStart, m_CancellationTokenSource.Token, TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously);
+            m_Task.Start();
         }
 
         protected override void Dispose(bool disposing)
@@ -60,11 +74,19 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (disposing)
             {
-                m_Thread?.Abort();
-                if (m_WaitForExecutionCompletion != null)
-                    EditorCoroutineUtility.StopCoroutine(m_WaitForExecutionCompletion);
+                m_CancellationTokenSource?.Cancel();
+                m_CancellationTokenSource?.Dispose();
 
-                m_Thread = null;
+                // Technically, destroying the dummy object means an immediate abortion for the coroutine.
+                // But lets, for the moment, pretend that we care and stop the coroutine anyways.
+                // ...
+                // This is a workaround for UUM-12988 and will (after the release of com.unity.editorcoroutines@1.0.1) be able to be reverted to a straight up StopCoroutine call without Dummy object.
+                EditorCoroutineUtility.StartCoroutine(StopCoroutine(), this);
+                //if (m_WaitForExecutionCompletion != null)
+                //    EditorCoroutineUtility.StopCoroutine(m_WaitForExecutionCompletion);
+
+                m_CancellationTokenSource = null;
+                m_Task = null;
                 m_Execution = null;
                 m_Completion = null;
 
@@ -76,16 +98,32 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void WorkerThreadStart()
         {
-            m_Result = m_Execution();
+            var token = m_CancellationTokenSource.Token;
+            if (!token.IsCancellationRequested)
+                m_Result = m_Execution(token);
             m_Completed = true;
         }
 
-        IEnumerator WaitForExecutionCompletion()
+        IEnumerator WaitForExecutionCompletion(CancellationToken token)
         {
-            while (!m_Completed)
+            while (!m_Completed && !token.IsCancellationRequested)
                 yield return null;
 
-            m_Completion?.Invoke(m_Result);
+            // Since the Dummy Object workaround gives the coroutine another frame to process, it might be finished in the next frame and invoke the completion call, even though it was aborted
+            // The "if(m_DummyObject)" check is therefore a workaround for UUM-12988 and will (after the release of com.unity.editorcoroutines@1.0.1) be able to be deleted. (though retain the invokarion of m_Completion)
+            if (m_DummyObject && !token.IsCancellationRequested)
+                m_Completion?.Invoke(m_Result);
+
+            if (m_DummyObject)
+                UnityEngine.Object.DestroyImmediate(m_DummyObject);
+        }
+
+        // This is a workaround for UUM-12988 and will (after the release of com.unity.editorcoroutines@1.0.1) be able to be deleted.
+        IEnumerator StopCoroutine()
+        {
+            yield return null;
+            if (m_WaitForExecutionCompletion != null)
+                EditorCoroutineUtility.StopCoroutine(m_WaitForExecutionCompletion);
         }
     }
 }

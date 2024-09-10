@@ -6,7 +6,10 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class ActivityIndicator : VisualElement
+#if UNITY_6000_0_OR_NEWER
+    [UxmlElement]
+#endif
+    partial class ActivityIndicator : VisualElement
     {
         // Animation rotation speed, measured in degrees-per-second. Defaults to 360 degrees-per-second.
         float m_RotationSpeed = 360f;
@@ -44,7 +47,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+#if !UNITY_6000_0_OR_NEWER
         public new class UxmlFactory : UxmlFactory<ActivityIndicator> {}
+#endif
     }
 }
 #endif
