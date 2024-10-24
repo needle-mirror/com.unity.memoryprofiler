@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         // Model
         IConnectionState m_ConnectionState;
-        ResidentMemoryInEditorSummaryModelBuilder m_DeviceBreakdownModelBuilder;
+        //ResidentMemoryInEditorSummaryModelBuilder m_DeviceBreakdownModelBuilder;
         AllMemoryInEditorSummaryModelBuilder m_CommittedBreakdownModelBuilder;
         UnityObjectsMemoryInEditorSummaryModelBuilder m_UnityObjectsBreakdownModelBuilder;
 

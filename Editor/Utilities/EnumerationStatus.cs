@@ -16,14 +16,17 @@ namespace Unity.MemoryProfiler.Editor.EnumerationUtilities
             CurrentStep = 0;
         }
 
-        public void IncrementStep()
+        public EnumerationStatus IncrementStep(string stepStatus = null)
         {
             if (CurrentStep + 1 == StepCount)
             {
                 Debug.LogError("Conversion status, failed to increment step as it would exceed maximum step count");
-                return;
+                return null;
             }
             ++CurrentStep;
+            if (stepStatus != null)
+                StepStatus = stepStatus;
+            return this;
         }
     }
 }

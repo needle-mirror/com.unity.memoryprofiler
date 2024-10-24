@@ -366,6 +366,21 @@ namespace Unity.MemoryProfiler.Editor.UI
                     SetLabelData(cs, typeName, objectName);
                     break;
                 }
+                case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
+                {
+                    var rootReference = cs.NativeAllocations.RootReferenceId[source.Index];
+                    if (rootReference <= 0)
+                    {
+                        SetLabelData(cs, "Unrooted Allocation - This is a bug in Unity's source code", "");
+                        return;
+                    }
+                    var typeName = cs.NativeRootReferences.AreaName[rootReference];
+                    var objectName = cs.NativeRootReferences.ObjectName[rootReference];
+                    objectName += " " + NativeAllocationTools.ProduceNativeAllocationName(source, cs, truncateTypeNames: true);
+                    ShowIcons(true);
+                    SetLabelData(cs, typeName, objectName);
+                    break;
+                }
                 case CachedSnapshot.SourceIndex.SourceId.GfxResource:
                 {
                     var od = ObjectData.FromGfxResourceIndex(cs, (int)source.Index);

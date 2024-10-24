@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
@@ -95,7 +96,7 @@ namespace Unity.MemoryProfiler.Editor
             return o;
         }
 
-        public static string ArrayRankIndexToString(int[] rankLength, int index)
+        public static string ArrayRankIndexToString(int[] rankLength, long index)
         {
             var o = "";
             var remainder = index;
@@ -152,7 +153,7 @@ namespace Unity.MemoryProfiler.Editor
             return l;
         }
 
-        public static int ReadArrayLength(CachedSnapshot data, UInt64 address, int iTypeDescriptionArrayType)
+        public static long ReadArrayLength(CachedSnapshot data, UInt64 address, int iTypeDescriptionArrayType)
         {
             if (iTypeDescriptionArrayType < 0)
             {
@@ -164,30 +165,44 @@ namespace Unity.MemoryProfiler.Editor
             return ReadArrayLength(data, bo, iTypeDescriptionArrayType);
         }
 
-        public static int ReadArrayLength(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long ReadArrayLength(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
+            return ReadArrayLength(data, arrayData, iTypeDescriptionArrayType, out var _);
+        }
+
+        public static long ReadArrayLength(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType, out int rank)
+        {
+            rank = -1;
             if (iTypeDescriptionArrayType < 0) return 0;
 
             var virtualMachineInformation = data.VirtualMachineInformation;
             var heap = data.ManagedHeapSections;
             var bo = arrayData;
 
-            ulong bounds;
-            bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
+            bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out var bounds);
 
             if (bounds == 0)
                 return bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
 
             var cursor = heap.Find(bounds, virtualMachineInformation);
-            var length = 0;
+            // Multidimensional arrays can have a total LongLength > int.MaxValue
+            long length = 0;
 
             if (cursor.IsValid)
             {
                 length = 1;
-                int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
+                rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
                 for (int i = 0; i < rank; i++)
                 {
                     length *= cursor.ReadInt32();
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                    if (length < 0)
+                    {
+                        var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(data, arrayData, iTypeDescriptionArrayType);
+                        throw new InvalidOperationException($"Array length overflow. An array of type {data.TypeDescriptions.TypeDescriptionName[iTypeDescriptionArrayType]} with the dimensions [{ArrayRankToString(arrayInfo.Rank)}] overflowed long at rank {rank}]");
+                    }
+#endif
                     cursor = cursor.Add(8);
                 }
             }
@@ -195,7 +210,7 @@ namespace Unity.MemoryProfiler.Editor
             return length;
         }
 
-        public static int ReadArrayObjectSizeInBytes(CachedSnapshot data, UInt64 address, int iTypeDescriptionArrayType)
+        public static long ReadArrayObjectSizeInBytes(CachedSnapshot data, UInt64 address, int iTypeDescriptionArrayType)
         {
             var arrayLength = ReadArrayLength(data, address, iTypeDescriptionArrayType);
 
@@ -204,10 +219,10 @@ namespace Unity.MemoryProfiler.Editor
             var isValueType = data.TypeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
 
             var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[typeIndex] : virtualMachineInformation.PointerSize;
-            return (int)(virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength);
+            return virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength;
         }
 
-        public static int ReadArrayObjectSizeInBytes(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
+        public static long ReadArrayObjectSizeInBytes(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
             var arrayLength = ReadArrayLength(data, arrayData, iTypeDescriptionArrayType);
             var virtualMachineInformation = data.VirtualMachineInformation;
@@ -221,10 +236,10 @@ namespace Unity.MemoryProfiler.Editor
             var isValueType = data.TypeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
             var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[typeIndex] : virtualMachineInformation.PointerSize;
 
-            return (int)(virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength);
+            return virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength;
         }
 
-        internal static string GenerateArrayDescription(CachedSnapshot cachedSnapshot, ArrayInfo arrayInfo, int arrayIndex, bool truncateTypeName, bool includeTypeName)
+        internal static string GenerateArrayDescription(CachedSnapshot cachedSnapshot, ArrayInfo arrayInfo, long arrayIndex, bool truncateTypeName, bool includeTypeName)
         {
             var arrayTypeName = cachedSnapshot.TypeDescriptions.TypeDescriptionName[arrayInfo.ArrayTypeDescription];
             var name = includeTypeName ? arrayTypeName : string.Empty;

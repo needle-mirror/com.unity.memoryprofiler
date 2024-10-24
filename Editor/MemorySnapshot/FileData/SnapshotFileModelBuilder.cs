@@ -33,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor
             unsafe
             {
                 long ticks;
-                reader.ReadUnsafe(EntryType.Metadata_RecordDate, &ticks, UnsafeUtility.SizeOf<long>(), 0, 1);
+                reader.ReadUnsafe(EntryType.Metadata_RecordDate, &ticks, sizeof(long), 0, 1);
                 timestamp = new DateTime(ticks);
 
                 var count = reader.GetEntryCount(EntryType.SystemMemoryRegions_Address);

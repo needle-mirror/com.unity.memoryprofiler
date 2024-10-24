@@ -5,9 +5,9 @@ namespace Unity.MemoryProfiler.Editor
         public ulong PtrObject;
         public ulong PtrTypeInfo;
         public int NativeObjectIndex;
-        public int ManagedObjectIndex;
+        public long ManagedObjectIndex;
         public int ITypeDescription;
-        public int Size;
+        public long Size;
         public int RefCount;
         public BytesAndOffset data;
 

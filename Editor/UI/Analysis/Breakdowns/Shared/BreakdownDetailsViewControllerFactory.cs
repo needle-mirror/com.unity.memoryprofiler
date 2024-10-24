@@ -22,6 +22,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     IAnalysisViewSelectable.Category.NativeReserved => new SimpleDetailsViewController(name, TextContent.NativeReservedDescription, string.Empty),
                     IAnalysisViewSelectable.Category.ManagedReserved => new SimpleDetailsViewController(name, TextContent.ManagedReservedDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.GraphicsReserved => new SimpleDetailsViewController(name, TextContent.NativeReservedDescription, string.Empty),
 
                     _ => throw new ArgumentException("Invalid or unknown item type"),
                 };
@@ -30,17 +31,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             return source.Id switch
             {
                 CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion => new SimpleDetailsViewController(name, TextContent.SystemMemoryRegionDescription, string.Empty),
-                CachedSnapshot.SourceIndex.SourceId.NativeAllocation => new SimpleDetailsViewController(name, TextContent.NativeAllocationDescription, string.Empty),
                 CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection => new SimpleDetailsViewController(name, TextContent.ManagedMemoryHeapDescription, string.Empty),
                 CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion => new SimpleDetailsViewController(name, TextContent.NativeMemoryRegionDescription, string.Empty),
 
+                CachedSnapshot.SourceIndex.SourceId.NativeAllocation => new ObjectDetailsViewController(snapshot, source, name: name, description: TextContent.NativeAllocationDescription),
                 CachedSnapshot.SourceIndex.SourceId.NativeObject or
                 CachedSnapshot.SourceIndex.SourceId.ManagedObject or
-                CachedSnapshot.SourceIndex.SourceId.GfxResource => new ObjectDetailsViewController(snapshot, source),
+                CachedSnapshot.SourceIndex.SourceId.GfxResource => new ObjectDetailsViewController(snapshot, source, name: name),
 
+                CachedSnapshot.SourceIndex.SourceId.NativeRootReference => new ObjectDetailsViewController(snapshot, source, childCount),
                 CachedSnapshot.SourceIndex.SourceId.NativeType or
-                CachedSnapshot.SourceIndex.SourceId.ManagedType or
-                CachedSnapshot.SourceIndex.SourceId.NativeRootReference => new TypeDetailsViewController(snapshot, source, childCount),
+                CachedSnapshot.SourceIndex.SourceId.ManagedType => new TypeDetailsViewController(snapshot, source, childCount),
 
                 _ => new SimpleDetailsViewController(name, TextContent.NonTypedGroupDescription, string.Empty),
             };

@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -13,21 +13,24 @@
     "tool"
   ],
   "dependencies": {
-    "com.unity.editorcoroutines": "1.0.0"
+    "com.unity.editorcoroutines": "1.0.0",
+    "com.unity.collections": "2.1.1",
+    "com.unity.burst": "1.8.0",
+    "com.unity.profiling.core": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.1"
+    "com.unity.memoryprofiler.tests": "1.1.2"
   },
   "_upm": {
-    "changelog": "### Added\n- Added the name of the assembly to the Type details when selecting a Managed Type group.\n\n### Fixed\n- Fixed navigating with arrow keys not updating reference list in All of Memory view ([PROFB-153](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-153)).\n- Fixed retention of Snapshot list expansion and scroll state so that it does not expand all items unexpectedly but remembers which sessions were collapsed and which extended ([PROFB-196](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-196)).\n- Fixed dropdown text being clipped when \"Allocated and Resident Memory on Device\" was selected.\n- Fixed an issue whereby graphics allocations not associated with a native object would display under a \"No Name\" category in the All of Memory table.\n- Fixed issues with selecting array objects, or objects that had managed fields with arrays, when the arrays where multidimensional with one or more dimensions of size 0.\n- Fixed exception when opening the Unity Objects table in Comparison mode when there are multiple MonoBehaviour or ScriptableObject types with the same name but from different assemblies.\n- Fixed exception when opening the All Of Memory table in Comparison mode when either of the snapshots is from a pre 2022.2 runtime and the untracked amount is negative.\n- Fixed an ArgumentOutOfRangeException when inspecting some Managed Objects ([PROFB-223](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-223)).\n- Fixed longer string values not being displayed in the Managed Fields Inspector.\n- Fixed an issue that caused IL2CPP VM memory to not be calculated correctly in the Summary and All Of Memory table.\n- Remove deprecated UxmlFactory/UxmlTraits API usage on Unity 6.\n- Add divider on \"Capture\" toolbar button dropdown.\n- Reattributed IL2CPP VM memory from Native to Managed in the All Of Memory table.\n\n### Changed\n- Allowed Snapshots to reside in Subfolders within the configured memory snapshot path.\n- Improved Snapshots folder monitoring: Changes to the folder are now reflected in the Editor without it requiring to acquire focus first.\n- Improved display of managed arrays in the Selected Item Details and Managed Fields."
+    "changelog": "### Fixed\n- Fixed Memory Profiler UI freezing on selecting Unity Objects when the search index hasn't been built yet.\n- Reattributed Nintendo Switch's reserved GPU memory from Native to Graphics in the Summary view and All Of Memory table.\n- Improved the performance of the Managed Data Crawler by using the Job System when parsing managed array data with potential references to managed objects. In some worst case scenarios this brings the opening times down from several hours to <5min, thereby fixing [PROFB-191](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-191).\n- Fixed misalignment of managed object sizes shown in the All Of Memory table vs. what is shown in the selected item details where that was caused by faulty readings of the managed heap data in the package (reading something as a potential reference to effectively random memory that looks close enough to a valid object, but not quiet), or faulty data reported by the capture backend (caused by e.g. the capture process allowing the creation of new Unity Objects between capturing the managed heap data and reporting all GC Handles held by currently alive Unity Objects(UUM-77449, fixed in 6000.0.16f1, 2022.3.43f1 2021.3.44f1) and/or an incomplete reporting of reserved but unused heap bytes ([UUM-53413](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-53413))) leading to the package \"discovering\" managed objects that can't reasonably exist as live objects because their size exceeds the reported heap bytes. ([PROFB-118](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-118))\n- Fixed inclusion of allocated GPU memory on the Nintendo Switch on the All Of Memory table under `Native > Unity Subsystem > Unknown`. Instead it is now shown under `Graphics (Estimated)` and/or `Untracked > Graphics`.\n\n### Changed\n- Improved accuracy of the search for Assets and Scene Objects within the open project which is used for the \"Select in Editor\" button, Open in Search and Preview Image by constraining it to exact names.\n- Improved responsiveness of table item selection of Unity Objects (in any table) by switching the Assets and Scene Object search triggered by that selection to run async instead of synchronous.\n- The All Of Memory table now lists all individual allocation under Native > Unity Subsystem > UnsafeUtility to allow for checking the count and size of different allocations made via UnsafeUtility.\n- Selecting items in the Graphics category of the All Of Memory table, when they represent the GPU side of a Unity Object, now shows the details for that Unity Object."
   },
   "upmCi": {
-    "footprint": "87a49cb7bbba436a755ba4a103ceb3c36a97b869"
+    "footprint": "8e2b5fd7dd08b1d69dfecb5467eb61ffc358638f"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "9dd462014d02e2a36426b27a5fe4aff8187c7aa4"
+    "revision": "ab319bbf9896c1ca768fbad69a982819f58d91a2"
   }
 }

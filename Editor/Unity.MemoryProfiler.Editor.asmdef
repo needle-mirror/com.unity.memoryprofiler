@@ -3,7 +3,10 @@
     "rootNamespace": "Unity.MemoryProfiler.Editor",
     "references": [
         "Unity.EditorCoroutines.Editor",
-        "Unity.MemoryProfiler"
+        "Unity.MemoryProfiler",
+        "Unity.Collections",
+        "Unity.Burst",
+        "Unity.Profiling.Core"
     ],
     "includePlatforms": [
         "Editor"

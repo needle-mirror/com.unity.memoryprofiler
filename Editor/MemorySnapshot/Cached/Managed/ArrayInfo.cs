@@ -10,17 +10,17 @@ namespace Unity.MemoryProfiler.Editor
         public int ElementTypeDescription;
         public BytesAndOffset Header;
         public BytesAndOffset Data;
-        public BytesAndOffset GetArrayElement(uint index)
+        public BytesAndOffset GetArrayElement(ulong index)
         {
             return Data.Add(ElementSize * index);
         }
 
-        public ulong GetArrayElementAddress(int index)
+        public ulong GetArrayElementAddress(long index)
         {
             return BaseAddress + (ulong)(ElementSize * index);
         }
 
-        public string IndexToRankedString(int index)
+        public string IndexToRankedString(long index)
         {
             return ManagedHeapArrayDataTools.ArrayRankIndexToString(Rank, index);
         }
@@ -30,7 +30,7 @@ namespace Unity.MemoryProfiler.Editor
             return ManagedHeapArrayDataTools.ArrayRankToString(Rank);
         }
 
-        internal string GenerateArrayDescription(CachedSnapshot cachedSnapshot, int arrayIndex, bool truncateTypeName, bool includeTypeName)
+        internal string GenerateArrayDescription(CachedSnapshot cachedSnapshot, long arrayIndex, bool truncateTypeName, bool includeTypeName)
         {
             return ManagedHeapArrayDataTools.GenerateArrayDescription(cachedSnapshot, this, arrayIndex, truncateTypeName, includeTypeName);
         }

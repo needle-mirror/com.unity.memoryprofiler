@@ -148,7 +148,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
             var entryData = m_Entries[(int)entry];
             Checks.CheckIndexInRangeAndThrow(offset, entryData.Count);
-            Checks.CheckIndexInRangeAndThrow(offset + count, entryData.Count);
+            Checks.CheckIndexInRangeAndThrow(offset + count, entryData.Count + 1);
 
             return entryData.ComputeByteSizeForEntryRange(offset, count, includeOffsets);
         }
@@ -246,7 +246,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 unsafe
                 {
                     var res = InternalRead(entry, offset, count, buffer.GetUnsafePtr(), buffer.Count, includeOffsets);
-                    GenericReadOperation asyncOp = null;
+                    GenericReadOperation asyncOp;
                     if (res.error != ReadError.InProgress)
                     {
                         asyncOp = new GenericReadOperation(default(ReadHandle), default(DynamicArray<byte>));
@@ -280,8 +280,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                     var currentStartOffsetIndex = 0L;
                     var remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
 
-                    using var blocks = new DynamicArray<NestedSectionBlock>(1, Allocator.TempJob);
-                    blocks.Clear(false);
+                    using var blocks = new DynamicArray<NestedSectionBlock>(0, 1, Allocator.TempJob);
 
                     while (remainingBufferSize > int.MaxValue)
                     {
@@ -303,8 +302,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                         blocks.Push(new NestedSectionBlock { StartOffsetIndex = currentStartOffsetIndex, NextOffsetStartIndexOrEndOfLastSectionOffset = offsets.Count - 1 });
                     }
 
-                    var dataBlocks = new DynamicArray<DynamicArray<T>>(blocks.Count, allocator);
-                    dataBlocks.Clear(false);
+                    var dataBlocks = new DynamicArray<DynamicArray<T>>(0, blocks.Count, allocator);
 
                     var readOps = new List<GenericReadOperation>((int)blocks.Count);
 
@@ -319,7 +317,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                     }
 
                     NestedDynamicArray<T> buffer = new NestedDynamicArray<T>(offsets, dataBlocks);
-                    return new NestedDynamicSizedArrayReadOperation<T>(readOps, buffer);
+                    return new NestedDynamicSizedArrayReadOperation<T>(readOps, buffer, allocator);
                 }
             }
         }

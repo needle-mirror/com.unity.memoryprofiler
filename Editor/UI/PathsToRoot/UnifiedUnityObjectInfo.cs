@@ -135,7 +135,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public int NativeObjectIndex => NativeObjectData.nativeObjectIndex;
         public ObjectData NativeObjectData;
-        public readonly int ManagedObjectIndex;
+        public readonly long ManagedObjectIndex;
         public ObjectData ManagedObjectData;
 
         public UnifiedType Type;
@@ -175,7 +175,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Managed Object Only info
         public bool HasManagedSide => ManagedObjectIndex != -1;
         public readonly int ManagedRefCount;
-        public readonly int ManagedSize;
+        public readonly long ManagedSize;
 
         public UnifiedUnityObjectInfo(CachedSnapshot snapshot, ObjectData unityObject)
             : this(snapshot, new UnifiedType(snapshot, unityObject), unityObject)

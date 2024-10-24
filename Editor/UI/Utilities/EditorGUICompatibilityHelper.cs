@@ -55,7 +55,9 @@ namespace Unity.MemoryProfiler.Editor
         public static event Action<MemoryProfilerHyperLinkClickedEventArgs> hyperLinkClicked = delegate { };
         const string k_hyperLinkClickedEventName = "hyperLinkClicked";
 
+#if !UNITY_2021_2_OR_NEWER
         static EventHandler s_EventHandler;
+#endif
         static EditorGUICompatibilityHelper()
         {
 #if UNITY_2021_2_OR_NEWER

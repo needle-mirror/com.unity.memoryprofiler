@@ -367,6 +367,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
     {
         // TODO: record "original" mip count: UUM-11336
 
+#pragma warning disable 0649
         const int kPackageFormatVersion = 3;
         public int version;
 
@@ -390,6 +391,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public bool UseDynamicScaling;
         public bool UseResolveColorSurface;
         public bool UseResolveDepthSurface;
+#pragma warning restore 0649
 
         [Flags]
         enum BitIndices : byte
@@ -403,6 +405,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         struct MetaDataPackedV2
         {
+#pragma warning disable 0649
             public int Width;
             public int Height;
             public short colorFormat;
@@ -417,6 +420,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             public sbyte wrapModeV;
             public sbyte wrapModeW;
             public BitIndices boolFlags;
+#pragma warning restore 0649
         }
 
         public unsafe RenderTextureMetaData(ILongIndexedContainer<byte> bytes)
@@ -537,6 +541,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
     internal struct AudioClipMetaData : IMetaDataBuffer
     {
+#pragma warning disable 0649
         const int kPackageFormatVersion = 1;
         public int Version;
 
@@ -550,6 +555,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public AudioClipLoadType LoadType;
         public bool LoadInBackground;
         public bool IsAmbisonic;
+#pragma warning restore 0649
 
         [Flags]
         enum BitIndices : byte
@@ -560,6 +566,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         struct MetaDataPacked
         {
+#pragma warning disable 0649
             public float LengthSecs;
             public Int32 Frequency;
             public Int32 Bitrate;
@@ -569,6 +576,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             public sbyte Channels;
             public sbyte LoadType;
             public BitIndices boolFlags;
+#pragma warning restore 0649
         }
 
         public unsafe AudioClipMetaData(ILongIndexedContainer<byte> bytes)

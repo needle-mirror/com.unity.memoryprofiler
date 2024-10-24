@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.Containers
@@ -66,13 +67,15 @@ namespace Unity.MemoryProfiler.Editor.Containers
             Checks.CheckEquals(true, IsCreated);
             if (indexRemapping.Count != SectionCount)
                 throw new ArgumentException("the length of passed index list does not match the SectionCount");
-            var newBlocks = new DynamicArray<DynamicArrayRef<T>>(m_NestedArrays.Count, m_Allocator);
+            using var newBlocks = new DynamicArray<DynamicArrayRef<T>>(m_NestedArrays.Count, Allocator.Temp);
             for (long i = 0; i < SectionCount; i++)
             {
                 newBlocks[i] = m_NestedArrays[indexRemapping[i]];
             }
-            m_NestedArrays.Dispose();
-            m_NestedArrays = newBlocks;
+            unsafe
+            {
+                UnsafeUtility.MemCpy(m_NestedArrays.GetUnsafePtr(), newBlocks.GetUnsafePtr(), sizeof(DynamicArrayRef<T>) * SectionCount);
+            }
         }
 
         public readonly DynamicArrayRef<T> this[long idx]
@@ -104,8 +107,6 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             if (IsCreated)
             {
-                foreach (var nestedDataBlock in m_Data)
-                    nestedDataBlock.Dispose();
                 m_Data.Dispose();
                 m_NestedArrays.Dispose();
             }

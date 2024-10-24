@@ -206,7 +206,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             // Extract all native objects and related data from the hierarchy
             var nativeObjects = snapshot.NativeObjects;
-            var managedObjects = snapshot.CrawledData.ManagedObjects;
+            var managedObjects = snapshot.CrawledData.ManagedObjects; // only a copy of the dynamic array but only used as readonly shortcut, can't be ref readonly as it's used in an anonymous method
             var nativeAllocations = snapshot.NativeAllocations;
             var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
             var nativeObject2Size = new Dictionary<SourceIndex, UnityObjectSize>();

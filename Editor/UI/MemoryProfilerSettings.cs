@@ -34,14 +34,39 @@ namespace Unity.MemoryProfiler.Editor
         const string k_CloseSnapshotsWhenCapturingEditor = "Unity.MemoryProfiler.Editor.MemoryProfilerCloseSnapshotsWhenCapturingEditor";
         const string k_ObjectDetailsReferenceSectionVisibleKey = "Unity.MemoryProfiler.Editor.MemoryProfilerObjectDetailsReferenceSectionVisibility";
         const string k_ObjectDetailsReferenceSectionSizeKey = "Unity.MemoryProfiler.Editor.MemoryProfilerObjectDetailsReferenceSectionSize";
+        const string k_AllocationRootsToSplitKey = "Unity.MemoryProfiler.Editor.AllTrackedMemoryModelBuilder.AllocationRootsToSplit";
 
         public static event Action TruncateStateChanged;
         public static event Action SnapshotStoragePathChanged;
+
+        /// <summary>
+        /// There are some things that only make sense for those with access to Unity's source code, like internal Engineers, Unity QA and customers with source code access.
+        /// Use this to make it easier to spot these use cases.
+        /// </summary>
+        public static bool InternalMode => Unsupported.IsDeveloperMode() || Unsupported.IsDeveloperBuild();
+        public static bool InternalModeOrSnapshotWithCallSites(CachedSnapshot cachedSnapshot) => InternalMode || cachedSnapshot.NativeAllocationSites.Count > 0;
 
         internal static class FeatureFlags
         {
             // For By Status and Path From Roots
             public static bool GenerateTransformTreesForByStatusTable_2022_09 { get; set; } = false;
+            // Mostly for internal debugging purposes as native allocation callstacks are not yet supported without source access and this feature is mostly useless without them.
+            public static bool EnableDynamicAllocationBreakdown_2024_10 { get; set; } = InternalMode;
+
+            /// <summary>
+            /// Allocations in the All of Memory table under Native > Sub Systems > Unknown > Unknowns are bugs in Unity's C++ code.
+            /// To make it easier to analyze and fix these, internal developer nee to be able to see these split out by allocation.
+            /// Together with <see cref="EnableDynamicAllocationBreakdown_2024_10"/> and native callstack recording getting enabled in MemoryProfiler.h, they can be analyzed and fixed.
+            ///
+            /// Non-Source-Code-Users can usually not do too much about these and don't benefit much from these being split out and called out as bugs.
+            /// That said, after we've done wider sweeps to resolve these issues in the code base, we can consider enabling these for everyone to make it easier to catch stray allocations that escape us.
+            /// </summary>
+            public static bool EnableUnknownUnknownAllocationBreakdown_2024_10 { get; set; } = InternalMode;
+
+            /// <summary>
+            /// Displaying the count only makes sense once Managed references to Native allocations are crawled.
+            /// </summary>
+            public static bool ShowFoundReferencesForNativeAllocations_2024_10 { get; set; } = false;
         }
 
         public static string MemorySnapshotStoragePath
@@ -303,5 +328,36 @@ namespace Unity.MemoryProfiler.Editor
                 EditorPrefs.SetFloat(k_ObjectDetailsReferenceSectionSizeKey, value);
             }
         }
+
+        public static event Action<string[]> AllocationRootsToSplitChanged = delegate { };
+
+        /// <summary>
+        /// The allocation rootes listed as "<AreaName>:<ObjectName>" that should get all allocations underneath them listed separately.
+        /// if all objects in an area should be split up, only provide the AreaName, or ""<AreaName>:"
+        /// </summary>
+        public static string[] AllocationRootsToSplit
+        {
+            get
+            {
+                var joinedString = SessionState.GetString(k_AllocationRootsToSplitKey, string.Empty);
+
+                if (string.IsNullOrEmpty(joinedString))
+                    return Array.Empty<string>();
+
+                return joinedString.Split(';');
+            }
+            set
+            {
+                var joinedString = string.Join(";", value);
+                SessionState.SetString(k_AllocationRootsToSplitKey, joinedString);
+                AllocationRootsToSplitChanged?.Invoke(value);
+            }
+        }
+
+        /// <summary>
+        /// The allocation rootes listed as "<AreaName>:<ObjectName>" that should always get all allocations underneath them listed separately.
+        /// if all objects in an area should be split up, only provide the AreaName, or "<AreaName>:"
+        /// </summary>
+        public static readonly string[] AlwaysSplitRootAllocations = { "UnsafeUtility:" };
     }
 }

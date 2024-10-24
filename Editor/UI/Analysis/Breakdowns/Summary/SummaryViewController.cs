@@ -231,10 +231,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         bool HasManagedMemoryInformation()
         {
-            if ((m_BaseSnapshot.ManagedHeapSections == null) || (m_BaseSnapshot.ManagedHeapSections.Count <= 0))
+            if (m_BaseSnapshot.ManagedHeapSections.Count <= 0)
                 return false;
 
-            if (m_ComparedSnapshot != null && ((m_ComparedSnapshot.ManagedHeapSections == null) || (m_ComparedSnapshot.ManagedHeapSections.Count <= 0)))
+            if (m_ComparedSnapshot != null && m_ComparedSnapshot.ManagedHeapSections.Count <= 0)
                 return false;
 
             return true;

@@ -7,18 +7,20 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         public enum Category : int
         {
-            None = 0,
-            Native = 1,
-            NativeReserved = 2,
-            Managed = 3,
-            ManagedReserved = 4,
-            ExecutablesAndMapped = 5,
-            Graphics = 6,
-            GraphicsDisabled = 7,
-            Unknown = 8,
-            UnknownEstimated = 9,
-            AndroidRuntime = 10,
-            FirstDynamicId = 11
+            None,
+            Native,
+            NativeReserved,
+            Managed,
+            ManagedReserved,
+            ExecutablesAndMapped,
+            Graphics,
+            GraphicsDisabled,
+            GraphicsReserved,
+            Unknown,
+            UnknownEstimated,
+            AndroidRuntime,
+            // This needs to be at the end, as it's used for indexing the beginning of categories not in this enum:
+            FirstDynamicId
         }
 
         /// <summary>

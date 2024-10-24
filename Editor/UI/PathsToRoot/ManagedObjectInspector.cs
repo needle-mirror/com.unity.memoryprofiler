@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
+#if DEBUG_VALIDATION
+using UnityEditor;
+#endif
+using Unity.MemoryProfiler.Editor.Managed;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 #if INSTANCE_ID_CHANGED
@@ -313,7 +317,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (ValidateManagedObject(ref referencedObject, snapshot))
                 {
                     // Get the objects actual type, i.e. not e.g. System.Object in an array of that type, when the objects are actual implementations of other types
-                    actualFielTypeIdx = referencedObject.GetManagedObject(snapshot).ITypeDescription;
+                    actualFielTypeIdx = referencedObject.managedTypeIndex;
 
                     if (referencedObject.dataType == ObjectDataType.BoxedValue)
                     {
@@ -389,7 +393,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (data.IsValid)
                 {
                     // TODO: caveat these objects as "potential managed objects" as beyond them fitting into the managed heap, we can't be sure they are actually managed objects or just random bytes pointed to.
-                    var moi = ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data);
+                    // We do however ensure that they at least fit the type of the field they are in.
+                    var moi = ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data, fieldByIndex.managedTypeIndex);
                     if (moi.IsValid())
                     {
                         m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(childItem, ObjectData.FromManagedObjectInfo(cs, moi)));
@@ -822,7 +827,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
                     else
                     {
-                        var o = ObjectData.FromManagedPointer(m_CachedSnapshot, ptr);
+                        var o = ObjectData.FromManagedPointer(m_CachedSnapshot, ptr, od.managedTypeIndex);
                         if (!o.IsValid)
                             return "failed to read object";
                         if (o.dataType == ObjectDataType.BoxedValue)
@@ -837,7 +842,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     {
                         return "null";
                     }
-                    var arr = ObjectData.FromManagedPointer(m_CachedSnapshot, ptr);
+                    var arr = ObjectData.FromManagedPointer(m_CachedSnapshot, ptr, od.managedTypeIndex);
                     if (!arr.IsValid)
                         return "failed to read pointer";
                     return m_Formatter.FormatArray(arr, truncateTypeNames);

@@ -16,7 +16,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         string m_Title;
         string m_Description;
         string m_DocumentationURL;
-        List<Tuple<string, string>> m_NamedValues;
 
         // View
         Label m_TitleLabel;

@@ -1,10 +1,14 @@
 using System;
+using System.Collections;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.Search;
 using UnityEngine;
+using static Unity.MemoryProfiler.Editor.QuickSearchUtility;
 using Object = UnityEngine.Object;
 
 namespace Unity.MemoryProfiler.Editor
@@ -31,9 +35,19 @@ namespace Unity.MemoryProfiler.Editor
     /// </summary>
     internal static class QuickSearchUtility
     {
+        public static bool QuickSearchCanUseNameFilter { get; private set; }
         public const string SearchProviderIdScene = "scene";
         public const string SearchProviderIdAsset = "asset";
         public const string SearchProviderIdAssetDatabase = "adb";
+        public static readonly string[] AssetSearchProviders = new string[] { SearchProviderIdAsset, SearchProviderIdAssetDatabase };
+        public static readonly string[] SceneObjectSearchProviders = new string[] { SearchProviderIdScene };
+
+        const int k_TimeIntervalToCheckAsyncSearchMS = 100;
+        // Quick Search has a timeout of 10 seconds. There is no way to get the timeout value from the API so we hardcode it here.
+        const int k_SearchSessionTimeoutInMS = 10000;
+        // Give ourselves a bit of a buffer so we can timeout before Quick Search does to avoid it logging a timeout error.
+        const int k_SearchTimoutInSeconds = (k_SearchSessionTimeoutInMS - 2 * k_TimeIntervalToCheckAsyncSearchMS) / 1000;
+        const int k_FailedSearchRemovalDelayInMS = 5000;
 
         // Quick Search only needs initializing once per session, not after every domain reload
         static bool QuickSearchInitialized
@@ -47,17 +61,283 @@ namespace Unity.MemoryProfiler.Editor
             if (QuickSearchInitialized)
                 return;
             // Initialize quick search
-            using var context = SearchService.CreateContext(providerIds: new[] { SearchProviderIdScene, SearchProviderIdAsset, SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
+            var context = SearchService.CreateContext(providerIds: new[] { SearchProviderIdScene, SearchProviderIdAsset, SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
             if (async)
             {
                 // Initialize Async, preferred path, should be triggered by e.g. opening the Memory Profiler window
-                SearchService.Request(context, (context, items) => QuickSearchInitialized = true);
+                var searchTask = InitializeAsync(context);
+                searchTask.ContinueWith((t) => t.Result.Dispose());
             }
             else
             {
                 // Initialize Synchronously should ideally only fire for search tests during their initialization
                 using var search = SearchService.Request(context, SearchFlags.Synchronous);
+                QuickSearchInitialized = true;
+                context.Dispose();
             }
+        }
+
+        static async Task<AsyncSearchHelper> InitializeAsync(SearchContext context)
+        {
+            var asyncSearchHelper = new AsyncSearchHelper(context, "Memory Profiler/Initializing Quick Search");
+            var search = await asyncSearchHelper.RequestSearchAndAwaitResults();
+
+            if (asyncSearchHelper.State == AsyncSearchHelper.SearchState.FinishedSuccessfully)
+                QuickSearchInitialized = true;
+            return asyncSearchHelper;
+        }
+
+        public class AsyncSearchHelper : IDisposable
+        {
+            public enum SearchState
+            {
+                NotYetStarted,
+                InProgress,
+                Canceled,
+                TimedOut,
+                FinishedSuccessfully
+            }
+            public SearchState State { get; private set; } = SearchState.NotYetStarted;
+            SearchContext m_SearchContext;
+            ISearchList m_SearchList;
+            string m_ProgressTitle;
+            int m_ProgressId;
+            bool m_Disposed = false;
+
+            /// <summary>
+            /// Construct the helper before you start the search, then call <see cref="AwaitSearchResult(ISearchList)"/> once you started the search.
+            /// </summary>
+            /// <param name="context"></param>
+            public AsyncSearchHelper(SearchContext context, string progressTitle)
+            {
+                m_SearchContext = context;
+                m_ProgressTitle = progressTitle;
+                m_ProgressId = -1;
+                if (context.searchInProgress)
+                    State = SearchState.InProgress;
+                else
+                    context.sessionStarted += AsyncSessionStarted;
+                context.sessionEnded += AsyncSessionFinished;
+            }
+
+            public async Task<ISearchList> RequestSearchAndAwaitResults(CancellationToken cancellationToken = default)
+            {
+                m_SearchList = SearchService.Request(m_SearchContext);
+                if (State == SearchState.FinishedSuccessfully)
+                    return m_SearchList;
+
+                m_ProgressId = Progress.Start(m_ProgressTitle);
+
+                if (cancellationToken.CanBeCanceled)
+                    cancellationToken.Register(Cancel);
+                // Cancelation via the Background Tasks window is still possible
+                Progress.RegisterCancelCallback(m_ProgressId, CancelIfCancelable);
+
+                var startTime = EditorApplication.timeSinceStartup;
+                Progress.SetRemainingTime(m_ProgressId, k_SearchTimoutInSeconds);
+                Progress.SetTimeDisplayMode(m_ProgressId, Progress.TimeDisplayMode.ShowRemainingTime);
+                while (State <= SearchState.InProgress)
+                {
+                    var runningTime = EditorApplication.timeSinceStartup - startTime;
+                    if (SearchDatabaseIsReady())
+                    {
+                        if (startTime > 0)
+                        {
+                            Progress.Report(m_ProgressId, (float)runningTime / k_SearchTimoutInSeconds);
+                            Progress.SetRemainingTime(m_ProgressId, k_SearchTimoutInSeconds - (int)runningTime);
+                            if (runningTime > k_SearchTimoutInSeconds)
+                            {
+                                //stop the "timout"
+                                m_SearchContext.progressId = m_ProgressId;
+                                // switch from counting down towards a timeout and instead do an infinite spinning wheel
+                                Progress.UnregisterCancelCallback(m_ProgressId);
+                                Progress.Remove(m_ProgressId);
+                                m_ProgressId = Progress.Start(m_ProgressTitle, options: Progress.Options.Managed | Progress.Options.Indefinite);
+                                Progress.RegisterCancelCallback(m_ProgressId, CancelIfCancelable);
+                                Progress.SetTimeDisplayMode(m_ProgressId, Progress.TimeDisplayMode.ShowRunningTime);
+                                startTime = -1;
+                            }
+                        }
+                        else
+                            Progress.Report(m_ProgressId, 0);
+                    }
+                    else
+                    {
+                        Progress.Report(m_ProgressId, (float)runningTime / k_SearchTimoutInSeconds);
+                        Progress.SetRemainingTime(m_ProgressId, k_SearchTimoutInSeconds - (int)runningTime);
+                        // This timeout is here to work around UUM-81554. Once that is fixed, the timeout can be removed again
+                        if (runningTime > k_SearchTimoutInSeconds)
+                        {
+                            AbortSearch();
+                            Progress.Finish(m_ProgressId, Progress.Status.Failed);
+                            State = SearchState.TimedOut;
+                            _ = Task.Factory.StartNew(RemoveProgressAfterTimeout);
+                            return m_SearchList;
+                        }
+                    }
+                    await Task.Delay(k_TimeIntervalToCheckAsyncSearchMS);
+                    // there is a short periode after requesting a search where it is not yet pending.
+                    // The time interval should be enough to get past that and to exit the loop if search somehow finished instantly
+                    // and AsyncSessionFinished was never called.
+                    if (!m_SearchList.pending && !m_SearchContext.searchInProgress)
+                        break;
+                }
+                if (State == SearchState.Canceled)
+                {
+                    Progress.Finish(m_ProgressId, Progress.Status.Canceled);
+                }
+                else
+                {
+                    Progress.Finish(m_ProgressId, Progress.Status.Succeeded);
+                    State = SearchState.FinishedSuccessfully;
+                }
+                Progress.Remove(m_ProgressId);
+                m_ProgressId = -1;
+                return m_SearchList;
+            }
+
+            async Task RemoveProgressAfterTimeout()
+            {
+                await Task.Delay(k_FailedSearchRemovalDelayInMS);
+                if (m_ProgressId >= 0)
+                {
+                    Progress.Remove(m_ProgressId);
+                    m_ProgressId = -1;
+                }
+            }
+
+            bool CancelIfCancelable()
+            {
+                if (State <= SearchState.InProgress)
+                {
+                    Cancel();
+                    return true;
+                }
+                return false;
+            }
+
+            public void Cancel()
+            {
+                State = SearchState.Canceled;
+                AbortSearch();
+            }
+
+            void AbortSearch()
+            {
+                m_SearchList?.Dispose();
+                m_SearchContext.Dispose();
+            }
+
+            // Careful! Both of these are called PER PROVIDER!
+            // Given that we might use more than one, they need to safeguard against double calls
+            // and against assuming we're done when only the first provider is done searching.
+            void AsyncSessionStarted(SearchContext context)
+            {
+                if (State == SearchState.NotYetStarted)
+                    State = SearchState.InProgress;
+            }
+            void AsyncSessionFinished(SearchContext context)
+            {
+                if (State <= SearchState.InProgress && !context.searchInProgress && !m_SearchList.pending)
+                    State = SearchState.FinishedSuccessfully;
+            }
+
+            public void Dispose()
+            {
+                CancelIfCancelable();
+                if (!m_Disposed)
+                {
+                    m_Disposed = true;
+                    AbortSearch();
+                    if (m_ProgressId >= 0 && Progress.Exists(m_ProgressId))
+                    {
+                        Progress.UnregisterCancelCallback(m_ProgressId);
+                    }
+                }
+            }
+        }
+
+        static MethodInfo s_SearchDatabase_Enumerate;
+        static PropertyInfo s_SearchDatabase_Ready;
+        static PropertyInfo s_SearchDatabase_Updating;
+        static FieldInfo s_SearchDatabase_Settings;
+        static FieldInfo s_SearchDatabase_Settings_Options;
+        static FieldInfo s_SearchDatabase_Options_Disabled;
+        static FieldInfo s_SearchDatabase_Options_Types;
+        static QuickSearchUtility()
+        {
+            var searchDatabase = typeof(ISearchView).Assembly.GetType("UnityEditor.Search.SearchDatabase");
+            if (searchDatabase == null)
+                return;
+            s_SearchDatabase_Enumerate = searchDatabase.GetMethod("EnumerateAll", BindingFlags.Static | BindingFlags.Public);
+            s_SearchDatabase_Ready = searchDatabase.GetProperty("ready", BindingFlags.Instance | BindingFlags.Public);
+            s_SearchDatabase_Updating = searchDatabase.GetProperty("updating", BindingFlags.Instance | BindingFlags.Public);
+            var searchDatabase_Settings = searchDatabase.GetNestedType("Settings");
+            if (searchDatabase_Settings == null)
+                return;
+            s_SearchDatabase_Settings = searchDatabase.GetField("settings", BindingFlags.Instance | BindingFlags.Public);
+            s_SearchDatabase_Settings_Options = searchDatabase_Settings.GetField("options", BindingFlags.Instance | BindingFlags.Public);
+            var searchDatabaseOptions = searchDatabase.GetNestedType("Options");
+            if (searchDatabase_Settings == null)
+                return;
+            s_SearchDatabase_Options_Disabled = searchDatabaseOptions.GetField("disabled", BindingFlags.Instance | BindingFlags.Public);
+            s_SearchDatabase_Options_Types = searchDatabaseOptions.GetField("types", BindingFlags.Instance | BindingFlags.Public);
+        }
+
+        // This is less than ideal since the whole SearchDatabase API is internal. But here is how you would tests if all indexes (i.e SearchDatabase) are ready.
+
+        public static IEnumerable SearchDatabases()
+        {
+            return (IEnumerable)s_SearchDatabase_Enumerate?.Invoke(null, Array.Empty<object>());
+        }
+
+        public static bool CheckThatSearchDatabaseIsReady(object searchDB)
+        {
+            return s_SearchDatabase_Ready == null || s_SearchDatabase_Updating == null || searchDB == null ? false :
+                (bool)s_SearchDatabase_Ready.GetValue(searchDB) && (bool)s_SearchDatabase_Updating.GetValue(searchDB) == false;
+        }
+
+        public static bool SearchDatabaseIsReady()
+        {
+            if (s_SearchDatabase_Enumerate == null || s_SearchDatabase_Ready == null || s_SearchDatabase_Updating == null)
+                // fallback if reflection breaks
+                return true;
+            var reflectionInfoForValidatingIndexingOptionsIsAvailable =
+                s_SearchDatabase_Settings != null && s_SearchDatabase_Settings_Options != null
+                && s_SearchDatabase_Options_Disabled != null && s_SearchDatabase_Options_Types != null;
+
+            // the default assumption (because that's the default configuration and what makes the most sense if the options for this are to ever change)
+            // is that this should be possible
+            // only disable this option if we have confirmation that it is not possible
+            bool quickSearchCanUseNameFilter = true;
+
+            foreach (var db in SearchDatabases())
+            {
+                if (reflectionInfoForValidatingIndexingOptionsIsAvailable)
+                {
+                    var dbSettings = s_SearchDatabase_Settings.GetValue(db);
+                    if (dbSettings != null)
+                    {
+                        var dbOptions = s_SearchDatabase_Settings_Options.GetValue(dbSettings);
+                        if (dbOptions != null)
+                        {
+                            var disabled = s_SearchDatabase_Options_Disabled.GetValue(dbOptions);
+                            var types = s_SearchDatabase_Options_Types.GetValue(dbOptions);
+                            if (disabled != null && disabled is bool && types != null && types is bool)
+                            {
+                                if ((bool)disabled || !(bool)types)
+                                {
+                                    quickSearchCanUseNameFilter = false;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!CheckThatSearchDatabaseIsReady(db))
+                    return false;
+            }
+            QuickSearchCanUseNameFilter = quickSearchCanUseNameFilter;
+            return true;
         }
     }
 
@@ -115,6 +395,8 @@ namespace Unity.MemoryProfiler.Editor
             FoundTooMany,
             FoundTooManyToProcess,
             TypeIssues,
+            SearchCanceled,
+            SearchTimeout,
         }
 
 
@@ -142,7 +424,7 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
-            QuickSearchUtility.InitializeQuickSearch(async: false);
+            QuickSearchUtility.InitializeQuickSearch(async: true);
         }
 
         static EditorWindow GetProjectBrowserWindow(bool focusIt = false)
@@ -217,7 +499,7 @@ namespace Unity.MemoryProfiler.Editor
 #endif
         }
 
-        public static Findings FindObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
+        public static async Task<Findings> FindObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo, CancellationToken cancellationToken)
         {
             // If the object belongs to the same session there is a chance that it is still loaded and can be used based on the InstanceID
             // (e.g. Texture)
@@ -235,7 +517,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             if (unifiedUnityObjectInfo.IsSceneObject && !string.IsNullOrEmpty(unifiedUnityObjectInfo.NativeObjectName))
             {
-                return FindSceneObject(snapshot, unifiedUnityObjectInfo);
+                return await FindSceneObject(snapshot, unifiedUnityObjectInfo, cancellationToken);
             }
             if (unifiedUnityObjectInfo.IsRuntimeCreated)
             {
@@ -244,7 +526,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             if (unifiedUnityObjectInfo.IsPersistentAsset && !string.IsNullOrEmpty(unifiedUnityObjectInfo.NativeObjectName))
             {
-                return FindAsset(snapshot, unifiedUnityObjectInfo);
+                return await FindAsset(snapshot, unifiedUnityObjectInfo, cancellationToken);
             }
             return new Findings() { FailReason = SearchFailReason.NotFound };
         }
@@ -272,7 +554,7 @@ namespace Unity.MemoryProfiler.Editor
             return new Findings() { FailReason = SearchFailReason.NotFound };
         }
 
-        static Findings FindAsset(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
+        static async Task<Findings> FindAsset(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo, CancellationToken cancellationToken)
         {
             var searchString = ConstructSearchString(unifiedUnityObjectInfo, unifiedUnityObjectInfo.Type.IsSceneObjectType);
 
@@ -281,93 +563,101 @@ namespace Unity.MemoryProfiler.Editor
             //maybe eventually join the contexts and filter later.
             SearchItem searchItem = null;
             SearchContext context = SearchService.CreateContext(
-                providerIds: new string[] { QuickSearchUtility.SearchProviderIdAsset, QuickSearchUtility.SearchProviderIdAssetDatabase },
+                providerIds: QuickSearchUtility.AssetSearchProviders,
                 searchText: searchString);
-            using (var search = SearchService.Request(context, SearchFlags.Synchronous))
+
+            using var asyncSearch = new AsyncSearchHelper(context, $"Memory Profiler/Searching Project for {searchString}");
+
+            var search = await asyncSearch.RequestSearchAndAwaitResults(cancellationToken);
+            if (asyncSearch.State == AsyncSearchHelper.SearchState.Canceled)
+                return new Findings { FailReason = SearchFailReason.SearchCanceled };
+            if (asyncSearch.State != AsyncSearchHelper.SearchState.FinishedSuccessfully)
+                return new Findings { FailReason = SearchFailReason.SearchTimeout };
+            if (search.Count == 1)
             {
-                if (search.Count == 1)
+                searchItem = search[0];
+                if (searchItem != null)
                 {
-                    searchItem = search[0];
-                    if (searchItem != null)
-                    {
-                        foundObject = searchItem.ToObject(unifiedUnityObjectInfo);
-                        if (!CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
-                        {
-                            failReason = SearchFailReason.Found;
-                        }
-                    }
-                }
-                else if (search.Count < 5)
-                {
-                    // Asset database search for e.g. "Guard t:Mesh" also finds "Guard" Mesh and "Guard.fbx" Mesh, so, try trimming it down if its only a small set of results
-                    searchItem = null;
-                    int likelyCandidateCount = 0;
-                    foreach (var item in search)
-                    {
-                        if (item != null)
-                        {
-                            var obj = item.ToObject(unifiedUnityObjectInfo);
-                            if (obj != null && obj.name == unifiedUnityObjectInfo.NativeObjectName && !CheckTypeMismatch(obj, unifiedUnityObjectInfo, snapshot))
-                            {
-                                if (foundObject == null && foundObject != obj)
-                                {
-                                    foundObject = obj;
-                                    searchItem = item;
-                                }
-                                ++likelyCandidateCount;
-                            }
-                        }
-                    }
-                    if (searchItem != null && foundObject != null && likelyCandidateCount == 1)
+                    foundObject = searchItem.ToObject(unifiedUnityObjectInfo);
+                    if (!CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
                     {
                         failReason = SearchFailReason.Found;
                     }
-                    else
+                }
+            }
+            else if (search.Count > 0 && search.Count < 5)
+            {
+                // Asset database search for e.g. "Guard t:Mesh" also finds "Guard" Mesh and "Guard.fbx" Mesh, so, try trimming it down if its only a small set of results
+                searchItem = null;
+                int likelyCandidateCount = 0;
+                foreach (var item in search)
+                {
+                    if (item != null)
                     {
-                        if (likelyCandidateCount > 0)
-                            failReason = SearchFailReason.FoundTooMany;
-                        else if (likelyCandidateCount == 0)
-                            failReason = SearchFailReason.NotFound;
-                        searchItem = null;
-                        foundObject = null;
+                        var obj = item.ToObject(unifiedUnityObjectInfo);
+                        if (obj != null && obj.name == unifiedUnityObjectInfo.NativeObjectName && !CheckTypeMismatch(obj, unifiedUnityObjectInfo, snapshot))
+                        {
+                            if (foundObject == null && foundObject != obj)
+                            {
+                                foundObject = obj;
+                                searchItem = item;
+                            }
+                            ++likelyCandidateCount;
+                        }
                     }
+                }
+                if (searchItem != null && foundObject != null && likelyCandidateCount == 1)
+                {
+                    failReason = SearchFailReason.Found;
                 }
                 else
                 {
-                    context.Dispose();
-                    if (search.Count > 1)
+                    if (likelyCandidateCount > 0)
                         failReason = SearchFailReason.FoundTooMany;
+                    else if (likelyCandidateCount == 0)
+                        failReason = SearchFailReason.NotFound;
+                    searchItem = null;
+                    foundObject = null;
                 }
+            }
+            else
+            {
+                context.Dispose();
+                if (search.Count > 1)
+                    failReason = SearchFailReason.FoundTooMany;
             }
 
             if (failReason == SearchFailReason.Found && foundObject != null && context != null)
             {
                 return new Findings(foundObject, 80, searchItem, context);
             }
+            context.Dispose();
             return new Findings() { FailReason = failReason };
         }
 
-        static Findings FindSceneObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
+        static async Task<Findings> FindSceneObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo, CancellationToken cancellationToken)
         {
             if (snapshot.HasSceneRootsAndAssetbundles)
             {
                 // TODO: with captured Scene Roots changes, double check the open scene names
                 // if they mismatch, return;
             }
-            using (var context = SearchService.CreateContext(providerId: QuickSearchUtility.SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo)))
+            using var context = SearchService.CreateContext(providerId: QuickSearchUtility.SearchProviderIdScene, searchText: ConstructSearchString(unifiedUnityObjectInfo));
+            using var asyncSearch = new AsyncSearchHelper(context, $"Memory Profiler/Searching Scenes for {context.searchQuery}");
+            var search = await asyncSearch.RequestSearchAndAwaitResults(cancellationToken);
+            if (asyncSearch.State == AsyncSearchHelper.SearchState.Canceled)
+                return new Findings { FailReason = SearchFailReason.SearchCanceled };
+            if (asyncSearch.State != AsyncSearchHelper.SearchState.FinishedSuccessfully)
+                return new Findings { FailReason = SearchFailReason.SearchTimeout };
+
+            if (search.Count > 1)
+                return new Findings() { FailReason = SearchFailReason.FoundTooMany };
+            if (search.Count == 1)
             {
-                using (var search = SearchService.Request(context, SearchFlags.Synchronous))
+                var foundObject = search[0].ToObject(unifiedUnityObjectInfo);
+                if (foundObject != null && !CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
                 {
-                    if (search.Count > 1)
-                        return new Findings() { FailReason = SearchFailReason.FoundTooMany };
-                    if (search.Count == 1)
-                    {
-                        var foundObject = search[0].ToObject(unifiedUnityObjectInfo);
-                        if (foundObject != null && !CheckTypeMismatch(foundObject, unifiedUnityObjectInfo, snapshot))
-                        {
-                            return new Findings(foundObject, 80, search[0], context);
-                        }
-                    }
+                    return new Findings(foundObject, 80, search[0], context);
                 }
             }
             return new Findings() { FailReason = SearchFailReason.NotFound };
@@ -469,9 +759,11 @@ namespace Unity.MemoryProfiler.Editor
             return typeMismatch;
         }
 
-        static string ConstructSearchString(UnifiedUnityObjectInfo unifiedUnityObjectInfo, bool quickSearchSceneObjectSearch = false, bool searchAllInProjectBrowser = false)
+        static string ConstructSearchString(UnifiedUnityObjectInfo unifiedUnityObjectInfo, bool quickSearchSceneObjectSearch = false, bool searchAllInProjectBrowser = false, bool forQuickSearch = true)
         {
-            var searchString = unifiedUnityObjectInfo.NativeObjectName;
+            var name = unifiedUnityObjectInfo.NativeObjectName;
+            // only QuickSearch can filter to exact names via the "name=" filter
+            var searchString = forQuickSearch && QuickSearchUtility.QuickSearchCanUseNameFilter ? $"name=\"{name}\"" : name;
 
             // take paths name parts out of the equation, they are e.g. used for shaders
             var lastNameSeparator = searchString.LastIndexOf('/');
@@ -527,17 +819,24 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (selectedUnityObject.IsSceneObject)
             {
-                SetSceneSearch(ConstructSearchString(selectedUnityObject));
+                SetSceneSearch(ConstructSearchString(selectedUnityObject, forQuickSearch: false));
             }
             if (selectedUnityObject.IsPersistentAsset)
             {
-                SetProjectSearch(ConstructSearchString(selectedUnityObject, searchAllInProjectBrowser: true));
+                SetProjectSearch(ConstructSearchString(selectedUnityObject, searchAllInProjectBrowser: true, forQuickSearch: false));
             }
+        }
+
+        public static SearchContext BuildContext(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
+        {
+            return SearchService.CreateContext(
+                selectedUnityObject.IsSceneObject ? QuickSearchUtility.SceneObjectSearchProviders : QuickSearchUtility.AssetSearchProviders,
+                searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.Type.IsSceneObjectType));
         }
 
         public static ISearchView OpenQuickSearch(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var context = SearchService.CreateContext(searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.Type.IsSceneObjectType));
+            var context = BuildContext(snapshot, selectedUnityObject);
             var state = new SearchViewState(context);
             state.group = selectedUnityObject.IsSceneObject ? "scene" : "asset";
             return SearchService.ShowWindow(state);

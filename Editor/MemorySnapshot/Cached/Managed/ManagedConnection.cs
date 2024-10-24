@@ -14,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor
         /// The index of a field on a ManagedObject or Managed Type that owns this reference.
         /// If that field is a value type field, the actual field holding the reference is nested in that value type.
         /// In those cases, <see cref="HeldViaValueTypeField"/> is true and <see cref="ValueTypeFieldFrom"/>,
-        /// <see cref="ValueTypeFieldOwningITypeDescription"/> and <see cref="AddionalValueTypeFieldOffset"/> hold
+        /// <see cref="ValueTypeFieldOwningITypeDescription"/> and <see cref="OffsetFromReferenceOwnerHeaderStartToFieldOnValueType"/> hold
         /// additional data to reoncstruct the entire chain of value types and field names
         /// that leads to the actual field (<see cref="ValueTypeFieldFrom"/>) that holds the reference to <see cref="IndexTo"/>.
         /// Check <see cref="ObjectData.GetFieldByFieldDescriptionsIndex(CachedSnapshot, int, bool, int, int, int)"/> for details on the reconstruction
@@ -31,44 +31,42 @@ namespace Unity.MemoryProfiler.Editor
         /// and that field index then refers to a field that is not present as part of the type of the
         /// ManagedObject or ManagedType refered to via <see cref="IndexFrom"/>, because that field index belongs to a Value Type.
         /// When trying to read out the field data from the holding Object or Type, use the <seealso cref="CachedSnapshot.FieldDescriptionEntriesCache.Offset"/>
-        /// value for <see cref="ValueTypeFieldFrom"/> and add <see cref="AddionalValueTypeFieldOffset"/> to get to the correct field bytes.
+        /// value for <see cref="ValueTypeFieldFrom"/> and add <see cref="OffsetFromReferenceOwnerHeaderStartToFieldOnValueType"/> to get to the correct field bytes.
         /// </summary>
-        public readonly int AddionalValueTypeFieldOffset;
+        public readonly int OffsetFromReferenceOwnerHeaderStartToFieldOnValueType;
 
         /// <summary>
         /// if >= 0, this reference is stored in an Array. If the Array is an Array of value types, <see cref="FieldFrom"/> is also set.
         ///
         /// Make sure to check if an <see cref="ArrayIndexFrom"/> is set before checking if <see cref="FieldFrom"/> is set if you want to get the full field reference chain.
         /// </summary>
-        public readonly int ArrayIndexFrom;
+        public readonly long ArrayIndexFrom;
 
         public bool HeldViaValueTypeField => ValueTypeFieldOwningITypeDescription >= 0;
 
         public ManagedConnection(SourceIndex from, SourceIndex to, int fieldFrom = -1,
-            int valueTypeFieldOwningITypeDescription = -1, int valueTypeFieldFrom = -1, int addionalValueTypeFieldOffset = 0,
-            int arrayIndexFrom = -1)
+            int valueTypeFieldOwningITypeDescription = -1, int valueTypeFieldFrom = -1, int offsetFromReferenceOwnerHeaderStartToFieldOnValueType = 0,
+            long arrayIndexFrom = -1)
         {
             IndexFrom = from;
             IndexTo = to;
             FieldFrom = fieldFrom;
             ArrayIndexFrom = arrayIndexFrom;
             // No mix and matching allowed! Either the connection is going via a value Type field and we need valid additional data, or not.
-#if ENABLE_MEMORY_PROFILER_DEBUG
-            if(valueTypeFieldOwningITypeDescription >= 0)
+            if (valueTypeFieldOwningITypeDescription >= 0)
             {
                 Checks.IsTrue(valueTypeFieldOwningITypeDescription > -1);
-                Checks.IsTrue(valueTypeFieldFrom > -1);
+                Checks.IsTrue(valueTypeFieldFrom > -1 || ArrayIndexFrom > -1);
             }
             else
             {
                 Checks.CheckEquals(valueTypeFieldOwningITypeDescription, -1);
-                Checks.CheckEquals(valueTypeFieldFrom, -1);
-                Checks.CheckEquals(addionalValueTypeFieldOffset, 0);
+                valueTypeFieldFrom = -1;
+                offsetFromReferenceOwnerHeaderStartToFieldOnValueType = 0;
             }
-#endif
             ValueTypeFieldFrom = valueTypeFieldFrom;
             ValueTypeFieldOwningITypeDescription = valueTypeFieldOwningITypeDescription;
-            AddionalValueTypeFieldOffset = addionalValueTypeFieldOffset;
+            OffsetFromReferenceOwnerHeaderStartToFieldOnValueType = offsetFromReferenceOwnerHeaderStartToFieldOnValueType;
         }
 
         public int FromManagedObjectIndex
@@ -108,60 +106,12 @@ namespace Unity.MemoryProfiler.Editor
         /// This represents the only <see cref="ManagedConnection"/> with a Native Object -> Managed Object connection.
         /// Any other Native Object -> Managed Object connection would only be reported via <seealso cref="CachedSnapshot.Connections"/>.
         ///
-        /// This property returns the native object index of this connection,
-        /// or -1 if this connection does not originate from a Native Object
-        /// or it Asserts if it is not actually such a connection.
-        /// </summary>
-        public int UnityEngineNativeObjectIndex
-        {
-            get
-            {
-                if (IndexFrom.Id == SourceIndex.SourceId.NativeObject)
-                {
-                    Debug.Assert(IndexTo.Id == SourceIndex.SourceId.ManagedObject);
-                    return Convert.ToInt32(IndexFrom.Index);
-                }
-                return -1;
-            }
-        }
-
-        /// <summary>
-        /// Unity Objects that have a Managed and a Native object have these two reference each other.
-        /// If a Managed Object is found while crawling that has an m_CachedPtr that points to a valid Native Object,
-        /// a <see cref="ManagedConnection"/> is created, but only for the direction Native -> Managed.
-        /// This represents the only <see cref="ManagedConnection"/> with a Native Object -> Managed Object connection.
-        /// Any other Native Object -> Managed Object connection would only be reported via <seealso cref="CachedSnapshot.Connections"/>.
-        ///
-        /// This property returns the managed object index of this connection,
-        /// or -1 if this connection does not point to a Managed Object
-        /// or it Asserts if it is not actually such a connection.
-        /// </summary>
-        public int UnityEngineManagedObjectIndex
-        {
-            get
-            {
-                if (IndexTo.Id == SourceIndex.SourceId.ManagedObject)
-                {
-                    Debug.Assert(IndexFrom.Id == SourceIndex.SourceId.NativeObject);
-                    return Convert.ToInt32(IndexTo.Index);
-                }
-                return -1;
-            }
-        }
-
-        /// <summary>
-        /// Unity Objects that have a Managed and a Native object have these two reference each other.
-        /// If a Managed Object is found while crawling that has an m_CachedPtr that points to a valid Native Object,
-        /// a <see cref="ManagedConnection"/> is created, but only for the direction Native -> Managed.
-        /// This represents the only <see cref="ManagedConnection"/> with a Native Object -> Managed Object connection.
-        /// Any other Native Object -> Managed Object connection would only be reported via <seealso cref="CachedSnapshot.Connections"/>.
-        ///
         /// Do not create other Native -> Managed connections than the ones discribed above.
         /// </summary>
         /// <param name="nativeIndex"></param>
         /// <param name="managedIndex"></param>
         /// <returns></returns>
-        public static ManagedConnection MakeUnityEngineObjectConnection(int nativeIndex, int managedIndex)
+        public static ManagedConnection MakeUnityEngineObjectConnection(int nativeIndex, long managedIndex)
         {
             return new ManagedConnection(
                 new SourceIndex(SourceIndex.SourceId.NativeObject, nativeIndex),
@@ -169,8 +119,8 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         public static ManagedConnection MakeConnection(
-            CachedSnapshot snapshot, SourceIndex fromIndex, int toIndex,
-            int fromField, int valueTypeFieldOwningITypeDescription, int valueTypeFieldFrom, int addionalValueTypeFieldOffset, int arrayIndexFrom)
+            CachedSnapshot snapshot, SourceIndex fromIndex, long toIndex,
+            int fromField, int valueTypeFieldOwningITypeDescription, int valueTypeFieldFrom, int offsetFromReferenceOwnerHeaderStartToFieldOnValueType, long arrayIndexFrom)
         {
             if (!fromIndex.Valid)
                 throw new InvalidOperationException("Tried to add a Managed Connection without a valid source.");
@@ -183,23 +133,31 @@ namespace Unity.MemoryProfiler.Editor
                         //from an object
                         if (snapshot.FieldDescriptions.IsStatic[fromField] == 1)
                         {
-                            Debug.LogError("Cannot form a connection from an object using a static field.");
+                            Debug.LogError($"Cannot form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) using a static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
+                                + (valueTypeFieldOwningITypeDescription >= 0?$", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} ":"")
+                                + (arrayIndexFrom >= 0?$" at array index {arrayIndexFrom}": "."));
                         }
                         break;
                     case SourceIndex.SourceId.ManagedType:
                         //from a type static data
                         if (snapshot.FieldDescriptions.IsStatic[fromField] == 0)
                         {
-                            Debug.LogError("Cannot form a connection from a type using a non-static field.");
+                            Debug.LogError($"Cannot form a connection from a type ({snapshot.TypeDescriptions.TypeDescriptionName[fromIndex.Index]}) using a non-static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
+                                + (valueTypeFieldOwningITypeDescription >= 0?$", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} ":"")
+                                + (arrayIndexFrom >= 0?$" at array index {arrayIndexFrom}": "."));
                         }
                         break;
                     default:
-                        Debug.LogError($"Trying to form a connection from the field of a {fromIndex.Id} to a managed Object.");
+                        ref readonly var managedObject = ref snapshot.CrawledData.ManagedObjects[toIndex];
+                        unsafe
+                        {
+                            Debug.LogError($"Trying to form a connection from the field of a {fromIndex.Id} (index: {fromIndex.Index}, raw:{*(ulong*)(&fromIndex)}) to a managed Object (index: {toIndex}) of type {snapshot.TypeDescriptions.TypeDescriptionName[managedObject.ITypeDescription]}.");
+                        }
                         break;
                 }
             }
 #endif
-            return new ManagedConnection(fromIndex, new SourceIndex(SourceIndex.SourceId.ManagedObject, toIndex), fromField, valueTypeFieldOwningITypeDescription, valueTypeFieldFrom, addionalValueTypeFieldOffset, arrayIndexFrom);
+            return new ManagedConnection(fromIndex, new SourceIndex(SourceIndex.SourceId.ManagedObject, toIndex), fromField, valueTypeFieldOwningITypeDescription, valueTypeFieldFrom, offsetFromReferenceOwnerHeaderStartToFieldOnValueType, arrayIndexFrom);
         }
     }
 }

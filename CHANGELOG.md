@@ -7,6 +7,21 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2024-10-24
+
+### Fixed
+- Fixed Memory Profiler UI freezing on selecting Unity Objects when the search index hasn't been built yet.
+- Reattributed Nintendo Switch's reserved GPU memory from Native to Graphics in the Summary view and All Of Memory table.
+- Improved the performance of the Managed Data Crawler by using the Job System when parsing managed array data with potential references to managed objects. In some worst case scenarios this brings the opening times down from several hours to <5min, thereby fixing [PROFB-191](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-191).
+- Fixed misalignment of managed object sizes shown in the All Of Memory table vs. what is shown in the selected item details where that was caused by faulty readings of the managed heap data in the package (reading something as a potential reference to effectively random memory that looks close enough to a valid object, but not quiet), or faulty data reported by the capture backend (caused by e.g. the capture process allowing the creation of new Unity Objects between capturing the managed heap data and reporting all GC Handles held by currently alive Unity Objects(UUM-77449, fixed in 6000.0.16f1, 2022.3.43f1 2021.3.44f1) and/or an incomplete reporting of reserved but unused heap bytes ([UUM-53413](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-53413))) leading to the package "discovering" managed objects that can't reasonably exist as live objects because their size exceeds the reported heap bytes. ([PROFB-118](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-118))
+- Fixed inclusion of allocated GPU memory on the Nintendo Switch on the All Of Memory table under `Native > Unity Subsystem > Unknown`. Instead it is now shown under `Graphics (Estimated)` and/or `Untracked > Graphics`.
+
+### Changed
+- Improved accuracy of the search for Assets and Scene Objects within the open project which is used for the "Select in Editor" button, Open in Search and Preview Image by constraining it to exact names.
+- Improved responsiveness of table item selection of Unity Objects (in any table) by switching the Assets and Scene Object search triggered by that selection to run async instead of synchronous.
+- The All Of Memory table now lists all individual allocation under Native > Unity Subsystem > UnsafeUtility to allow for checking the count and size of different allocations made via UnsafeUtility.
+- Selecting items in the Graphics category of the All Of Memory table, when they represent the GPU side of a Unity Object, now shows the details for that Unity Object.
+
 ## [1.1.1] - 2024-09-10
 
 ### Added

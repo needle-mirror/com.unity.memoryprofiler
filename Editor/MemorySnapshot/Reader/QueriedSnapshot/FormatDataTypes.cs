@@ -65,11 +65,11 @@ namespace Unity.MemoryProfiler.Editor.Format
                     if (reader.FormatVersion >= FormatVersion.ProfileTargetInfoAndMemStatsVersion)
                     {
                         ProfileTargetInfo info;
-                        reader.ReadUnsafe(EntryType.ProfileTarget_Info, &info, UnsafeUtility.SizeOf<ProfileTargetInfo>(), 0, 1);
+                        reader.ReadUnsafe(EntryType.ProfileTarget_Info, &info, sizeof(ProfileTargetInfo), 0, 1);
                         TargetInfo = info;
 
                         ProfileTargetMemoryStats memStats;
-                        reader.ReadUnsafe(EntryType.ProfileTarget_MemoryStats, &memStats, UnsafeUtility.SizeOf<ProfileTargetMemoryStats>(), 0, 1);
+                        reader.ReadUnsafe(EntryType.ProfileTarget_MemoryStats, &memStats, sizeof(ProfileTargetMemoryStats), 0, 1);
                         TargetMemoryStats = memStats;
 
                         Deserialize(legacyBuffer, info, this);
@@ -307,7 +307,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             string str = new string('A', (int)length);
             fixed (char* dstPtr = str)
             {
-                UnsafeUtility.MemCpyStride(dstPtr, UnsafeUtility.SizeOf<char>(), srcPtr, UnsafeUtility.SizeOf<byte>(), UnsafeUtility.SizeOf<byte>(), (int)length);
+                UnsafeUtility.MemCpyStride(dstPtr, sizeof(char), srcPtr, sizeof(byte), sizeof(byte), (int)length);
             }
 
             return str;

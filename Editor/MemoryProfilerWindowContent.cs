@@ -41,7 +41,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string InstanceIdPingingOnlyWorksInNewerUnityVersions = "Pinging objects based on their Instance ID does not work in this Unity version. To enable that functionality, please update your Unity installation to 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer.";
 
         public static readonly string OpenManualTooltip = L10n.Tr("Open the relevant documentation entry.");
-        public const string InvalidObjectPleaseReportABugMessageShort = "Failed To read Object, please report a bug via 'Help > Report a Bug'.";
+        public const string InvalidObjectPleaseReportABugMessageShort = "Failed to read Object, please report a bug via 'Help > Report a Bug'.";
         public const string PleaseReportABugMessage = "please report a bug via the Window Menu Bar option 'Help > Report a Bug'.";
         public const string InvalidObjectPleaseReportABugMessage = PleaseReportABugMessage + " Please attach this snapshot, info on how to find this object in the snapshot, and a project to reproduce this with.";
 
@@ -156,6 +156,36 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string UnkownLivenessReasonStatus = "Bug: Liveness Reason Unknown";
         public const string UnkownLivenessReasonHint = "There is no reference pointing to this object and no GCHandle reported for it. This is a Bug, please report it using 'Help > Report a Bug' and attach the snapshot to the report.";
 
+        public const string InvalidObjectErrorBoxMessage = "This is an invalid Managed Object, i.e. the Memory Profiler could not identify it's type and data. To help us in finding and fixing this issue, " + TextContent.InvalidObjectPleaseReportABugMessage;
+
+        public const string UnknownUnknownAllocationsErrorBoxMessage = "This is a bug in the netive code of the engine, please file a bug report. " +
+            "Chances are high that every single allocation here is a separate bug to be fixed by a different team and should be treated as such. " +
+            "By their very nature, User facing releases lack the information needed to differentiate these allocations in a meaningful way. " +
+            "To get an approximation of what constitutes a separate vs a duplicate bug the byte size of each allocation should be used (size in byte is given when hovering the Native Size). " +
+            "\nNote: It is likely that this memory is actually needed, but without it being properly rooted, there is no way to tell." +
+            "\nUnity's staff is making a best effort attempt to catch these internally, but there are a myriad of ways of using the engine so that it is impossible to catch all possible scenarios.";
+
+        public const string UnknownUnknownAllocationsErrorBoxMessageInternalMode = UnknownUnknownAllocationsErrorBoxMessage +
+            "\n\nThose with access to Unity's source code can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h to see where in the code base it was allocated from, and with that info disambiguate the issue further. ";
+
+        public const string NativeAllocationFoundReferencesHint =
+            "Only references from Managed Objects to this allocation are found. References from the stack or native code are not found. " +
+            "0 'Found References' does not necessarily mean that this allocation is leaked.";
+
+        public const string NativeAllocationInternalModeCallStacksInfoBoxMessage =
+            "If you have access to Unity's source code, you can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h to see where this allocation was made.";
+
+        const string NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipBase = "Clicking this will reload the table and then all allocations under this root will be ";
+        public const string NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipReveal = NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipBase + "shown.";
+        public const string NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipHide = NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipBase + "hidden.";
+
+        public const string UnrootedGraphcisResourceErrorBoxMessage =
+            "This graphics resource was not associated to a root in Unity's native code. This is a bug in the engine, please file a bug report.";
+
+        public const string GraphcisResourceWithSnapshotWithCallStacksInfoBoxMessage =
+            "Callstacks are not reported for Gfx Resources themselves, so any callstacks listed here relate to their root. " +
+            "Use the Gfx Resource ID and the native define ENABLE_DEBUG_GFXALLOCATION_CALLSTACK_INFO in MemoryProfiler.h to get more details when debugging Unity's Native Code.";
+
         public static GUIContent SearchInSceneButton = new GUIContent("Search In Scene", "This is a Scene Object. Click here to search for an object with this name and type in the currently open Scene(s).");
         public static GUIContent SearchInProjectButton = new GUIContent("Search In Project", "This is a Asset. Click here to search for an object with this name and type in the Project Browser.");
         public static GUIContent SearchButtonCantSearch = new GUIContent("Can't Search", "The object is neither a Scene Object nor an Asset, so it can't be searched for with the Project or Scene search");
@@ -171,6 +201,11 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         // Leading space is needed as it is added to the tool-tips of the content above
         public const string SelectInEditorTooltipCanSearch = " Use the Search button instead.";
         public const string SelectInEditorTooltipTrySearch = " Try the Search button instead.";
+
+        public const string SelectInEditorButtonSearchTimeout = "Searching the object timed out, is the search index fully built yet?";
+        public const string SelectInEditorButtonSearchTimeoutSearchIndexWasNotYetBuild = "Searching the object timed out because the search index has not yet been built. Please check the Background Tasks window for details.";
+        public const string SelectInEditorButtonSearching = "Please wait, the Editor is still trying to locate this object.";
+        public const string SelectInEditorButtonSearchingWhileIndexIsBuilding = "Please wait, the Editor is still trying to locate this object. The search index has not yet been built so this can take a moment. Please check the Background Tasks window for details.";
 
 #if UNITY_2021_2_OR_NEWER
         public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2021.2.0a12 or newer, to be able to see the memory overview. See the documentation for more info.";

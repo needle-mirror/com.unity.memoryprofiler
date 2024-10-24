@@ -72,7 +72,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             {
                 --preAllocatedBlockCount;
                 var block = new MemBlock();
-                block.mem = UnsafeUtility.Malloc(UnsafeUtility.SizeOf<T>() * m_BlockSize, UnsafeUtility.AlignOf<T>(), Allocator.Persistent);
+                block.mem = UnsafeUtility.Malloc(sizeof(T) * m_BlockSize, UnsafeUtility.AlignOf<T>(), Allocator.Persistent);
                 *(m_BlockList + preAllocatedBlockCount) = block;
             }
         }
@@ -158,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             {
                 for (uint i = 0; i < m_BlockSlots; ++i)
                 {
-                    UnsafeUtility.MemClear(m_BlockList[i].mem, UnsafeUtility.SizeOf<T>() * m_BlockSize);
+                    UnsafeUtility.MemClear(m_BlockList[i].mem, sizeof(T) * m_BlockSize);
                 }
             }
 

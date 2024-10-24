@@ -203,7 +203,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             var args = new AllTrackedMemoryModelBuilder.BuildArgs(
                 searchFilter: itemNameFilter,
                 breakdownNativeReserved: MemoryProfilerSettings.ShowReservedMemoryBreakdown,
-                disambiguateUnityObjects: sameSessionComparison);
+                disambiguateUnityObjects: sameSessionComparison,
+                allocationRootNamesToSplitIntoSuballocations: MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 ? MemoryProfilerSettings.AllocationRootsToSplit : null);
             var compareArgs = new TreeComparisonBuilder.BuildArgs(m_UnchangedToggle.value);
             var sortComparison = BuildSortComparisonFromTreeView();
             m_BuildModelWorker = new AsyncWorker<ComparisonTableModel>();

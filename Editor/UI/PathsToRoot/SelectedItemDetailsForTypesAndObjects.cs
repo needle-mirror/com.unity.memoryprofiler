@@ -2,14 +2,18 @@ using System;
 using UnityEditor;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.UIContentData;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using System.Collections.Generic;
 using System.Text;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot.NativeAllocationSiteEntriesCache;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class SelectedItemDetailsForTypesAndObjects
     {
+#pragma warning disable 0649
         long m_CurrentSelectionIdx;
+#pragma warning restore 0649
         ObjectData m_CurrentSelectionObjectData;
         CachedSnapshot m_CachedSnapshot;
         SelectedItemDetailsPanel m_UI;
@@ -23,7 +27,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI = detailsUI;
         }
 
-        public void SetSelection(CachedSnapshot.SourceIndex source)
+        public void SetSelection(CachedSnapshot.SourceIndex source, string fallbackName = null, string fallbackDescription = null, long childCount = -1)
         {
             m_CurrentSelectionObjectData = ObjectData.FromSourceLink(m_CachedSnapshot, source);
             var type = new UnifiedType(m_CachedSnapshot, m_CurrentSelectionObjectData);
@@ -31,12 +35,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case CachedSnapshot.SourceIndex.SourceId.NativeObject:
                 case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
-                case CachedSnapshot.SourceIndex.SourceId.GfxResource:
                     HandleObjectDetails(type);
+                    break;
+                case CachedSnapshot.SourceIndex.SourceId.GfxResource:
+                    if (m_CurrentSelectionObjectData.IsValid)
+                        HandleObjectDetails(type);
+                    else
+                        HandleGfxResourceDetails(source, fallbackName, fallbackDescription);
                     break;
                 case CachedSnapshot.SourceIndex.SourceId.NativeType:
                 case CachedSnapshot.SourceIndex.SourceId.ManagedType:
                     HandleTypeDetails(type);
+                    break;
+                case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
+                    HandleNativeAllocationDetails(source, fallbackName, fallbackDescription);
+                    break;
+                case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
+                    HandleNativeRootReferenceDetails(source, fallbackName, fallbackDescription, childCount);
                     break;
                 default:
                     break;
@@ -88,11 +103,169 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        internal void HandleNativeAllocationDetails(CachedSnapshot.SourceIndex source, string fallbackName, string fallbackDescription)
+        {
+            m_UI.SetItemName(source);
+            var nativeSize = (long)m_CachedSnapshot.NativeAllocations.Size[source.Index];
+            var references = ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, source);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Native Size", EditorUtility.FormatBytes(nativeSize), $"{nativeSize:N0} B");
+            if (MemoryProfilerSettings.FeatureFlags.ShowFoundReferencesForNativeAllocations_2024_10)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Found References", references.Length.ToString(), TextContent.NativeAllocationFoundReferencesHint);
+
+            if (MemoryProfilerSettings.FeatureFlags.EnableUnknownUnknownAllocationBreakdown_2024_10 &&
+                m_CachedSnapshot.NativeAllocations.RootReferenceId[source.Index] <= 0)
+            {
+                m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
+                {
+                    IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Error,
+                    Message =
+                    MemoryProfilerSettings.InternalModeOrSnapshotWithCallSites(m_CachedSnapshot) ?
+                    TextContent.UnknownUnknownAllocationsErrorBoxMessageInternalMode
+                    : TextContent.UnknownUnknownAllocationsErrorBoxMessage,
+                });
+            }
+
+            if (m_CachedSnapshot.NativeCallstackSymbols.Count > 0)
+            {
+                AddCallStacksInfoToUI(source);
+            }
+            // Give a hint to internal users or those with the potential to get call stacks.
+            else if (MemoryProfilerSettings.InternalModeOrSnapshotWithCallSites(m_CachedSnapshot))
+            {
+                m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
+                {
+                    IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Info,
+                    Message = TextContent.NativeAllocationInternalModeCallStacksInfoBoxMessage,
+                });
+            }
+        }
+
+        internal void HandleGfxResourceDetails(CachedSnapshot.SourceIndex source, string fallbackName, string fallbackDescription)
+        {
+            m_UI.SetItemName(fallbackName);
+            var gfxSize = (long)m_CachedSnapshot.NativeGfxResourceReferences.GfxSize[source.Index];
+            var rootId = (long)m_CachedSnapshot.NativeGfxResourceReferences.RootId[source.Index];
+            var gfxResourceId = (long)m_CachedSnapshot.NativeGfxResourceReferences.GfxResourceId[source.Index];
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Graphics Size", EditorUtility.FormatBytes(gfxSize), $"{gfxSize:N0} B");
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Root ID", rootId.ToString());
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Gfx Resource ID", gfxResourceId.ToString());
+
+            if (rootId <= 0)
+            {
+                m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
+                {
+                    IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Error,
+                    Message = TextContent.UnrootedGraphcisResourceErrorBoxMessage,
+                });
+            }
+            else if (m_CachedSnapshot.NativeCallstackSymbols.Count > 0)
+            {
+                m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameCallStacks, new InfoBox()
+                {
+                    IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Info,
+                    Message = TextContent.GraphcisResourceWithSnapshotWithCallStacksInfoBoxMessage,
+                });
+                AddCallStacksInfoToUI(source);
+            }
+        }
+
+        internal void HandleNativeRootReferenceDetails(CachedSnapshot.SourceIndex source, string fallbackName, string fallbackDescription, long childCount = -1)
+        {
+            m_UI.SetItemName(source);
+            GetRootReferenceName(m_CachedSnapshot, source, out var areaName, out var objectName);
+
+            if (!string.IsNullOrEmpty(areaName))
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Area", areaName);
+
+            if (!string.IsNullOrEmpty(objectName))
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Object Name", objectName);
+
+            var accumultatedSize = (long)m_CachedSnapshot.NativeRootReferences.AccumulatedSize[source.Index];
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Size", EditorUtility.FormatBytes(accumultatedSize), $"{accumultatedSize:N0} B");
+
+            if (childCount > 0)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Child Count", childCount.ToString());
+
+            if (MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10)
+            {
+                var listOfRootNames = MemoryProfilerSettings.AllocationRootsToSplit;
+                var areaAndObjectName = $"{areaName}:{objectName}";
+                var alreadySplit = false;
+                var addButton = true;
+
+                for (int i = 0; i < listOfRootNames.Length; i++)
+                {
+                    if (listOfRootNames[i] == areaAndObjectName)
+                    {
+                        alreadySplit = true;
+                        break;
+                    }
+                }
+
+                listOfRootNames = MemoryProfilerSettings.AlwaysSplitRootAllocations;
+                for (int i = 0; i < listOfRootNames.Length; i++)
+                {
+                    if (listOfRootNames[i] == areaAndObjectName)
+                    {
+                        // No button for always split roots
+                        addButton = false;
+                        break;
+                    }
+                }
+
+                if (addButton)
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Rooted Allocations Display", // title is not shown
+                        alreadySplit ? "Hide Allocation List" : "List all Allocations",
+                        tooltip:
+                            alreadySplit ?
+                            TextContent.NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipHide :
+                            TextContent.NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipReveal,
+                        SelectedItemDynamicElementOptions.Button, () =>
+                        {
+                            ToggleNativeRootReferenceToListForDisseminationOfAllocations(source, !alreadySplit);
+                            // refresh the UI
+                            m_UI.Clear();
+                            HandleNativeRootReferenceDetails(source, fallbackName, fallbackDescription, childCount);
+                        });
+            }
+        }
+
+        static void GetRootReferenceName(CachedSnapshot snapshot, SourceIndex sourceIndex, out string areaName, out string objectName)
+        {
+            areaName = "";
+            objectName = "";
+            if (sourceIndex.Id != SourceIndex.SourceId.NativeRootReference)
+                return;
+            areaName = snapshot.NativeRootReferences.AreaName[sourceIndex.Index];
+            objectName = snapshot.NativeRootReferences.ObjectName[sourceIndex.Index];
+        }
+
+        void ToggleNativeRootReferenceToListForDisseminationOfAllocations(CachedSnapshot.SourceIndex source, bool addToListToSplit)
+        {
+            var list = new List<string>(MemoryProfilerSettings.AllocationRootsToSplit);
+            GetRootReferenceName(m_CachedSnapshot, source, out var areaName, out var objectName);
+            var areaAndObjectName = $"{areaName}:{objectName}";
+            if (addToListToSplit)
+            {
+                if (list.Contains(areaAndObjectName))
+                    return; // Don't add it again
+                list.Add(areaAndObjectName);
+            }
+            else
+                list.Remove(areaAndObjectName);
+            MemoryProfilerSettings.AllocationRootsToSplit = list.ToArray();
+        }
+
         internal void HandleInvalidObjectDetails(UnifiedType type, out string statusSummary)
         {
             statusSummary = "Invalid Object";
             m_UI.SetItemName("Invalid Object");
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Bug!", "This is an invalid Managed Object, i.e. the Memory Profiler could not identify it's type and data. To help us in finding and fixing this issue, " + TextContent.InvalidObjectPleaseReportABugMessage);
+
+            m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameCallStacks, new InfoBox()
+            {
+                IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Info,
+                Message = TextContent.InvalidObjectErrorBoxMessage,
+            });
         }
 
         internal void HandlePureCSharpObjectDetails(UnifiedType type)
@@ -129,7 +302,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", managedObjectInfo.RefCount.ToString());
             m_UI.SetManagedObjectInspector(m_CurrentSelectionObjectData);
 
-            if (managedObjectInfo.RefCount == 0)
+            var references = ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot,
+                ObjectData.FromManagedObjectInfo(m_CachedSnapshot, managedObjectInfo));
+            // GCHandles that do not belong to a Native Object increase the RefCount without adding an entry to the references list.
+            if (managedObjectInfo.RefCount > references.Length)
             {
                 bool heldByGCHandle = false;
                 for (long i = 0; i < m_CachedSnapshot.GcHandles.Count; i++)
@@ -166,6 +342,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnkownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
                 }
             }
+
+            var objectAddress = m_CurrentSelectionObjectData.GetObjectPointer(m_CachedSnapshot, false);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Managed Address", DetailFormatter.FormatPointer(objectAddress));
         }
 
         internal void HandleUnityObjectDetails(UnifiedUnityObjectInfo selectedUnityObject)
@@ -234,8 +413,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "HideFlags", hideFlagsLabel, hideFlagsTooltip);
             }
 
-            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Native Address", selectedUnityObject.NativeObjectData.GetObjectPointer(m_CachedSnapshot, false).ToString("X"));
-            if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Managed Address", selectedUnityObject.ManagedObjectData.GetObjectPointer(m_CachedSnapshot, false).ToString("X"));
+            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Native Address", DetailFormatter.FormatPointer(selectedUnityObject.NativeObjectData.GetObjectPointer(m_CachedSnapshot, false)));
+            if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Managed Address", DetailFormatter.FormatPointer(selectedUnityObject.ManagedObjectData.GetObjectPointer(m_CachedSnapshot, false)));
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Selected Index", $"U:{m_CurrentSelectionIdx}");
             if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Native Index", $"U:{selectedUnityObject.NativeObjectData.GetUnifiedObjectIndex(m_CachedSnapshot)} N:{selectedUnityObject.NativeObjectData.nativeObjectIndex}");
@@ -252,12 +431,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.SetManagedObjectInspector(selectedUnityObject.ManagedObjectData);
             }
             if (selectedUnityObject.HasNativeSide && m_CachedSnapshot.NativeCallstackSymbols.Count > 0)
-                AddCallStacksInfoToUI(selectedUnityObject);
+                AddCallStacksInfoToUI(new SourceIndex(SourceIndex.SourceId.NativeObject, selectedUnityObject.NativeObjectIndex));
         }
 
-        void AddCallStacksInfoToUI(UnifiedUnityObjectInfo selectedUnityObject)
+        void AddCallStacksInfoToUI(SourceIndex sourceIndex)
         {
-            var rootId = m_CachedSnapshot.NativeObjects.RootReferenceId[selectedUnityObject.NativeObjectIndex];
+            var rootId = sourceIndex.Id switch
+            {
+                SourceIndex.SourceId.NativeObject => m_CachedSnapshot.NativeObjects.RootReferenceId[sourceIndex.Index],
+                SourceIndex.SourceId.NativeAllocation => m_CachedSnapshot.NativeAllocations.RootReferenceId[sourceIndex.Index],
+                SourceIndex.SourceId.GfxResource => m_CachedSnapshot.NativeGfxResourceReferences.RootId[sourceIndex.Index],
+                SourceIndex.SourceId.NativeRootReference => sourceIndex.Index,
+                _ => throw new NotImplementedException()
+            };
             var areaAndObjectName = m_CachedSnapshot.NativeAllocations.ProduceAllocationNameForRootReferenceId(m_CachedSnapshot, rootId, higlevelObjectNameOnlyIfAvailable: false);
             var callstackCount = 0L;
             var furthercallstackCount = 0L;
@@ -272,7 +458,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var callStackTexts = new List<(string, string, string)>((int)maxEntries);
                 BuildCallStackInfo(
                     ref callStackTexts, ref allocationCount, ref callstackCount, ref furthercallstackCount, ref callStacks,
-                    rootId, areaAndObjectName, maxUniqueEntries: maxEntries,
+                    sourceIndex, areaAndObjectName, maxUniqueEntries: maxEntries,
                     clickableCallStacks: forCopy ? false : MemoryProfilerSettings.ClickableCallStacks,
                     simplifyCallStacks: forCopy ? false : MemoryProfilerSettings.AddressInCallStacks);
 
@@ -316,7 +502,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                {
                    MemoryProfilerSettings.ClickableCallStacks = !MemoryProfilerSettings.ClickableCallStacks;
                    m_UI.ClearGroup(SelectedItemDetailsPanel.GroupNameCallStacks);
-                   AddCallStacksInfoToUI(selectedUnityObject);
+                   AddCallStacksInfoToUI(sourceIndex);
                });
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, "Show Address in Call Stacks", "Show Address in Call Stacks",
@@ -325,7 +511,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                {
                    MemoryProfilerSettings.AddressInCallStacks = !MemoryProfilerSettings.AddressInCallStacks;
                    m_UI.ClearGroup(SelectedItemDetailsPanel.GroupNameCallStacks);
-                   AddCallStacksInfoToUI(selectedUnityObject);
+                   AddCallStacksInfoToUI(sourceIndex);
                });
 
 
@@ -355,58 +541,102 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <param name="startIndex"></param>
         void BuildCallStackInfo(ref List<(string, string, string)> callStackTexts, ref long allocationCount,
             ref long callstackCount, ref long furtherCallstacks,
-            ref DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo> callStacks, long rootId,
+            ref DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo> callStacks, SourceIndex sourceIndex,
             string areaAndObjectName, long startIndex = 0, long maxUniqueEntries = 10, bool clickableCallStacks = true, bool simplifyCallStacks = true)
         {
+            var rootId = sourceIndex.Id switch
+            {
+                SourceIndex.SourceId.NativeObject => m_CachedSnapshot.NativeObjects.RootReferenceId[sourceIndex.Index],
+                SourceIndex.SourceId.NativeAllocation => m_CachedSnapshot.NativeAllocations.RootReferenceId[sourceIndex.Index],
+                SourceIndex.SourceId.GfxResource => m_CachedSnapshot.NativeGfxResourceReferences.RootId[sourceIndex.Index],
+                SourceIndex.SourceId.NativeRootReference => sourceIndex.Index,
+                _ => throw new NotImplementedException()
+            };
+
+            if (sourceIndex.Id == SourceIndex.SourceId.NativeAllocation)
+            {
+                BuildCallStackInfo(ref callStackTexts, ref allocationCount, ref callstackCount, ref furtherCallstacks,
+                    ref callStacks, sourceIndex.Index, areaAndObjectName,
+                    maxUniqueEntries, clickableCallStacks, simplifyCallStacks);
+                return;
+            }
+
             for (long i = startIndex; i < m_CachedSnapshot.NativeAllocations.RootReferenceId.Count; i++)
             {
                 if (m_CachedSnapshot.NativeAllocations.RootReferenceId[i] == rootId)
                 {
-                    ++allocationCount;
-                    var siteId = m_CachedSnapshot.NativeAllocations.AllocationSiteId[i];
-                    if (siteId >= 0)
-                    {
-                        var callstackInfo = m_CachedSnapshot.NativeAllocationSites.GetCallStackInfo(siteId);
-                        var address = m_CachedSnapshot.NativeAllocations.Address[i];
-                        var regionIndex = m_CachedSnapshot.NativeAllocations.MemoryRegionIndex[i];
-                        var region = m_CachedSnapshot.NativeMemoryRegions.MemoryRegionName[regionIndex];
-                        var isNew = true;
-                        for (long j = 0; j < callStacks.Count; j++)
-                        {
-                            if (callStacks[j].Equals(callstackInfo))
-                            {
-                                var texts = callStackTexts[(int)j];
-                                texts.Item2 += $"\nAnd Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}";
-                                callStackTexts[(int)j] = texts;
-                                isNew = false;
-                                break;
-                            }
-                        }
-                        if (!isNew)
-                            continue;
-
-                        if (callStackTexts.Count >= maxUniqueEntries)
-                        {
-                            if (furtherCallstacks == -1)
-                            {
-                                --allocationCount;
-                                break;
-                            }
-                            ++furtherCallstacks;
-                            continue;
-                        }
-                        var callstack = m_CachedSnapshot.NativeAllocationSites.GetReadableCallstack(
-                            m_CachedSnapshot.NativeCallstackSymbols, callstackInfo.Index, simplifyCallStacks: simplifyCallStacks, clickableCallStacks: clickableCallStacks);
-                        if (!string.IsNullOrEmpty(callstack))
-                        {
-                            callStackTexts.Add((
-                                $"Call Stack {++callstackCount}",
-                                $"Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}",
-                                $"\n\n{callstack}"));
-                        }
-                    }
+                    var continueBuilding = BuildCallStackInfo(ref callStackTexts, ref allocationCount, ref callstackCount, ref furtherCallstacks,
+                        ref callStacks, i, areaAndObjectName,
+                        maxUniqueEntries, clickableCallStacks, simplifyCallStacks);
+                    if (!continueBuilding)
+                        break;
                 }
             }
+        }
+
+        /// <summary>
+        /// Builds the call stack info for the given rootId and adds it to the given lists.
+        /// </summary>
+        /// <param name="callStackTexts"></param>
+        /// <param name="allocationCount"></param>
+        /// <param name="callstackCount"></param>
+        /// <param name="furtherCallstacks">pass -1 if you don't care to know, though then the <paramref name="allocationCount"/> might also be under reported</param>
+        /// <param name="callStacks"></param>
+        /// <param name="rootId"></param>
+        /// <param name="areaAndObjectName"></param>
+        /// <param name="startIndex"></param>
+        /// <returns> Returns false if <paramref name="maxUniqueEntries"/> has been reached and further allocations should not be examined
+        /// (e.g. for gathering the <paramref name="furtherCallstacks"/> count) at this time. </returns>
+        bool BuildCallStackInfo(ref List<(string, string, string)> callStackTexts, ref long allocationCount,
+            ref long callstackCount, ref long furtherCallstacks,
+            ref DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo> callStacks, long nativeAllocationIndex,
+            string areaAndObjectName, long maxUniqueEntries = 10, bool clickableCallStacks = true, bool simplifyCallStacks = true)
+        {
+            ++allocationCount;
+            var siteId = m_CachedSnapshot.NativeAllocations.AllocationSiteId[nativeAllocationIndex];
+            if (siteId == CachedSnapshot.NativeAllocationSiteEntriesCache.SiteIdNullPointer)
+                return true;
+            var callstackInfo = m_CachedSnapshot.NativeAllocationSites.GetCallStackInfo(siteId);
+            if (!callstackInfo.Valid)
+                return true;
+            var address = m_CachedSnapshot.NativeAllocations.Address[nativeAllocationIndex];
+            var regionIndex = m_CachedSnapshot.NativeAllocations.MemoryRegionIndex[nativeAllocationIndex];
+            var region = m_CachedSnapshot.NativeMemoryRegions.MemoryRegionName[regionIndex];
+            var isNew = true;
+            for (long j = 0; j < callStacks.Count; j++)
+            {
+                if (callStacks[j].Equals(callstackInfo))
+                {
+                    var texts = callStackTexts[(int)j];
+                    texts.Item2 += $"\nAnd Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}";
+                    callStackTexts[(int)j] = texts;
+                    isNew = false;
+                    break;
+                }
+            }
+            if (!isNew)
+                return true;
+
+            if (callStackTexts.Count >= maxUniqueEntries)
+            {
+                if (furtherCallstacks == -1)
+                {
+                    --allocationCount;
+                    return false;
+                }
+                ++furtherCallstacks;
+                return true;
+            }
+            var callstack = m_CachedSnapshot.NativeAllocationSites.GetReadableCallstack(
+                m_CachedSnapshot.NativeCallstackSymbols, callstackInfo.Index, simplifyCallStacks: simplifyCallStacks, clickableCallStacks: clickableCallStacks);
+            if (!string.IsNullOrEmpty(callstack))
+            {
+                callStackTexts.Add((
+                    $"Call Stack {++callstackCount}",
+                    $"Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}",
+                    $"\n\n{callstack}"));
+            }
+            return true;
         }
 
 

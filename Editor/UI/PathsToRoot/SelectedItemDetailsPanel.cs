@@ -7,6 +7,10 @@ using UnityEditorInternal;
 using UnityEngine.UIElements.Experimental;
 using UnityEngine.UIElements;
 using UnityEngine;
+using System.Threading;
+using System.Threading.Tasks;
+
+
 #if INSTANCE_ID_CHANGED
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
 #else
@@ -77,8 +81,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_SearchInEditorButtonHolder;
         Button m_SelectInEditorButton;
         UnityEngine.Object m_FoundObjectInEditor;
+        bool m_CanSearch;
         Button m_SearchInEditorButton;
         Button m_QuickSearchButton;
+
+        CancellationTokenSource m_SearchCancellationTokenSource;
 
         // This button is hidden for the moment as
         // - It may cause confusion that it would copy the entire details section
@@ -555,6 +562,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 else
                     Debug.LogError("No interaction defined for toggle");
             }
+            else if (options.HasFlag(SelectedItemDynamicElementOptions.Button))
+            {
+                button.text = content;
+                button.tooltip = tooltip;
+                if (onInteraction != null)
+                    button.clickable.clicked += onInteraction;
+                else
+                    Debug.LogError("No interaction defined for button");
+            }
             else
             {
                 usedContentLabel.text = content;
@@ -637,16 +653,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, typeInfo);
         }
 
+        public void SetItemName(CachedSnapshot.SourceIndex sourceIndex)
+        {
+            UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
+            NonObjectTitleShown = false;
+            m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, sourceIndex);
+        }
+
         public void SetItemName(UnifiedUnityObjectInfo unityObjectInfo)
         {
             UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
             m_SelectedUnityObject = unityObjectInfo;
-            using var findings = EditorAssetFinderUtility.FindObject(m_CachedSnapshot, unityObjectInfo);
-            m_FoundObjectInEditor = findings.FoundObject;
 
             var searchButtonLabel = EditorAssetFinderUtility.GetSearchButtonLabel(m_CachedSnapshot, unityObjectInfo);
-            var canSearch = searchButtonLabel != TextContent.SearchButtonCantSearch;
-            if (canSearch)
+            m_CanSearch = searchButtonLabel != TextContent.SearchButtonCantSearch;
+            if (m_CanSearch)
             {
                 m_SearchInEditorButton.text = searchButtonLabel.text;
                 m_SearchInEditorButton.tooltip = searchButtonLabel.tooltip;
@@ -669,10 +690,46 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_PreviewImageResult.PreviewImageNeedsCleanup)
                 m_PreviewImageResult.Dispose();
 
+            NonObjectTitleShown = false;
+            m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, unityObjectInfo);
+
+            var cts = m_SearchCancellationTokenSource = new CancellationTokenSource();
+            try
+            {
+                var findings = EditorAssetFinderUtility.FindObject(m_CachedSnapshot, unityObjectInfo, m_SearchCancellationTokenSource.Token);
+                UIElementsHelper.SetVisibility(m_SelectInEditorButton, true);
+                m_SelectInEditorButton.SetEnabled(false);
+                m_SelectInEditorButton.tooltip = QuickSearchUtility.SearchDatabaseIsReady() ? TextContent.SelectInEditorButtonSearching : TextContent.SelectInEditorButtonSearchingWhileIndexIsBuilding;
+                m_SelectInEditorButtonHolder.tooltip = String.Empty;
+
+                findings
+                    .ContinueWith(UpdateUIForSearchResults, m_SearchCancellationTokenSource.Token, TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContext())
+                    .ContinueWith((t) => cts.Dispose());
+            }
+            catch (Exception e)
+            {
+                if (e is not OperationCanceledException)
+                {
+                    Debug.LogException(e);
+                }
+                cts.Dispose();
+            }
+        }
+
+        void UpdateUIForSearchResults(Task<EditorAssetFinderUtility.Findings> findings)
+        {
+            if (findings.Exception != null)
+            {
+                if (findings.Exception.InnerException is not OperationCanceledException)
+                {
+                    Debug.LogException(findings.Exception);
+                }
+            }
+            using var findingsResult = findings.Result;
+            m_FoundObjectInEditor = findingsResult.FoundObject;
             if (m_FoundObjectInEditor != null)
             {
-                UIElementsHelper.SetVisibility(m_SelectInEditorButton, true);
-                m_PreviewImageResult = EditorAssetFinderUtility.GetPreviewImage(findings);
+                m_PreviewImageResult = EditorAssetFinderUtility.GetPreviewImage(findingsResult);
                 var previewFoldoutSessionStateKey = GetFoldoutSessionStateKey(m_PreviewFoldout.text);
                 m_PreviewFoldout.SetValueWithoutNotify(SessionState.GetBool(previewFoldoutSessionStateKey, true));
                 if (m_PreviewImageResult.PreviewImage)
@@ -681,37 +738,39 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_Preview.image = m_PreviewImageResult.PreviewImage;
                 }
                 m_SelectInEditorButton.SetEnabled(true);
-                m_SelectInEditorButton.tooltip = (findings.DegreeOfCertainty < 100 ? TextContent.SelectInEditorButtonLessCertain : TextContent.SelectInEditorButton100PercentCertain).tooltip;
+                m_SelectInEditorButton.tooltip = (findingsResult.DegreeOfCertainty < 100 ? TextContent.SelectInEditorButtonLessCertain : TextContent.SelectInEditorButton100PercentCertain).tooltip;
             }
             else
             {
                 UIElementsHelper.SetVisibility(m_SelectInEditorButton, true);
 
                 m_SelectInEditorButton.SetEnabled(false);
-                switch (findings.FailReason)
+                switch (findingsResult.FailReason)
                 {
                     case EditorAssetFinderUtility.SearchFailReason.NotFound:
-                        m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonNotFound.tooltip;
+                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonNotFound.tooltip;
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.FoundTooMany:
-                        m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonFoundTooMany.tooltip +
-                            (canSearch ? TextContent.SelectInEditorTooltipCanSearch : string.Empty);
+                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonFoundTooMany.tooltip +
+                            (m_CanSearch ? TextContent.SelectInEditorTooltipCanSearch : string.Empty);
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.FoundTooManyToProcess:
-                        m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonFoundTooManyToProcess.tooltip +
-                            (canSearch ? TextContent.SelectInEditorTooltipCanSearch : string.Empty);
+                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonFoundTooManyToProcess.tooltip +
+                            (m_CanSearch ? TextContent.SelectInEditorTooltipCanSearch : string.Empty);
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.TypeIssues:
-                        m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonTypeMissmatch +
-                            (canSearch ? TextContent.SelectInEditorTooltipTrySearch : string.Empty);
+                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonTypeMissmatch +
+                            (m_CanSearch ? TextContent.SelectInEditorTooltipTrySearch : string.Empty);
+                        break;
+                    case EditorAssetFinderUtility.SearchFailReason.SearchTimeout:
+                    case EditorAssetFinderUtility.SearchFailReason.SearchCanceled:
+                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = QuickSearchUtility.SearchDatabaseIsReady() ? TextContent.SelectInEditorButtonSearchTimeout : TextContent.SelectInEditorButtonSearchTimeoutSearchIndexWasNotYetBuild;
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.Found:
                     default:
                         break;
                 }
             }
-            NonObjectTitleShown = false;
-            m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, unityObjectInfo);
         }
 
         public void SetDescription(string description)
@@ -800,6 +859,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             NoItemSelected();
             SetDescription("");
             SetDocumentationURL(null);
+            try
+            {
+                m_SearchCancellationTokenSource?.Cancel();
+            }
+            catch (ObjectDisposedException) { }
         }
     }
 }

@@ -35,21 +35,25 @@ namespace Unity.MemoryProfiler.Editor.Containers
     {
         [NativeDisableUnsafePtrRestriction]
         readonly T* m_Data;
-        readonly long m_Size;
+        readonly long m_Count;
 
-        public readonly long Count => m_Size;
+        public readonly long Count => m_Count;
         public readonly long Capacity => Count;
 
         public readonly bool IsCreated { get; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly T* GetUnsafeTypedPtr() => m_Data;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly void* GetUnsafePtr() => m_Data;
 
         public readonly ref T this[long idx]
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                Checks.CheckIndexOutOfBoundsAndThrow(idx, Count);
+                Checks.CheckIndexInRangeAndThrow(idx, Count);
                 return ref m_Data[idx];
             }
         }
@@ -69,10 +73,10 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return new DynamicArrayRef<T>(dataPointer, length, true);
         }
 
-        unsafe DynamicArrayRef(T* data, long lendth, bool isCreated)
+        unsafe DynamicArrayRef(T* data, long count, bool isCreated)
         {
             m_Data = data;
-            m_Size = lendth;
+            m_Count = count;
             IsCreated = isCreated;
         }
 
@@ -102,7 +106,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             if (Count != other.Count)
                 return false;
 
-            return UnsafeUtility.MemCmp(m_Data, other.m_Data, UnsafeUtility.SizeOf<T>() * Count) == 0;
+            return UnsafeUtility.MemCmp(m_Data, other.m_Data, sizeof(T) * Count) == 0;
         }
     }
 
@@ -117,11 +121,28 @@ namespace Unity.MemoryProfiler.Editor.Containers
         [NativeDisableUnsafePtrRestriction]
         T* m_Data;
         long m_Capacity;
-        public long Count { readonly get; private set; }
+        long m_Count;
+        public readonly long Count => m_Count;
 
         Allocator m_Allocator;
         public readonly Allocator Allocator => m_Allocator;
 
+        public enum ResizePolicy
+        {
+            Double,
+            Exact,
+            /// <summary>
+            /// closest multiple of 32
+            /// </summary>
+            ClosestIncrementMultiple
+        }
+        const ResizePolicy k_DefaultResizePolicy = ResizePolicy.ClosestIncrementMultiple;
+        const long k_DefaultCapacityIncrements = 32;
+
+        /// <summary>
+        /// Increasing the capacity will not clear any new memory.
+        /// To controll memory clearing behavior while changing the capacity, use <see cref="Reserve(long, bool, ResizePolicy)"/>.
+        /// </summary>
         public long Capacity
         {
             readonly get { return m_Capacity; }
@@ -133,18 +154,21 @@ namespace Unity.MemoryProfiler.Editor.Containers
         }
 
         public bool IsCreated { readonly get; private set; }
+        public long ElementSize => sizeof(T);
 
         public DynamicArray(Allocator allocator) : this(0, allocator) { }
 
-        public DynamicArray(long initialSize, Allocator allocator, bool memClear = false)
+        public DynamicArray(long initialCount, Allocator allocator, bool memClear = false) : this(initialCount, initialCount, allocator, memClear) { }
+
+        public DynamicArray(long initialCount, long initialCapacity, Allocator allocator, bool memClear = false)
         {
             m_Allocator = allocator;
-            Count = initialSize;
-            m_Capacity = initialSize;
+            m_Count = initialCount;
+            m_Capacity = initialCapacity;
 
-            if (initialSize != 0)
+            if (m_Capacity != 0)
             {
-                var allocSize = initialSize * UnsafeUtility.SizeOf<T>();
+                var allocSize = m_Capacity * sizeof(T);
                 m_Data = (T*)UnsafeUtility.Malloc(allocSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
                 if (memClear)
                     UnsafeUtility.MemClear(m_Data, allocSize);
@@ -154,26 +178,32 @@ namespace Unity.MemoryProfiler.Editor.Containers
             IsCreated = true;
         }
 
-        public static unsafe DynamicArray<T> ConvertExistingDataToNativeArray(T* dataPointer, long length, Allocator allocator)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, Allocator allocator)
+            => ConvertExistingDataToDynamicArray(dataPointer, count, allocator, count);
+
+        public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, Allocator allocator, long capacity)
         {
+            if (capacity < count)
+                throw new ArgumentException("Capacity must be greater or equal to length", nameof(capacity));
             return new DynamicArray<T>(allocator)
             {
                 m_Data = dataPointer,
-                Count = length,
-                m_Capacity = length,
+                m_Count = count,
+                m_Capacity = capacity,
                 IsCreated = true,
             };
         }
 
         public DynamicArray<U> Reinterpret<U>() where U : unmanaged
         {
-            return Reinterpret<U>(UnsafeUtility.SizeOf<T>());
+            return Reinterpret<U>(sizeof(T));
         }
 
         DynamicArray<U> Reinterpret<U>(int expectedTypeSize) where U : unmanaged
         {
-            long tSize = UnsafeUtility.SizeOf<T>();
-            long uSize = UnsafeUtility.SizeOf<U>();
+            long tSize = sizeof(T);
+            long uSize = sizeof(U);
 
             long byteCount = Count * tSize;
             long uCount = byteCount / uSize;
@@ -191,7 +221,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             {
                 m_Data = (U*)m_Data,
                 IsCreated = true,
-                Count = uCount,
+                m_Count = uCount,
                 m_Capacity = uCap,
                 m_Allocator = m_Allocator
             };
@@ -204,59 +234,125 @@ namespace Unity.MemoryProfiler.Editor.Containers
             unsafe
             {
                 fixed (void* src = arr)
-                    UnsafeUtility.MemCpy(m_Data, src, UnsafeUtility.SizeOf<T>() * arr.LongLength);
+                    UnsafeUtility.MemCpy(m_Data, src, sizeof(T) * arr.LongLength);
             }
         }
 
         public readonly ref T this[long idx]
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
                 Checks.CheckEquals(true, IsCreated);
-                Checks.CheckIndexOutOfBoundsAndThrow(idx, Count);
+                Checks.CheckIndexInRangeAndThrow(idx, Count);
                 return ref (m_Data)[idx];
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly void* GetUnsafePtr() { return m_Data; }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly T* GetUnsafeTypedPtr() { return m_Data; }
 
-        [MethodImpl(256)]
-        public readonly T Back()
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly T Back()
         {
             Checks.CheckEquals(true, IsCreated);
-            return this[Count - 1];
+            return ref this[Count - 1];
         }
 
-        public void Resize(long newSize, bool memClear)
+        /// <summary>
+        /// Try adding a number of elements to the array without growing the <see cref="Capacity"/>.
+        /// </summary>
+        /// <param name="count"></param>
+        /// <returns>true if succesful, false if resizing would have been bigger than capacity.</returns>
+        public bool TryAddCountWithoutGrowing(long count, out long firstNewElementIndex, bool memClear = false)
         {
             Checks.CheckEquals(true, IsCreated);
-            var oldCount = Count;
-            if (newSize > m_Capacity)
-                ResizeInternalBuffer(newSize, false);
+            // count has got to be positive
+            Checks.CheckCountWithinReasonAndThrowArgumentException(count, m_Count);
 
-            if (memClear && newSize > oldCount)
+            var newCount = m_Count + count;
+            if (newCount > m_Capacity)
             {
-                var typeSize = UnsafeUtility.SizeOf<T>();
-                UnsafeUtility.MemClear(((byte*)m_Data) + (oldCount * typeSize), (newSize - oldCount) * typeSize);
+                firstNewElementIndex = -1;
+                return false;
             }
-            Count = newSize;
+            firstNewElementIndex = m_Count;
+            m_Count = newCount;
+            if (memClear)
+                MemClear(firstNewElementIndex);
+            return true;
         }
 
-        [MethodImpl(256)]
-        void ResizeInternalBuffer(long newCapacity, bool forceResize)
+        public void Reserve(long neededCapacity, bool memClearAllAboveCount = false, ResizePolicy resizePolicy = k_DefaultResizePolicy)
+        {
+            Checks.CheckEquals(true, IsCreated);
+
+            if (neededCapacity <= m_Capacity)
+                return;
+
+            ResizeInternalBuffer(neededCapacity, false, resizePolicy);
+
+            if (memClearAllAboveCount)
+                MemClear(m_Count);
+        }
+
+        void MemClear(long start)
+        {
+            var dst = (byte*)m_Data;
+            var offsetInBytes = start * sizeof(T);
+            UnsafeUtility.MemClear(dst + offsetInBytes, (m_Capacity - m_Count) * sizeof(T));
+        }
+
+        static long CalculateSizeForDoubling(long neededCapacity, long currentCapacity)
+        {
+            var nextCapacity = currentCapacity;
+            if (nextCapacity == 0)
+                nextCapacity = 1;
+            while (nextCapacity < neededCapacity)
+            {
+                nextCapacity *= 2;
+            }
+            return nextCapacity;
+        }
+
+        public void Resize(long newSize, bool memClear, ResizePolicy resizePolicy = k_DefaultResizePolicy)
+        {
+            Checks.CheckEquals(true, IsCreated);
+            if (newSize > m_Capacity)
+                ResizeInternalBuffer(newSize, false, resizePolicy);
+
+            if (memClear && newSize > m_Count)
+            {
+                var dst = (byte*)m_Data;
+                var offsetToLastElementInBytes = m_Count * sizeof(T);
+                UnsafeUtility.MemClear(dst + offsetToLastElementInBytes, (newSize - m_Count) * sizeof(T));
+            }
+            m_Count = newSize;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void ResizeInternalBuffer(long newCapacity, bool forceResize, ResizePolicy resizePolicy = k_DefaultResizePolicy)
         {
             if (newCapacity > m_Capacity || (forceResize && newCapacity != m_Capacity))
             {
+                newCapacity = resizePolicy switch
+                {
+                    ResizePolicy.Double => CalculateSizeForDoubling(newCapacity, m_Capacity),
+                    ResizePolicy.Exact => newCapacity,
+                    ResizePolicy.ClosestIncrementMultiple => (newCapacity / k_DefaultCapacityIncrements + 1) * k_DefaultCapacityIncrements,
+                    _ => throw new NotImplementedException(),
+                };
+
                 if (m_Allocator == Allocator.None)
                     throw new NotSupportedException("Resizing a DynamicArray that acts as a slice of another DynamicArray is not allowed");
-                var elemSize = UnsafeUtility.SizeOf<T>();
-                var newMem = (T*)UnsafeUtility.Malloc(newCapacity * elemSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
+                var newMem = (T*)UnsafeUtility.Malloc(newCapacity * sizeof(T), UnsafeUtility.AlignOf<T>(), m_Allocator);
 
                 if (m_Data != null)
                 {
-                    UnsafeUtility.MemCpy(newMem, m_Data, Count * elemSize);
+                    UnsafeUtility.MemCpy(newMem, m_Data, Count * sizeof(T));
                     UnsafeUtility.Free(m_Data, m_Allocator);
                 }
 
@@ -265,22 +361,71 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        public void Push(T value)
+        public void Push(T value, ResizePolicy resizePolicy = ResizePolicy.Double, bool memClearForExcessExpansion = false)
         {
             Checks.CheckEquals(true, IsCreated);
             if (Count + 1 > m_Capacity)
-                ResizeInternalBuffer(Math.Max(m_Capacity, 1) * 2, false);
-            this[Count++] = value;
+                ResizeInternalBuffer(m_Capacity + 1, false, resizePolicy);
+
+            if (memClearForExcessExpansion)
+                MemClear(m_Count);
+            (m_Data)[m_Count++] = value;
         }
 
-        public T Pop()
+        /// <summary>
+        /// Note: This whole method is not thread safe. It is not intended to be used in a multithreaded context.
+        /// Expansion is not atomic and after reserving, copying isn't atomic either so simultaneous Pop()s could lead to data corruption.
+        /// </summary>
+        /// <param name="values"></param>
+        /// <param name="memClearForExcessExpansion"></param>
+        /// <param name="resizePolicy"></param>
+        public void PushRange(DynamicArray<T> values, bool memClearForExcessExpansion = false, ResizePolicy resizePolicy = ResizePolicy.Exact)
         {
-            return this[--Count];
+            Checks.CheckEquals(true, IsCreated);
+            if (values.Count == 0)
+                return;
+
+            var newCount = m_Count + values.Count;
+            if (newCount > m_Capacity)
+                ResizeInternalBuffer(newCount, false, resizePolicy);
+
+            if (memClearForExcessExpansion)
+                MemClear(m_Count);
+
+            UnsafeUtility.MemCpy((void*)(m_Data + m_Count), values.GetUnsafePtr(), values.Count * sizeof(T));
+            m_Count = newCount;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly ref T Peek()
         {
-            return ref this[Count - 1];
+            Checks.CheckEquals(true, IsCreated);
+            Checks.CheckCountGreaterZeroAndThrowInvalidOperationException(m_Count);
+
+            return ref this[m_Count - 1];
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public T Pop()
+        {
+            Checks.CheckEquals(true, IsCreated);
+            Checks.CheckCountGreaterZeroAndThrowInvalidOperationException(m_Count);
+
+            return (m_Data)[--m_Count];
+        }
+
+        public void RemoveAt(long index)
+        {
+            Checks.CheckEquals(true, IsCreated);
+            Checks.CheckIndexInRangeAndThrow(index, Count);
+
+            if (m_Count != index + 1)
+            {
+                // if not removing the highest index item, move everything following the removed index towards the index
+                // not really save if multiple threads add/remove elements.
+                UnsafeUtility.MemMove(m_Data + index, m_Data + index + 1, (m_Count - index) * sizeof(T));
+            }
+            --m_Count;
         }
 
         public void Clear(bool stomp)
@@ -288,10 +433,10 @@ namespace Unity.MemoryProfiler.Editor.Containers
             Checks.CheckEquals(true, IsCreated);
             if (stomp)
             {
-                UnsafeUtility.MemClear(m_Data, UnsafeUtility.SizeOf<T>());
+                UnsafeUtility.MemClear(m_Data, sizeof(T));
             }
 
-            Count = 0;
+            m_Count = 0;
         }
 
         public void ShrinkToFit()
@@ -303,10 +448,17 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             if (IsCreated && m_Data != null && m_Allocator > Allocator.None)
             {
+                if (typeof(IDisposable).IsAssignableFrom(typeof(T)))
+                {
+                    for (var i = 0; i < m_Count; i++)
+                    {
+                        ((IDisposable)m_Data[i]).Dispose();
+                    }
+                }
                 UnsafeUtility.Free(m_Data, m_Allocator);
             }
             m_Capacity = 0;
-            Count = 0;
+            m_Count = 0;
             m_Data = null;
             m_Allocator = Allocator.Invalid;
             IsCreated = false;
@@ -338,6 +490,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_Array = default;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool MoveNext()
         {
             return ++nextIndex < m_Array.Count;

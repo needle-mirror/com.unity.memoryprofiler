@@ -2,6 +2,8 @@ using System;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+
 #if INSTANCE_ID_CHANGED
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
 #else
@@ -15,6 +17,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlAssetGuid = "d59d3235bf801c14383c88017210b25d";
         const string k_UxmlIdentifierSplitter = "details-panel__splitter";
         const string k_UxmlIdentifierSplitterDragline = "unity-dragline-anchor";
+        const string k_UxmlIdentifierReferencesSection = "reference-trees";
         const string k_UxmlIdentifierReferencesFoldout = "details-panel__section-header__references";
         const string k_UxmlIdentifierReferencesRibbon = "references__ribbon__container";
         const string k_UxmlIdentifierReferencesIMGUI = "references-imguicontainer";
@@ -28,11 +31,18 @@ namespace Unity.MemoryProfiler.Editor.UI
         // State
         readonly CachedSnapshot m_Snapshot;
         readonly CachedSnapshot.SourceIndex m_DataSource;
+        readonly long m_ChildCount;
+        readonly string m_DataSourceFallbackName;
+        readonly string m_DataSourceFallbackDescription;
 
         bool m_ReferencesSectionExpanded;
         float m_ReferencesSectionExpandedSize;
 
+        bool m_ReferencesSectionHiddenBecauseThereIsNoRelevantData;
+        bool ReferencesSectionExpanded => m_ReferencesSectionExpanded && !m_ReferencesSectionHiddenBecauseThereIsNoRelevantData;
+
         // View.
+        VisualElement m_ReferencesSection;
         Foldout m_ReferencesFoldout;
         Ribbon m_ReferencesRibbonContainer;
         IMGUIContainer m_ReferencesIMGUIContainer;
@@ -46,13 +56,16 @@ namespace Unity.MemoryProfiler.Editor.UI
         SelectedItemDetailsPanel m_SelectedObjectDetailsPanel;
         SelectedItemDetailsForTypesAndObjects m_SelectedObjectDetailsBuilder;
 
-        public ObjectDetailsViewController(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source)
+        public ObjectDetailsViewController(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, long childCount = -1, string name = "", string description = "")
         {
             m_Snapshot = snapshot;
             m_DataSource = source;
+            m_ChildCount = childCount;
 
             m_ReferencesSectionExpanded = true;
             m_ReferencesSectionExpandedSize = float.NaN;
+            m_DataSourceFallbackName = name;
+            m_DataSourceFallbackDescription = description;
         }
 
         protected override void Dispose(bool disposing)
@@ -66,7 +79,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // - We fetch actual size as it is only updated on visibility
                     //   state change. Don't ask for the size if reference section
                     //   is collapsed, the returned value will be wrong
-                    if (m_ReferencesSectionExpanded)
+                    if (m_ReferencesSectionExpanded && !m_ReferencesSectionHiddenBecauseThereIsNoRelevantData)
                         m_ReferencesSectionExpandedSize = m_ReferencesFoldout.layout.height;
 
                     MemoryProfilerSettings.ObjectDetailsReferenceSectionVisible = m_ReferencesSectionExpanded;
@@ -110,12 +123,30 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_DetailsSplitter = view.Q<TwoPaneSplitView>(k_UxmlIdentifierSplitter);
             m_DetailsSplitterDragline = m_DetailsSplitter.Q(k_UxmlIdentifierSplitterDragline);
+            m_ReferencesSection = view.Q<VisualElement>(k_UxmlIdentifierReferencesSection);
             m_ReferencesFoldout = view.Q<Foldout>(k_UxmlIdentifierReferencesFoldout);
             m_ReferencesRibbonContainer = view.Q<Ribbon>(k_UxmlIdentifierReferencesRibbon);
             m_ReferencesIMGUIContainer = view.Q<IMGUIContainer>(k_UxmlIdentifierReferencesIMGUI);
             m_SelectionDetailsFolout = view.Q<Foldout>(k_UxmlIdentifierDetailsFoldout);
             m_ReferenceSelection = view.Q<ObjectOrTypeLabel>(k_UxmlIdentifierReferencesSelection);
             m_SelectedItemDetails = view.Q(k_UxmlIdentifierSelectedDetails);
+        }
+
+        static bool HasReferencesData(CachedSnapshot snapshot, SourceIndex sourceIndex)
+        {
+            var itemObjectData = ObjectData.FromSourceLink(snapshot, sourceIndex);
+
+            return itemObjectData.IsValid &&
+                ObjectConnection.GetAllReferencingObjects(snapshot, itemObjectData).Length
+                + ObjectConnection.GetAllReferencedObjects(snapshot, itemObjectData).Length > 0;
+        }
+
+        static bool GfxResourceHasNativeObjectAssociation(CachedSnapshot snapshot, SourceIndex sourceIndex)
+        {
+            Debug.Assert(sourceIndex.Id == SourceIndex.SourceId.GfxResource);
+            var objectData = ObjectData.FromSourceLink(snapshot, sourceIndex);
+            // grab the references to the Native object, if it is valid
+            return objectData.IsValid && objectData.nativeObjectIndex >= 0;
         }
 
         void RefreshView()
@@ -132,6 +163,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ReferenceSelection.AddManipulator(new Clickable(() =>
             {
                 m_PathsToRootDetailView.ClearSecondarySelection();
+                SetSelectedObjectToRoot();
             }));
             m_ReferenceSelection.ContextMenuOpening += ShowCopyMenuForReferencesTitle;
             m_ReferenceSelection.SetLabelData(m_Snapshot, m_DataSource);
@@ -152,9 +184,28 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_PathsToRootDetailView.DoGUI(m_ReferencesIMGUIContainer.contentRect);
             };
 
-            // Update reference section state
+            // Update reference section state according to saved stat
             m_ReferencesFoldout.value = m_ReferencesSectionExpanded;
-            UpdateReferencesSeletion(m_ReferencesSectionExpanded, true);
+            // override reference panel visibility depending on data availability
+            var showReferencesPanel = m_DataSource.Id switch
+            {
+                // for regular objects, always show the references, as no references is an important datapoint
+                SourceIndex.SourceId.NativeObject => true,
+                SourceIndex.SourceId.ManagedObject => true,
+                SourceIndex.SourceId.GfxResource => GfxResourceHasNativeObjectAssociation(m_Snapshot, m_DataSource),
+
+                // Hide the References panel for non-objects unless there is data to show there.
+                // This is to avoid confusion that this no references could mean nothing is referencing them,
+                // when really we just don't have the full picture here (e.g. graphics scratch buffers held in native code NativeArrays held by a TempJob)
+                _ => HasReferencesData(m_Snapshot, m_DataSource)
+            };
+            m_ReferencesSectionHiddenBecauseThereIsNoRelevantData = !showReferencesPanel;
+
+            UpdateReferencesSeletion(ReferencesSectionExpanded, true);
+
+            // if the section is hidden from code, hide it entirely, thereby making expanding it impossible as well until a new object is selected
+            UIElementsHelper.SetVisibility(m_ReferencesFoldout, showReferencesPanel);
+            UIElementsHelper.SetVisibility(m_ReferencesSection, showReferencesPanel);
         }
 
         void ReferencesToggle(ChangeEvent<bool> evt)
@@ -194,11 +245,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (!m_ReferencesSectionExpanded)
                 return;
 
-            // Save size for the future
+            // Save state for the future
             m_ReferencesSectionExpanded = false;
 
             // Update visual state
-            UpdateReferencesSeletion(false);
+            UpdateReferencesSeletion(ReferencesSectionExpanded);
         }
 
         void ExpandReferencesSeletion()
@@ -206,11 +257,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_ReferencesSectionExpanded)
                 return;
 
-            // Set state
+            // Save state for the future
             m_ReferencesSectionExpanded = true;
 
             // Update visual state
-            UpdateReferencesSeletion(true);
+            UpdateReferencesSeletion(ReferencesSectionExpanded);
         }
 
         void UpdateReferencesSeletion(bool expanded, bool initial = false)
@@ -243,13 +294,18 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void SetSelectedObjectToRoot()
         {
-            UpdateSelectionDetails(m_DataSource);
+            UpdateSelectionDetails(m_DataSource, m_DataSourceFallbackName, m_DataSourceFallbackDescription);
         }
 
         void UpdateSelectionDetails(CachedSnapshot.SourceIndex source)
         {
+            UpdateSelectionDetails(source, null, null);
+        }
+
+        void UpdateSelectionDetails(CachedSnapshot.SourceIndex source, string fallbackName, string fallbackDescription)
+        {
             m_SelectedObjectDetailsPanel.Clear();
-            m_SelectedObjectDetailsBuilder.SetSelection(source);
+            m_SelectedObjectDetailsBuilder.SetSelection(source, fallbackName, fallbackDescription);
         }
     }
 }

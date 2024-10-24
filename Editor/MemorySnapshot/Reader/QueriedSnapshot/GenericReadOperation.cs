@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.IO.LowLevel.Unsafe;
@@ -51,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             get
             {
                 Checks.CheckEquals(true, IsDone);
-                Checks.CheckEquals(ReadError.Success, Error);
+                Checks.CheckEqualsEnum(ReadError.Success, Error);
                 return m_Buffer;
             }
         }
@@ -70,8 +71,6 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
         public bool IsDone { get { return m_Handle.IsValid() ? m_Handle.JobHandle.IsCompleted : true; } }
 
-        internal bool KeepWaiting { get { return m_Handle.IsValid() && m_Handle.Status == ReadStatus.InProgress; } }
-
         public void Dispose()
         {
             if (!m_Handle.IsValid())
@@ -79,21 +78,22 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
             // Update Error state
             m_Err = Error;
+            if (m_Err == ReadError.InProgress)
+                m_Err = ReadError.ReadingAborted;
             m_Handle.Dispose();
             m_Handle = new ReadHandle();
         }
     }
 
-    interface IGenericReadOperation : IEnumerator, IDisposable
+    interface IGenericReadOperation : IDisposable
     {
-        bool keepWaiting { get; }
         ReadError Error { get; }
         DynamicArray<byte> Result { get; }
         void Complete();
         bool IsDone { get; }
     }
 
-    unsafe class GenericReadOperation : CustomYieldInstruction, IGenericReadOperation
+    unsafe struct GenericReadOperation : IGenericReadOperation, IDisposable
     {
         ReadOperation ReadOperation;
         internal GenericReadOperation(ReadOperation readOperation)
@@ -101,8 +101,6 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             ReadOperation = readOperation;
         }
         internal GenericReadOperation(ReadHandle handle, DynamicArray<byte> buffer) : this(new ReadOperation(handle, buffer)) { }
-
-        public override bool keepWaiting => ReadOperation.KeepWaiting;
 
         public ReadError Error { get => ReadOperation.Error; internal set => ReadOperation.Error = value; }
 
@@ -115,28 +113,48 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         public void Dispose() => ReadOperation.Dispose();
     }
 
-    unsafe class NestedDynamicSizedArrayReadOperation<T> : CustomYieldInstruction, IGenericReadOperation where T : unmanaged
+    unsafe struct NestedDynamicSizedArrayReadOperation<T> : IGenericReadOperation where T : unmanaged
     {
         bool m_DoneReading;
         NestedDynamicArray<T> m_NestedArrayStructure;
-        List<GenericReadOperation> m_ReadOperations;
+        NativeArray<GenericReadOperation> m_ReadOperations;
+
         /// <summary>
-        /// Preliminary access to the nested dynamic sized array is safe for sorting the elements (without reading the content) or to get the count.
+        /// The count of the nested array at the given index, which is readable even before the async read operation is done.
         /// </summary>
-        internal ref NestedDynamicArray<T> UnsafeAccessToNestedDynamicSizedArray { get => ref m_NestedArrayStructure; }
+        /// <param name="idx"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly long Count(long idx) => m_NestedArrayStructure.Count(idx);
+
+        /// <summary>
+        /// Sorting the nested array structure based on the index remapping is allowed even before the async read operation is done.
+        /// </summary>
+        /// <param name="indexRemapping"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly void Sort(DynamicArray<long> indexRemapping) => m_NestedArrayStructure.Sort(indexRemapping);
 
         public ReadError Error
         {
             get
             {
+                var oneSuccess = false;
+                var oneNonSuccess = false;
                 foreach (var readOp in m_ReadOperations)
                 {
                     if (readOp.Error != ReadError.None)
                     {
-                        return readOp.Error;
+                        if (readOp.Error == ReadError.Success)
+                            oneSuccess = true;
+                        else
+                            return readOp.Error;
                     }
+                    else
+                        oneNonSuccess = true;
                 }
-                return ReadError.None;
+                if (oneNonSuccess)
+                    oneNonSuccess = false;
+                return oneSuccess ? ReadError.Success : ReadError.None;
             }
         }
 
@@ -157,32 +175,20 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public override bool keepWaiting
-        {
-            get
-            {
-                foreach (var readOp in m_ReadOperations)
-                {
-                    if (readOp.keepWaiting)
-                    {
-                        return true;
-                    }
-                }
-                return false;
-            }
-        }
+        public bool IsCreated => m_NestedArrayStructure.IsCreated;
 
-        internal NestedDynamicSizedArrayReadOperation(List<GenericReadOperation> genericReadOperations, NestedDynamicArray<T> nestedArrayStructure)
+        internal NestedDynamicSizedArrayReadOperation(List<GenericReadOperation> genericReadOperations, NestedDynamicArray<T> nestedArrayStructure, Allocator allocator)
         {
-            m_ReadOperations = genericReadOperations;
+            m_ReadOperations = new NativeArray<GenericReadOperation>(genericReadOperations.ToArray(), allocator);
             m_NestedArrayStructure = nestedArrayStructure;
+            m_DoneReading = false;
         }
 
         internal NestedDynamicArray<T> CompleteReadAndGetNestedResults()
         {
             if (!m_DoneReading)
             {
-                if (!IsDone)
+                if (!IsDone && IsCreated)
                 {
                     foreach (var readOp in m_ReadOperations)
                     {
@@ -206,6 +212,10 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             {
                 readOp.Dispose();
             }
+            m_ReadOperations.Dispose();
+            // While reading hasn't finished succesfully, it is no longer happening.
+            // Error State should be ReadingAborted
+            m_DoneReading = true;
         }
     }
 }

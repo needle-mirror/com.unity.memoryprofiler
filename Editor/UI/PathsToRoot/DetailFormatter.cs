@@ -162,8 +162,7 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         return k_NullRef;
                     }
-
-                    var o = ObjectData.FromManagedPointer(m_Snapshot, ptr);
+                    var o = ObjectData.FromManagedPointer(m_Snapshot, ptr, od.managedTypeIndex);
                     return !o.IsValid ? k_FailedToReadObject : FormatObject(o, objectBrief, truncateTypeNames);
                 }
                 case ObjectDataType.ReferenceArray:
@@ -173,7 +172,7 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         return k_NullRef;
                     }
-                    var arr = ObjectData.FromManagedPointer(m_Snapshot, ptr);
+                    var arr = ObjectData.FromManagedPointer(m_Snapshot, ptr, od.managedTypeIndex);
                     return !arr.IsValid ? k_FailedToReadObject : FormatArray(arr, truncateTypeNames);
                 }
                 case ObjectDataType.Type:

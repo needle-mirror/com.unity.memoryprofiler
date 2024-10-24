@@ -92,7 +92,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        static ObjectData GetManagedReferenceSource(CachedSnapshot snapshot, ManagedConnection c)
+        public static ObjectData GetManagedReferenceSource(CachedSnapshot snapshot, ManagedConnection c)
         {
             var objParent = c.IndexFrom.Id switch
             {
@@ -110,7 +110,7 @@ namespace Unity.MemoryProfiler.Editor
                 return objParent.GetFieldByFieldDescriptionsIndex(snapshot, c.FieldFrom, false,
                     valueTypeFieldOwningITypeDescription: c.ValueTypeFieldOwningITypeDescription,
                     valueTypeFieldIndex: c.ValueTypeFieldFrom,
-                    addionalValueTypeFieldOffset: c.AddionalValueTypeFieldOffset);
+                    offsetFromManagedObjectDataStartToValueTypesField: c.OffsetFromReferenceOwnerHeaderStartToFieldOnValueType);
             else
                 return objParent;
         }
@@ -137,7 +137,7 @@ namespace Unity.MemoryProfiler.Editor
                 return objParent.GetFieldByFieldDescriptionsIndex(snapshot, c.FieldFrom, true,
                     valueTypeFieldOwningITypeDescription: c.ValueTypeFieldOwningITypeDescription,
                     valueTypeFieldIndex: c.ValueTypeFieldFrom,
-                    addionalValueTypeFieldOffset: c.AddionalValueTypeFieldOffset);
+                    offsetFromManagedObjectDataStartToValueTypesField: c.OffsetFromReferenceOwnerHeaderStartToFieldOnValueType);
             else if (returnBareArrayElement)
                 return objParent;
             else
@@ -285,13 +285,13 @@ namespace Unity.MemoryProfiler.Editor
 
                     // Don't list self references for Unity Objects
                     foundUnityObjectIndices.Add(objIndex);
+                    var managedObjectIndex = snapshot.NativeObjects.ManagedObjectIndex[objIndex.Index];
 
-                    var managedShell = new SourceIndex(SourceIndex.SourceId.ManagedObject, snapshot.NativeObjects.ManagedObjectIndex[objIndex.Index]);
-
-                    if (managedShell.Index != -1)
+                    if (managedObjectIndex >= 0)
                     {
                         if (treatUnityObjectsAsOneObject)
                         {
+                            var managedShell = new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex);
                             // the managed shell is treated as the same object, so no self references of this kind either
                             foundUnityObjectIndices.Add(managedShell);
                             AddManagedReferencesTo(snapshot, managedShell, referencedObjects, foundUnityObjectIndices, addManagedObjectsWithFieldInfo);

@@ -47,13 +47,12 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
-                // pasring a char [] with an array header
+                // parsing a char [] with an array header
                 bo = bo.Add(virtualMachineInformation.ArrayHeaderSize);
                 firstChar = bo;
             }
 
-
-            if (fullLength < 0 || (ulong)fullLength * 2 > (ulong)bo.Bytes.Count - bo.Offset - sizeof(int))
+            if (fullLength < 0 || !firstChar.CouldFitAllocation((long)fullLength * 2))
             {
 #if DEBUG_VALIDATION
                 Debug.LogError("Found a String Object of impossible length.");
@@ -125,7 +124,8 @@ namespace Unity.MemoryProfiler.Editor
         {
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
-            if (length < 0 || (ulong)length * 2 > (ulong)bo.Bytes.Count - bo.Offset - sizeof(int))
+
+            if (length < 0 || !bo.CouldFitAllocation(sizeof(int) + (long)length * 2))
             {
 #if DEBUG_VALIDATION
                 Debug.LogError("Found a String Object of impossible length.");

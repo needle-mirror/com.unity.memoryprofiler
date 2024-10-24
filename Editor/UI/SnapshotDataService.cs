@@ -6,6 +6,7 @@ using UnityEngine;
 using Unity.Profiling;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
+using Unity.MemoryProfiler.Editor.Managed;
 using Unity.MemoryProfiler.Editor.UI;
 using UnityEditor;
 using System.Threading.Tasks;

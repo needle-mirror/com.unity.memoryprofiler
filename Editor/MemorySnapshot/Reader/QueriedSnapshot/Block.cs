@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         {
             Header = header;
             OffsetCount = (uint)((Header.TotalBytes / Header.ChunkSize) + (Header.TotalBytes % Header.ChunkSize != 0UL ? 1UL : 0UL));
-            m_Offsets = (long*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<long>() * OffsetCount,
+            m_Offsets = (long*)UnsafeUtility.Malloc(sizeof(long) * OffsetCount,
                 UnsafeUtility.AlignOf<long>(), Allocator.Persistent);
         }
 

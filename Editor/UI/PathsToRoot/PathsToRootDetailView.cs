@@ -65,13 +65,11 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         }
 
         PathsToRootViewGUIState m_GUIState;
-        SnapshotDataService m_SnapshotDataService;
 
         CachedSnapshot m_CachedSnapshot;
         ActiveTree m_ActiveTree;
         PathsToRootDetailTreeViewItem m_RawReferenceTree;
         PathsToRootDetailTreeViewItem m_ReferencesToTree;
-        EditorCoroutine m_EditorCoroutine;
         RibbonButton m_RawConnectionButton;
         RibbonButton m_ReferencesToButton;
         Ribbon m_Ribbon;
@@ -79,7 +77,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         long m_CurrentSelection;
 
         Thread m_BackgroundThread;
+#pragma warning disable 0649
         Selection CurrentSelection;
+#pragma warning restore 0649
         enum BackGroundThreadState
         {
             None,
@@ -154,8 +154,10 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         struct Selection
         {
+#pragma warning disable 0649
             public ObjectData objectData;
             public CachedSnapshot CachedSnapshot;
+#pragma warning restore 0649
         }
 
         public void SetRoot(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source)
@@ -173,6 +175,12 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     var unifiedIndex = m_CachedSnapshot.ManagedObjectIndexToUnifiedObjectIndex(source.Index);
                     if (unifiedIndex >= 0)
                         UpdateRootObjects(unifiedIndex);
+                    break;
+                case CachedSnapshot.SourceIndex.SourceId.GfxResource:
+                    var objectData = ObjectData.FromSourceLink(m_CachedSnapshot, source);
+                    // grab the references to the Native object, if it is valid
+                    if (objectData.IsValid && objectData.nativeObjectIndex >= 0)
+                        UpdateRootObjects(m_CachedSnapshot.NativeObjectIndexToUnifiedObjectIndex(objectData.nativeObjectIndex));
                     break;
                 default:
                     UpdateRootObjects(-1);

@@ -15,6 +15,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         InvalidBlockSectionVersion,
         InvalidBlockSectionCount,
         InvalidEntryFormat,
-        EmptyFormatEntry
+        EmptyFormatEntry,
+        ReadingAborted
     }
 }

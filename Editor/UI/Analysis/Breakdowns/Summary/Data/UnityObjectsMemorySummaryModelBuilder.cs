@@ -89,6 +89,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         static void CalculateTotals(CachedSnapshot cs, ref ulong totalValue, Dictionary<string, RowSize> typeIndexToSizeMap, Func<ulong, RowSize, RowSize> updater)
         {
             // Sum values from entites memory map
+            // TODO: use NativeHashmap for the Dictionary to avoid GC Allocs and use ref record structs for UnityObjectSize to avoid their allocs
             var objectsSize = new Dictionary<long, UnityObjectSize>();
             var nativeObjects = cs.NativeObjects;
             var nativeAllocations = cs.NativeAllocations;

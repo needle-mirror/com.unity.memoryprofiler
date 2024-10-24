@@ -1,12 +1,12 @@
 using System;
 using System.Runtime.InteropServices;
-#if ENABLE_MEMORY_PROFILER_DEBUG
+#if DEBUG_VALIDATION
 using Unity.MemoryProfiler.Editor.Diagnostics;
 #endif
 using Unity.MemoryProfiler.Editor.Format;
-using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using Unity.MemoryProfiler.Editor.Managed;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -35,9 +35,9 @@ namespace Unity.MemoryProfiler.Editor
     {
         public ObjectData Obj;
         public int iField;
-        public int arrayIndex;
+        public long arrayIndex;
         public bool expandToTarget;//true means it should display the value/target of the field. False means it should display the owning object
-        public ObjectDataParent(ObjectData obj, int iField, int arrayIndex, bool expandToTarget)
+        public ObjectDataParent(ObjectData obj, int iField, long arrayIndex, bool expandToTarget)
         {
             this.Obj = obj;
             this.iField = iField;
@@ -168,7 +168,7 @@ namespace Unity.MemoryProfiler.Editor
                 return -1;
             }
         }
-        public int arrayIndex
+        public long arrayIndex
         {
             get
             {
@@ -227,6 +227,10 @@ namespace Unity.MemoryProfiler.Editor
                             && managedObjectData.TryReadPointer(out var ptr) == BytesAndOffset.PtrReadError.Success)
                         {
                             managedObjectData = cs.ManagedHeapSections.Find(ptr, cs.VirtualMachineInformation);
+#if DEBUG_VALIDATION
+                            if(!managedObjectData.IsValid)
+                                Debug.LogError("Invalid object data");
+#endif
                         }
                     }
                 }
@@ -343,11 +347,11 @@ namespace Unity.MemoryProfiler.Editor
                     if (m_data.managed.iType >= 0)
                         return snapshot.TypeDescriptions.TypeInfoAddress[m_data.managed.iType];
                     if (logError)
-                        UnityEngine.Debug.LogError("Requesting an object pointer on an invalid data type");
+                        Debug.LogError("Requesting an object pointer on an invalid data type");
                     return 0;
                 default:
                     if (logError)
-                        UnityEngine.Debug.LogError("Requesting an object pointer on an invalid data type");
+                        Debug.LogError("Requesting an object pointer on an invalid data type");
                     return 0;
             }
         }
@@ -395,12 +399,12 @@ namespace Unity.MemoryProfiler.Editor
             return ManagedHeapArrayDataTools.GetArrayInfo(snapshot, managedObjectData, m_data.managed.iType);
         }
 
-        public ObjectData GetArrayElement(CachedSnapshot snapshot, int index, bool expandToTarget)
+        public ObjectData GetArrayElement(CachedSnapshot snapshot, long index, bool expandToTarget)
         {
             return GetArrayElement(snapshot, GetArrayInfo(snapshot), index, expandToTarget);
         }
 
-        public ObjectData GetArrayElement(CachedSnapshot snapshot, ArrayInfo ai, int index, bool expandToTarget)
+        public ObjectData GetArrayElement(CachedSnapshot snapshot, ArrayInfo ai, long index, bool expandToTarget)
         {
             switch (m_dataType)
             {
@@ -504,12 +508,12 @@ namespace Unity.MemoryProfiler.Editor
         // Returns a new ObjectData pointing to the object's (that this ObjectData is currently pointing at) field
         // using a field index from snapshot.fieldDescriptions
         public ObjectData GetFieldByFieldDescriptionsIndex(CachedSnapshot snapshot, int iField, bool expandToTarget,
-            int valueTypeFieldOwningITypeDescription = -1, int valueTypeFieldIndex = -1, int addionalValueTypeFieldOffset = 0)
+            int valueTypeFieldOwningITypeDescription = -1, int valueTypeFieldIndex = -1, int offsetFromManagedObjectDataStartToValueTypesField = 0)
         {
             bool fieldResidesOnNestedValueTypeField = valueTypeFieldOwningITypeDescription >= 0;
-#if ENABLE_MEMORY_PROFILER_DEBUG
+#if DEBUG_VALIDATION
             if (!fieldResidesOnNestedValueTypeField)
-                Checks.CheckEquals(addionalValueTypeFieldOffset, 0);
+                Checks.CheckEquals(offsetFromManagedObjectDataStartToValueTypesField, 0);
 #endif
             ObjectData obj;
             ulong objectPtr;
@@ -519,10 +523,12 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
                     objectPtr = GetReferencePointer();
-                    obj = FromManagedPointer(snapshot, objectPtr);
+                    obj = FromManagedPointer(snapshot, objectPtr, managedTypeIndex);
+                    if (!obj.IsValid)
+                        return Invalid;
                     break;
                 case ObjectDataType.Unknown: //skip unknown/uninitialized types as some snapshots will have them
-                    return new ObjectData();
+                    return Invalid;
                 default:
                     obj = this;
                     objectPtr = m_data.managed.objectPtr;
@@ -598,8 +604,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (obj.m_data.managed.iType != valueTypeFieldOwningITypeDescription)
                 {
                     // as long as the chain has not yet been reconstructed, recurse through the value type fields until it is.
-                    addionalValueTypeFieldOffset -= fieldOffset;
-                    var targetFieldOffset = addionalValueTypeFieldOffset + snapshot.FieldDescriptions.Offset[valueTypeFieldIndex] - (int)snapshot.VirtualMachineInformation.ObjectHeaderSize;
+                    offsetFromManagedObjectDataStartToValueTypesField -= fieldOffset;
                     var fields = snapshot.TypeDescriptions.FieldIndicesInstance[fieldType];
                     for (int i = 0; i < fields.Length; i++)
                     {
@@ -607,17 +612,17 @@ namespace Unity.MemoryProfiler.Editor
                         if (valueTypeFieldIndex != field)
                         {
                             var offset = snapshot.FieldDescriptions.Offset[field] - (int)snapshot.VirtualMachineInformation.ObjectHeaderSize;
-                            if (targetFieldOffset < offset)
+                            if (offsetFromManagedObjectDataStartToValueTypesField < offset)
                                 continue;
                             var type = snapshot.FieldDescriptions.TypeIndex[field];
 
                             var size = snapshot.TypeDescriptions.HasFlag(type, TypeFlags.kValueType) ? snapshot.TypeDescriptions.Size[type] : (int)snapshot.VirtualMachineInformation.PointerSize;
-                            if (targetFieldOffset >= offset + size)
+                            if (offsetFromManagedObjectDataStartToValueTypesField >= offset + size)
                                 continue;
                         }
-                        return o.GetFieldByFieldDescriptionsIndex(snapshot, field, expandToTarget, valueTypeFieldOwningITypeDescription, valueTypeFieldIndex, addionalValueTypeFieldOffset);
+                        return o.GetFieldByFieldDescriptionsIndex(snapshot, field, expandToTarget, valueTypeFieldOwningITypeDescription, valueTypeFieldIndex, offsetFromManagedObjectDataStartToValueTypesField);
                     }
-                    Debug.LogError("Nested Value Type Field was not found");
+                    Debug.LogError($"Nested Value Type Field was not found (addionalValueTypeFieldOffset={offsetFromManagedObjectDataStartToValueTypesField})");
                     return Invalid;
                 }
             }
@@ -629,7 +634,7 @@ namespace Unity.MemoryProfiler.Editor
             int nativeIndex = nativeObjectIndex;
             if (nativeIndex < 0)
             {
-                int managedIndex = GetManagedObjectIndex(snapshot);
+                var managedIndex = GetManagedObjectIndex(snapshot);
                 if (managedIndex >= 0)
                 {
                     nativeIndex = snapshot.CrawledData.ManagedObjects[managedIndex].NativeObjectIndex;
@@ -678,8 +683,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
                 {
-                    int idx;
-                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out var idx))
                     {
                         return snapshot.ManagedObjectIndexToUnifiedObjectIndex(idx);
                     }
@@ -723,7 +727,7 @@ namespace Unity.MemoryProfiler.Editor
                     ulong refPtr = GetReferencePointer();
                     if (refPtr == 0)
                         return ObjectData.Invalid;
-                    var obj = ObjectData.FromManagedPointer(snapshot, refPtr);
+                    var obj = ObjectData.FromManagedPointer(snapshot, refPtr, managedTypeIndex);
                     if (obj.IsValid)
                     {
                         obj.Parent = Parent;
@@ -744,8 +748,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
                 {
-                    int idx;
-                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out var idx))
                     {
                         return snapshot.CrawledData.ManagedObjects[idx];
                     }
@@ -754,11 +757,10 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
                 {
-                    int idx;
                     ulong refPtr = GetReferencePointer();
                     if (refPtr == 0)
                         return default(ManagedObjectInfo);
-                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(refPtr, out idx))
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(refPtr, out var idx))
                     {
                         return snapshot.CrawledData.ManagedObjects[idx];
                     }
@@ -766,11 +768,11 @@ namespace Unity.MemoryProfiler.Editor
                     return default(ManagedObjectInfo);
                 }
                 default:
-                    throw new Exception("GetManagedObject was called on a instance of ObjectData which does not contain an managed object.");
+                    throw new Exception($"GetManagedObject was called on a instance of ObjectData which does not contain an managed object. ({dataType}, {hostManagedObjectPtr})");
             }
         }
 
-        public int GetManagedObjectIndex(CachedSnapshot snapshot)
+        public long GetManagedObjectIndex(CachedSnapshot snapshot)
         {
             switch (dataType)
             {
@@ -778,8 +780,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Object:
                 case ObjectDataType.BoxedValue:
                 {
-                    int idx;
-                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out idx))
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(m_data.managed.objectPtr, out var idx))
                     {
                         return idx;
                     }
@@ -801,16 +802,6 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             return -1;
-        }
-
-        private ObjectData(ObjectDataType t)
-        {
-            m_dataType = t;
-            m_data = new Data();
-            m_data.managed.objectPtr = 0;
-            managedObjectData = new BytesAndOffset();
-            m_data.managed.iType = -1;
-            Parent = null;
         }
 
         public static ObjectData Invalid
@@ -879,15 +870,30 @@ namespace Unity.MemoryProfiler.Editor
             if (nativeObjectIndex != -1)
                 return ret + " on object " + cachedSnapshot.NativeObjects.ObjectName[nativeObjectIndex];
 
-            if (dataType == ObjectDataType.ReferenceArray)
+            switch (dataType)
             {
-                return ret + $" on managed object [0x{hostManagedObjectPtr:x8}]";
+                case ObjectDataType.Unknown:
+                    break;
+                case ObjectDataType.Value:
+                    break;
+                case ObjectDataType.Object:
+                case ObjectDataType.Array:
+                case ObjectDataType.BoxedValue:
+                case ObjectDataType.ReferenceObject:
+                    if (GetManagedObject(cachedSnapshot).NativeObjectIndex != -1)
+                    {
+                        return ret + " on object " + cachedSnapshot.NativeObjects.ObjectName[GetManagedObject(cachedSnapshot).NativeObjectIndex];
+                    }
+                    break;
+                case ObjectDataType.ReferenceArray:
+                    return ret + $" on managed object [0x{hostManagedObjectPtr:x8}]";
+                case ObjectDataType.Type:
+                    break;
+                case ObjectDataType.NativeObject:
+                    break;
+                default:
+                    break;
             }
-            if (GetManagedObject(cachedSnapshot).NativeObjectIndex != -1)
-            {
-                return ret + " on object " + cachedSnapshot.NativeObjects.ObjectName[GetManagedObject(cachedSnapshot).NativeObjectIndex];
-            }
-
             return ret + $" on managed object [0x{hostManagedObjectPtr:x8}]";
         }
 
@@ -914,7 +920,7 @@ namespace Unity.MemoryProfiler.Editor
                     var ptr = displayObject.GetReferencePointer();
                     if (ptr != 0)
                     {
-                        var obj = ObjectData.FromManagedPointer(cachedSnapshot, ptr);
+                        var obj = ObjectData.FromManagedPointer(cachedSnapshot, ptr, managedTypeIndex);
                         if (obj.IsValid && obj.managedTypeIndex != displayObject.managedTypeIndex)
                         {
                             return $"({cachedSnapshot.TypeDescriptions.TypeDescriptionName[obj.managedTypeIndex]}) {cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex]}";
@@ -960,6 +966,10 @@ namespace Unity.MemoryProfiler.Editor
             o.SetManagedType(snapshot, iType);
             o.m_dataType = ObjectDataType.Type;
             o.managedObjectData = new BytesAndOffset(snapshot.TypeDescriptions.StaticFieldBytes[iType], snapshot.VirtualMachineInformation.PointerSize);
+#if DEBUG_VALIDATION
+            if(!o.managedObjectData.IsValid)
+                Debug.LogError("Invalid object data");
+#endif
             return o;
         }
 
@@ -1013,10 +1023,14 @@ namespace Unity.MemoryProfiler.Editor
             o.m_data.managed.objectPtr = moi.PtrObject;
             o.SetManagedType(snapshot, moi.ITypeDescription);
             o.managedObjectData = moi.data;
+#if DEBUG_VALIDATION
+            if(!o.managedObjectData.IsValid)
+                Debug.LogError("Invalid object data");
+#endif
             return o;
         }
 
-        public static ObjectData FromManagedObjectIndex(CachedSnapshot snapshot, int index)
+        public static ObjectData FromManagedObjectIndex(CachedSnapshot snapshot, long index)
         {
             if (index < 0 || index >= snapshot.CrawledData.ManagedObjects.Count)
                 return ObjectData.Invalid;
@@ -1038,7 +1052,7 @@ namespace Unity.MemoryProfiler.Editor
             return FromManagedObjectInfo(snapshot, moi);
         }
 
-        public static ObjectData FromManagedPointer(CachedSnapshot snapshot, ulong ptr, int asTypeIndex = -1)
+        public static ObjectData FromManagedPointer(CachedSnapshot snapshot, ulong ptr, int typeIndexOfTheFieldHoldingThePtr, int asTypeIndex = -1)
         {
             if (ptr == 0)
                 return Invalid;
@@ -1051,20 +1065,27 @@ namespace Unity.MemoryProfiler.Editor
                 var o = new ObjectData();
                 o.m_data.managed.objectPtr = ptr;
                 o.managedObjectData = snapshot.ManagedHeapSections.Find(ptr, snapshot.VirtualMachineInformation);
-                if (ManagedDataCrawler.TryParseObjectHeader(snapshot, ptr, out var info, o.managedObjectData))
+                if (o.managedObjectData.IsValid)
                 {
-                    if (asTypeIndex >= 0)
+                    if (ManagedDataCrawler.TryParseObjectHeader(snapshot, ptr, out var info, o.managedObjectData, typeIndexOfTheFieldHoldingThePtr, heldByNativeUnityObject: false))
                     {
-                        o.SetManagedType(snapshot, asTypeIndex);
-                    }
-                    else
-                    {
-                        o.SetManagedType(snapshot, info.ITypeDescription);
-                    }
+                        if (asTypeIndex >= 0)
+                        {
+                            o.SetManagedType(snapshot, asTypeIndex);
+                        }
+                        else
+                        {
+                            o.SetManagedType(snapshot, info.ITypeDescription);
+                        }
 
-                    o.m_dataType = TypeToDataType(snapshot, info.ITypeDescription);
-                    return o;
+                        o.m_dataType = TypeToDataType(snapshot, info.ITypeDescription);
+                        return o;
+                    }
                 }
+#if DEBUG_VALIDATION
+                else
+                    Debug.LogError("Invalid object data");
+#endif
             }
             return Invalid;
         }

@@ -62,6 +62,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TableMode = AllTrackedMemoryTableMode.CommittedAndResident;
 
             SearchFilterChanged += OnSearchFilterChanged;
+            MemoryProfilerSettings.AllocationRootsToSplitChanged += OnAllocationRootsToSplitChanged;
 
             // Sort comparisons for each column.
             m_SortComparisons = new()
@@ -101,6 +102,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             ItemNameFilter = itemNameFilter;
             ItemPathFilter = itemPathFilter;
             ExcludeAll = excludeAll;
+            if (IsViewLoaded)
+                BuildModelAsync();
+        }
+
+        void OnAllocationRootsToSplitChanged(string [] allocationRootsToSplit)
+        {
             if (IsViewLoaded)
                 BuildModelAsync();
         }
@@ -176,6 +183,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (disposing)
                 m_BuildModelWorker?.Dispose();
 
+            MemoryProfilerSettings.AllocationRootsToSplitChanged -= OnAllocationRootsToSplitChanged;
             base.Dispose(disposing);
         }
 
@@ -237,7 +245,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 MemoryProfilerSettings.ShowReservedMemoryBreakdown,
                 m_DisambiguateUnityObjects,
                 m_TableMode == AllTrackedMemoryTableMode.OnlyCommitted,
-                ProcessObjectSelected);
+                ProcessObjectSelected,
+                MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 ? MemoryProfilerSettings.AllocationRootsToSplit : null);
             var sortComparison = BuildSortComparisonFromTreeView();
             m_BuildModelWorker = new AsyncWorker<AllTrackedMemoryModel>();
             m_BuildModelWorker.Execute((token) =>

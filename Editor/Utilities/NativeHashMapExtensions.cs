@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Extensions
 {
-    static class DictionaryExtensions
+    static class NativeHashMapExtensions
     {
         /// <summary>
         /// Gets the value from the dictionary if it exists and returns true, otherwise initializes it with the provided value and returns false.
@@ -19,7 +22,9 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         /// <param name="addToDictionaryIfMissing">(Optional, defaulting to false) if or if not the key should be added to the dictionary with the initialized value if it was missing.</param>
         /// <returns>If the key existed in the dictionary beforehand or not</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetOrInitializeValue<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, out TValue value, TValue initializeAs, bool addToDictionaryIfMissing = false)
+        public static bool GetOrInitializeValue<TKey, TValue>(this NativeHashMap<TKey, TValue> dictionary, TKey key, out TValue value, TValue initializeAs, bool addToDictionaryIfMissing = false)
+            where TKey : unmanaged, IEquatable<TKey>
+            where TValue : unmanaged
         {
             if (!dictionary.TryGetValue(key, out value))
             {
@@ -32,26 +37,34 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key) where TValue : class, new()
+        public static TValue GetOrAdd<TKey, TValue>(this NativeHashMap<TKey, TValue> dictionary, TKey key)
+            where TKey : unmanaged, IEquatable<TKey>
+            where TValue : unmanaged
         {
             if (!dictionary.TryGetValue(key, out var value))
             {
-                value = new TValue();
+                value = default(TValue);
                 dictionary.Add(key, value);
             }
             return value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void GetAndAddToListOrCreateList<TKey, TValue>(this Dictionary<TKey, List<TValue>> dictionary, TKey key, TValue listItemValue)
+        public static void GetAndAddToListOrCreateList<TKey, TValue>(this NativeHashMap<TKey, UnsafeList<TValue>> dictionary, TKey key, TValue listItemValue, Allocator allocator)
+            where TKey : unmanaged, IEquatable<TKey>
+            where TValue : unmanaged
         {
             if (dictionary.TryGetValue(key, out var list))
             {
                 list.Add(listItemValue);
+                dictionary[key] = list;
             }
             else
             {
-                list = new List<TValue>() { listItemValue };
+                list = new UnsafeList<TValue>(1, allocator)
+                {
+                    listItemValue
+                };
                 dictionary.Add(key, list);
             }
         }
