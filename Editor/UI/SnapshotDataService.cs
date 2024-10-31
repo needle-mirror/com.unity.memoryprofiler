@@ -35,6 +35,7 @@ namespace Unity.MemoryProfiler.Editor
         AsyncWorker<SnapshotFileListModel> m_BuildAllSnapshotsWorker;
         FileSystemWatcherUnity m_SnapshotFolderWatcher;
         bool m_SnapshotFolderIsDirty;
+        bool m_SnapshotFolderWasDeleted;
         [NonSerialized]
         bool m_Disposed;
 
@@ -77,8 +78,17 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             }
 
+            if (m_SnapshotFolderWasDeleted)
+            {
+                // delayed folder restoring on main thread
+                m_SnapshotFolderWasDeleted = false;
+                SetupSnapshotFolderWatcher();
+            }
+
             if (m_SnapshotFolderIsDirty)
+            {
                 SyncSnapshotsFolder();
+            }
         }
 
         void DirectoryChanged(FileSystemWatcherUnity.State state, object exception)
@@ -91,7 +101,10 @@ namespace Unity.MemoryProfiler.Editor
                     SetSnapshotsFolderDirty();
                     break;
                 case FileSystemWatcherUnity.State.DirectoryDeleted:
-                    SetupSnapshotFolderWatcher();
+                    // Delay setting up a new watcher to the Update cycle so it happens on the main thread
+                    // Otherwise this method (as it's called by the task worker thread) will silently fail in EditorPrefs.GetString when fetching the directory to recreate
+                    m_SnapshotFolderWasDeleted = true;
+
                     break;
                 case FileSystemWatcherUnity.State.Exception:
                     Debug.LogException(exception as Exception);
@@ -104,7 +117,7 @@ namespace Unity.MemoryProfiler.Editor
 
         void SetupSnapshotFolderWatcher()
         {
-            var path = GetSnapshotFolderPath();
+            var path = GetOrCreateSnapshotFolderPath();
 
             m_SnapshotFolderWatcher?.Dispose();
             m_SnapshotFolderWatcher = new FileSystemWatcherUnity(path);
@@ -449,6 +462,18 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         public string GetSnapshotFolderPath()
+        {
+            if (m_SnapshotFolderWatcher != null && m_SnapshotFolderWatcher.Directory != null)
+            {
+                m_SnapshotFolderWatcher.Directory.Refresh();
+                if (m_SnapshotFolderWatcher.Directory.Exists && m_SnapshotFolderWatcher.Directory.FullName == MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath)
+                    return m_SnapshotFolderWatcher.Directory.FullName;
+            }
+            SetupSnapshotFolderWatcher();
+            return m_SnapshotFolderWatcher.Directory.FullName;
+        }
+
+        string GetOrCreateSnapshotFolderPath()
         {
             var snapshotFolderPath = MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath;
             if (!Directory.Exists(snapshotFolderPath) && MemoryProfilerSettings.UsingDefaultMemorySnapshotStoragePath())

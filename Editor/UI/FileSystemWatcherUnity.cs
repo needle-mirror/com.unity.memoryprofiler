@@ -106,13 +106,24 @@ namespace Unity.MemoryProfiler.Editor
             DateTime lastWriteTime;
             exeption = null;
 
+            try
+            {
+                Directory.Refresh();
+            }
+            catch (Exception ex)
+            {
+                // Directory.Refresh may throw a System.IO.IOException when:
+                //     A device such as a disk drive is not ready.
+                exeption = ex;
+                return State.Exception;
+            }
+
             if (!Directory.Exists)
             {
                 return State.DirectoryDeleted;
             }
             try
             {
-                Directory.Refresh();
                 lastWriteTime = Directory.LastWriteTimeUtc;
                 var iter = Directory.EnumerateDirectories("*", SearchOption.AllDirectories);
                 foreach (var dir in iter)
@@ -125,6 +136,33 @@ namespace Unity.MemoryProfiler.Editor
             }
             catch (Exception ex)
             {
+                if (ex is DirectoryNotFoundException)
+                {
+                    try
+                    {
+                        Directory.Refresh();
+                    }
+                    catch (Exception innerEx)
+                    {
+                        // Directory.Refresh may throw a System.IO.IOException when:
+                        //     A device such as a disk drive is not ready.
+                        exeption = innerEx;
+                        return State.Exception;
+                    }
+
+                    if (Directory.Exists)
+                    {
+                        // The base directory seems to still exist, maybe a subfolder got deleted while iterating over it.
+                        // Recheck
+                        var state = CheckDirectoryForUpdates(out exeption);
+                        // Everything is fine on rechecking, return
+                        if (state != State.Exception)
+                            return state;
+                    }
+                    else
+                        return State.DirectoryDeleted;
+                }
+
                 exeption = ex;
                 return State.Exception;
             }

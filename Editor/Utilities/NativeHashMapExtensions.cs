@@ -22,7 +22,13 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         /// <param name="addToDictionaryIfMissing">(Optional, defaulting to false) if or if not the key should be added to the dictionary with the initialized value if it was missing.</param>
         /// <returns>If the key existed in the dictionary beforehand or not</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetOrInitializeValue<TKey, TValue>(this NativeHashMap<TKey, TValue> dictionary, TKey key, out TValue value, TValue initializeAs, bool addToDictionaryIfMissing = false)
+        public static bool GetOrInitializeValue<TKey, TValue>(
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+            this Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<TKey, TValue> dictionary,
+#else
+            this Unity.Collections.NativeHashMap<TKey, TValue> dictionary,
+#endif
+            TKey key, out TValue value, TValue initializeAs, bool addToDictionaryIfMissing = false)
             where TKey : unmanaged, IEquatable<TKey>
             where TValue : unmanaged
         {
@@ -37,7 +43,14 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TValue GetOrAdd<TKey, TValue>(this NativeHashMap<TKey, TValue> dictionary, TKey key)
+        public static TValue GetOrAdd<TKey, TValue>(
+
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+            this Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<TKey, TValue> dictionary,
+#else
+            this Unity.Collections.NativeHashMap<TKey, TValue> dictionary,
+#endif
+            TKey key)
             where TKey : unmanaged, IEquatable<TKey>
             where TValue : unmanaged
         {
@@ -50,7 +63,13 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void GetAndAddToListOrCreateList<TKey, TValue>(this NativeHashMap<TKey, UnsafeList<TValue>> dictionary, TKey key, TValue listItemValue, Allocator allocator)
+        public static void GetAndAddToListOrCreateList<TKey, TValue>(
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+            this Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<TKey, UnsafeList<TValue>> dictionary,
+#else
+            this Unity.Collections.NativeHashMap<TKey, UnsafeList<TValue>> dictionary,
+#endif
+            TKey key, TValue listItemValue, Allocator allocator)
             where TKey : unmanaged, IEquatable<TKey>
             where TValue : unmanaged
         {

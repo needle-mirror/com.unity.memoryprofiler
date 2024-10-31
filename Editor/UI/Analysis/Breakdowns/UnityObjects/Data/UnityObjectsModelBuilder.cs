@@ -50,12 +50,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             // These types are ones that Unity users extensively build upon.
             // They also always have a Managed Type and Object to their native Type and Object.
             // We can thus use the Managed Types of objects that derive from these to further differentiate the list by using the user defined types
-            var listOfNativeTypes = new HashSet<SourceIndex>
-            {
-                new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeTypes.EditorScriptableObjectIdx),
-                new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeTypes.ScriptableObjectIdx),
-                new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeTypes.MonoBehaviourIdx)
-            };
+            var listOfNativeTypes = new HashSet<SourceIndex>();
+            if (snapshot.NativeTypes.EditorScriptableObjectIdx >= NativeTypeEntriesCache.FirstValidTypeIndex)
+                listOfNativeTypes.Add(new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeTypes.EditorScriptableObjectIdx));
+
+            if (snapshot.NativeTypes.ScriptableObjectIdx >= NativeTypeEntriesCache.FirstValidTypeIndex)
+                listOfNativeTypes.Add(new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeTypes.ScriptableObjectIdx));
+
+            if (snapshot.NativeTypes.MonoBehaviourIdx >= NativeTypeEntriesCache.FirstValidTypeIndex)
+                listOfNativeTypes.Add(new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeTypes.MonoBehaviourIdx));
+
             return listOfNativeTypes;
         }
 
@@ -242,7 +246,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         {
                             // Do we have a native object associated with the managed object
                             var nativeObjectIndex = managedObjects[source.Index].NativeObjectIndex;
-                            if (nativeObjectIndex <= 0)
+                            if (nativeObjectIndex < NativeTypeEntriesCache.FirstValidTypeIndex)
                                 break;
 
                             AccumulateValue(nativeObject2Size, new SourceIndex(SourceIndex.SourceId.NativeObject, nativeObjectIndex), new MemorySize(), memorySize, new MemorySize());

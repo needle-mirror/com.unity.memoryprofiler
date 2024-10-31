@@ -7,6 +7,17 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2024-10-31
+
+### Fixed
+- Static field references were only listed in the References view if they directly referenced the selected item, i.e. a static field referencing an object B that referenced the selected object A would only show object B, but not the static reference to B.
+- Fixed an ArgumentOutOfRangeException when opening the Unity Objects page in compare mode with 2 snapshots that were captured without capturing Native Objects.
+- Fixed a NullReferenceException when opening the All of Memory page in compare mode with 2 snapshots that were captured without capturing Native Objects but with Native Allocations, both from the same session.
+- Fixed the ID numbers for Graphics objects on the All of Memory page in compare mode with 2 snapshots that where both captured from the same session to be their Native Object's instance ID.
+
+### Changed
+- Adjusted package dependency on Unity.Collections down to 1.2 to retain compatibility to 2022.3 without forcing to update Unity.Collections to 2.1 or newer.
+
 ## [1.1.2] - 2024-10-24
 
 ### Fixed

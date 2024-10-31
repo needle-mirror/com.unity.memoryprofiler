@@ -1,48 +1,61 @@
 using System;
 using System.Diagnostics;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Extensions;
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+using AddressToManagedIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
+using TypeIndexMappingHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<int, int>;
+using ConnectionsHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.Collections.LowLevel.Unsafe.UnsafeList<int>>;
+using InvalidObjectsHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, Unity.MemoryProfiler.Editor.ManagedObjectInfo>;
+#else
+using AddressToManagedIndexHashMap = Unity.Collections.NativeHashMap<ulong, long>;
+using TypeIndexMappingHashMap  = Unity.Collections.NativeHashMap<int, int>;
+using ConnectionsHashMap  = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.Collections.LowLevel.Unsafe.UnsafeList<int>>;
+using InvalidObjectsHashMap  = Unity.Collections.NativeHashMap<long, Unity.MemoryProfiler.Editor.ManagedObjectInfo>;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
     class ManagedData : IDisposable
     {
+        public const long FirstValidObjectIndex = 0;
+        public const long InvalidObjectIndex = -1;
+
         public bool Crawled { private set; get; }
         const int k_ManagedConnectionsInitialSize = 65536;
         DynamicArray<ManagedObjectInfo> m_ManagedObjects;
         public ref DynamicArray<ManagedObjectInfo> ManagedObjects => ref m_ManagedObjects;
-        NativeHashMap<ulong, long> m_MangedObjectIndexByAddress;
-        public ref NativeHashMap<ulong, long> MangedObjectIndexByAddress => ref m_MangedObjectIndexByAddress;
+        AddressToManagedIndexHashMap m_MangedObjectIndexByAddress;
+        public ref AddressToManagedIndexHashMap MangedObjectIndexByAddress => ref m_MangedObjectIndexByAddress;
         public BlockList<ManagedConnection> Connections { private set; get; }
-        NativeHashMap<int, int> m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new NativeHashMap<int, int>(k_ManagedConnectionsInitialSize, Allocator.Persistent);
-        public ref NativeHashMap<int, int> NativeUnityObjectTypeIndexToManagedBaseTypeIndex => ref m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex;
+        TypeIndexMappingHashMap m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new TypeIndexMappingHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
+        public ref TypeIndexMappingHashMap NativeUnityObjectTypeIndexToManagedBaseTypeIndex => ref m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex;
         public ulong ManagedObjectMemoryUsage { private set; get; }
         public ulong ActiveHeapMemoryUsage { private set; get; }
         public ulong ActiveHeapMemoryEmptySpace { private set; get; }
         // ConnectionsToMappedToSourceIndex and ConnectionsFromMappedToSourceIndex are derived structure used in accelerating searches in the details view
-        NativeHashMap<CachedSnapshot.SourceIndex, UnsafeList<int>> m_ConnectionsToMappedToSourceIndex;
-        public ref NativeHashMap<CachedSnapshot.SourceIndex, UnsafeList<int>> ConnectionsToMappedToSourceIndex => ref m_ConnectionsToMappedToSourceIndex;
-        NativeHashMap<CachedSnapshot.SourceIndex, UnsafeList<int>> m_ConnectionsFromMappedToSourceIndex;
-        public ref NativeHashMap<CachedSnapshot.SourceIndex, UnsafeList<int>> ConnectionsFromMappedToSourceIndex => ref m_ConnectionsFromMappedToSourceIndex;
+        ConnectionsHashMap m_ConnectionsToMappedToSourceIndex;
+        public ref ConnectionsHashMap ConnectionsToMappedToSourceIndex => ref m_ConnectionsToMappedToSourceIndex;
+        ConnectionsHashMap m_ConnectionsFromMappedToSourceIndex;
+        public ref ConnectionsHashMap ConnectionsFromMappedToSourceIndex => ref m_ConnectionsFromMappedToSourceIndex;
 
 #if DEBUG_VALIDATION
         // This Dictionary block is here to make the investigations for PROF-2420 easier.
-        NativeHashMap<long, ManagedObjectInfo> m_InvalidManagedObjectsReportedViaGCHandles;
-        public ref NativeHashMap<long, ManagedObjectInfo> InvalidManagedObjectsReportedViaGCHandles => ref m_InvalidManagedObjectsReportedViaGCHandles;
+        InvalidObjectsHashMap m_InvalidManagedObjectsReportedViaGCHandles;
+        public ref InvalidObjectsHashMap InvalidManagedObjectsReportedViaGCHandles => ref m_InvalidManagedObjectsReportedViaGCHandles;
 #endif
 
         public ManagedData(long rawGcHandleCount, long rawConnectionsCount, long nativeTypeCount)
         {
             //compute initial block counts for larger snapshots
             m_ManagedObjects = new DynamicArray<ManagedObjectInfo>(0, rawGcHandleCount, Allocator.Persistent, true);
-            m_MangedObjectIndexByAddress = new NativeHashMap<ulong, long>(k_ManagedConnectionsInitialSize, Allocator.Persistent);
-            m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new NativeHashMap<int, int>((int)nativeTypeCount, Allocator.Persistent);
-            m_ConnectionsToMappedToSourceIndex = new NativeHashMap<CachedSnapshot.SourceIndex, UnsafeList<int>>(k_ManagedConnectionsInitialSize, Allocator.Persistent);
-            m_ConnectionsFromMappedToSourceIndex = new NativeHashMap<CachedSnapshot.SourceIndex, UnsafeList<int>>(k_ManagedConnectionsInitialSize, Allocator.Persistent);
+            m_MangedObjectIndexByAddress = new AddressToManagedIndexHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
+            m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new TypeIndexMappingHashMap((int)nativeTypeCount, Allocator.Persistent);
+            m_ConnectionsToMappedToSourceIndex = new ConnectionsHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
+            m_ConnectionsFromMappedToSourceIndex = new ConnectionsHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
 #if DEBUG_VALIDATION
-            m_InvalidManagedObjectsReportedViaGCHandles = new NativeHashMap<long, ManagedObjectInfo>(k_ManagedConnectionsInitialSize, Allocator.Persistent);
+            m_InvalidManagedObjectsReportedViaGCHandles = new InvalidObjectsHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
 #endif
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsInitialSize, rawConnectionsCount);
         }

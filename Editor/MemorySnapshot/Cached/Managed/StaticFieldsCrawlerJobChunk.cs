@@ -5,6 +5,11 @@ using Unity.Collections;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Format;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+using AddressToManagedIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
+#else
+using AddressToManagedIndexHashMap = Unity.Collections.NativeHashMap<ulong, long>;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.Managed
 {
@@ -32,11 +37,11 @@ namespace Unity.MemoryProfiler.Editor.Managed
             public DynamicArray<StackCrawlData> ResultingCrawlDataStack => m_ResultingCrawlDataStack;
             ManagedMemorySectionEntriesCache m_ManagedHeapBytes;
             VirtualMachineInformation m_VMInfo;
-            readonly NativeHashMap<ulong, long> m_MangedObjectIndexByAddress;
+            readonly AddressToManagedIndexHashMap m_MangedObjectIndexByAddress;
 
 
             public StaticFieldsCrawlerJobChunk(
-                in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in NativeHashMap<ulong, long> managedObjectIndexByAddress,
+                in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap managedObjectIndexByAddress,
                 ref DynamicArray<StackCrawlData> resultingCrawlDataStack)
             {
                 // assign all the fields

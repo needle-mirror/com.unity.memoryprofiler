@@ -118,7 +118,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     {
                         ref readonly var managedObjects = ref cs.CrawledData.ManagedObjects;
                         var nativeObjectIndex = managedObjects[source.Index].NativeObjectIndex;
-                        if (nativeObjectIndex <= 0)
+                        if (nativeObjectIndex < NativeObjectEntriesCache.FirstValidObjectIndex)
                             return;
 
                         AddNativeObject(objectsSize, nativeObjectIndex, 0, size);

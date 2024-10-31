@@ -45,7 +45,7 @@ namespace Unity.MemoryProfiler.Editor
                 case SourceIndex.SourceId.NativeObject:
                     // if this is a Native object with a managed wrapper, get references to the wrapper too
                     var managedObjectIndex = snapshot.NativeObjects.ManagedObjectIndex[objIndex.Index];
-                    if (managedObjectIndex > 0)
+                    if (managedObjectIndex >= ManagedData.FirstValidObjectIndex)
                         AddManagedReferences(snapshot, new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex), ref referencingObjects);
 
                     AddManagedReferences(snapshot, objIndex, ref referencingObjects);

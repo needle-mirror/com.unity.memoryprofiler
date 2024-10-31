@@ -457,6 +457,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeRootReferenceEntriesCache : IDisposable
         {
+            public const long FirstValidRootIndex = 1;
             public long Count;
             public DynamicArray<long> Id = default;
             public DynamicArray<ulong> AccumulatedSize = default;
@@ -784,13 +785,16 @@ namespace Unity.MemoryProfiler.Editor
 
         public unsafe class NativeTypeEntriesCache : IDisposable
         {
+            public const int FirstValidTypeIndex = 0;
+            public const int InvalidTypeIndex = -1;
+
             public long Count;
             public string[] TypeName;
             public DynamicArray<int> NativeBaseTypeArrayIndex = default;
             const string k_Transform = "Transform";
-            public int TransformIdx { get; private set; } = -1;
+            public int TransformIdx { get; private set; } = InvalidTypeIndex;
             const string k_RectTransform = "RectTransform";
-            public int RectTransformIdx { get; private set; } = -1;
+            public int RectTransformIdx { get; private set; } = InvalidTypeIndex;
 
             /// <summary>
             /// Technically, <see cref="IsOrDerivesFrom"/>(typeIndex, <see cref="TransformIdx"/>) could be used instead of this method,
@@ -802,20 +806,20 @@ namespace Unity.MemoryProfiler.Editor
             public bool IsTransformOrRectTransform(long typeIndex) => (typeIndex >= 0) && (typeIndex == TransformIdx || typeIndex == RectTransformIdx);
 
             const string k_GameObject = "GameObject";
-            public int GameObjectIdx { get; private set; } = -1;
+            public int GameObjectIdx { get; private set; } = InvalidTypeIndex;
 
             const string k_MonoBehaviour = "MonoBehaviour";
-            public int MonoBehaviourIdx { get; private set; } = -1;
+            public int MonoBehaviourIdx { get; private set; } = InvalidTypeIndex;
 
             const string k_Component = "Component";
-            public int ComponentIdx { get; private set; } = -1;
+            public int ComponentIdx { get; private set; } = InvalidTypeIndex;
 
             const string k_ScriptableObject = "ScriptableObject";
             const int k_ScriptableObjectDefaultTypeArrayIndexOffsetFromEnd = 2;
-            public int ScriptableObjectIdx { get; private set; } = -1;
+            public int ScriptableObjectIdx { get; private set; } = InvalidTypeIndex;
 
             const string k_EditorScriptableObject = "EditorScriptableObject";
-            public int EditorScriptableObjectIdx { get; private set; } = -1;
+            public int EditorScriptableObjectIdx { get; private set; } = InvalidTypeIndex;
             const int k_EditorScriptableObjectDefaultTypeArrayIndexOffsetFromEnd = 1;
 
             public NativeTypeEntriesCache(ref IFileReader reader)
@@ -1255,6 +1259,8 @@ namespace Unity.MemoryProfiler.Editor
         public class NativeObjectEntriesCache : IDisposable
         {
             public static readonly InstanceID InstanceIDNone = InstanceID.None;
+            public const long FirstValidObjectIndex = 0;
+            public const long InvalidObjectIndex = 0;
 
             public long Count;
             public string[] ObjectName;

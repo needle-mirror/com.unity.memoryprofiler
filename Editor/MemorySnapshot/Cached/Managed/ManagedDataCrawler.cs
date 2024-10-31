@@ -18,6 +18,13 @@ using Unity.Profiling;
 using UnityEditor;
 using System.Diagnostics;
 #endif
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+using AddressToManagedIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
+using TypeIndexToCrawlerDataIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<int, long>;
+#else
+using AddressToManagedIndexHashMap = Unity.Collections.NativeHashMap<ulong, long>;
+using TypeIndexToCrawlerDataIndexHashMap  = Unity.Collections.NativeHashMap<int, long>;
+#endif
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Debug = UnityEngine.Debug;
 
@@ -311,7 +318,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             using var _ = k_CrawlStaticsMarker.Auto();
             var snapshot = crawlData.CachedMemorySnapshot;
             var virtualMachineInformation = snapshot.VirtualMachineInformation;
-            using var typeIndexToCrawlerDataIndex = new NativeHashMap<int, long>(crawlData.TypesWithStaticFields.Count, Allocator.Temp);
+            using var typeIndexToCrawlerDataIndex = new TypeIndexToCrawlerDataIndexHashMap(crawlData.TypesWithStaticFields.Count, Allocator.Persistent);
             using var staticTypeFieldCrawlerData = new DynamicArray<StaticFieldsCrawlerJobChunk.StaticTypeFieldCrawlerData>(
                 0, k_IdealJobCount, Allocator.Persistent);
             long totalStaticFieldCount = 0L;
@@ -788,7 +795,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
         [MethodImpl(MethodImplOptions.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         static void CrawlRawObjectData(
-            in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in NativeHashMap<ulong, long> managedObjectIndexByAddress,
+            in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap managedObjectIndexByAddress,
             ref DynamicArray<StackCrawlData> crawlDataStack, DynamicArrayRef<FieldLayoutInfo> fieldLayouts, BytesAndOffset bytesAndOffsetOfFieldDataWithoutHeader,
             SourceIndex indexOfFrom,
             long fromArrayIndex = -1, int insertAtStackIndex = -1, bool allowStackExpansion = false)

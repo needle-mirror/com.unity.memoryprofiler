@@ -6,7 +6,8 @@
         "Unity.MemoryProfiler",
         "Unity.Collections",
         "Unity.Burst",
-        "Unity.Profiling.Core"
+        "Unity.Profiling.Core",
+        "Unity.Mathematics"
     ],
     "includePlatforms": [
         "Editor"
@@ -27,6 +28,11 @@
             "name": "Unity",
             "expression": "7000.0.0a1",
             "define": "INSTANCE_ID_CHANGED"
+        },
+        {
+            "name": "com.unity.collections",
+            "expression": "2.1.0",
+            "define": "UNMANAGED_NATIVE_HASHMAP_AVAILABLE"
         }
     ],
     "noEngineReferences": false

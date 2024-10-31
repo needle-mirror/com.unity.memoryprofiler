@@ -379,7 +379,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             string name = k_InvalidItemName;
             SourceIndex groupSource = new SourceIndex();
-            if (rootReferenceId > 0)
+            if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootIndex)
             {
                 // Is this allocation associated with a native object?
                 if (snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
@@ -852,7 +852,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return new SourceIndex();
 
                 var rootReferenceId = nativeGfxResourceReferences.RootId[x.Index];
-                if (rootReferenceId > 0)
+                if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootIndex)
                 {
                     if (nativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var nativeObjectIndex))
                         return new SourceIndex(SourceIndex.SourceId.NativeType, nativeObjects.NativeTypeArrayIndex[nativeObjectIndex]);
@@ -899,9 +899,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             bool unreliable = !args.BreakdownGfxResources;
             if (args.DisambiguateUnityObjects)
             {
-                string NativeObjectIndex2InstanceId(SourceIndex x) => NativeObjectTools.ProduceNativeObjectId(x.Index, snapshot);
+                string GraphicsResourceIndex2InstanceId(SourceIndex x)
+                {
+                    // Get associated memory label root
+                    var rootReferenceId = snapshot.NativeGfxResourceReferences.RootId[x.Index];
+                    // if the index is valid (RootId 0 is not valid), look up native object index associated with memory label root
+                    if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootIndex && snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
+                        return NativeObjectTools.ProduceNativeObjectId(objectIndex, snapshot);
+                    // Instance ID 0 is invalid
+                    return "ID: 0";
+                }
 
-                GroupItemsNested(objectIndex2TotalMap, NativeObjectIndex2InstanceId, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, unreliable, out var nestedObjectsGroupName2TreeMap, args.SearchFilter);
+                GroupItemsNested(objectIndex2TotalMap, GraphicsResourceIndex2InstanceId, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, unreliable, out var nestedObjectsGroupName2TreeMap, args.SearchFilter);
                 return BuildTreeFromGroupByIdMap(GraphicsGroupName, (int)IAnalysisViewSelectable.Category.Graphics, unreliable, GroupKey2Name, GroupKey2Index, nestedObjectsGroupName2TreeMap, out tree, null, treeItems);
             }
             else

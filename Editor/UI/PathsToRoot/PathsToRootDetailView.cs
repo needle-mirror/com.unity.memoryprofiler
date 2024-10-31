@@ -490,9 +490,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
                 foreach (var connection in connections)
                 {
-                    // we can skip something that is referencing a type as its just a static field holding a connection to the type
-                    // might need to come back and reconsider this in the future
-                    if (connection.IsUnknownDataType() || connection.displayObject.dataType == ObjectDataType.Type) continue;
+                    if (connection.IsUnknownDataType()) continue;
 
                     var child = new PathsToRootDetailTreeViewItem(connection.displayObject, m_CachedSnapshot, current, truncateTypeNames);
                     current.AddChild(child);
