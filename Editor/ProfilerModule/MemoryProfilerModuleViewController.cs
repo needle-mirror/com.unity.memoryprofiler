@@ -1,21 +1,16 @@
-#if UNITY_2021_2_OR_NEWER
-using System.Text;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.Profiling.Editor;
 using UnityEditor;
-using UnityEditor.Profiling;
-using UnityEditor.UIElements;
 using UnityEditorInternal;
 using UnityEngine.Networking.PlayerConnection;
 using UnityEditor.Networking.PlayerConnection;
 using UnityEngine.UIElements;
-using PackagedMemoryUsageBreakdown = Unity.MemoryProfiler.Editor.UI.SummaryViewController;
-using Unity.Profiling;
 using UnityEngine;
 using System;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor;
 
-namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
+namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 {
     internal class MemoryProfilerModuleViewController : ProfilerModuleViewController
     {
@@ -93,7 +88,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
             m_ConnectionState?.Dispose();
             m_ConnectionState = null;
-            if(m_WidgetControllers != null)
+            if (m_WidgetControllers != null)
             {
                 foreach (var controller in m_WidgetControllers)
                 {
@@ -168,7 +163,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         {
             // Don't update if there is no state change
             var frame = ProfilerWindow.selectedFrameIndex;
-            if(frame == -1)
+            if (frame == -1)
                 frame = ProfilerDriver.lastFrameIndex;
 
             bool isDataAvailable = CheckMemoryStatsAvailablity(frame);
@@ -194,7 +189,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             if (frame == -1)
                 frame = ProfilerWindow.lastAvailableFrameIndex;
 
-            if(Event.current?.type == EventType.Layout)
+            if (Event.current?.type == EventType.Layout)
             {
                 // don't change the layout during layout. Schedule the update for later
                 m_Root.schedule.Execute(() => UpdateWidgetsFrame(frame));
@@ -207,7 +202,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
                 var frameId = new UniqueFrameId(frame, m_FrameDataView.frameStartTimeNs, m_FrameDataView.frameTimeMs);
 
                 if (m_FrameIdOfLastBuildModel.Equals(frameId))
-                   return;
+                    return;
                 m_FrameIdOfLastBuildModel = frameId;
             }
             else
@@ -263,7 +258,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 
         bool CheckMemoryStatsAvailablity(long frameIndex)
         {
-            if(frameIndex == -1)
+            if (frameIndex == -1)
             {
                 // -1 means is the current frame, if there is one
                 frameIndex = ProfilerWindow.lastAvailableFrameIndex;
@@ -279,4 +274,3 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         }
     }
 }
-#endif

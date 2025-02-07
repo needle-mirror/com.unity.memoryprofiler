@@ -182,6 +182,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             return rootItems;
         }
 
+        // TODO: Slightly unclear if this is needed or provides user value.
+        // Especially since it looks like the table merges these by name (aka all of these are "<No Name>" entries) anyways?
+        // It might be possible to remove and simplify this.
+        const bool k_SplitNonObjectRootedGfxResourcesByResource = true;
+
         BuildContext BuildAllMemoryContext(
             CachedSnapshot snapshot,
             in BuildArgs args)
@@ -235,16 +240,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 switch (source.Id)
                 {
                     case SourceIndex.SourceId.NativeObject:
-                        ProcessNativeObject(snapshot, source, memorySize, filterArgs, context.NativeObjectIndex2SizeMap);
+                        // Handled via ProcessedNativeRoots
                         break;
                     case SourceIndex.SourceId.NativeAllocation:
-                        ProcessNativeAllocation(snapshot, source, memorySize, filterArgs, context);
+                        ProcessNativeAllocationForPotentialSplittingNonObjectRootedAllocationsByAllocation(snapshot, index, source, memorySize, filterArgs, context);
                         break;
                     case SourceIndex.SourceId.NativeMemoryRegion:
                         ProcessNativeRegion(snapshot, source, memorySize, filterArgs, context.NativeRegionName2SizeMap, context.GfxReservedRegionIndex2SizeMap);
                         break;
                     case SourceIndex.SourceId.ManagedObject:
-                        ProcessManagedObject(snapshot, source, memorySize, filterArgs, context.ManagedTypeName2ObjectsTreeMap, disambiguateUnityObjects ? context.ManagedTypeName2NativeName2ObjectsTreeMap : null);
+                        ProcessPureManagedObject(snapshot, source, memorySize, filterArgs, context.ManagedTypeName2ObjectsTreeMap, disambiguateUnityObjects ? context.ManagedTypeName2NativeName2ObjectsTreeMap : null);
                         break;
                     case SourceIndex.SourceId.ManagedHeapSection:
                         ProcessManagedHeap(snapshot, source, memorySize, filterArgs, context);
@@ -259,6 +264,81 @@ namespace Unity.MemoryProfiler.Editor.UI
                         break;
                 }
             });
+
+            MemorySize totalEstimatedGraphicsMemory = default;
+            var processedNativeRoots = snapshot.ProcessedNativeRoots;
+            for (long mappedProcessedRootIndex = 0; mappedProcessedRootIndex < processedNativeRoots.Count; mappedProcessedRootIndex++)
+            {
+                ref readonly var data = ref processedNativeRoots.Data[mappedProcessedRootIndex];
+                switch (data.NativeObjectOrRootIndex.Id)
+                {
+                    case SourceIndex.SourceId.NativeObject:
+                    {
+                        ProcessUnityObject(snapshot, mappedProcessedRootIndex, in data, filterArgs, context, ref totalEstimatedGraphicsMemory);
+                        break;
+                    }
+                    case SourceIndex.SourceId.NativeRootReference:
+                    {
+                        ProcessNativeRootReference(snapshot, mappedProcessedRootIndex, in data, filterArgs, context, ref totalEstimatedGraphicsMemory);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+            // handle Unkown Native allocation root
+            {
+                var unknownAllocationRootIndex = k_FakeInvalidlyRootedAllocationIndex;
+                var unknownAllocationRootName = k_InvalidItemName;
+                if (NameFilter(args, unknownAllocationRootName) &&
+                    processedNativeRoots.UnknownRootMemory.NativeSize.Committed > 0 &&
+                    !ShouldGroupBeSplitIntoAllocations(snapshot, context.NativeRootReference2UnsafeAllocations2SizeMap, ref unknownAllocationRootIndex, out var splitGroup))
+                {
+                    AddItemSizeToMap(context.NativeRootReference2SizeMap, unknownAllocationRootIndex, processedNativeRoots.UnknownRootMemory.NativeSize);
+                }
+                // the split allocation case for Unknown allocation root allocations is handled in ProcessNativeAllocation
+            }
+
+            // handle Unkown Graphics allocation root
+            if (processedNativeRoots.UnrootedGraphicsResourceIndices.Count > 0)
+            {
+                var indexOfFirstUnrootedGfxResource = processedNativeRoots.UnrootedGraphicsResourceIndices[0];
+                var unknownAllocationRootName = indexOfFirstUnrootedGfxResource.GetName(snapshot);
+                if (NameFilter(args, unknownAllocationRootName) &&
+                    processedNativeRoots.UnknownRootMemory.GfxSize.Committed > 0)
+                {
+                    var size = args.BreakdownGfxResources ? processedNativeRoots.UnknownRootMemory.GfxSize : new MemorySize();
+                    AddItemSizeToMap(context.GfxObjectIndex2SizeMap, indexOfFirstUnrootedGfxResource, size);
+                    totalEstimatedGraphicsMemory += size;
+                }
+                // the split allocation case for Unknown allocation root allocations is handled in ProcessNativeAllocation
+            }
+
+            // Handle remaining graphics memory
+            context.UntrackedGraphicsResources += processedNativeRoots.NativeAllocationsThatAreUntrackedGraphicsResources;
+            if (k_SplitNonObjectRootedGfxResourcesByResource)
+            {
+                var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
+                for (int i = 0; i < processedNativeRoots.NonObjectRootedGraphicsResourceIndices.Count; i++)
+                {
+                    var source = processedNativeRoots.NonObjectRootedGraphicsResourceIndices[i];
+
+                    var name = source.GetName(snapshot);
+                    if (!NameFilter(args, name))
+                        continue;
+
+                    var size = 0UL;
+                    if (args.BreakdownGfxResources)
+                    {
+                        size = nativeGfxResourceReferences.GfxSize[source.Index];
+                        if (size == 0)
+                            continue;
+                    }
+                    var memorySize = new MemorySize(size, 0);
+                    AddItemSizeToMap(context.GfxObjectIndex2SizeMap, source, memorySize);
+                    totalEstimatedGraphicsMemory += memorySize;
+                }
+            }
 
             // [Legacy] If we don't have SystemMemoryRegionsInfo, take the total value from legacy memory stats
             // Nb! If you change this, change similar code in AllTrackedMemoryModelBuilder / UnityObjectsModelBuilder / AllMemorySummaryModelBuilder
@@ -286,23 +366,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                     context.UntrackedGraphicsResources = new MemorySize(graphicsUsedMemory, 0);
                 }
 
-                // Add estimated resources
-                if (snapshot.HasGfxResourceReferencesAndAllocators)
+                // If accounted "untracked" graphics memory is less than estimated, reassign untracked memory
+                // to graphics resources. Otherwise, if we have more regions than estimated, just create "untracked" entity
+                if (totalEstimatedGraphicsMemory.Committed > context.UntrackedGraphicsResources.Committed)
                 {
-                    // Add estimated graphics resources
-                    ProcessGraphicsResources(snapshot, args, context.GfxObjectIndex2SizeMap, out var totalEstimatedGraphicsMemory);
-
-                    // If accounted "untracked" graphics memory is less than estimated, reassign untracked memory
-                    // to graphics resources. Otherwise, if we have more regions than estimated, just create "untracked" entity
-                    if (totalEstimatedGraphicsMemory.Committed > context.UntrackedGraphicsResources.Committed)
-                    {
-                        untrackedToReassign += totalEstimatedGraphicsMemory - context.UntrackedGraphicsResources;
-                        context.UntrackedGraphicsResources = new MemorySize();
-                    }
-                    else
-                    {
-                        context.UntrackedGraphicsResources -= totalEstimatedGraphicsMemory;
-                    }
+                    untrackedToReassign += totalEstimatedGraphicsMemory - context.UntrackedGraphicsResources;
+                    context.UntrackedGraphicsResources = new MemorySize();
+                }
+                else
+                {
+                    context.UntrackedGraphicsResources -= totalEstimatedGraphicsMemory;
                 }
 
                 // Add untracked graphics resources to untracked map
@@ -342,26 +415,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             return mainGroupFilter?.Passes(name) ?? true;
         }
 
-        void ProcessNativeObject(
+        // Only handles splitting non-UnityObject rooted allocations by allocation where requested.
+        // Everything else in terms of Native Allocations is handled via ProcessedNativeRoots
+        void ProcessNativeAllocationForPotentialSplittingNonObjectRootedAllocationsByAllocation(
             CachedSnapshot snapshot,
-            SourceIndex source,
-            MemorySize size,
-            in BuildArgs args,
-            Dictionary<SourceIndex, MemorySize> nativeObjectIndex2TotalMap)
-        {
-            var name = source.GetName(snapshot);
-
-            // Apply name filter.
-            if (!NameFilter(args, name))
-                return;
-
-            AddItemSizeToMap(nativeObjectIndex2TotalMap, source, size);
-        }
-
-        // Native allocation might be associated with an object or Unity "subsystem"
-        // ProcessNativeAllocation should be able to register either in objects or allocations
-        void ProcessNativeAllocation(
-            CachedSnapshot snapshot,
+            long memoryMapEntriyIndex,
             SourceIndex source,
             MemorySize size,
             in BuildArgs args,
@@ -373,27 +431,24 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.Switch }
                 && snapshot.EntriesMemoryMap.GetPointType(source) == EntriesMemoryMapCache.PointType.Device)
             {
-                context.UntrackedGraphicsResources += size;
+                // Handled via ProcessedNativeRoots.NativeAllocationsThatAreUntrackedGraphicsResources
                 return;
             }
 
-            string name = k_InvalidItemName;
             SourceIndex groupSource = new SourceIndex();
             if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootIndex)
             {
                 // Is this allocation associated with a native object?
                 if (snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
                 {
-                    var nativeSource = new SourceIndex(SourceIndex.SourceId.NativeObject, objectIndex);
-                    ProcessNativeObject(snapshot, nativeSource, size, args, context.NativeObjectIndex2SizeMap);
+                    // Handled via ProcessedNativeRoots
                     return;
                 }
 
-                // Extract name and type.
+                // Extract root reference.
                 if (snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out long groupIndex))
                 {
                     groupSource = new SourceIndex(SourceIndex.SourceId.NativeRootReference, groupIndex);
-                    name = groupSource.GetName(snapshot);
                 }
             }
             else
@@ -401,33 +456,63 @@ namespace Unity.MemoryProfiler.Editor.UI
                 groupSource = k_FakeInvalidlyRootedAllocationIndex;
             }
 
-            // Apply name filter.
-            if (!NameFilter(args, name))
-                return;
-
-            if (ShouldGroupBeSplitIntoAllocations(snapshot, context.NativeRootReference2UnsafeAllocations2SizeMap, ref groupSource, name, out var splitGroup))
+            if (ShouldGroupBeSplitIntoAllocations(snapshot, context.NativeRootReference2UnsafeAllocations2SizeMap, ref groupSource, out var splitGroup))
             {
-                if (!splitGroup.TryAdd(source, size) && groupSource.Valid && groupSource.Id == SourceIndex.SourceId.NativeRootReference)
-                {
-#if DEBUG_VALIDATION
-                    // FIXME: Why would there be two entries for the same Native Allocations
-                    Debug.Log($"Native Allocation at index {source.Index} address 0x{string.Format("{0:X16}", nativeAllocations.Address[source.Index])} Allocator {snapshot.NativeRootReferences.ObjectName[groupSource.Index]} was already processed");
-                    //splitGroup[source] += size;
-#endif
-                }
-            }
+                string name = groupSource.Valid ? groupSource.GetName(snapshot) : k_InvalidItemName;
+                // Apply name filter.
+                if (!NameFilter(args, name))
+                    return;
 
-            // Attribute VM root to managed VM, rather than to native root references.
-            if (groupSource == snapshot.NativeRootReferences.VMRootReferenceIndex)
-                context.ManagedMemoryVM += size;
-            else
+                if (!splitGroup.TryAdd(source, size))
+                {
+                    //#if DEBUG_VALIDATION
+                    //                    // Native Allocations can apparently get split appart in the Memory Map Entries, presummably because they fell out of range of their encompassing region?
+                    //                    // This might be valid where we stitch regions together?
+                    //                    if (groupSource.Valid && groupSource.Id == SourceIndex.SourceId.NativeRootReference)
+                    //                    {
+                    //                        var memoryMapData = snapshot.EntriesMemoryMap.Data;
+                    //                        var encompassingMemoryRegion = default(SourceIndex);
+                    //                        var previousEntry = default(SourceIndex);
+                    //                        long previousEntryIndex = 0;
+                    //                        var memoryRegionEncompassingPreviousEntry = default(SourceIndex);
+                    //                        for (long i = memoryMapEntriyIndex - 1; i >= 0; --i)
+                    //                        {
+                    //                            var entrySource = memoryMapData[i].Source;
+                    //                            if (!encompassingMemoryRegion.Valid &&
+                    //                                (entrySource.Id == SourceIndex.SourceId.NativeMemoryRegion
+                    //                                || entrySource.Id == SourceIndex.SourceId.NativeMemoryRegion))
+                    //                                encompassingMemoryRegion = memoryMapData[i].Source;
+                    //                            if(!previousEntry.Valid && entrySource == source)
+                    //                            {
+                    //                                previousEntry = entrySource;
+                    //                                previousEntryIndex = i;
+                    //                            }
+
+                    //                            if(previousEntry.Valid && !memoryRegionEncompassingPreviousEntry.Valid &&
+                    //                                (entrySource.Id == SourceIndex.SourceId.NativeMemoryRegion
+                    //                                || entrySource.Id == SourceIndex.SourceId.NativeMemoryRegion))
+                    //                                memoryRegionEncompassingPreviousEntry = entrySource;
+                    //                            if (previousEntry.Valid && encompassingMemoryRegion.Valid && memoryRegionEncompassingPreviousEntry.Valid)
+                    //                                break;
+                    //                        }
+                    //                        Debug.Log($"Native Allocation at index {source.Index} address 0x{string.Format("{0:X16}", nativeAllocations.Address[source.Index])} Allocator {snapshot.NativeRootReferences.ObjectName[groupSource.Index]} was already processed." +
+                    //                            $"\nPrevious accumulated allocation size was {splitGroup[source]}, additional size is {size} reaching a total of {splitGroup[source] + size}, reported allocation size is {snapshot.NativeAllocations.Size[source.Index]}" +
+                    //                            (previousEntry.Valid && encompassingMemoryRegion.Valid && memoryRegionEncompassingPreviousEntry.Valid ?
+                    //                            $"\nPrevious entry exists and is in region {memoryRegionEncompassingPreviousEntry.GetName(snapshot)}, current region is {encompassingMemoryRegion.GetName(snapshot)}": ""));
+                    //                    }
+                    //#endif
+                    splitGroup[source] += size;
+                }
+
                 AddItemSizeToMap(context.NativeRootReference2SizeMap, groupSource, size);
+            }
+            //else Handled via ProcessedNativeRoots
         }
 
         bool ShouldGroupBeSplitIntoAllocations(
             CachedSnapshot snapshot,
             Dictionary<SourceIndex, Dictionary<SourceIndex, MemorySize>> nativeRootReference2UnsafeAllocations2SizeMap,
-            ref SourceIndex groupSource, string name, out Dictionary<SourceIndex, MemorySize> splitGroup)
+            ref SourceIndex groupSource, out Dictionary<SourceIndex, MemorySize> splitGroup)
         {
             if (nativeRootReference2UnsafeAllocations2SizeMap.TryGetValue(groupSource, out var rootReferenceGroup))
             {
@@ -435,7 +520,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return true;
             }
             else if (MemoryProfilerSettings.FeatureFlags.EnableUnknownUnknownAllocationBreakdown_2024_10 &&
-                (!groupSource.Valid && name == k_InvalidItemName && nativeRootReference2UnsafeAllocations2SizeMap.TryGetValue(k_FakeInvalidlyRootedAllocationIndex, out var unknownGroup)))
+                (!groupSource.Valid && nativeRootReference2UnsafeAllocations2SizeMap.TryGetValue(k_FakeInvalidlyRootedAllocationIndex, out var unknownGroup)))
             {
                 groupSource = k_FakeInvalidlyRootedAllocationIndex;
                 splitGroup = unknownGroup;
@@ -466,27 +551,158 @@ namespace Unity.MemoryProfiler.Editor.UI
                 AddItemSizeToMap(regionsTotalMap, source, size);
         }
 
-        void ProcessManagedObject(
+        void ProcessNativeRootReference(
+            CachedSnapshot snapshot,
+            long mappedProcessedRootIndex,
+            in ProcessedNativeRoot data,
+            in BuildArgs args,
+            BuildContext context,
+            ref MemorySize totalEstimatedGraphicsMemory
+            )
+        {
+            ref readonly var itemIndex = ref data.NativeObjectOrRootIndex;
+            ref readonly var size = ref data.AccumulatedRootSizes;
+
+            if (itemIndex == snapshot.NativeRootReferences.VMRootReferenceIndex)
+            {
+                context.ManagedMemoryVM += size.NativeSize;
+                return;
+            }
+
+            var name = itemIndex.GetName(snapshot);
+            if (!NameFilter(args, name))
+                return;
+
+            var splitItemIndex = itemIndex;
+            if (!ShouldGroupBeSplitIntoAllocations(snapshot, context.NativeRootReference2UnsafeAllocations2SizeMap, ref splitItemIndex, out var splitGroup))
+            {
+                AddItemSizeToMap(context.NativeRootReference2SizeMap, splitItemIndex, size.NativeSize);
+            } // the split allocation case for Unknown allocation root allocations is handled in ProcessNativeAllocation
+
+            if (!k_SplitNonObjectRootedGfxResourcesByResource
+                && data.AssociatadGraphicsResourceIndex.Valid)
+            {
+                var gfxSizeToAdd = size.GfxSize;
+                if (args.BreakdownGfxResources)
+                {
+                    if (size.GfxSize.Committed == 0)
+                        return;
+                }
+                else
+                {
+                    // When not breaking down Gfx Resources, do list those that have graphics sizes but list them with a size 0
+                    gfxSizeToAdd = new MemorySize();
+                }
+                AddItemSizeToMap(context.GfxObjectIndex2SizeMap, itemIndex, gfxSizeToAdd);
+                totalEstimatedGraphicsMemory += gfxSizeToAdd;
+            }
+        }
+
+        void ProcessUnityObject(
+            CachedSnapshot snapshot,
+            long mappedProcessedRootIndex,
+            in ProcessedNativeRoot data,
+            in BuildArgs args,
+            BuildContext context,
+            ref MemorySize totalEstimatedGraphicsMemory)
+        {
+            ref readonly var nativeSource = ref data.NativeObjectOrRootIndex;
+
+            var name = nativeSource.GetName(snapshot);
+            if (!NameFilter(args, name))
+                return;
+
+            ref readonly var size = ref data.AccumulatedRootSizes;
+
+            // Handle Graphics entry
+            if (!args.BreakdownGfxResources || size.GfxSize.Committed > 0)
+            {
+                // When not breaking down Gfx Resources, do list those that have graphics sizes but list them with a size 0
+                var gfxSizeToAdd = args.BreakdownGfxResources ? size.GfxSize : default;
+                AddItemSizeToMap(context.GfxObjectIndex2SizeMap, nativeSource, gfxSizeToAdd);
+                totalEstimatedGraphicsMemory += gfxSizeToAdd;
+            }
+
+            // Handle Native entry
+            AddItemSizeToMap(context.NativeObjectIndex2SizeMap, nativeSource, size.NativeSize);
+
+            // Handle Managed entry
+            var managedIndex = snapshot.NativeObjects.ManagedObjectIndex[nativeSource.Index];
+            if (size.ManagedSize.Committed > 0 && managedIndex >= ManagedData.FirstValidObjectIndex)
+            {
+                ref readonly var managedObject = ref snapshot.CrawledData.ManagedObjects[managedIndex];
+                var nativeObjectIndex = nativeSource.Index;
+                if (nativeObjectIndex < CachedSnapshot.NativeObjectEntriesCache.FirstValidObjectIndex)
+                    return;
+                // to add the object to corresponding type entry in the map, we need a valid type.
+                var managedTypeIndex = managedObject.ITypeDescription;
+                if (managedTypeIndex < 0)
+                    return;
+
+                string id = null;
+                if (args.DisambiguateUnityObjects && nativeObjectIndex > 0)
+                {
+                    id = NativeObjectTools.ProduceNativeObjectId(nativeObjectIndex, snapshot);
+                }
+
+                var groupSource = new SourceIndex(SourceIndex.SourceId.ManagedType, managedTypeIndex);
+
+                if (args.SearchFilter != null)
+                {
+                    using var outerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedGroupName);
+                    using var innerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
+                    // optimization, don't generate managed type name if the scope already passes
+                    if (!innerGroupNameFilter.ScopePasses)
+                    {
+                        using var managedTypeNameFilter = args.SearchFilter.OpenScope(groupSource.GetName(snapshot));
+                        using var managedNameFilter = args.SearchFilter.OpenScope(name);
+                        // if id == null, this just checks if a parent scope passed
+                        if (!managedNameFilter.Passes(id))
+                            return;
+                    }
+                }
+
+                // Create item for managed object.
+                var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                    m_ItemId++,
+                    new AllTrackedMemoryModel.ItemData(
+                        id ?? name,
+                        size.ManagedSize,
+                        nativeSource)
+                );
+
+                //  add it to the map
+                if (id != null)
+                {
+                    var namedObjectsOfThisType = context.ManagedTypeName2NativeName2ObjectsTreeMap.GetOrAdd(groupSource);
+                    namedObjectsOfThisType.GetAndAddToListOrCreateList(name, treeItem);
+                }
+                else
+                {
+                    context.ManagedTypeName2ObjectsTreeMap.GetAndAddToListOrCreateList(groupSource, treeItem);
+                }
+            }
+        }
+
+        void ProcessPureManagedObject(
             CachedSnapshot snapshot,
             SourceIndex source,
             MemorySize size,
             in BuildArgs args,
-            Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> typeObjectsMap,
-            Dictionary<SourceIndex, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> type2Name2ObjectsMap = null)
+            Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> managedTypeObjectsMap,
+            Dictionary<SourceIndex, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> managedType2Name2ObjectsMap = null)
         {
+            ref readonly var managedObject = ref snapshot.CrawledData.ManagedObjects[source.Index];
+            var nativeObjectIndex = managedObject.NativeObjectIndex;
+            if (nativeObjectIndex >= CachedSnapshot.NativeObjectEntriesCache.FirstValidObjectIndex)
+                // Managed Objects associated with a Native Object are Handled via ProcessedNativeRoots
+                return;
+
             var name = source.GetName(snapshot);
 
             // Apply name filter.
             if (!NameFilter(args, name))
                 return;
-
-            ref readonly var managedObject = ref snapshot.CrawledData.ManagedObjects[source.Index];
-            var nativeObjectIndex = managedObject.NativeObjectIndex;
-            string id = null;
-            if (type2Name2ObjectsMap != null && nativeObjectIndex > 0)
-            {
-                id = NativeObjectTools.ProduceNativeObjectId(nativeObjectIndex, snapshot);
-            }
 
             // to add the object to corresponding type entry in the map, we need a valid type.
             var managedTypeIndex = managedObject.ITypeDescription;
@@ -503,9 +719,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (!innerGroupNameFilter.ScopePasses)
                 {
                     using var managedTypeNameFilter = args.SearchFilter.OpenScope(groupSource.GetName(snapshot));
-                    using var managedNameFilter = args.SearchFilter.OpenScope(name);
-                    // if id == null, this just checks if a parent scope passed
-                    if (!managedNameFilter.Passes(id))
+                    if (!managedTypeNameFilter.Passes(name))
                         return;
                 }
             }
@@ -514,21 +728,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                 m_ItemId++,
                 new AllTrackedMemoryModel.ItemData(
-                    id ?? name,
+                    name,
                     size,
                     source)
             );
 
-            //  add it to the map
-            if (id != null)
-            {
-                var namedObjectsOfThisType = type2Name2ObjectsMap.GetOrAdd(groupSource);
-                namedObjectsOfThisType.GetAndAddToListOrCreateList(name, treeItem);
-            }
-            else
-            {
-                typeObjectsMap.GetAndAddToListOrCreateList(groupSource, treeItem);
-            }
+            managedTypeObjectsMap.GetAndAddToListOrCreateList(groupSource, treeItem);
         }
 
         void ProcessManagedHeap(
@@ -608,38 +813,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 default:
                     Debug.Assert(false, $"Unknown memory region type ({regionType}), please report a bug.");
                     break;
-            }
-        }
-
-        void ProcessGraphicsResources(
-            CachedSnapshot snapshot,
-            in BuildArgs args,
-            Dictionary<SourceIndex, MemorySize> graphicsResourcesMap,
-            out MemorySize totalGraphicsMemory)
-        {
-            totalGraphicsMemory = new MemorySize(0, 0);
-
-            var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
-            for (var i = 0; i < nativeGfxResourceReferences.Count; i++)
-            {
-                var source = new SourceIndex(SourceIndex.SourceId.GfxResource, i);
-
-                var name = source.GetName(snapshot);
-                if (!NameFilter(args, name))
-                    continue;
-
-                var size = 0UL;
-                if (args.BreakdownGfxResources)
-                {
-                    size = nativeGfxResourceReferences.GfxSize[i];
-                    if (size == 0)
-                        continue;
-                }
-
-                var memorySize = new MemorySize(size, 0);
-                AddItemSizeToMap(graphicsResourcesMap, source, memorySize);
-
-                totalGraphicsMemory += memorySize;
             }
         }
 
@@ -851,18 +1024,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (x.Id == SourceIndex.SourceId.None)
                     return new SourceIndex();
 
-                var rootReferenceId = nativeGfxResourceReferences.RootId[x.Index];
-                if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootIndex)
+                return x.Id switch
                 {
-                    if (nativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var nativeObjectIndex))
-                        return new SourceIndex(SourceIndex.SourceId.NativeType, nativeObjects.NativeTypeArrayIndex[nativeObjectIndex]);
-
+                    SourceIndex.SourceId.NativeObject => new SourceIndex(SourceIndex.SourceId.NativeType, nativeObjects.NativeTypeArrayIndex[x.Index]),
                     // If the allocation is not associated with any native object, try use subsystem root to identify it.
-                    if (snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out long groupIndex))
-                        return new SourceIndex(SourceIndex.SourceId.NativeRootReference, groupIndex);
-                }
-
-                return new SourceIndex();
+                    SourceIndex.SourceId.NativeRootReference => x,
+                    SourceIndex.SourceId.GfxResource =>
+                        snapshot.NativeGfxResourceReferences.RootId[x.Index] != CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootIndex ?
+                        new SourceIndex(SourceIndex.SourceId.NativeRootReference, snapshot.NativeRootReferences.IdToIndex[snapshot.NativeGfxResourceReferences.RootId[x.Index]]) :
+                        new SourceIndex(),
+                    _ => new SourceIndex(),
+                };
             }
             string ObjectIndex2Name(SourceIndex x) => x.GetName(snapshot);
             string GroupKey2Name(SourceIndex x) => x.GetName(snapshot);
@@ -901,11 +1073,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 string GraphicsResourceIndex2InstanceId(SourceIndex x)
                 {
-                    // Get associated memory label root
-                    var rootReferenceId = snapshot.NativeGfxResourceReferences.RootId[x.Index];
-                    // if the index is valid (RootId 0 is not valid), look up native object index associated with memory label root
-                    if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootIndex && snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
-                        return NativeObjectTools.ProduceNativeObjectId(objectIndex, snapshot);
+                    if (x.Id == SourceIndex.SourceId.NativeObject)
+                        return NativeObjectTools.ProduceNativeObjectId(x.Index, snapshot);
                     // Instance ID 0 is invalid
                     return "ID: 0";
                 }
@@ -946,7 +1115,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             bool unreliable,
             out Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> group2itemsMap,
             IScopedFilter<string> searchFilter,
-            Dictionary<SourceIndex, Dictionary<SourceIndex, MemorySize>> ítemsToSplitByAllocation = null,
+            Dictionary<SourceIndex, Dictionary<SourceIndex, MemorySize>> itemsToSplitByAllocation = null,
             Func<SourceIndex, string> allocation2Name = null)
         {
             group2itemsMap = new Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>();
@@ -964,8 +1133,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> listOfSingleAllocations = null;
 
-                if (ítemsToSplitByAllocation?.TryGetValue(item.Key, out var allocationSizes) ?? false)
+                if (itemsToSplitByAllocation?.TryGetValue(item.Key, out var allocationSizes) ?? false)
                 {
+                    // Note: If VisualStudio claims this to be an error that is preventing you from attatching to Unity, try updating your Visuals Studio installation.
+                    // This seems to be an issue for VisualStudio 2019. VS 2022 correctly asseses that allocationSizes is indeed initalized at this point
                     listOfSingleAllocations = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(allocationSizes.Count);
                     int i = 0;
                     foreach (var allocation in allocationSizes)

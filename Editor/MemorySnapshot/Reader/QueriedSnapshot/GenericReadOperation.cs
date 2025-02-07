@@ -1,14 +1,20 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.IO.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
-using UnityEngine;
+
+#if ENABLE_CORECLR
+using Allocator = Unity.Collections.AllocatorManager;
+using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
+using static Unity.Collections.AllocatorManager;
+#else
+using Allocator = Unity.Collections.Allocator;
+using AllocatorType = Unity.Collections.Allocator;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
@@ -177,7 +183,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 
         public bool IsCreated => m_NestedArrayStructure.IsCreated;
 
-        internal NestedDynamicSizedArrayReadOperation(List<GenericReadOperation> genericReadOperations, NestedDynamicArray<T> nestedArrayStructure, Allocator allocator)
+        internal NestedDynamicSizedArrayReadOperation(List<GenericReadOperation> genericReadOperations, NestedDynamicArray<T> nestedArrayStructure, AllocatorType allocator)
         {
             m_ReadOperations = new NativeArray<GenericReadOperation>(genericReadOperations.ToArray(), allocator);
             m_NestedArrayStructure = nestedArrayStructure;

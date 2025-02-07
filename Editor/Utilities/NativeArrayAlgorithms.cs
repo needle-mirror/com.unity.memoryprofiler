@@ -70,11 +70,14 @@ namespace Unity.MemoryProfiler.Editor.Containers
             readonly TComparableData* m_RangeStartValuesArrayPtr;
             [NativeDisableUnsafePtrRestriction]
             readonly TComparableData* m_RangeLengthValuesArrayPtr;
-            public IndexedArrayRangeValueComparer(in DynamicArray<TComparableData> indexedRangeStartValueArray, in DynamicArray<TComparableData> indexedRangeLengthValueArray)
+
+            readonly bool m_AllowOverlappingRegions;
+            public IndexedArrayRangeValueComparer(in DynamicArray<TComparableData> indexedRangeStartValueArray, in DynamicArray<TComparableData> indexedRangeLengthValueArray, bool allowExactlyOverlappingRegions = false)
             {
                 Checks.CheckEquals(indexedRangeStartValueArray.Count, indexedRangeLengthValueArray.Count);
                 m_RangeStartValuesArrayPtr = indexedRangeStartValueArray.GetUnsafeTypedPtr();
                 m_RangeLengthValuesArrayPtr = indexedRangeLengthValueArray.GetUnsafeTypedPtr();
+                m_AllowOverlappingRegions = allowExactlyOverlappingRegions;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -85,12 +88,18 @@ namespace Unity.MemoryProfiler.Editor.Containers
                     return res;
 
 #if ENABLE_MEMORY_PROFILER_DEBUG
-                if(arrayIndexA != arrayIndexB && (m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0 && m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0))
+                if(!m_AllowOverlappingRegions && arrayIndexA != arrayIndexB && (m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0 && m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0))
+                {
                     // Range Items can't have the same start and end values, unless one of them is of length 0.
                     Checks.CheckNotEquals(m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(m_RangeLengthValuesArrayPtr[arrayIndexB]), 0);
+                }
 #endif
                 // if the start address matches, compare their sizes and invert the result so that the end range value is used as basis for the comparison
-                return -(m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(m_RangeLengthValuesArrayPtr[arrayIndexB]));
+                res = -(m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(m_RangeLengthValuesArrayPtr[arrayIndexB]));
+                if (res == 0)
+                    // if the size matches, keep the sorting given by the index, as it is likely reported in order.
+                    res = arrayIndexA.CompareTo(arrayIndexB);
+                return res;
             }
         }
 

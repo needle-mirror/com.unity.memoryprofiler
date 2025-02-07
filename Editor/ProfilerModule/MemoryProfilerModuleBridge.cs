@@ -1,14 +1,15 @@
-#if UNITY_2021_2_OR_NEWER
 using System;
+#if !MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY
 using System.Reflection;
+#endif
 using Unity.Profiling.Editor;
 using UnityEditor;
 
-namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
+namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 {
     internal static class MemoryProfilerModuleBridge
     {
-#if MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY
+#if MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY  // aka Unity Version >= 2022.2.0a12
         // Called via reflection from MemoryProfilerModule in trunk on 2022.2 and later.
         public static Func<ProfilerWindow, ProfilerModuleViewController> CreateDetailsViewController { get; set; }
 #else
@@ -35,4 +36,3 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 #endif // MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY
     }
 }
-#endif

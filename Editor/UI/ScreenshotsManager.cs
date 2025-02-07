@@ -147,7 +147,17 @@ internal class ScreenshotsManager : IDisposable
 
             if (File.Exists(thumbPath))
             {
-                var data = File.ReadAllBytes(thumbPath);
+                byte[] data = null;
+                // guarding against hypothetical race conditions here in case the file gets deleted off of the main thread (or by another process)
+                try
+                {
+                    data = File.ReadAllBytes(thumbPath);
+                }
+                catch (FileNotFoundException)
+                {
+                    // a file in the queue was deleted or renamed, moving on...
+                    continue;
+                }
                 var fileSize = data.Length;
 
                 // Read in width and height that we appended to the end of the file
@@ -161,8 +171,18 @@ internal class ScreenshotsManager : IDisposable
             }
             else
             {
+                byte[] dataOriginal = null;
                 // Read in the full size screenshot so we can make a thumbnail
-                var dataOriginal = File.ReadAllBytes(request.FilePath);
+                // This has thrown an exception at least once while debugging and deleting a file via the context menu.
+                try
+                {
+                    dataOriginal = File.ReadAllBytes(request.FilePath);
+                }
+                catch (FileNotFoundException)
+                {
+                    // a file in the queue was deleted or renamed, moving on...
+                    continue;
+                }
                 Texture2D fullSizeTex = new Texture2D(1, 1, TextureFormat.RGB24, false);
                 fullSizeTex.LoadImage(dataOriginal, false);
                 fullSizeTex.filterMode = FilterMode.Bilinear;

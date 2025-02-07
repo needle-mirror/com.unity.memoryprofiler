@@ -45,6 +45,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        Dictionary<int, string> m_LinkHashToText = new Dictionary<int, string>();
+
         bool m_ShowDebugInfo = false;
         public bool ShowDebugInfo
         {
@@ -596,7 +598,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             const string k_linkPrefix = "href='";
             const string k_linePrefix = "line='";
             var lineNumber = int.Parse(ParseOutLinkParameter(link, k_linePrefix));
-            var path = ParseOutLinkParameter(link, k_linkPrefix).ToString();
+            var linkHrefParameter = ParseOutLinkParameter(link, k_linkPrefix);
+            if (!int.TryParse(linkHrefParameter, out var hash) || !m_LinkHashToText.TryGetValue(hash, out var path))
+            {
+                path = linkHrefParameter.ToString();
+            }
             switch (evt.button)
             {
                 case 0:
@@ -622,6 +628,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 default:
                     break;
             }
+        }
+
+        public void AddLinkHashToLinkText(int hash, string text)
+        {
+            m_LinkHashToText.TryAdd(hash, text);
         }
 
         void OnLabelLinkPointerOver(PointerOverLinkTagEvent evt)
@@ -832,6 +843,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
             UIElementsHelper.SetVisibility(m_ManagedObjectInspectorContainers[0], false);
+            m_LinkHashToText.Clear();
             m_DynamicElements.Clear();
             m_FoundObjectInEditor = null;
             m_SearchInEditorButton.tooltip = null;

@@ -1,7 +1,6 @@
 #if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Unity.MemoryProfiler.Editor.Extensions;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -193,6 +192,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 return new UnityObjectSize() { Native = l.Native + r.Native, Managed = l.Managed + r.Managed, Gfx = l.Gfx + r.Gfx };
             }
+
+            public override string ToString()
+            {
+                return $"(Native: {Native}, Managed: {Managed}, Graphics: {Gfx})";
+            }
         };
 
         static void AccumulateValue(Dictionary<SourceIndex, UnityObjectSize> accumulator, SourceIndex index, MemorySize native, MemorySize managed, MemorySize gpu)
@@ -214,56 +218,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             var nativeAllocations = snapshot.NativeAllocations;
             var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
             var nativeObject2Size = new Dictionary<SourceIndex, UnityObjectSize>();
-            var totalMemoryInSnapshot = new MemorySize();
-            snapshot.EntriesMemoryMap.ForEachFlatWithResidentSize((index, address, size, residentSize, source) =>
+
+            var processedNativeRoots = snapshot.ProcessedNativeRoots;
+            for (long i = 0; i < processedNativeRoots.Count; i++)
             {
-                var memorySize = new MemorySize(size, residentSize);
-
-                totalMemoryInSnapshot += memorySize;
-
-                // Add items to respective group container
-                switch (source.Id)
+                var itemIndex = processedNativeRoots.Data[i].NativeObjectOrRootIndex;
+                switch (itemIndex.Id)
                 {
                     case SourceIndex.SourceId.NativeObject:
-                        {
-                            AccumulateValue(nativeObject2Size, source, memorySize, new MemorySize(), new MemorySize());
-                            break;
-                        }
-                    case SourceIndex.SourceId.NativeAllocation:
-                        {
-                            var rootReferenceId = nativeAllocations.RootReferenceId[source.Index];
-                            if (rootReferenceId <= 0)
-                                break;
-
-                            // Is this allocation associated with a native object?
-                            if (!nativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var nativeObjectIndex))
-                                break;
-
-                            AccumulateValue(nativeObject2Size, new SourceIndex(SourceIndex.SourceId.NativeObject, nativeObjectIndex), memorySize, new MemorySize(), new MemorySize());
-                            break;
-                        }
-                    case SourceIndex.SourceId.ManagedObject:
-                        {
-                            // Do we have a native object associated with the managed object
-                            var nativeObjectIndex = managedObjects[source.Index].NativeObjectIndex;
-                            if (nativeObjectIndex < NativeTypeEntriesCache.FirstValidTypeIndex)
-                                break;
-
-                            AccumulateValue(nativeObject2Size, new SourceIndex(SourceIndex.SourceId.NativeObject, nativeObjectIndex), new MemorySize(), memorySize, new MemorySize());
-                            break;
-                        }
-
-                    // Ignore regions of these types
-                    case SourceIndex.SourceId.NativeMemoryRegion:
-                    case SourceIndex.SourceId.ManagedHeapSection:
-                    case SourceIndex.SourceId.SystemMemoryRegion:
+                        var size = processedNativeRoots.Data[i].AccumulatedRootSizes;
+                        AccumulateValue(nativeObject2Size, itemIndex, size.NativeSize, size.ManagedSize, size.GfxSize);
                         break;
-
                     default:
-                        Debug.Assert(false, $"Unknown memory region source id ({source.Id}), please report a bug");
                         break;
                 }
-            });
+            }
+            var totalMemoryInSnapshot = processedNativeRoots.TotalMemoryInSnapshot;
 
             // [Legacy] If we don't have SystemMemoryRegionsInfo, take the total value from legacy memory stats
             // Nb! If you change this, change similar code in AllTrackedMemoryModelBuilder / UnityObjectsModelBuilder / AllMemorySummaryModelBuilder
@@ -271,66 +241,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (memoryStats.HasValue && !snapshot.HasSystemMemoryRegionsInfo && (memoryStats.Value.TotalVirtualMemory > 0))
                 totalMemoryInSnapshot = new MemorySize(memoryStats.Value.TotalVirtualMemory, 0);
 
-            // Add graphics resources separately, as we don't have them in memory map.
-            if (snapshot.HasGfxResourceReferencesAndAllocators
-                && snapshot.MetaData.TargetInfo.HasValue
-                && snapshot.MetaData.UnityVersionMajor >= 2023)
-                AddGraphicsResources(snapshot, nativeObject2Size);
-            else
-                AddLegacyGraphicsResources(snapshot, nativeObject2Size);
-
             _totalMemoryInSnapshot = totalMemoryInSnapshot;
 
             return nativeObject2Size;
-        }
-
-        void AddGraphicsResources(CachedSnapshot snapshot, Dictionary<SourceIndex, UnityObjectSize> nativeObject2Size)
-        {
-            var nativeGfxRes = snapshot.NativeGfxResourceReferences;
-            for (var i = 0; i < nativeGfxRes.Count; i++)
-            {
-                var size = nativeGfxRes.GfxSize[i];
-                if (size == 0)
-                    continue;
-
-                var rootReferenceId = nativeGfxRes.RootId[i];
-                if (rootReferenceId <= 0)
-                    continue;
-
-                // Lookup native object index associated with memory label root
-                if (!snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
-                    continue;
-
-                var memorySize = new MemorySize(size, 0);
-                AccumulateValue(nativeObject2Size, new SourceIndex(SourceIndex.SourceId.NativeObject, objectIndex), new MemorySize(), new MemorySize(), memorySize);
-            }
-        }
-
-        void AddLegacyGraphicsResources(CachedSnapshot snapshot, Dictionary<SourceIndex, UnityObjectSize> nativeObject2Size)
-        {
-            var nativeObjects = snapshot.NativeObjects;
-            var nativeRootReferences = snapshot.NativeRootReferences;
-            var keys = nativeObject2Size.Keys.ToList();
-            foreach (var key in keys)
-            {
-                if (key.Id != SourceIndex.SourceId.NativeObject)
-                    continue;
-
-                var totalSize = nativeObjects.Size[key.Index];
-                var rootReferenceId = nativeObjects.RootReferenceId[key.Index];
-                if (rootReferenceId <= 0)
-                    continue;
-
-                if (!nativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out var rootReferenceIndex))
-                    continue;
-
-                var rootAccumulatedtSize = nativeRootReferences.AccumulatedSize[rootReferenceIndex];
-                if (rootAccumulatedtSize >= totalSize)
-                    continue;
-
-                var record = nativeObject2Size[key];
-                nativeObject2Size[key] = new UnityObjectSize() { Native = new MemorySize(rootAccumulatedtSize, 0), Managed = record.Managed, Gfx = new MemorySize(totalSize - rootAccumulatedtSize, 0) };
-            }
         }
 
         protected void BuildUnityObjectTypeIndexToUnityObjectsMapForSnapshot(

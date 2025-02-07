@@ -1,6 +1,6 @@
 {
     "name": "Unity.MemoryProfiler.Editor.MemoryProfilerModule",
-    "rootNamespace": "Unity.MemoryProfiler.Editor.MemoryProfilerModule",
+    "rootNamespace": "Unity.MemoryProfiler.MemoryProfilerModule.Editor.",
     "references": [
         "GUID:cffef5ef02bd3e04489c29e110974d50"
     ],

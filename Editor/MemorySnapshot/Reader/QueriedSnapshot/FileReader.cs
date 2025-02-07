@@ -8,6 +8,15 @@ using Unity.Profiling;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Containers;
 using System.Collections.Generic;
+#if ENABLE_CORECLR
+using Allocator = Unity.Collections.AllocatorManager;
+using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
+using static Unity.Collections.AllocatorManager;
+#else
+using Allocator = Unity.Collections.Allocator;
+using AllocatorType = Unity.Collections.Allocator;
+#endif
+
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
@@ -203,7 +212,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public GenericReadOperation Read(EntryType entry, long offset, long count, Allocator allocator, bool includeOffsets = true)
+        public GenericReadOperation Read(EntryType entry, long offset, long count, AllocatorType allocator, bool includeOffsets = true)
         {
             unsafe
             {
@@ -228,7 +237,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public GenericReadOperation AsyncRead(EntryType entry, long offset, long count, Allocator allocator, bool includeOffsets = true)
+        public GenericReadOperation AsyncRead(EntryType entry, long offset, long count, AllocatorType allocator, bool includeOffsets = true)
         {
             var readSize = GetSizeForEntryRange(entry, offset, count, includeOffsets);
             return InternalAsyncRead(entry, new DynamicArray<byte>(readSize, allocator), offset, count, true, includeOffsets);
@@ -258,7 +267,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public NestedDynamicSizedArrayReadOperation<T> AsyncReadDynamicSizedArray<T>(EntryType entry, long offset, long count, Allocator allocator) where T : unmanaged
+        public NestedDynamicSizedArrayReadOperation<T> AsyncReadDynamicSizedArray<T>(EntryType entry, long offset, long count, AllocatorType allocator) where T : unmanaged
         {
             Checks.CheckEntryTypeFormatIsValidAndThrow(EntryFormat.DynamicSizeElementArray, GetEntryFormat(entry));
             using (s_AsyncRead.Auto())

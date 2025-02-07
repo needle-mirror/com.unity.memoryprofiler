@@ -20,7 +20,7 @@ namespace Unity.MemoryProfiler.Editor.EnumerationUtilities
         {
             if (CurrentStep + 1 == StepCount)
             {
-                Debug.LogError("Conversion status, failed to increment step as it would exceed maximum step count");
+                Debug.LogError("Failed to increment step as it would exceed maximum step count");
                 return null;
             }
             ++CurrentStep;

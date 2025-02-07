@@ -27,6 +27,7 @@ using TypeIndexToCrawlerDataIndexHashMap  = Unity.Collections.NativeHashMap<int,
 #endif
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Debug = UnityEngine.Debug;
+using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 
 namespace Unity.MemoryProfiler.Editor.Managed
 {
@@ -198,12 +199,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
         static readonly ProfilerMarker k_CrawlStaticsMarker = new ProfilerMarker("Crawl Static Fields");
         static readonly ProfilerMarker k_CrawlStaticallyReferencedObjectsMarker = new ProfilerMarker("Crawl Statically Rooted Objects");
         static readonly ProfilerMarker k_CrawlFinalizeMarker = new ProfilerMarker("Crawler Finalizing");
-
-        public static IEnumerator Crawl(CachedSnapshot snapshot)
+        public const int CrawlStepCount = 8;
+        public static IEnumerator<EnumerationStatus> Crawl(CachedSnapshot snapshot, EnumerationStatus status)
         {
             Debug.Assert(!(snapshot.CrawledData?.Crawled ?? false), "Crawling an already crawled snapshot.");
-            const int stepCount = 9;
-            var status = new EnumerationUtilities.EnumerationStatus(stepCount);
 
             using var crawlData = new IntermediateCrawlData(snapshot);
 #if CRAWLER_PERFORMANCE_ANALYSIS
@@ -265,6 +264,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     snapshot.CrawledData.ManagedObjects[i] = snapshot.CrawledData.ManagedObjects[snapshot.CrawledData.MangedObjectIndexByAddress[ptr]];
                 }
             }
+            else
+                status.IncrementStep(stepStatus: "Skipped");
             //crawl connection data
             yield return status.IncrementStep(stepStatus: "Mapping out Unity Object references");
             using var finalizerMarker = k_CrawlFinalizeMarker.Auto();
@@ -798,7 +799,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap managedObjectIndexByAddress,
             ref DynamicArray<StackCrawlData> crawlDataStack, DynamicArrayRef<FieldLayoutInfo> fieldLayouts, BytesAndOffset bytesAndOffsetOfFieldDataWithoutHeader,
             SourceIndex indexOfFrom,
-            long fromArrayIndex = -1, int insertAtStackIndex = -1, bool allowStackExpansion = false)
+            long fromArrayIndex = -1, bool allowStackExpansion = false)
         {
             // Can't use foreach here or Burst won't like this method anymore
             // ReSharper disable once ForCanBeConvertedToForeach
@@ -832,18 +833,9 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     OffsetFromReferenceOwnerHeaderStartToFieldOnValueType = fieldLayout.OffsetFromReferenceOwnerHeaderStartToFieldOnValueType,
                     IndexInReferenceOwningArray = fromArrayIndex
                 };
-                // to allow for IJobParallelFor parsing, we need to be able to insert the new data at a specific index
-                // This does then however require subsequent pruning of non-entries after the job data has been joined together again
-                if (insertAtStackIndex >= 0)
-                {
-                    crawlDataStack[insertAtStackIndex++] = stackCrawlData;
-                }
-                else
-                {
-                    if (crawlDataStack.Count >= crawlDataStack.Capacity && !allowStackExpansion)
-                        throw new InvalidOperationException("CrawlDataStack is full, can't insert new data");
-                    crawlDataStack.Push(stackCrawlData, memClearForExcessExpansion: k_MemClearCrawlDataStack);
-                }
+                if (crawlDataStack.Count >= crawlDataStack.Capacity && !allowStackExpansion)
+                    throw new InvalidOperationException("CrawlDataStack is full, can't insert new data");
+                crawlDataStack.Push(stackCrawlData, memClearForExcessExpansion: k_MemClearCrawlDataStack);
             }
         }
 
@@ -956,7 +948,9 @@ namespace Unity.MemoryProfiler.Editor.Managed
         static readonly ProfilerMarker k_CrawlPointersInStructArraysMarker = new ProfilerMarker("CrawlPointer - handle value type array crawler");
         static readonly ProfilerMarker k_CrawlPointersInObjectArraysMarker = new ProfilerMarker("CrawlPointer - handle reference type array crawler");
 
+#if DEBUG_VALIDATION
         static readonly ProfilerMarker k_CrawlPointerDebugValidationMarker = new ProfilerMarker("CrawlPointer - DEBUG_VALIDATION");
+#endif
 
         static bool CrawlPointer(IntermediateCrawlData crawlData)
         {

@@ -347,25 +347,65 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Managed Address", DetailFormatter.FormatPointer(objectAddress));
         }
 
+        private void AddBasicGroupSizeUILine(string description, ulong value)
+        {
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, description, EditorUtility.FormatBytes((long)value), $"{value:N0} B");
+        }
+
         internal void HandleUnityObjectDetails(UnifiedUnityObjectInfo selectedUnityObject)
         {
             m_UI.SetItemName(selectedUnityObject);
-
-            // Unity Objects
-            if (selectedUnityObject.IsFullUnityObjet)
+            NativeRootSize rootSize = default;
+            if (selectedUnityObject.HasNativeSide)
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Size",
-                    $"{EditorUtility.FormatBytes((long)selectedUnityObject.TotalSize)} ({EditorUtility.FormatBytes((long)selectedUnityObject.NativeSize)} Native + {EditorUtility.FormatBytes((long)selectedUnityObject.ManagedSize)} Managed) ",
-                    $"{selectedUnityObject.TotalSize:N0} B ({selectedUnityObject.NativeSize:N0} B Native + {selectedUnityObject.ManagedSize:N0} B Managed) ");
+                var rootId = m_CachedSnapshot.NativeObjects.RootReferenceId[selectedUnityObject.NativeObjectIndex];
+                var mappedIndex = m_CachedSnapshot.ProcessedNativeRoots.RootIdToMappedIndex(rootId);
+                rootSize = m_CachedSnapshot.ProcessedNativeRoots.Data[mappedIndex].AccumulatedRootSizes;
             }
-            else
+
+            var nativeSize = rootSize.NativeSize.Committed;
+            var managedSize = selectedUnityObject.HasManagedSide ? selectedUnityObject.ManagedSize : 0;
+
+            var graphicsSize = rootSize.GfxSize.Committed;
+
+            bool multipleSizesToDisplay = (nativeSize > 0 ? 1 : 0) + (graphicsSize > 0 ? 1 : 0) + (managedSize > 0 ? 1 : 0) > 1;
+            var totalAllocated = nativeSize;
+
+            if (multipleSizesToDisplay)
             {
-                if (selectedUnityObject.HasNativeSide)
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Native Size", EditorUtility.FormatBytes((long)selectedUnityObject.NativeSize),
-                        $"{selectedUnityObject.NativeSize:N0} B");
-                else
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Managed Size", EditorUtility.FormatBytes(selectedUnityObject.ManagedSize),
-                        $"{selectedUnityObject.ManagedSize:N0} B");
+                totalAllocated += (ulong)managedSize + graphicsSize;
+                AddBasicGroupSizeUILine("Total Allocated", totalAllocated);
+            }
+
+            if (nativeSize > 0)
+            {
+                var titleText = multipleSizesToDisplay ? "├ Native Size" : "Native Size";
+                AddBasicGroupSizeUILine(titleText, nativeSize);
+            }
+
+            if (selectedUnityObject.HasManagedSide)
+            {
+                string titleText = graphicsSize > 0 ? "├ Managed Size" : nativeSize > 0 ? "└ Managed Size" : "Managed Size";
+                AddBasicGroupSizeUILine(titleText, (ulong)selectedUnityObject.ManagedSize);
+            }
+
+            if (graphicsSize > 0)
+            {
+                var titleText = multipleSizesToDisplay ? "└ Graphics Size" : "Graphics Size";
+                AddBasicGroupSizeUILine(titleText, graphicsSize);
+            }
+
+            var totalResidentSize = rootSize.NativeSize.Resident + rootSize.ManagedSize.Resident;
+            if (totalResidentSize > 0)
+            {
+                AddBasicGroupSizeUILine("Total Resident Size", totalResidentSize);
+            }
+
+            if (selectedUnityObject.HasNativeSide)
+            {
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Runtime estimation",
+                    $"{EditorUtility.FormatBytes((long)selectedUnityObject.NativeSize)}",
+                    $"{selectedUnityObject.NativeSize:N0} B\n\nThis is the value that would've been returned by calling GetRuntimeMemorySizeLong at runtime. It combines native and gpu allocation estimates.");
             }
 
             var refCountExtra = (selectedUnityObject.IsFullUnityObjet && selectedUnityObject.TotalRefCount > 0) ? $"({selectedUnityObject.NativeRefCount} Native + {selectedUnityObject.ManagedRefCount} Managed)" : string.Empty;
@@ -376,7 +416,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Bug!", "This Native Object is associated with an invalid Managed Object, " + TextContent.InvalidObjectPleaseReportABugMessage);
             }
 
-            if (MetaDataHelpers.GenerateMetaDataString(m_CachedSnapshot, selectedUnityObject.NativeObjectIndex, out var metaData))
+            if (selectedUnityObject.HasNativeSide && MetaDataHelpers.GenerateMetaDataString(m_CachedSnapshot, selectedUnityObject.NativeObjectIndex, out var metaData))
             {
                 foreach (var tuple in metaData)
                 {
@@ -449,13 +489,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             var furthercallstackCount = 0L;
             var allocationCount = 0L;
 
-            List<(string, string, string)> BuildCallStackTexts(long maxEntries, out long callstackCount, out long furthercallstackCount, out long allocationCount, bool forCopy = false)
+            List<(string, string, string, List<KeyValuePair<int, string>>)> BuildCallStackTexts(long maxEntries, out long callstackCount, out long furthercallstackCount, out long allocationCount, bool forCopy = false)
             {
                 var callStacks = new DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo>(10, Collections.Allocator.Temp);
                 callStacks.Clear(false);
                 callstackCount = furthercallstackCount = allocationCount = 0;
 
-                var callStackTexts = new List<(string, string, string)>((int)maxEntries);
+                var callStackTexts = new List<(string, string, string, List<KeyValuePair<int, string>>)>((int)maxEntries);
                 BuildCallStackInfo(
                     ref callStackTexts, ref allocationCount, ref callstackCount, ref furthercallstackCount, ref callStacks,
                     sourceIndex, areaAndObjectName, maxUniqueEntries: maxEntries,
@@ -470,7 +510,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (callstackCount == 0)
                 return;
 
-            void CopyAllCallStacksToClipboard(List<(string, string, string)> callStackTexts)
+            void CopyAllCallStacksToClipboard(List<(string, string, string, List<KeyValuePair<int, string>>)> callStackTexts)
             {
                 StringBuilder stringBuilder = new StringBuilder();
                 foreach (var item in callStackTexts)
@@ -524,6 +564,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // TextField (which enables Selectable Label) does not properly support rich text, so these options are mutually exclusive
                     (MemoryProfilerSettings.ClickableCallStacks ? SelectedItemDynamicElementOptions.EnableRichText : SelectedItemDynamicElementOptions.SelectableLabel)
                     );
+                if (text.Item4 != null)
+                {
+                    foreach (var item in text.Item4)
+                    {
+                        m_UI.AddLinkHashToLinkText(item.Key, item.Value);
+                    }
+                }
             }
 
         }
@@ -539,7 +586,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <param name="rootId"></param>
         /// <param name="areaAndObjectName"></param>
         /// <param name="startIndex"></param>
-        void BuildCallStackInfo(ref List<(string, string, string)> callStackTexts, ref long allocationCount,
+        void BuildCallStackInfo(ref List<(string, string, string, List<KeyValuePair<int, string>>)> callStackTexts, ref long allocationCount,
             ref long callstackCount, ref long furtherCallstacks,
             ref DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo> callStacks, SourceIndex sourceIndex,
             string areaAndObjectName, long startIndex = 0, long maxUniqueEntries = 10, bool clickableCallStacks = true, bool simplifyCallStacks = true)
@@ -587,7 +634,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <param name="startIndex"></param>
         /// <returns> Returns false if <paramref name="maxUniqueEntries"/> has been reached and further allocations should not be examined
         /// (e.g. for gathering the <paramref name="furtherCallstacks"/> count) at this time. </returns>
-        bool BuildCallStackInfo(ref List<(string, string, string)> callStackTexts, ref long allocationCount,
+        bool BuildCallStackInfo(ref List<(string, string, string, List<KeyValuePair<int, string>>)> callStackTexts, ref long allocationCount,
             ref long callstackCount, ref long furtherCallstacks,
             ref DynamicArray<CachedSnapshot.NativeAllocationSiteEntriesCache.CallStackInfo> callStacks, long nativeAllocationIndex,
             string areaAndObjectName, long maxUniqueEntries = 10, bool clickableCallStacks = true, bool simplifyCallStacks = true)
@@ -629,12 +676,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             var callstack = m_CachedSnapshot.NativeAllocationSites.GetReadableCallstack(
                 m_CachedSnapshot.NativeCallstackSymbols, callstackInfo.Index, simplifyCallStacks: simplifyCallStacks, clickableCallStacks: clickableCallStacks);
-            if (!string.IsNullOrEmpty(callstack))
+            if (!string.IsNullOrEmpty(callstack.Callstack))
             {
                 callStackTexts.Add((
                     $"Call Stack {++callstackCount}",
                     $"Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}",
-                    $"\n\n{callstack}"));
+                    $"\n\n{callstack.Callstack}",
+                    callstack.FileLinkHashToFileName));
             }
             return true;
         }

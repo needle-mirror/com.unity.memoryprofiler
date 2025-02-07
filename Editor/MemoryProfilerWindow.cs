@@ -52,6 +52,10 @@ namespace Unity.MemoryProfiler.Editor
             this.rootVisualElement.Add(m_ProfilerViewController.View);
         }
 
+        // TODO: Move entirely away from IMGUI
+#if ENABLE_CORECLR
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeMigration", "UA1002")]
+#endif
         void OnGUI()
         {
             if (m_WindowInitialized)

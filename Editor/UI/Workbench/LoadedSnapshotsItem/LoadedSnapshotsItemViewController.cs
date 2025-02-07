@@ -63,7 +63,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void RefreshView()
         {
             base.RefreshView();
-
+            m_ImageAndMetaContainer.tooltip = string.Empty;
             if (Model == null)
             {
                 UIElementsHelper.SetVisibility(m_NoDataContainer, true);
@@ -75,6 +75,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_ProductLabel.text = Model.ProductName;
             m_SessionLabel.text = m_SnapshotDataService.SessionNames[Model.SessionId];
+
+            m_ImageAndMetaContainer.tooltip = $"Metadata Description: {Model.MetadataDescription}";
 
             UIElementsHelper.SetVisibility(m_NoDataContainer, false);
 

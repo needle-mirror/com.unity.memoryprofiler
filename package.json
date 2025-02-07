@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -20,18 +20,18 @@
     "com.unity.profiling.core": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.3"
+    "com.unity.memoryprofiler.tests": "1.1.4"
   },
   "_upm": {
-    "changelog": "### Fixed\n- Static field references were only listed in the References view if they directly referenced the selected item, i.e. a static field referencing an object B that referenced the selected object A would only show object B, but not the static reference to B.\n- Fixed an ArgumentOutOfRangeException when opening the Unity Objects page in compare mode with 2 snapshots that were captured without capturing Native Objects.\n- Fixed a NullReferenceException when opening the All of Memory page in compare mode with 2 snapshots that were captured without capturing Native Objects but with Native Allocations, both from the same session.\n- Fixed the ID numbers for Graphics objects on the All of Memory page in compare mode with 2 snapshots that where both captured from the same session to be their Native Object's instance ID.\n\n### Changed\n- Adjusted package dependency on Unity.Collections down to 1.2 to retain compatibility to 2022.3 without forcing to update Unity.Collections to 2.1 or newer."
+    "changelog": "### Added\n- Added memory amount taken up by static field data to Virtual Machine Memory description when selecting it. It usually is a very small portion of the VM but it is one that all snapshots already have data for.\n- Added snapshot meta data description (reported via an implementation of [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html) or [`Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata`](https://docs.unity3d.com/6000.1/Documentation/ScriptReference/Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata.html)) to the tooltips of the snapshot screenshot images.\n\n### Fixed\n- Fixed native sizes getting trimmed down for Native Objects captured in snapshots from Unity versions before 2022.2, when their Native Allocations did not fall within reported memory regions. This trimming falsely assumed proper memory region reporting.\n\n### Changed\n- Improved object size information in selection details view; now lists Graphics memory.\n- Showing Graphics sizes in All Of Memory table for snapshots of Unity versions prior to 2022.2 and adjusting native sizes to rely on Profiler.GetRuntimeMemorySizeLong data for these captures.\n- Switched Unity Objects table and summary to use the explicitly reported graphics sizes for all snapshots taken from 2022.2 or newer, instead of 2023.1 or newer. 2022.2 and 2022.3 had this data but was displaying graphics sizes based on calculations using Profiler.GetRuntimeMemorySizeLong data. Earlier 2022.2 and 2022.3 versions had different bugs in the reported values for the explicitly reported graphics sizes so snapshots taken between version 2022.2.0a8 and 2022.3.7f1 might have shown different graphics and native sizes on the Unity Objects table vs what the All Of Memory table was showing for them. Small discrepancies in native memory reporting, that also might have had an influence on the graphics and native sizes shown in the two tables have been fixed in 2022.3.43f1 so for the most reliable data, use that or a newer version for profiling.\n- Grouping all `Graphics > <No Name>` entries into one. If you have these, please update to at least Unity patch version: 2022.3.44f1 or 6000.0.0b16\n- Improved the documentation for `MetadataCollect` API.\n- Opening the Memory Profiler window no longer starts indexing the `assets` search provider by default, leading to potential crashes."
   },
   "upmCi": {
-    "footprint": "2d362d1e61487a27f79f91638c32ac376e000329"
+    "footprint": "3c9912a44c06f6aa409cf329bbbcd0fc4a348142"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "665fdc45eb1a78e98b75abd890dfe3447482434f"
+    "revision": "d23a3c642c9bef57aae70f145efb18adb7a98e93"
   }
 }

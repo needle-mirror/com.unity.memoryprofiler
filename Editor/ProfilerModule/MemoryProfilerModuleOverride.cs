@@ -1,20 +1,23 @@
-#if UNITY_2021_2_OR_NEWER
 using UnityEngine;
 using UnityEditor;
 using Unity.Profiling.Editor;
 using System;
+using Unity.MemoryProfiler.Editor;
 
-namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
+namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 {
-    public enum ProfilerMemoryView
+    enum ProfilerMemoryView
     {
         Simple = 0,
         Detailed = 1
     }
     [Serializable]
-    internal class MemoryProfilerModuleOverride
+    class MemoryProfilerModuleOverride
     {
+        // This is an Editor Only class and handled via its InitializeOnLoadMethod.
+#pragma warning disable UDR0001 // Domain Reload Analyzer
         static MemoryProfilerModuleOverride s_Instance;
+#pragma warning restore UDR0001 // Domain Reload Analyzer
 
         [SerializeField]
         public ProfilerMemoryView ShowDetailedMemoryPane = ProfilerMemoryView.Simple;
@@ -28,8 +31,11 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
             s_Instance = new MemoryProfilerModuleOverride();
             if (MemoryProfilerSettings.MemoryProfilerPackageOverridesMemoryModuleUI)
                 InstallUIOverride();
+
+#pragma warning disable UDR0001 // Domain Reload Analyzer
             MemoryProfilerSettings.InstallUIOverride += InstallUIOverride;
             MemoryProfilerSettings.UninstallUIOverride += UninstallUIOverride;
+#pragma warning restore UDR0001 // Domain Reload Analyzer
         }
 
         public static void InstallUIOverride()
@@ -48,4 +54,3 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
         }
     }
 }
-#endif

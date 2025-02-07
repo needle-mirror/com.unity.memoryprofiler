@@ -57,6 +57,7 @@ namespace Unity.MemoryProfiler.Editor
                 Path.GetFileNameWithoutExtension(m_FileName),
                 m_FileName,
                 snapshotMetadata.ProductName,
+                snapshotMetadata.Description,
                 snapshotMetadata.SessionGUID,
                 timestamp,
                 runtimePlatform,

@@ -34,6 +34,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "This might include passwords, server keys, access tokens and other personally identifying data. " +
             "Please use special caution when sharing snapshots. For more information on this, please visit the Memory Profiler Documentation.";
         public const string HeapWarningWindowOK = "Take Snapshot";
+        public const string HeapWarningWindowCancel = "Cancel";
 
         public static readonly string[] MemorySnapshotImportWindowFileExtensions = new string[] { "MemorySnapshot", "snap", "Bitbucket MemorySnapshot", "memsnap,memsnap2,memsnap3" };
 
@@ -133,6 +134,8 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "A growth in Virtual Machine Memory between the first and second capture in a session can usually be mostly attributed to that. " +
         "Uninitialized types are those for which no one accessed any Type-specific data yet, and their static constructor, explicit or implicit, has therefore not been called yet. " +
         "This could often be the type of arrays or generic Collections where their data has so far only been handled as a generic collection.";
+        public static string ManagedDomainDescriptionStaticFieldAddendumOneSnapshot = "\n\n{0} of the VM memory are taken up by static field data.";
+        public static string ManagedDomainDescriptionStaticFieldAddendumDiff = "\n\n{0} in snapshot A and {1} in snapshot B of the VM memory are taken up by static field data.";
         public static string ManagedObjectsDescription => "Memory used for Managed Objects, i.e. those that can be created and used from C# scripting code based on Types defined in C# scripting code. " +
         "This number only includes objects that are still referenced or held otherwise alive. Managed objects that the Garbage Collector still has to collect could reside in the Empty Active / Fragmented Heap Space.";
         public static string EmptyActiveHeapDescription => "This snapshot version does not yet contain a definitive report on which Managed Heap Section is the Active one. " +

@@ -9,8 +9,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static VisualElement LoadVisualTreeFromUxml(string uxmlAssetGuid)
         {
             // Load Uxml template from disk.
-            var uxmlAssetPath = AssetDatabase.GUIDToAssetPath(uxmlAssetGuid);
-            var uxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlAssetPath);
+            var uxml = UIElementsHelper.LoadAssetByGUID(uxmlAssetGuid);
             if (uxml == null)
                 return null;
 
@@ -34,8 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static VisualTreeAsset LoadVisualTreeAssetFromUxml(string uxmlAssetGuid)
         {
             // Load Uxml template from disk.
-            var uxmlAssetPath = AssetDatabase.GUIDToAssetPath(uxmlAssetGuid);
-            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlAssetPath);
+            return UIElementsHelper.LoadAssetByGUID(uxmlAssetGuid);
         }
 
         // Instantiates the Uxml asset and returns its root VisualElement, discarding the Template container. If the Uxml specifies multiple roots, the first will be returned.

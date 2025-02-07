@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UIContentData;
+using UnityEditor;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
@@ -37,7 +38,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 a.Total,
                 b.Total,
                 new List<MemorySummaryModel.Row>() {
-                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryVM, a.VM, 0, b.VM, 0, "virtual-machine", TextContent.ManagedDomainDescription, null),
+                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryVM, a.VM, 0, b.VM, 0, "virtual-machine",
+                    TextContent.ManagedDomainDescription +
+                    (m_SnapshotB != null ? string.Format(TextContent.ManagedDomainDescriptionStaticFieldAddendumDiff, EditorUtility.FormatBytes(a.VMStaticFields), EditorUtility.FormatBytes(b.VMStaticFields))
+                    : string.Format(TextContent.ManagedDomainDescriptionStaticFieldAddendumOneSnapshot, EditorUtility.FormatBytes(a.VMStaticFields)))
+                    , null),
                     new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryObjects, a.Objects, 0, b.Objects, 0, "objects", TextContent.ManagedObjectsDescription, null),
                     new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryFreeHeap, a.EmptyHeapSpace, 0, b.EmptyHeapSpace, 0, "free-in-active-heap-section", TextContent.EmptyActiveHeapDescription, null),
                 },
@@ -90,6 +95,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                         return;
                 }
             });
+            summary.VMStaticFields = 0;
+            for (long i = 0; i < cs.TypeDescriptions.Count; i++)
+            {
+                summary.VMStaticFields += cs.TypeDescriptions.StaticFieldBytes.Count(i);
+            }
 
             res = summary;
         }
@@ -99,6 +109,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public ulong Total;
 
             public ulong VM;
+            public long VMStaticFields;
             public ulong Objects;
             public ulong EmptyHeapSpace;
         }

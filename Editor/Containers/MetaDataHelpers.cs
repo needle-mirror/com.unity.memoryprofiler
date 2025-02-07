@@ -96,7 +96,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         internal static bool GenerateMetaDataString(CachedSnapshot cs, int nativeObjectIndex, out List<(string, string)> metaDataStrings)
         {
-            if (!cs.HasNativeObjectMetaData)
+            if (!cs.HasNativeObjectMetaData || nativeObjectIndex == CachedSnapshot.NativeObjectEntriesCache.InvalidObjectIndex)
             {
                 metaDataStrings = null;
                 return false;

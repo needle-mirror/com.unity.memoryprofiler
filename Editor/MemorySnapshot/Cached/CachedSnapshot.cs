@@ -20,6 +20,8 @@ using Unity.Profiling;
 using UnityEditor;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using Unity.MemoryProfiler.Editor.EnumerationUtilities;
+using Unity.MemoryProfiler.Editor.Managed;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -294,6 +296,17 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
+            public readonly struct ReadableCallstack
+            {
+                public readonly string Callstack;
+                public readonly List<KeyValuePair<int, string>> FileLinkHashToFileName;
+                public ReadableCallstack(string callstack, List<KeyValuePair<int, string>> fileLinkHashToFileName)
+                {
+                    Callstack = callstack;
+                    FileLinkHashToFileName = fileLinkHashToFileName;
+                }
+            }
+
             public readonly struct CallStackInfo : IEquatable<CallStackInfo>
             {
                 public readonly long Id;
@@ -332,7 +345,7 @@ namespace Unity.MemoryProfiler.Editor
                 return new CallStackInfo(id, -1, -1, new DynamicArrayRef<ulong>());
             }
 
-            public string GetReadableCallstackForId(NativeCallstackSymbolEntriesCache symbols, long id)
+            public ReadableCallstack GetReadableCallstackForId(NativeCallstackSymbolEntriesCache symbols, long id)
             {
                 long entryIdx = -1;
                 for (long i = 0; i < Id.Count; ++i)
@@ -344,33 +357,19 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
 
-                return entryIdx < 0 ? string.Empty : GetReadableCallstack(symbols, entryIdx);
+                return entryIdx < 0 ? new ReadableCallstack(string.Empty, null) : GetReadableCallstack(symbols, entryIdx);
             }
 
-            public string GetReadableCallstack(NativeCallstackSymbolEntriesCache symbols, long idx, bool simplifyCallStacks = true, bool clickableCallStacks = true)
+            public ReadableCallstack GetReadableCallstack(NativeCallstackSymbolEntriesCache symbols, long idx, bool simplifyCallStacks = true, bool clickableCallStacks = true)
             {
                 var stringBuilder = new StringBuilder();
 
                 var callstackSymbols = this.callstackSymbols[idx];
-
+                var fileLinkHashToFileName = new List<KeyValuePair<int, string>>((int)callstackSymbols.Count);
                 for (long i = 0; i < callstackSymbols.Count; ++i)
                 {
-                    long symbolIdx = -1;
                     ulong targetSymbol = callstackSymbols[i];
-                    for (long j = 0; j < symbols.Symbol.Count; ++j)
-                    {
-                        if (symbols.Symbol[j] == targetSymbol)
-                        {
-                            symbolIdx = j;
-                            break;
-                        }
-                    }
-
-                    if (symbolIdx < 0)
-                    {
-                        stringBuilder.AppendLine("<unknown>");
-                    }
-                    else
+                    if (symbols.SymbolToIndex.TryGetValue(targetSymbol, out var symbolIdx))
                     {
                         // Format of symbols is: "0x0000000000000000 (Unity) OptionalNativeNamespace::NativeClass<PotentialTemplateType>::NativeMethod (at C:/Path/To/CPPorHeaderFile.h:428)\n"
                         // or "0x0000000000000000 (Unity) Managed.Namespace.List.ClassName:MethodName (parametertypes,separated,by,comma) (at C:/Path/To/CSharpFile.cs:13)\n"
@@ -415,13 +414,17 @@ namespace Unity.MemoryProfiler.Editor
                             var fileNameLength = fileNameEndIndex - fileNameStart;
                             if (clickableCallStacks && fileNameLength > 0)
                             {
-                                var fileName = symbol.Slice(fileNameStart, fileNameLength);
+                                var fileName = symbol.Slice(fileNameStart, fileNameLength).ToString();
+                                // TextCore htlm tags have a character limit of 128 in Unity 2022 and 256 in Unity 6+,
+                                // so putting the full file path as the link might break. Using a hash also means less chars wasted.
+                                var fileNameHash = fileName.GetHashCode();
+                                fileLinkHashToFileName.Add(new KeyValuePair<int, string>(fileNameHash, fileName));
                                 var lineNumberEndIndex = symbol.LastIndexOf(')');
                                 var lineNumberChars = symbol.Slice(fileNameEndIndex + 1, lineNumberEndIndex - fileNameEndIndex - 1);
 
                                 if (!int.TryParse(lineNumberChars, out var lineNumber)) { lineNumber = 0; }
 
-                                stringBuilder.AppendFormat("\t(at <link=\"href='{0}' line='{1}'\"><color={2}><u>{0}:{1}</u></color></link>)\n", fileName.ToString(), lineNumber, EditorGUIUtility.isProSkin ? "#40a0ff" : "#0000FF");
+                                stringBuilder.AppendFormat("\t(at <link=\"href='{0}' line='{1}'\"><color={3}><u>{2}:{1}</u></color></link>)\n", fileNameHash, lineNumber, fileName, EditorGUIUtility.isProSkin ? "#40a0ff" : "#0000FF");
                             }
                             else
                             {
@@ -433,9 +436,13 @@ namespace Unity.MemoryProfiler.Editor
                             stringBuilder.AppendLine(symbols.ReadableStackTrace[symbolIdx]);
                         }
                     }
+                    else
+                    {
+                        stringBuilder.AppendLine("<unknown>");
+                    }
                 }
 
-                return stringBuilder.ToString();
+                return new ReadableCallstack(stringBuilder.ToString(), fileLinkHashToFileName);
             }
 
 
@@ -457,6 +464,9 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeRootReferenceEntriesCache : IDisposable
         {
+            public const long InvalidRootId = 0;
+            public const long FirstValidRootId = 1;
+            public const long InvalidRootIndex = 0;
             public const long FirstValidRootIndex = 1;
             public long Count;
             public DynamicArray<long> Id = default;
@@ -1529,7 +1539,7 @@ namespace Unity.MemoryProfiler.Editor
                     // FIXME: Ignore the log on Unity 6 and OSX for now to avoid unstable tests. This is being investigated
                     if (snapshot.MetaData.UnityVersionMajor <= 2023 ||
                         !(snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.OSXEditor } || snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.OSXPlayer }))
-                        Debug.LogAssertion($"Page range is outside of system region range. Please report a bug! (Source: {sourceId})");
+                        Debug.LogAssertion($"Page range is outside of system region range. Please report a bug! (Source: {sourceId}, regionIndex: {regionIndex}, regionAddress: {regionAddress}, address: {address}, addrDelta: {addrDelta}, begPage: {begPage}, firstPageIndex: {firstPageIndex}, endPage: {endPage}, lastPageIndex: {lastPageIndex})");
                     return 0;
                 }
 
@@ -1541,7 +1551,7 @@ namespace Unity.MemoryProfiler.Editor
                         residentSize += PageSize;
                 }
 
-                // As address might be not aligned, we need to substract
+                // As address might be not aligned, we need to subtract
                 // difference for the first and the last page
                 if (PageStates[begPage])
                 {
@@ -2557,6 +2567,7 @@ namespace Unity.MemoryProfiler.Editor
         public SystemMemoryRegionEntriesCache SystemMemoryRegions;
         public SystemMemoryResidentPagesEntriesCache SystemMemoryResidentPages;
         public EntriesMemoryMapCache EntriesMemoryMap;
+        public ProcessedNativeRoots ProcessedNativeRoots;
 
         public CachedSnapshot(IFileReader reader)
         {
@@ -2613,7 +2624,35 @@ namespace Unity.MemoryProfiler.Editor
                 if (MemoryProfilerSettings.FeatureFlags.GenerateTransformTreesForByStatusTable_2022_09)
                     SceneRoots.CreateTransformTrees(this);
                 SceneRoots.GenerateGameObjectData(this);
+
+                ProcessedNativeRoots = new ProcessedNativeRoots();
             }
+        }
+
+        public int PostProcessStepCount =>
+            ManagedDataCrawler.CrawlStepCount
+            + EntriesMemoryMapCache.BuildStepCount
+            + ProcessedNativeRoots.ProcessStepCount
+            + 1; //final step
+
+        public IEnumerator<EnumerationStatus> PostProcess()
+        {
+            var status = new EnumerationStatus(PostProcessStepCount);
+
+            // Managed Objects end up on the Memory Map, so crawl them first
+            var processor = ManagedDataCrawler.Crawl(this, status);
+            while (processor.MoveNext())
+                yield return processor.Current;
+
+            // To populate ProcessedNativeRoots with reliable native sizes for all allocations, as well as Resident vs Committed amounts for all Native Roots,the Memory Map needs to be built
+            processor = EntriesMemoryMap.Build(status);
+            while (processor.MoveNext())
+                yield return processor.Current;
+
+            // The Unity Objects Summary table will need ready to go ProcessedNativeRoots to show Unity Objects with their rooted native, gfx and managed memory
+            processor = ProcessedNativeRoots.ReadOrProcess(this, status);
+            while (processor.MoveNext())
+                yield return processor.Current;
         }
 
         public string FullPath
@@ -2717,6 +2756,7 @@ namespace Unity.MemoryProfiler.Editor
                 SortedNativeAllocations.Dispose();
                 SortedNativeObjects.Dispose();
 
+                ProcessedNativeRoots.Dispose();
                 // Close and dispose the reader
                 m_Reader.Close();
             }
@@ -2845,7 +2885,8 @@ namespace Unity.MemoryProfiler.Editor
         public abstract class IndirectlySortedEntriesCacheSortedByAddressAndSizeArray : IndirectlySortedEntriesCache<IndexedArrayRangeValueComparer<ulong>>
         {
             protected unsafe override IndexedArrayRangeValueComparer<ulong> SortingComparer =>
-                new IndexedArrayRangeValueComparer<ulong>(in Addresses, in Sizes);
+                new IndexedArrayRangeValueComparer<ulong>(in Addresses, in Sizes, AllowExactlyOverlappingRegions);
+            protected virtual bool AllowExactlyOverlappingRegions => false;
             public IndirectlySortedEntriesCacheSortedByAddressAndSizeArray(CachedSnapshot snapshot) : base(snapshot) { }
             protected abstract ref readonly DynamicArray<ulong> Addresses { get; }
             protected abstract ref readonly DynamicArray<ulong> Sizes { get; }
@@ -2864,6 +2905,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public override long Count => m_Snapshot.NativeMemoryRegions.Count;
 
+            protected override bool AllowExactlyOverlappingRegions => true;
             protected override ref readonly DynamicArray<ulong> Addresses => ref m_Snapshot.NativeMemoryRegions.AddressBase;
             protected override ref readonly DynamicArray<ulong> Sizes => ref m_Snapshot.NativeMemoryRegions.AddressSize;
             public string Name(long index) => m_Snapshot.NativeMemoryRegions.MemoryRegionName[this[index]];
@@ -3590,19 +3632,49 @@ namespace Unity.MemoryProfiler.Editor
 
             void Build()
             {
-                using var _ = k_Build.Auto();
-
                 if (m_CombinedData.IsCreated)
+                {
+                    // don't allocate the EnumerationStatus if it isn't necessary
                     return;
+                }
 
-                using (k_BuildAddPoints.Auto())
-                    AddPoints();
+                var status = new EnumerationStatus(BuildStepCount + 1 /*final step*/);
+                var iterator = Build(status);
+                while (iterator.MoveNext()) { }
+            }
 
-                using (k_BuildSortPoints.Auto())
-                    SortPoints();
+            public const int BuildStepCount = 3;
+            public IEnumerator<EnumerationStatus> Build(EnumerationStatus status)
+            {
+                if (m_CombinedData.IsCreated)
+                {
+                    for (int i = 0; i < BuildStepCount; i++)
+                    {
+                        status.IncrementStep("EntriesMemoryMapCache was already built.");
+                    }
+                    yield break;
+                }
 
-                using (k_BuildPostProcess.Auto())
-                    PostProcess();
+                yield return status.IncrementStep("EntriesMemoryMapCache: Mapping data to address spectrum");
+                {
+                    using var _ = k_Build.Auto();
+                    using (k_BuildAddPoints.Auto())
+                        AddPoints();
+                }
+
+                yield return status.IncrementStep("EntriesMemoryMapCache: Sorting");
+                {
+                    using var _ = k_Build.Auto();
+                    using (k_BuildSortPoints.Auto())
+                        SortPoints();
+                }
+
+                yield return status.IncrementStep("EntriesMemoryMapCache: Post processing");
+                {
+                    using var _ = k_Build.Auto();
+                    using (k_BuildPostProcess.Auto())
+                        PostProcess();
+                }
             }
 
             void AddPoints()
@@ -3754,7 +3826,7 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             // Lose end point. This is valid situation as memory snapshot
                             // capture process modifies memory and system, native and managed
-                            // states might be slighly out of sync and have overlapping regions
+                            // states might be slightly out of sync and have overlapping regions
                             m_CombinedData[i] = new AddressPoint(point.Address, 0, new SourceIndex(), point.PointType);
                             continue;
                         }
@@ -3771,14 +3843,14 @@ namespace Unity.MemoryProfiler.Editor
                             if (index < 0)
                             {
                                 // No starting point, ignore the point entirely
-                                // and set it's source to the previous point source
+                                // and set its source to the previous point source
                                 // as it should be treated as a continuation of the
                                 // previous object
                                 m_CombinedData[i] = new AddressPoint(point.Address, 0, m_CombinedData[i - 1].Source, point.PointType);
                                 continue;
                             }
 
-                            TermiateUndercutRegions(index, hierarchyStack.Count, hierarchyStack, i);
+                            TerminateUndercutRegions(index, hierarchyStack.Count, hierarchyStack, i);
                             // if there is matching begin -> unwind stack to that point
                             startPointIndex = hierarchyStack[index];
                             hierarchyStack.Resize(index + 1, false);
@@ -3812,7 +3884,7 @@ namespace Unity.MemoryProfiler.Editor
                             var parentPoint = m_CombinedData[parentPointIndex];
 
                             var startPointStackLevel = hierarchyStack.Count - 1;
-                            TermiateUndercutRegions(startPointStackLevel, hierarchyStack.Count, hierarchyStack, i);
+                            TerminateUndercutRegions(startPointStackLevel, hierarchyStack.Count, hierarchyStack, i);
                             var startPointIndex = hierarchyStack[startPointStackLevel];
                             // Replace start point id with actual children count
                             m_CombinedData[startPointIndex] = new AddressPoint(m_CombinedData[startPointIndex], i - startPointIndex - 1);
@@ -3876,32 +3948,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            readonly struct NativeGfxResourceRegion : IComparable<NativeGfxResourceRegion>
-            {
-                public readonly long Index;
-                public readonly ulong Size;
-                public readonly ushort Type;
 
-                public NativeGfxResourceRegion(long index, ulong size, ushort type)
-                {
-                    Index = index;
-                    Size = size;
-                    Type = type;
-                }
-
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public int CompareTo(NativeGfxResourceRegion other)
-                {
-                    // MemoryType.Device before MemoryType.Private
-                    if (Type != other.Type)
-                        return -Type.CompareTo(other.Type);
-
-                    // Larger items first
-                    return -Size.CompareTo(other.Size);
-                }
-            }
-
-            void TermiateUndercutRegions(long fromStackLevel, long toStackLevel, DynamicArray<long> hierarchyStack, long currentCombinedDataIndex)
+            void TerminateUndercutRegions(long fromStackLevel, long toStackLevel, DynamicArray<long> hierarchyStack, long currentCombinedDataIndex)
             {
                 // Terminate all under-cut regions
                 for (long j = fromStackLevel; j < toStackLevel; j++)

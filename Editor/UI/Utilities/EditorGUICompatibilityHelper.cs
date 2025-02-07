@@ -43,6 +43,13 @@ namespace Unity.MemoryProfiler.Editor
 
     internal static class EditorGUICompatibilityHelper
     {
+
+#if !UNITY_6000_0_OR_NEWER
+        const int k_MaxHtmltagLength = 128;
+#else
+        const int k_MaxHtmltagLength = 256;
+#endif
+        public static readonly int MaxFileNameLengthForLinkTags = k_MaxHtmltagLength - "<link=\"href='' ".Length;
         static class Styles
         {
             public static readonly GUIStyle LinkTextLabel = new GUIStyle(EditorStyles.label);

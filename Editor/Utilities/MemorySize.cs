@@ -2,7 +2,7 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor
 {
-    struct MemorySize : IEquatable<MemorySize>
+    readonly struct MemorySize : IEquatable<MemorySize>
     {
         public readonly ulong Committed;
         public readonly ulong Resident;

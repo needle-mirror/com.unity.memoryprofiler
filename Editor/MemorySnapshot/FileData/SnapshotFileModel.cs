@@ -9,6 +9,7 @@ namespace Unity.MemoryProfiler.Editor
             string name,
             string fullPath,
             string productName,
+            string metaDataDescription,
             uint sessionId,
             DateTime timestamp,
             RuntimePlatform platform,
@@ -22,6 +23,7 @@ namespace Unity.MemoryProfiler.Editor
             Name = name;
             FullPath = fullPath;
             ProductName = productName;
+            MetadataDescription = metaDataDescription;
             SessionId = sessionId;
             Timestamp = timestamp;
             Platform = platform;
@@ -37,6 +39,7 @@ namespace Unity.MemoryProfiler.Editor
         public string Name { get; }
         public string FullPath { get; }
         public string ProductName { get; }
+        public string MetadataDescription { get; }
         public uint SessionId { get; }
         public DateTime Timestamp { get; }
         public RuntimePlatform Platform { get; }
@@ -54,6 +57,7 @@ namespace Unity.MemoryProfiler.Editor
                 Name == other.Name &&
                 FullPath == other.FullPath &&
                 ProductName == other.ProductName &&
+                MetadataDescription == other.MetadataDescription &&
                 SessionId == other.SessionId &&
                 Timestamp == other.Timestamp &&
                 Platform == other.Platform &&

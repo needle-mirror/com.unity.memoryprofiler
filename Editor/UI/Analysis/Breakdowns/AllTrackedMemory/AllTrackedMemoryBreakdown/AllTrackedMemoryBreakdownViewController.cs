@@ -15,7 +15,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ViewLoaded();
 
             // Initialize All Tracked Memory table as a child view controller.
-            m_TableViewController = new AllTrackedMemoryTableViewController(Snapshot, SearchField, responder: this);
+            m_TableViewController = new AllTrackedMemoryTableViewController(Snapshot, SearchField, responder: this,
+                // TODO: This is a bit of a workaround for the below call to m_TableViewController.View building the model once,
+                // followed by m_TableViewController.SetColumnsVisibility triggering another, explicit build.
+                // This should get adressed when aligning All Of Memory and Unity Object tables and fixing sorting to be a separate step
+                buildOnLoad: false);
             AddChild(m_TableViewController);
             TableContainer.Add(m_TableViewController.View);
             // Setup table mode context menu and dropdown

@@ -247,7 +247,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (m_SnapshotDataService.IsOpen(Model.FullPath))
             {
-                if (!EditorUtility.DisplayDialog(TextContent.RenameSnapshotDialogTitle, TextContent.RenameSnapshotDialogMessage, TextContent.RenameSnapshotDialogAccept, TextContent.RenameSnapshotDialogCancel))
+                if (!EditorUtilityCompatibilityHelper.DisplayDecisionDialog(TextContent.RenameSnapshotDialogTitle, TextContent.RenameSnapshotDialogMessage, TextContent.RenameSnapshotDialogAccept, TextContent.RenameSnapshotDialogCancel))
                     return;
             }
 
@@ -258,7 +258,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void DeleteCapture()
         {
-            if (!EditorUtility.DisplayDialog(TextContent.DeleteSnapshotDialogTitle, TextContent.DeleteSnapshotDialogMessage, TextContent.DeleteSnapshotDialogAccept, TextContent.DeleteSnapshotDialogCancel))
+            if (!EditorUtilityCompatibilityHelper.DisplayDecisionDialog(TextContent.DeleteSnapshotDialogTitle, TextContent.DeleteSnapshotDialogMessage, TextContent.DeleteSnapshotDialogAccept, TextContent.DeleteSnapshotDialogCancel))
                 return;
 
             m_SnapshotDataService.Delete(Model.FullPath);

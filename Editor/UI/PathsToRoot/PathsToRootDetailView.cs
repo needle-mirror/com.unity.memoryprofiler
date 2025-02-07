@@ -866,7 +866,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     {
                         if (GUI.Button(cellRect, pathsToRootDetailTreeViewItem.ObjectFlags))
                         {
-                            EditorUtility.DisplayDialog("Flags info", pathsToRootDetailTreeViewItem.FlagsInfo, "OK");
+                            EditorUtilityCompatibilityHelper.DisplayAlertDialog("Flags info", pathsToRootDetailTreeViewItem.FlagsInfo, "OK");
                         }
                     }
                 }

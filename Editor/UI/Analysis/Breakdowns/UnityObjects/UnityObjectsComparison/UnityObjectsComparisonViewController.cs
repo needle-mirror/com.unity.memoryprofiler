@@ -260,9 +260,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
                     return null;
                 }
-                catch (Exception _e)
+                catch (Exception e)
                 {
-                    Debug.LogError($"{_e.Message}\n{_e.StackTrace}");
+                    Debug.LogException(e);
                     return null;
                 }
             }, (model) =>

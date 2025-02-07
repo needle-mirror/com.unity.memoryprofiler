@@ -91,51 +91,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Sum values from entites memory map
             // TODO: use NativeHashmap for the Dictionary to avoid GC Allocs and use ref record structs for UnityObjectSize to avoid their allocs
             var objectsSize = new Dictionary<long, UnityObjectSize>();
-            var nativeObjects = cs.NativeObjects;
-            var nativeAllocations = cs.NativeAllocations;
-            cs.EntriesMemoryMap.ForEachFlat((_, address, size, source) =>
+
+            var processedNativeRoots = cs.ProcessedNativeRoots;
+            for (long i = 0; i < processedNativeRoots.Count; i++)
             {
-                switch (source.Id)
+                ref readonly var data = ref processedNativeRoots.Data[i];
+                switch (data.NativeObjectOrRootIndex.Id)
                 {
                     case SourceIndex.SourceId.NativeObject:
-                    {
-                        AddNativeObject(objectsSize, source.Index, size, 0);
-                        return;
-                    }
-                    case SourceIndex.SourceId.NativeAllocation:
-                    {
-                        var rootReferenceId = nativeAllocations.RootReferenceId[source.Index];
-                        if (rootReferenceId <= 0)
-                            return;
-
-                        if (!nativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
-                            return;
-
-                        AddNativeObject(objectsSize, objectIndex, size, 0);
-                        return;
-                    }
-                    case SourceIndex.SourceId.ManagedObject:
-                    {
-                        ref readonly var managedObjects = ref cs.CrawledData.ManagedObjects;
-                        var nativeObjectIndex = managedObjects[source.Index].NativeObjectIndex;
-                        if (nativeObjectIndex < NativeObjectEntriesCache.FirstValidObjectIndex)
-                            return;
-
-                        AddNativeObject(objectsSize, nativeObjectIndex, 0, size);
-                        return;
-                    }
+                        var size = data.AccumulatedRootSizes;
+                        var objectSize = data.AccumulatedRootSizes.SumUp().Committed;
+                        AddNativeObject(objectsSize, data.NativeObjectOrRootIndex.Index, objectSize, 0);
+                        break;
                     default:
-                        return;
+                        break;
                 }
-            });
-
-            // Add graphics resources
-            var snapshotUnityVersion = cs.MetaData.UnityVersion.Split('.');
-            var snapshotUnityVersionYear = int.Parse(snapshotUnityVersion[0]);
-            if (cs.HasGfxResourceReferencesAndAllocators && snapshotUnityVersionYear >= 2023)
-                AddGraphicsResources(cs, objectsSize);
-            else
-                AddLegacyGraphicsResources(cs, objectsSize);
+            }
 
             // Group by type name and copy results
             totalValue = 0;
@@ -143,51 +114,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 AddToTypeGroup(cs, o.Key, o.Value.TotalSize, typeIndexToSizeMap, updater);
                 totalValue += o.Value.TotalSize;
-            }
-        }
-
-        static void AddGraphicsResources(CachedSnapshot snapshot, Dictionary<long, UnityObjectSize> objectsSize)
-        {
-            var nativeGfxRes = snapshot.NativeGfxResourceReferences;
-            for (var i = 0; i < nativeGfxRes.Count; i++)
-            {
-                var size = nativeGfxRes.GfxSize[i];
-                if (size == 0)
-                    continue;
-
-                var rootReferenceId = nativeGfxRes.RootId[i];
-                if (rootReferenceId <= 0)
-                    continue;
-
-                // Lookup native object index associated with memory label root
-                if (!snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
-                    continue;
-
-                AddNativeObject(objectsSize, objectIndex, size, 0);
-            }
-        }
-
-        static void AddLegacyGraphicsResources(CachedSnapshot snapshot, Dictionary<long, UnityObjectSize> objectsSize)
-        {
-            var nativeObjects = snapshot.NativeObjects;
-            var nativeRootReferences = snapshot.NativeRootReferences;
-            var keys = objectsSize.Keys.ToList();
-            foreach (var key in keys)
-            {
-                var totalSize = nativeObjects.Size[key];
-                var rootReferenceId = nativeObjects.RootReferenceId[key];
-                if (rootReferenceId <= 0)
-                    continue;
-
-                if (!nativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out var rootReferenceIndex))
-                    continue;
-
-                var rootAccumulatedtSize = nativeRootReferences.AccumulatedSize[rootReferenceIndex];
-                if (rootAccumulatedtSize >= totalSize)
-                    continue;
-
-                var objectSize = objectsSize[key];
-                objectsSize[key] = new UnityObjectSize(totalSize, objectSize.Managed);
             }
         }
 

@@ -25,7 +25,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         const string k_SnapshotFileExtension = ".snap";
 
-        static ProfilerMarker s_CrawlManagedData = new ProfilerMarker("CrawlManagedData");
+        static ProfilerMarker s_ProcessSnapshotMarker = new ProfilerMarker("Post Process and Crawl snapshot");
 
         bool m_CompareMode;
         CachedSnapshot m_BaseSnapshot;
@@ -314,9 +314,9 @@ namespace Unity.MemoryProfiler.Editor
                     // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
                     return null;
                 }
-                catch (Exception _e)
+                catch (Exception e)
                 {
-                    Debug.LogError($"{_e.Message}\n{_e.StackTrace}");
+                    Debug.LogException(e);
                     return null;
                 }
             }, (result) =>
@@ -350,23 +350,38 @@ namespace Unity.MemoryProfiler.Editor
             using var loadSnapshotEvent = MemoryProfilerAnalytics.BeginLoadSnapshotEvent();
 
             ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(file.FullPath)));
+            CachedSnapshot cachedSnapshot = null;
             try
             {
-                var cachedSnapshot = new CachedSnapshot(file);
-                using (s_CrawlManagedData.Auto())
+                cachedSnapshot = new CachedSnapshot(file);
+                using (s_ProcessSnapshotMarker.Auto())
                 {
-                    var crawling = ManagedDataCrawler.Crawl(cachedSnapshot);
-                    crawling.MoveNext(); //start execution
+                    var processing = cachedSnapshot.PostProcess();
+                    processing.MoveNext(); //start execution
 
-                    var status = crawling.Current as EnumerationStatus;
+                    var status = processing.Current;
                     float progressPerStep = 1.0f / status.StepCount;
-                    while (crawling.MoveNext())
+                    while (processing.MoveNext())
                     {
                         ProgressBarDisplay.UpdateProgress(status.CurrentStep * progressPerStep, status.StepStatus);
                     }
                 }
                 loadSnapshotEvent.SetResult(cachedSnapshot);
                 return cachedSnapshot;
+            }
+            catch
+            {
+                if (cachedSnapshot != null)
+                {
+                    // try disposing of the snapshot, silently consume all exceptions. This is mostly there to release as much native memory as possible again.
+                    try
+                    {
+                        cachedSnapshot.Dispose();
+                    }
+                    catch { }
+                }
+                // don't throw the exception explicitly but do a generic rethrow in order to not stomp the callstack
+                throw;
             }
             // Don't let an exception prevent the progress bar from being cleared.
             // Otherwise debugging the Editor when exceptions happen becomes really annoying as it's hard to get rid of manually,

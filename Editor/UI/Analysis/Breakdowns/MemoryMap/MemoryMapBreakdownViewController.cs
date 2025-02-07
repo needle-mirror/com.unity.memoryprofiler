@@ -137,7 +137,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError(ex);
+                    Debug.LogException(ex);
                     throw;
                 }
             }, (model) =>

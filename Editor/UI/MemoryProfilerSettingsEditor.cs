@@ -22,6 +22,7 @@ namespace Unity.MemoryProfiler.Editor
             public static readonly string MemoryProfilerPackageOverridesMemoryModuleUI = L10n.Tr("Replace Memory UI in Profiler Window", "If set to true, the Memory Profiler Module UI in the Profiler Window will be replaced with UI from the Memory Profiler package.");
             public static readonly string ShowReservedMemoryBreakdown = L10n.Tr("Show reserved memory breakdown", "If set to true, the Memory Profiler will show reserved memory breakdown to individual allocator in `All Of Memory` view.");
             public static readonly string ShowAllSystemMemoryView = L10n.Tr("Show Memory Map view", "If set to true, the Memory Profiler will show additional `Memory Map` view with low-level OS system memory map with breakdown.");
+            public static readonly string AssetSearchSettings = L10n.Tr("Asset Search Provider Settings", "The Memory Profiler uses search features to search for assets listed in the capture within the currently open project. When it finds them, it allows selecting the asset and, if one exists, shows a preview of the asset in the Memory Profiler UI. There have been isolated reports of issues with opening the Memory Profiler based on the indexing of the used search providers. If you are experiencing problems with opening the Memory Profiler Window or extreme delays when selecting assets in it, you could try changing this setting. This setting also affects which providers will be used by the Open in Search button.");
 
             public static readonly GUIContent TitleSettingsIcon = EditorGUIUtility.TrIconContent("_Popup", "Settings");
             public static readonly GUIContent HelpIcon = EditorGUIUtility.TrIconContent("_Help", "Open Documentation");
@@ -94,7 +95,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     if (!(val.StartsWith(k_RootPathSignifier) || val.StartsWith(k_PathOneUpSignifier)))
                     {
-                        if (EditorUtility.DisplayDialog(Content.InvalidPathWindow, Content.OnlyRelativePaths, Content.OKButton))
+                        if (EditorUtilityCompatibilityHelper.DisplayDecisionDialog(Content.InvalidPathWindow, Content.OnlyRelativePaths, Content.OKButton))
                         {
                             GUI.FocusControl(prevControl);
                             var currentlySavedPath = MemoryProfilerSettings.MemorySnapshotStoragePath;
@@ -130,6 +131,9 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 MemoryProfilerSettings.ShowReservedMemoryBreakdown = EditorGUILayout.Toggle(Content.ShowReservedMemoryBreakdown, MemoryProfilerSettings.ShowReservedMemoryBreakdown);
                 MemoryProfilerSettings.ShowMemoryMapView = EditorGUILayout.Toggle(Content.ShowAllSystemMemoryView, MemoryProfilerSettings.ShowMemoryMapView);
+
+                if (MemoryProfilerSettings.InternalMode)
+                    MemoryProfilerSettings.AssetSearchSetting = (QuickSearchUtility.AssetSearchSetting)EditorGUILayout.EnumPopup(Content.AssetSearchSettings, MemoryProfilerSettings.AssetSearchSetting);
             }
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();

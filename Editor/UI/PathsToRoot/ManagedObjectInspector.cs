@@ -310,24 +310,24 @@ namespace Unity.MemoryProfiler.Editor.UI
             var i = info.IndexToContinueAt;
             string v = null;
             var typeIdx = info.ArrayInfo != null ? info.ArrayInfo.ElementTypeDescription : snapshot.FieldDescriptions.TypeIndex[info.FieldList[i]];
-            var actualFielTypeIdx = typeIdx;
+            var actualFieldTypeIdx = typeIdx;
             if (info.ObjectData.dataType == ObjectDataType.ReferenceArray || info.ObjectData.dataType == ObjectDataType.ReferenceObject)
             {
                 var referencedObject = info.ObjectData;
                 if (ValidateManagedObject(ref referencedObject, snapshot))
                 {
                     // Get the objects actual type, i.e. not e.g. System.Object in an array of that type, when the objects are actual implementations of other types
-                    actualFielTypeIdx = referencedObject.managedTypeIndex;
+                    actualFieldTypeIdx = referencedObject.managedTypeIndex;
 
                     if (referencedObject.dataType == ObjectDataType.BoxedValue)
                     {
                         referencedObject = referencedObject.GetBoxedValue(snapshot, true);
                     }
-                    if (actualFielTypeIdx != typeIdx)
+                    if (actualFieldTypeIdx != typeIdx)
                     {
                         // if we are adding single line object info and the object type does not match the field type (e.g. because of boxing), add it in brackets.
                         // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
-                        var actualTypeName = snapshot.TypeDescriptions.TypeDescriptionName[actualFielTypeIdx];
+                        var actualTypeName = snapshot.TypeDescriptions.TypeDescriptionName[actualFieldTypeIdx];
                         v = FormatFieldValueWithContentTypeNotMatchingFieldType(GetValue(referencedObject, info.Root), actualTypeName);
                     }
                 }
@@ -355,7 +355,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var childItem = new ManagedObjectInspectorItem(m_InspectorID, name, typeIdx, typeName, v, isStatic, GetIdentifyingPointer(info.ObjectData, snapshot), fieldSize);
             childItem.depth = info.Root.depth + 1;
 
-            ProcessSpecialFieldsAndQueueChildElements(info.ObjectData, actualFielTypeIdx, snapshot, ref childItem);
+            ProcessSpecialFieldsAndQueueChildElements(info.ObjectData, actualFieldTypeIdx, snapshot, ref childItem);
 
             info.Root.AddChild(childItem);
         }

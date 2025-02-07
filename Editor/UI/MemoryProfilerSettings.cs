@@ -5,6 +5,8 @@ using UnityEditor;
 using UnityEngine;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.Profiling.Memory;
+using UnityEngine.UIElements.Experimental;
+
 
 #if UNITY_2021_2_OR_NEWER
 using System.Runtime.CompilerServices;
@@ -359,5 +361,27 @@ namespace Unity.MemoryProfiler.Editor
         /// if all objects in an area should be split up, only provide the AreaName, or "<AreaName>:"
         /// </summary>
         public static readonly string[] AlwaysSplitRootAllocations = { "UnsafeUtility:" };
+
+
+        public static QuickSearchUtility.AssetSearchSetting AssetSearchSetting
+        {
+            get
+            {
+                return (QuickSearchUtility.AssetSearchSetting)EditorPrefs.GetInt(k_DefaultCopyOptionKey,
+                    (int)QuickSearchUtility.AssetSearchSetting.UseAssetsOrFallbackOnAdb);
+            }
+            set
+            {
+                var oldValue = AssetSearchSetting;
+                if (value == oldValue)
+                    return;
+                EditorPrefs.SetInt(k_DefaultCopyOptionKey, (int)value);
+
+                // Reinitialze if needed.
+                if (EditorWindow.HasOpenInstances<MemoryProfilerWindow>()
+                    && QuickSearchUtility.AssetSearchSettingRequiresInitialization(value))
+                    QuickSearchUtility.InitializeQuickSearch(forceReinitialization: true);
+            }
+        }
     }
 }

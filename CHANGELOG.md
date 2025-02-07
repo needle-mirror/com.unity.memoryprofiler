@@ -7,10 +7,27 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2025-02-07
+
+### Added
+- Added memory amount taken up by static field data to Virtual Machine Memory description when selecting it. It usually is a very small portion of the VM but it is one that all snapshots already have data for.
+- Added snapshot meta data description (reported via an implementation of [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html) or [`Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata`](https://docs.unity3d.com/6000.1/Documentation/ScriptReference/Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata.html)) to the tooltips of the snapshot screenshot images.
+
+### Fixed
+- Fixed native sizes getting trimmed down for Native Objects captured in snapshots from Unity versions before 2022.2, when their Native Allocations did not fall within reported memory regions. This trimming falsely assumed proper memory region reporting.
+
+### Changed
+- Improved object size information in selection details view; now lists Graphics memory.
+- Showing Graphics sizes in All Of Memory table for snapshots of Unity versions prior to 2022.2 and adjusting native sizes to rely on Profiler.GetRuntimeMemorySizeLong data for these captures.
+- Switched Unity Objects table and summary to use the explicitly reported graphics sizes for all snapshots taken from 2022.2 or newer, instead of 2023.1 or newer. 2022.2 and 2022.3 had this data but was displaying graphics sizes based on calculations using Profiler.GetRuntimeMemorySizeLong data. Earlier 2022.2 and 2022.3 versions had different bugs in the reported values for the explicitly reported graphics sizes so snapshots taken between version 2022.2.0a8 and 2022.3.7f1 might have shown different graphics and native sizes on the Unity Objects table vs what the All Of Memory table was showing for them. Small discrepancies in native memory reporting, that also might have had an influence on the graphics and native sizes shown in the two tables have been fixed in 2022.3.43f1 so for the most reliable data, use that or a newer version for profiling.
+- Grouping all `Graphics > <No Name>` entries into one. If you have these, please update to at least Unity patch version: 2022.3.44f1 or 6000.0.0b16
+- Improved the documentation for `MetadataCollect` API.
+- Opening the Memory Profiler window no longer starts indexing the `assets` search provider by default, leading to potential crashes.
+
 ## [1.1.3] - 2024-10-31
 
 ### Fixed
-- Static field references were only listed in the References view if they directly referenced the selected item, i.e. a static field referencing an object B that referenced the selected object A would only show object B, but not the static reference to B.
+- Static field references were only listed in the References view if they directly referenced the selected item, i.e. a static field referencing an object B that referenced the selected object A would only show object B, but not the static reference to B ([PROFB-173](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-173)).
 - Fixed an ArgumentOutOfRangeException when opening the Unity Objects page in compare mode with 2 snapshots that were captured without capturing Native Objects.
 - Fixed a NullReferenceException when opening the All of Memory page in compare mode with 2 snapshots that were captured without capturing Native Objects but with Native Allocations, both from the same session.
 - Fixed the ID numbers for Graphics objects on the All of Memory page in compare mode with 2 snapshots that where both captured from the same session to be their Native Object's instance ID.
@@ -25,7 +42,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Reattributed Nintendo Switch's reserved GPU memory from Native to Graphics in the Summary view and All Of Memory table.
 - Improved the performance of the Managed Data Crawler by using the Job System when parsing managed array data with potential references to managed objects. In some worst case scenarios this brings the opening times down from several hours to <5min, thereby fixing [PROFB-191](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-191).
 - Fixed misalignment of managed object sizes shown in the All Of Memory table vs. what is shown in the selected item details where that was caused by faulty readings of the managed heap data in the package (reading something as a potential reference to effectively random memory that looks close enough to a valid object, but not quiet), or faulty data reported by the capture backend (caused by e.g. the capture process allowing the creation of new Unity Objects between capturing the managed heap data and reporting all GC Handles held by currently alive Unity Objects(UUM-77449, fixed in 6000.0.16f1, 2022.3.43f1 2021.3.44f1) and/or an incomplete reporting of reserved but unused heap bytes ([UUM-53413](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-53413))) leading to the package "discovering" managed objects that can't reasonably exist as live objects because their size exceeds the reported heap bytes. ([PROFB-118](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-118))
-- Fixed inclusion of allocated GPU memory on the Nintendo Switch on the All Of Memory table under `Native > Unity Subsystem > Unknown`. Instead it is now shown under `Graphics (Estimated)` and/or `Untracked > Graphics`.
+- Fixed inclusion of allocated GPU memory on the Nintendo Switch on the All Of Memory table under `Native > Unity Subsystem > Unknown`. Instead, it is now shown under `Graphics (Estimated)` and/or `Untracked > Graphics`.
 
 ### Changed
 - Improved accuracy of the search for Assets and Scene Objects within the open project which is used for the "Select in Editor" button, Open in Search and Preview Image by constraining it to exact names.

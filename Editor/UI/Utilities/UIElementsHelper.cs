@@ -104,7 +104,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static VisualTreeAsset LoadAssetByGUID(string uxmlAssetGuid)
         {
-            var uxmlAssetPath = AssetDatabase.GUIDToAssetPath(uxmlAssetGuid);
+            var uxmlAssetPath = AssetDatabase.GUIDToAssetPath(new GUID(uxmlAssetGuid));
             return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlAssetPath);
         }
 

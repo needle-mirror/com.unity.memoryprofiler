@@ -66,8 +66,8 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             }
 
-            if (Application.isBatchMode || EditorUtilityCompatibilityHelper.DisplayDialog(TextContent.HeapWarningWindowTitle,
-                TextContent.HeapWarningWindowContent, TextContent.HeapWarningWindowOK,
+            if (Application.isBatchMode || EditorUtilityCompatibilityHelper.DisplayDecisionDialogWithOptOut(TextContent.HeapWarningWindowTitle,
+                TextContent.HeapWarningWindowContent, TextContent.HeapWarningWindowOK, TextContent.HeapWarningWindowCancel,
                 EditorUtilityCompatibilityHelper.DialogOptOutDecisionType.ForThisMachine, MemoryProfilerSettings.HeapWarningWindowOptOutKey))
             {
                 m_CaptureInProgress = true;

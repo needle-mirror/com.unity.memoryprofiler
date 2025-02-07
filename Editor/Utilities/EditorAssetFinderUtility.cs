@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,7 +40,10 @@ namespace Unity.MemoryProfiler.Editor
         public const string SearchProviderIdScene = "scene";
         public const string SearchProviderIdAsset = "asset";
         public const string SearchProviderIdAssetDatabase = "adb";
-        public static readonly string[] AssetSearchProviders = new string[] { SearchProviderIdAsset, SearchProviderIdAssetDatabase };
+
+        public static readonly string[] BothAssetSearchProviders = new string[] { SearchProviderIdAsset, SearchProviderIdAssetDatabase };
+        public static readonly string[] OnlyAssetsSearchProvider = new string[] { SearchProviderIdAsset };
+        public static readonly string[] OnlyAssetDatabaseSearchProvider = new string[] { SearchProviderIdAssetDatabase };
         public static readonly string[] SceneObjectSearchProviders = new string[] { SearchProviderIdScene };
 
         const int k_TimeIntervalToCheckAsyncSearchMS = 100;
@@ -56,12 +60,94 @@ namespace Unity.MemoryProfiler.Editor
             set => SessionState.SetBool("com.unity.memoryprofiler.quicksearch.initialized", value);
         }
 
-        public static void InitializeQuickSearch(bool async = true)
+        public enum AssetSearchSetting
         {
-            if (QuickSearchInitialized)
+            UseAssetsOrFallbackOnAdb,
+            AlwaysUseAssets,
+            AlwaysUseAdb,
+            AlwaysUseAssetsAndAdb,
+        }
+
+        public static bool AssetSearchSettingRequiresInitialization(AssetSearchSetting searchSetting)
+        {
+            switch (searchSetting)
+            {
+                case AssetSearchSetting.UseAssetsOrFallbackOnAdb:
+                case AssetSearchSetting.AlwaysUseAdb:
+                    return false; // nothing to initialize
+                case AssetSearchSetting.AlwaysUseAssets:
+                case AssetSearchSetting.AlwaysUseAssetsAndAdb:
+                default:
+                    return !SearchDatabaseIsReady();
+            }
+        }
+
+        public enum SearchType
+        {
+            Scene,
+            Asset,
+            Both
+        }
+
+        public static string[] GetSearchProviders(SearchType searchType)
+        {
+            if (searchType != SearchType.Scene)
+            {
+                string[] providers;
+                var searchSetting = MemoryProfilerSettings.AssetSearchSetting;
+                switch (searchSetting)
+                {
+                    case AssetSearchSetting.UseAssetsOrFallbackOnAdb:
+                        if (!SearchDatabaseIsReady())
+                        {
+                            providers = QuickSearchUtility.OnlyAssetDatabaseSearchProvider;
+                        }
+                        else
+                        {
+                            providers = QuickSearchUtility.OnlyAssetsSearchProvider;
+                        }
+                        break;
+                    case AssetSearchSetting.AlwaysUseAdb:
+                        providers = QuickSearchUtility.OnlyAssetDatabaseSearchProvider;
+                        break;
+                    case AssetSearchSetting.AlwaysUseAssets:
+                        providers = QuickSearchUtility.OnlyAssetsSearchProvider;
+                        break;
+                    case AssetSearchSetting.AlwaysUseAssetsAndAdb:
+                        providers = QuickSearchUtility.BothAssetSearchProviders;
+                        break;
+                    default:
+                        throw new NotImplementedException();
+                }
+
+                if (searchType == SearchType.Both)
+                {
+                    var combined = new List<string>(providers);
+                    combined.AddRange(QuickSearchUtility.SceneObjectSearchProviders);
+                    providers = combined.ToArray();
+                }
+                return providers;
+            }
+            else
+            {
+                return QuickSearchUtility.SceneObjectSearchProviders;
+            }
+        }
+
+        public static void InitializeQuickSearch(bool async = true, bool forceReinitialization = false)
+        {
+            if (QuickSearchInitialized && !forceReinitialization)
                 return;
+
+            var searchSetting = MemoryProfilerSettings.AssetSearchSetting;
+            if (!AssetSearchSettingRequiresInitialization(searchSetting))
+            {
+                QuickSearchInitialized = true;
+                return;
+            }
+
             // Initialize quick search
-            var context = SearchService.CreateContext(providerIds: new[] { SearchProviderIdScene, SearchProviderIdAsset, SearchProviderIdAssetDatabase }, searchText: $"t:{nameof(MemoryProfilerWindow)}");
+            var context = SearchService.CreateContext(providerIds: GetSearchProviders(SearchType.Both), searchText: $"t:{nameof(MemoryProfilerWindow)}");
             if (async)
             {
                 // Initialize Async, preferred path, should be triggered by e.g. opening the Memory Profiler window
@@ -102,6 +188,7 @@ namespace Unity.MemoryProfiler.Editor
             ISearchList m_SearchList;
             string m_ProgressTitle;
             int m_ProgressId;
+            bool m_SearchNeedsTimeout;
             bool m_Disposed = false;
 
             /// <summary>
@@ -113,6 +200,12 @@ namespace Unity.MemoryProfiler.Editor
                 m_SearchContext = context;
                 m_ProgressTitle = progressTitle;
                 m_ProgressId = -1;
+                m_SearchNeedsTimeout = false;
+                foreach (var provider in m_SearchContext.providers)
+                {
+                    if (provider.id == QuickSearchUtility.SearchProviderIdAsset)
+                        m_SearchNeedsTimeout = true;
+                }
                 if (context.searchInProgress)
                     State = SearchState.InProgress;
                 else
@@ -139,7 +232,7 @@ namespace Unity.MemoryProfiler.Editor
                 while (State <= SearchState.InProgress)
                 {
                     var runningTime = EditorApplication.timeSinceStartup - startTime;
-                    if (SearchDatabaseIsReady())
+                    if (m_SearchNeedsTimeout || SearchDatabaseIsReady())
                     {
                         if (startTime > 0)
                         {
@@ -563,7 +656,7 @@ namespace Unity.MemoryProfiler.Editor
             //maybe eventually join the contexts and filter later.
             SearchItem searchItem = null;
             SearchContext context = SearchService.CreateContext(
-                providerIds: QuickSearchUtility.AssetSearchProviders,
+                providerIds: GetSearchProviders(SearchType.Asset),
                 searchText: searchString);
 
             using var asyncSearch = new AsyncSearchHelper(context, $"Memory Profiler/Searching Project for {searchString}");
@@ -722,7 +815,7 @@ namespace Unity.MemoryProfiler.Editor
             Texture2D preview = null;
             if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(obj, out var guid, out fileId))
             {
-                assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                assetPath = AssetDatabase.GUIDToAssetPath(new GUID(guid));
             }
             if (!string.IsNullOrEmpty(assetPath))
             {
@@ -829,8 +922,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public static SearchContext BuildContext(CachedSnapshot snapshot, UnifiedUnityObjectInfo selectedUnityObject)
         {
-            return SearchService.CreateContext(
-                selectedUnityObject.IsSceneObject ? QuickSearchUtility.SceneObjectSearchProviders : QuickSearchUtility.AssetSearchProviders,
+            var providers = selectedUnityObject.IsSceneObject ? GetSearchProviders(SearchType.Scene) : GetSearchProviders(SearchType.Asset);
+            return SearchService.CreateContext(providers,
                 searchText: ConstructSearchString(selectedUnityObject, selectedUnityObject.Type.IsSceneObjectType));
         }
 

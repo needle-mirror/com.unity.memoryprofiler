@@ -18,7 +18,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         const string k_UnknownProductName = "Unknown Project";
         const string k_UnknownUnityVersion = "Unknown";
         [NonSerialized]
-        public string Content;
+        public string Description;
         [NonSerialized]
         public string Platform;
         public string PlatformExtra;
@@ -35,6 +35,18 @@ namespace Unity.MemoryProfiler.Editor.Format
         [NonSerialized] // to be shown in UI as e.g. $"Unity version '{MetaData.UnityVersion}'" to clarify that this is not the project version
         public string UnityVersion;
         public int UnityVersionMajor = -1;
+        public int UnityVersionMinor = -1;
+        public int UnityVersionPatch = -1;
+        public UnityReleaseType UnityVersionReleaseType = UnityReleaseType.Unknown;
+        public int UnityVersionPrerelease = 0;
+        public enum UnityReleaseType
+        {
+            Unknown,
+            Full, // or Final, letter f
+            Beta, // letter b
+            Alpha, // letter a
+        }
+
         public const uint InvalidSessionGUID = 0;
         public CaptureFlags CaptureFlags;
 
@@ -90,7 +102,7 @@ namespace Unity.MemoryProfiler.Editor.Format
             meta.IsEditorCapture = false;
             if (buffer.Count == 0)
             {
-                meta.Content = "";
+                meta.Description = "";
                 meta.Platform = k_UnknownPlatform;
                 return;
             }
@@ -99,12 +111,12 @@ namespace Unity.MemoryProfiler.Editor.Format
             long offset = 0;
             offset += sizeof(int);
             if (contentLength == 0)
-                meta.Content = "";
+                meta.Description = "";
             else
             {
-                meta.Content = new string('A', contentLength);
+                meta.Description = new string('A', contentLength);
                 int copySize = sizeof(char) * contentLength;
-                fixed (char* cntPtr = meta.Content)
+                fixed (char* cntPtr = meta.Description)
                 {
                     UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
                 }
@@ -143,12 +155,12 @@ namespace Unity.MemoryProfiler.Editor.Format
             long offset = 0;
             offset += sizeof(int);
             if (contentLength == 0)
-                meta.Content = "";
+                meta.Description = "";
             else
             {
-                meta.Content = new string('A', contentLength);
+                meta.Description = new string('A', contentLength);
                 int copySize = sizeof(char) * contentLength;
-                fixed (char* cntPtr = meta.Content)
+                fixed (char* cntPtr = meta.Description)
                 {
                     UnsafeUtility.MemCpy(cntPtr, bufferPtr + offset, copySize);
                 }
@@ -179,8 +191,46 @@ namespace Unity.MemoryProfiler.Editor.Format
             meta.ProductName = targetInfo.ProductName;
             meta.UnityVersion = targetInfo.UnityVersion;
             var snapshotUnityVersion = meta.UnityVersion.Split('.');
-            if (snapshotUnityVersion.Length > 0)
-                meta.UnityVersionMajor = int.Parse(snapshotUnityVersion[0]);
+            if (snapshotUnityVersion.Length > 0 && int.TryParse(snapshotUnityVersion[0], out var versionMajor))
+                meta.UnityVersionMajor = versionMajor;
+            if (snapshotUnityVersion.Length > 1 && int.TryParse(snapshotUnityVersion[1], out var versionMinor))
+                meta.UnityVersionMinor = versionMinor;
+            if (snapshotUnityVersion.Length > 2)
+            {
+                var patchVersion = snapshotUnityVersion[2].AsSpan();
+                for (int i = 0; i < patchVersion.Length; i++)
+                {
+                    // patch version numbers contain letters like "f1" so only read until the digits end
+                    if (!char.IsDigit(patchVersion[i]))
+                    {
+                        meta.UnityVersionReleaseType = patchVersion[i] switch
+                        {
+                            'a' => UnityReleaseType.Alpha,
+                            'b' => UnityReleaseType.Beta,
+                            'f' => UnityReleaseType.Full,
+                            _ => UnityReleaseType.Unknown
+                        };
+                        patchVersion = patchVersion.Slice(0, i);
+                    }
+                }
+                if (patchVersion.Length > 0 && int.TryParse(patchVersion, out var versionPatch))
+                    meta.UnityVersionPatch = versionPatch;
+                else
+                    meta.UnityVersionPatch = meta.UnityVersionReleaseType == UnityReleaseType.Unknown ? -1 : 0;
+
+                if (meta.UnityVersionReleaseType == UnityReleaseType.Alpha || meta.UnityVersionReleaseType == UnityReleaseType.Beta)
+                {
+                    var prereleaseVersion = snapshotUnityVersion[2].AsSpan().Slice(patchVersion.Length);
+                    while (prereleaseVersion.Length > 0 && !char.IsDigit(prereleaseVersion[0]))
+                    {
+                        prereleaseVersion = prereleaseVersion.Slice(1);
+                    }
+                    if (prereleaseVersion.Length > 0 && int.TryParse(patchVersion, out var versionPrerelease))
+                        meta.UnityVersionPrerelease = versionPrerelease;
+                    else
+                        meta.UnityVersionPrerelease = 0;
+                }
+            }
         }
     }
 
