@@ -120,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        public static int ReadStringObjectSizeInBytes(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation)
+        public static int ReadStringObjectSizeInBytes(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, out bool valid, bool logError = true)
         {
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
@@ -128,10 +128,14 @@ namespace Unity.MemoryProfiler.Editor
             if (length < 0 || !bo.CouldFitAllocation(sizeof(int) + (long)length * 2))
             {
 #if DEBUG_VALIDATION
-                Debug.LogError("Found a String Object of impossible length.");
+                if (logError)
+                    Debug.LogError("Found a String Object of impossible length.");
 #endif
                 length = 0;
+                valid = false;
             }
+            else
+                valid = true;
 
             return (int)virtualMachineInformation.ObjectHeaderSize + /*lengthfield*/ 4 + (length * /*utf16=2bytes per char*/ 2) + /*2 zero terminators*/ 2;
         }

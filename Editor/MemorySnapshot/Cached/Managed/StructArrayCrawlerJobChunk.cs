@@ -19,44 +19,51 @@ namespace Unity.MemoryProfiler.Editor.Managed
         struct StructArrayCrawlerJobChunk : ICrawlerJobChunk<StructArrayCrawlerJobChunk>
         {
             [ReadOnly]
-            public DynamicArrayRef<FieldLayoutInfo> FieldLayoutInfo;
+            public readonly DynamicArrayRef<FieldLayoutInfo> FieldLayoutInfo;
 
             [ReadOnly]
             readonly BytesAndOffset m_ArrayData;
-            long m_ChunkElementCount;
+            readonly long m_ChunkElementCount;
 
             DynamicArray<StackCrawlData> m_ResultingCrawlDataStack;
-            public DynamicArray<StackCrawlData> ResultingCrawlDataStack => m_ResultingCrawlDataStack;
+            public readonly DynamicArray<StackCrawlData> ResultingCrawlDataStack => m_ResultingCrawlDataStack;
 #if DEBUG_JOBIFIED_CRAWLER
             public long IndexOfFoundElement { get; private set; }
 #endif
 
             readonly uint m_TypeSize;
             readonly long m_StartArrayIndex;
+            readonly long m_MaxObjectIndexFindableViaPointers;
             readonly SourceIndex m_ArrayObjectIndex;
             readonly ManagedMemorySectionEntriesCache m_ManagedHeapBytes;
             readonly VirtualMachineInformation m_VMInfo;
             [ReadOnly]
             readonly AddressToManagedIndexHashMap m_MangedObjectIndexByAddress;
 
+            [ReadOnly]
+            readonly NativeObjectOrAllocationFinder m_NativeObjectOrAllocationFinder;
+
             public StructArrayCrawlerJobChunk(
                 in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap mangedObjectIndexByAddress,
-                SourceIndex arrayObjectIndex,
-                ref DynamicArray<StackCrawlData> resultingCrawlDataStack, BytesAndOffset arrayData,
-                 uint typeSize, long startArrayIndex, long chunkElementCount)
+                in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder,
+                in SourceIndex arrayObjectIndex,
+                ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in BytesAndOffset arrayData,
+                in DynamicArrayRef<FieldLayoutInfo> fieldLayoutInfos,
+                uint typeSize, long startArrayIndex, long chunkElementCount, long maxObjectIndexFindableViaPointers)
             {
                 // assign all the fields
                 m_ManagedHeapBytes = managedHeapBytes;
                 m_VMInfo = vmInfo;
                 m_MangedObjectIndexByAddress = mangedObjectIndexByAddress;
+                m_NativeObjectOrAllocationFinder = nativeObjectOrAllocationFinder;
                 m_ArrayData = arrayData;
                 m_TypeSize = typeSize;
                 m_StartArrayIndex = startArrayIndex;
+                m_MaxObjectIndexFindableViaPointers = maxObjectIndexFindableViaPointers;
                 m_ResultingCrawlDataStack = resultingCrawlDataStack;
                 m_ArrayObjectIndex = arrayObjectIndex;
                 m_ChunkElementCount = chunkElementCount;
-                // Set by InitJobTypeSpecificFields
-                FieldLayoutInfo = default;
+                FieldLayoutInfo = fieldLayoutInfos;
 #if DEBUG_JOBIFIED_CRAWLER
                 IndexOfFoundElement = -1;
 #endif
@@ -72,8 +79,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     //IndexOfFoundElement = m_ResultingCrawlDataStack.Count;
 #endif
                     var indexInArray = m_StartArrayIndex + index;
-                    CrawlRawObjectData(in m_ManagedHeapBytes, in m_VMInfo, in m_MangedObjectIndexByAddress, ref m_ResultingCrawlDataStack, FieldLayoutInfo, m_ArrayData.Add((ulong)(indexInArray * m_TypeSize)), m_ArrayObjectIndex,
-                        fromArrayIndex: indexInArray);
+                    CrawlRawObjectData(m_ManagedHeapBytes, in m_VMInfo, m_MangedObjectIndexByAddress,
+                        in m_NativeObjectOrAllocationFinder,
+                        ref m_ResultingCrawlDataStack, in FieldLayoutInfo, m_ArrayData.Add((ulong)(indexInArray * m_TypeSize)), in m_ArrayObjectIndex,
+                        fromArrayIndex: indexInArray, maxObjectIndexFindableViaPointers: m_MaxObjectIndexFindableViaPointers);
                 }
             }
 

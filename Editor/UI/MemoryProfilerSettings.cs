@@ -30,7 +30,7 @@ namespace Unity.MemoryProfiler.Editor
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
         const string k_ShowReservedMemoryBreakdown = "Unity.MemoryProfiler.Editor.ShowReservedMemoryBreakdown";
         const string k_ShowMemoryMapView = "Unity.MemoryProfiler.Editor.ShowMemoryMapView";
-        const string k_SnapshotCaptureFlagsKey = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureFlags";
+        const string k_SnapshotCaptureFlagsKey = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureFlags.v2"; // upgraded to v2 because the default changed
         const string k_SnapshotCaptureCaptureWithScreenshot = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureWithScreenshot";
         const string k_SnapshotGCCollectWhenCapturingEditor = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotGCCollectWhenCapturingEditor";
         const string k_CloseSnapshotsWhenCapturingEditor = "Unity.MemoryProfiler.Editor.MemoryProfilerCloseSnapshotsWhenCapturingEditor";
@@ -68,7 +68,14 @@ namespace Unity.MemoryProfiler.Editor
             /// <summary>
             /// Displaying the count only makes sense once Managed references to Native allocations are crawled.
             /// </summary>
-            public static bool ShowFoundReferencesForNativeAllocations_2024_10 { get; set; } = false;
+            public static bool ShowFoundReferencesForNativeAllocations_2024_10 { get; set; } = true;
+
+            // When changing this, update Unity.MemoryProfiler.Tests.Helpers.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects
+            public static readonly bool ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects = true;
+            // When changing this, update Unity.MemoryProfiler.Tests.Helpers.ManagedCrawlerConsidersPointersToManagedObjects
+            public const bool ManagedCrawlerConsidersPointersToManagedObjects = false;
+            // When changing this, update Unity.MemoryProfiler.Tests.Helpers.ManagedCrawlerConsidersPotentialPointersToManagedObjects
+            public const bool ManagedCrawlerConsidersPotentialPointersToManagedObjects = false;
         }
 
         public static string MemorySnapshotStoragePath
@@ -263,7 +270,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             get
             {
-                return (CaptureFlags)EditorPrefs.GetInt(k_SnapshotCaptureFlagsKey, (int)(CaptureFlags.ManagedObjects | CaptureFlags.NativeObjects | CaptureFlags.NativeAllocations));
+                return (CaptureFlags)EditorPrefs.GetInt(k_SnapshotCaptureFlagsKey, (int)(CaptureFlags.ManagedObjects | CaptureFlags.NativeObjects | CaptureFlags.NativeAllocations | CaptureFlags.NativeAllocationSites | CaptureFlags.NativeStackTraces));
             }
             set
             {

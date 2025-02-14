@@ -16,6 +16,7 @@ namespace Unity.MemoryProfiler.Editor
         public readonly ulong Offset;
         public readonly uint PointerSize;
         public bool IsValid { get { return Bytes.IsCreated; } }
+        public long ByteCountFromOffset { get { return IsValid ? Bytes.Count - (long)Offset : -1; } }
         public BytesAndOffset(DynamicArrayRef<byte> bytes, uint pointerSize, ulong offset = 0)
         {
             if (!bytes.IsCreated)

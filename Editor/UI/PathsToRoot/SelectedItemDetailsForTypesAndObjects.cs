@@ -107,10 +107,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_UI.SetItemName(source);
             var nativeSize = (long)m_CachedSnapshot.NativeAllocations.Size[source.Index];
-            var references = ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, source);
+
+            var references = new List<ObjectData>();
+            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, source, ref references);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Native Size", EditorUtility.FormatBytes(nativeSize), $"{nativeSize:N0} B");
             if (MemoryProfilerSettings.FeatureFlags.ShowFoundReferencesForNativeAllocations_2024_10)
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Found References", references.Length.ToString(), TextContent.NativeAllocationFoundReferencesHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Found References", references.Count.ToString(), TextContent.NativeAllocationFoundReferencesHint);
 
             if (MemoryProfilerSettings.FeatureFlags.EnableUnknownUnknownAllocationBreakdown_2024_10 &&
                 m_CachedSnapshot.NativeAllocations.RootReferenceId[source.Index] <= 0)
@@ -302,44 +304,50 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", managedObjectInfo.RefCount.ToString());
             m_UI.SetManagedObjectInspector(m_CurrentSelectionObjectData);
 
-            var references = ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot,
-                ObjectData.FromManagedObjectInfo(m_CachedSnapshot, managedObjectInfo));
+            var references = new List<ObjectData>();
+            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot,
+                new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectInfo.ManagedObjectIndex), ref references, searchMode: ObjectConnection.UnityObjectReferencesSearchMode.Raw);
             // GCHandles that do not belong to a Native Object increase the RefCount without adding an entry to the references list.
-            if (managedObjectInfo.RefCount > references.Length)
+            if (managedObjectInfo.RefCount > references.Count)
             {
-                bool heldByGCHandle = false;
-                for (long i = 0; i < m_CachedSnapshot.GcHandles.Count; i++)
+                if (m_CachedSnapshot.CrawledData.IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute.Contains(managedObjectInfo.ManagedObjectIndex))
                 {
-                    if (m_CachedSnapshot.GcHandles.Target[i] == managedObjectInfo.PtrObject)
-                    {
-                        heldByGCHandle = true;
-                        break;
-                    }
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UsedByNativeCodeStatus, TextContent.UsedByNativeCodeHint);
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UsedByNativeCodeHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
                 }
-                if (heldByGCHandle)
+                else if (m_CachedSnapshot.CrawledData.IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle.Contains(managedObjectInfo.ManagedObjectIndex))
                 {
-                    if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array && m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).Length == 0 &&
-                        m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot).Rank.Length == 1 &&
-                        m_CachedSnapshot.TypeDescriptions.TypeDescriptionName[m_CurrentSelectionObjectData.managedTypeIndex].StartsWith("Unity"))
-                    {
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UsedByNativeCodeStatus, TextContent.UsedByNativeCodeHint);
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UsedByNativeCodeHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
-                    }
-                    else
-                    {
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.HeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.HeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
-                    }
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.HeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.HeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
                 }
                 else
                 {
-                    // This has to be an issue in the Managed Crawler, the UI or some other processing of the snapshot,
-                    // as Objects without a GCHandle or a reference to them aren't found by the Managed Crawler.
-                    // If we eventually attempt to read "empty" managed heap space, we may find Managed Objects
-                    // with no references that are about to be collected (outside of a Free Block), or already collected (inside a Free Block).
-                    // TODO: adjust this logic when that happens and make sure to mark or list these objects somehow/somewhere so we can exclude them here
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnkownLivenessReasonStatus, TextContent.UnkownLivenessReasonHint);
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnkownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                    // We are getting into Bug territory: Either this looked like a Managed Object during crawling but no native object was found, or we have legit no idea why it is alive
+                    bool heldByGCHandle = false;
+                    for (long i = 0; i < m_CachedSnapshot.GcHandles.UniqueCount; i++)
+                    {
+                        if (m_CachedSnapshot.GcHandles.Target[i] == managedObjectInfo.PtrObject)
+                        {
+                            heldByGCHandle = true;
+                            break;
+                        }
+                    }
+                    if (heldByGCHandle)
+                    {
+                        // it is not in IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle so the inverse must be true and this is held by a Unity Object
+                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnityObjectHeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
+                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnityObjectHeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                    }
+                    else
+                    {
+                        // This has to be an issue in the Managed Crawler, the UI or some other processing of the snapshot,
+                        // as Objects without a GCHandle or a reference to them aren't found by the Managed Crawler.
+                        // If we eventually attempt to read "empty" managed heap space, we may find Managed Objects
+                        // with no references that are about to be collected (outside of a Free Block), or already collected (inside a Free Block).
+                        // TODO: adjust this logic when that happens and make sure to mark or list these objects somehow/somewhere so we can exclude them here
+                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnkownLivenessReasonStatus, TextContent.UnkownLivenessReasonHint);
+                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnkownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                    }
                 }
             }
 

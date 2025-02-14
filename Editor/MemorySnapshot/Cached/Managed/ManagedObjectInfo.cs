@@ -4,7 +4,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         public ulong PtrObject;
         public ulong PtrTypeInfo;
-        public int NativeObjectIndex;
+        public long NativeObjectIndex;
         public long ManagedObjectIndex;
         public int ITypeDescription;
         public long Size;
@@ -12,6 +12,8 @@ namespace Unity.MemoryProfiler.Editor
         public BytesAndOffset data;
 
         public bool IsKnownType => ITypeDescription >= 0;
+
+        public static ManagedObjectInfo Invalid => new ManagedObjectInfo() { NativeObjectIndex = -1, ManagedObjectIndex = -1 };
 
         public bool IsValid()
         {

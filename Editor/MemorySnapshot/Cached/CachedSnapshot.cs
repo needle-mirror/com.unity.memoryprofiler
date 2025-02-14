@@ -22,6 +22,15 @@ using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Managed;
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.InstanceID>;
+using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.InstanceID, long>;
+using AddressToIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
+#else
+using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.InstanceID>;
+using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.InstanceID, long>;
+using AddressToIndex = Unity.Collections.NativeHashMap<ulong, long>;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -217,7 +226,7 @@ namespace Unity.MemoryProfiler.Editor
 
     internal class CachedSnapshot : IDisposable
     {
-        const string k_InvalidItemName = "<No Name>";
+        public const string InvalidItemName = "<No Name>";
 
         public bool Valid { get { return !m_Disposed && CrawledData.Crawled; } }
         bool m_Disposed = false;
@@ -761,12 +770,12 @@ namespace Unity.MemoryProfiler.Editor
             {
                 // Check if we have memory label roots information
                 if (snapshot.NativeAllocations.RootReferenceId.Count <= 0)
-                    return k_InvalidItemName;
+                    return InvalidItemName;
 
                 // Check if allocation has memory label root
                 var rootReferenceId = snapshot.NativeAllocations.RootReferenceId[allocationIndex];
                 if (rootReferenceId <= 0)
-                    return k_InvalidItemName;
+                    return InvalidItemName;
                 return ProduceAllocationNameForRootReferenceId(snapshot, rootReferenceId, higlevelObjectNameOnlyIfAvailable, ignoreNativeObjectName);
             }
 
@@ -789,7 +798,7 @@ namespace Unity.MemoryProfiler.Editor
                     return snapshot.NativeRootReferences.AreaName[rootIndex] + (string.IsNullOrEmpty(allocationObjectName) ? "" : (":" + allocationObjectName)) + (string.IsNullOrEmpty(nativeObjectName) || allocationObjectName == nativeObjectName ? "" : $" \"{nativeObjectName}\"");
                 }
 
-                return k_InvalidItemName;
+                return InvalidItemName;
             }
         }
 
@@ -1286,10 +1295,10 @@ namespace Unity.MemoryProfiler.Editor
             //secondary data
             public DynamicArray<int> RefCount = default;
             // TODO: Use Native Hashmaps for these to optimze out GC Allocs
-            public Dictionary<ulong, InstanceID> NativeObjectAddressToInstanceId { private set; get; }
+            public AddressToInstanceId NativeObjectAddressToInstanceId { private set; get; }
             public Dictionary<long, int> RootReferenceIdToIndex { private set; get; }
             public Dictionary<long, long> GCHandleIndexToIndex { private set; get; }
-            public SortedDictionary<InstanceID, int> InstanceId2Index;
+            public InstanceIdToNativeObjectIndex InstanceId2Index;
 
             public readonly ulong TotalSizes = 0ul;
             DynamicArray<int> MetaDataBufferIndicies = default;
@@ -1299,10 +1308,10 @@ namespace Unity.MemoryProfiler.Editor
             unsafe public NativeObjectEntriesCache(ref IFileReader reader)
             {
                 Count = reader.GetEntryCount(EntryType.NativeObjects_InstanceId);
-                NativeObjectAddressToInstanceId = new Dictionary<ulong, InstanceID>((int)Count);
+                NativeObjectAddressToInstanceId = new AddressToInstanceId((int)Count, Allocator.Persistent);
                 RootReferenceIdToIndex = new Dictionary<long, int>((int)Count);
                 GCHandleIndexToIndex = new Dictionary<long, long>((int)Count);
-                InstanceId2Index = new SortedDictionary<InstanceID, int>();
+                InstanceId2Index = new InstanceIdToNativeObjectIndex((int)Count, Allocator.Persistent);
                 ObjectName = new string[Count];
 
                 if (Count == 0)
@@ -1380,7 +1389,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public ILongIndexedContainer<byte> MetaData(int nativeObjectIndex)
+            public ILongIndexedContainer<byte> MetaData(long nativeObjectIndex)
             {
                 if (MetaDataBufferIndicies.Count == 0) return default;
                 var bufferIndex = MetaDataBufferIndicies[nativeObjectIndex];
@@ -1402,9 +1411,9 @@ namespace Unity.MemoryProfiler.Editor
                 ManagedObjectIndex.Dispose();
                 RefCount.Dispose();
                 ObjectName = null;
-                NativeObjectAddressToInstanceId = null;
+                NativeObjectAddressToInstanceId.Dispose();
                 RootReferenceIdToIndex = null;
-                InstanceId2Index = null;
+                InstanceId2Index.Dispose();
                 MetaDataBufferIndicies.Dispose();
                 if (m_MetaDataBuffersReadOp.IsCreated)
                 {
@@ -1581,11 +1590,11 @@ namespace Unity.MemoryProfiler.Editor
         {
             static readonly ProfilerMarker k_CacheFind = new ProfilerMarker("ManagedMemorySectionEntriesCache.Find");
             public long Count;
-            public DynamicArray<ulong> StartAddress;
-            public DynamicArray<ulong> SectionSize;
-            public DynamicArray<MemorySectionType> SectionType;
-            public DynamicArray<HeapSectionTypeNames> NamedHeapSectionType;
-            public NestedDynamicArray<byte> Bytes => m_BytesReadOp.CompleteReadAndGetNestedResults();
+            public readonly DynamicArray<ulong> StartAddress;
+            public readonly DynamicArray<ulong> SectionSize;
+            public readonly DynamicArray<MemorySectionType> SectionType;
+            public readonly DynamicArray<HeapSectionTypeNames> NamedHeapSectionType;
+            public readonly NestedDynamicArray<byte> Bytes => m_BytesReadOp.CompleteReadAndGetNestedResults();
             NestedDynamicSizedArrayReadOperation<byte> m_BytesReadOp;
             ulong m_MinAddress;
             ulong m_MaxAddress;
@@ -1712,16 +1721,17 @@ namespace Unity.MemoryProfiler.Editor
             [MethodImpl(MethodImplOptions.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = true, Debug = false)]
             public bool Find(ulong address, VirtualMachineInformation virtualMachineInformation, out BytesAndOffset bytesAndOffset)
             {
-                bytesAndOffset = Find(address, virtualMachineInformation);
+                bytesAndOffset = Find(address, virtualMachineInformation, out MemorySectionType _);
                 return bytesAndOffset.IsValid;
             }
 
             [BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = true, Debug = false)]
-            public BytesAndOffset Find(ulong address, VirtualMachineInformation virtualMachineInformation)
+            public BytesAndOffset Find(ulong address, VirtualMachineInformation virtualMachineInformation, out MemorySectionType sectionType)
             {
                 using (k_CacheFind.Auto())
                 {
                     var bytesAndOffset = new BytesAndOffset();
+                    sectionType = MemorySectionType.VirtualMachine;
 
                     if (address != 0 && address >= m_MinAddress && address < m_MaxAddress)
                     {
@@ -1739,6 +1749,7 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             bytesAndOffset = new BytesAndOffset(Bytes[idx], virtualMachineInformation.PointerSize, address - StartAddress[idx]);
                         }
+                        sectionType = SectionType[idx];
                     }
 
                     return bytesAndOffset;
@@ -1830,6 +1841,7 @@ namespace Unity.MemoryProfiler.Editor
             const int k_DefaultFieldProcessingBufferSize = 64;
             public const string UnityObjectTypeName = "UnityEngine.Object";
             public const string UnityNativeObjectPointerFieldName = "m_CachedPtr";
+            public const string NativeCollectionsNamspaceAndTypePrefix = "Unity.Collections.Native";
             public int IFieldUnityObjectMCachedPtr { get; private set; }
             public int IFieldUnityObjectMCachedPtrOffset { get; private set; } = -1;
 
@@ -1857,6 +1869,8 @@ namespace Unity.MemoryProfiler.Editor
             const string k_SystemSingleName = "System.Single";
             const string k_SystemStringName = "System.String";
             const string k_SystemIntPtrName = "System.IntPtr";
+            const string k_SystemVoidPtrName = "System.Void*";
+            const string k_SystemBytePtrName = "System.Byte*";
             const string k_SystemByteName = "System.Byte";
 
             public int Count;
@@ -1908,6 +1922,8 @@ namespace Unity.MemoryProfiler.Editor
             public readonly int ITypeSingle = ITypeInvalid;
             public readonly int ITypeString = ITypeInvalid;
             public readonly int ITypeIntPtr = ITypeInvalid;
+            public readonly int ITypeVoidPtr = ITypeInvalid;
+            public readonly int ITypeBytePtr = ITypeInvalid;
             public readonly int ITypeByte = ITypeInvalid;
 
             public readonly int ITypeUnityMonoBehaviour = ITypeInvalid;
@@ -2004,6 +2020,8 @@ namespace Unity.MemoryProfiler.Editor
                 typeNameToIndex.GetOrInitializeValue(k_SystemInt32Name, out ITypeInt32, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_SystemInt64Name, out ITypeInt64, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_SystemIntPtrName, out ITypeIntPtr, ITypeInvalid);
+                typeNameToIndex.GetOrInitializeValue(k_SystemVoidPtrName, out ITypeVoidPtr, ITypeInvalid);
+                typeNameToIndex.GetOrInitializeValue(k_SystemBytePtrName, out ITypeBytePtr, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_SystemStringName, out ITypeString, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_SystemBoolName, out ITypeBool, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_SystemSingleName, out ITypeSingle, ITypeInvalid);
@@ -2050,6 +2068,13 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool CouldBoehmReadFieldsOfThisTypeAsReferences(int arrayIndex, CachedSnapshot snapshot)
+            {
+                return (!HasFlag(arrayIndex, TypeFlags.kValueType) ||
+                    (FieldIndicesInstance[arrayIndex].Length == 0 && Size[arrayIndex] == snapshot.VirtualMachineInformation.PointerSize));
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool HasFlag(int arrayIndex, TypeFlags flag)
             {
                 return (Flags[arrayIndex] & flag) == flag;
@@ -2062,7 +2087,7 @@ namespace Unity.MemoryProfiler.Editor
                 return r;
             }
 
-            public int TypeInfo2ArrayIndex(UInt64 aTypeInfoAddress)
+            public int TypeInfo2ArrayIndex(ulong aTypeInfoAddress)
             {
                 TypeInfoToArrayIndex.GetOrInitializeValue(aTypeInfoAddress, out var i, ITypeInvalid);
                 return i;
@@ -2118,6 +2143,7 @@ namespace Unity.MemoryProfiler.Editor
                     fieldIndicesOwnedStatic = new int[Count][];
                     List<int> fieldProcessingBuffer = new List<int>(k_DefaultFieldProcessingBufferSize);
 
+                    var objectHeaderSize = (int)vmInfo.ObjectHeaderSize;
                     for (int i = 0; i < Count; ++i)
                     {
                         TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, this, fieldDescriptions, TypeTools.FieldFindOptions.OnlyInstance, true);
@@ -2128,6 +2154,29 @@ namespace Unity.MemoryProfiler.Editor
 
                         TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, this, fieldDescriptions, TypeTools.FieldFindOptions.OnlyStatic, false);
                         fieldIndicesOwnedStatic[i] = fieldProcessingBuffer.ToArray();
+
+                        // There is a bug in the caluclation for the type sizes in the native capture code where it subtracts the header size from the class size for all types.
+                        // However, in IL2CPP, the header size is only included if the type derives from object, which abstract types and pointer types (e.g. "void*") don't do.
+                        // To fix it in the capture code, we need to expose more type flags and also we still need to be able to read snapshots from versions where it isn't fixed, so
+                        // if negative sizes are present, double check that they don't have a base type and if so, assume the bug is present and adjust them accordingly.
+                        if (Size[i] < 0)
+                        {
+                            if (Size[i] < 0 && BaseOrElementTypeIndex[i] < 0)
+                            {
+#if DEBUG_VALIDATION
+                                // pointers are the only value types that should get a negative size
+                                if (HasFlag(i, TypeFlags.kValueType))
+                                    Checks.IsTrue(TypeDescriptionName[i].EndsWith('*'));
+#endif
+                                // outside of value types, abstract generic base classes could end up with a negative size
+                                Size[i] += objectHeaderSize;
+                            }
+#if DEBUG_VALIDATION
+                            if (Size[i] < 0)
+                                Debug.LogWarning($"Type {TypeDescriptionName[i]} has a negative size ({Size[i]}).");
+#endif
+                        }
+
 
                         var typeIndex = i;
                         if (DerivesFromTypes(typeIndex, hashmapOfUnityBaseTypes))
@@ -2282,6 +2331,16 @@ namespace Unity.MemoryProfiler.Editor
                 return iTypeDescription == potentialBase;
             }
 
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool IsNativeContainerType(int managedTypeIndex)
+            {
+                return TypeDescriptionName[managedTypeIndex].StartsWith(NativeCollectionsNamspaceAndTypePrefix)
+                    // only accept types that end on a generic bracket.
+                    // E.g. Avoid parsing Unity.Collections.NativeArray<System.Int32>[] as a native collection
+                    && TypeDescriptionName[managedTypeIndex].EndsWith('>');
+            }
+
             public void Dispose()
             {
                 Count = 0;
@@ -2363,13 +2422,25 @@ namespace Unity.MemoryProfiler.Editor
         public class GCHandleEntriesCache : IDisposable
         {
             public DynamicArray<ulong> Target = default;
+            /// <summary>
+            /// Use this Count when iterating over all entries in <see cref="Target"/>.
+            /// When checking if a Managed Object index is low enough to belong to a Managed Shell for a Native Object that
+            /// reported it via its GCHandle, use <see cref="UniqueCount"/> instead.
+            /// </summary>
             public long Count;
+            /// <summary>
+            /// Pre 19.3 scripting snapshot implementations could report dublicated GCHandles.
+            /// after <see cref="CachedSnapshot.PostProcess"/> is finished, or more precisely after <seealso cref="ManagedDataCrawler.GatherIntermediateCrawlData(CachedSnapshot, ManagedDataCrawler.IntermediateCrawlData, ref DynamicArray{ManagedDataCrawler.StackCrawlData})"/>
+            /// ran, this value is going to be accurate. Before that it is just a copy of <see cref="Count"/>.
+            /// </summary>
+            public long UniqueCount;
 
             public GCHandleEntriesCache(ref IFileReader reader)
             {
                 unsafe
                 {
-                    Count = reader.GetEntryCount(EntryType.GCHandles_Target);
+                    UniqueCount = Count = reader.GetEntryCount(EntryType.GCHandles_Target);
+
                     if (Count == 0)
                         return;
 
@@ -2380,6 +2451,7 @@ namespace Unity.MemoryProfiler.Editor
             public void Dispose()
             {
                 Count = 0;
+                UniqueCount = 0;
                 Target.Dispose();
             }
         }
@@ -2539,7 +2611,8 @@ namespace Unity.MemoryProfiler.Editor
         IFileReader m_Reader;
         public MetaData MetaData { get; private set; }
         public DateTime TimeStamp { get; private set; }
-        public VirtualMachineInformation VirtualMachineInformation { get; private set; }
+        public ref readonly VirtualMachineInformation VirtualMachineInformation => ref m_VirtualMachineInformation;
+        readonly VirtualMachineInformation m_VirtualMachineInformation;
         public NativeAllocationSiteEntriesCache NativeAllocationSites;
         public TypeDescriptionEntriesCache TypeDescriptions;
         public NativeTypeEntriesCache NativeTypes;
@@ -2586,7 +2659,7 @@ namespace Unity.MemoryProfiler.Editor
                 reader.ReadUnsafe(EntryType.Metadata_RecordDate, &ticks, sizeof(long), 0, 1);
                 TimeStamp = new DateTime(ticks);
 
-                VirtualMachineInformation = vmInfo;
+                m_VirtualMachineInformation = vmInfo;
                 m_SnapshotVersion = reader.FormatVersion;
 
                 MetaData = new MetaData(reader);
@@ -2671,7 +2744,7 @@ namespace Unity.MemoryProfiler.Editor
                 return -1;
 
             // GC Handle
-            if (i < GcHandles.Count)
+            if (i < GcHandles.UniqueCount)
                 return i;
 
             // Managed objects, but not reported through GC Handle
@@ -2688,7 +2761,7 @@ namespace Unity.MemoryProfiler.Editor
 
             // Shift behind native objects
             if (i < NativeObjects.Count)
-                return i + GcHandles.Count;
+                return i + GcHandles.UniqueCount;
 
             return -1;
         }
@@ -2698,12 +2771,12 @@ namespace Unity.MemoryProfiler.Editor
             if (i < 0)
                 return -1;
 
-            if (i < GcHandles.Count)
+            if (i < GcHandles.UniqueCount)
                 return (int)i;
 
             // If CrawledData.ManagedObjects includes GcHandles as first GcHandles.Count
             // than it makes sense as we want to remap only excess
-            int firstCrawled = (int)(GcHandles.Count + NativeObjects.Count);
+            int firstCrawled = (int)(GcHandles.UniqueCount + NativeObjects.Count);
             int lastCrawled = (int)(NativeObjects.Count + CrawledData.ManagedObjects.Count);
 
             if (i >= firstCrawled && i < lastCrawled)
@@ -2714,10 +2787,106 @@ namespace Unity.MemoryProfiler.Editor
 
         public int UnifiedObjectIndexToNativeObjectIndex(long i)
         {
-            if (i < GcHandles.Count) return -1;
-            int firstCrawled = (int)(GcHandles.Count + NativeObjects.Count);
-            if (i < firstCrawled) return (int)(i - (int)GcHandles.Count);
+            if (i < GcHandles.UniqueCount) return -1;
+            int firstCrawled = (int)(GcHandles.UniqueCount + NativeObjects.Count);
+            if (i < firstCrawled) return (int)(i - (int)GcHandles.UniqueCount);
             return -1;
+        }
+
+        public enum NativeAllocationOrRegionSearchResult
+        {
+            NullOrUninitialized,
+            Invalid,
+            NotInTrackedMemory,
+            FoundAllocation,
+            FoundRegion,
+            NothingFound
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NativeAllocationOrRegionSearchResult FindNativeAllocationOrRegion(ulong pointer,
+            out SourceIndex nativeRegionIndex, out SourceIndex nativeAllocationIndex)
+        {
+            return FindNativeAllocationOrRegion(pointer, out nativeRegionIndex, out nativeAllocationIndex,
+                 out _, false);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NativeAllocationOrRegionSearchResult FindNativeAllocationOrRegion(ulong pointer,
+            out SourceIndex nativeRegionIndex, out SourceIndex nativeAllocationIndex,
+            out string nativeRegionPath)
+        {
+            return FindNativeAllocationOrRegion(pointer, out nativeRegionIndex, out nativeAllocationIndex,
+                out nativeRegionPath, true);
+        }
+
+        NativeAllocationOrRegionSearchResult FindNativeAllocationOrRegion(ulong pointer,
+            out SourceIndex nativeRegionIndex, out SourceIndex nativeAllocationIndex, out string nativeRegionPath,
+            bool buildFullNativePath = false)
+        {
+            nativeRegionIndex = nativeAllocationIndex = default;
+            nativeRegionPath = null;
+            if (pointer == 0)
+            {
+                return NativeAllocationOrRegionSearchResult.NullOrUninitialized;
+            }
+            else if (pointer == ulong.MaxValue)
+            {
+                return NativeAllocationOrRegionSearchResult.Invalid;
+            }
+            var nativeRegionIndexInSortedRegions = SortedNativeRegionsEntries.Find(pointer, onlyDirectAddressMatches: false);
+            if (nativeRegionIndexInSortedRegions >= 0)
+            {
+                nativeRegionIndex = new SourceIndex(SourceIndex.SourceId.NativeMemoryRegion, SortedNativeRegionsEntries[nativeRegionIndexInSortedRegions]);
+                nativeRegionPath = SortedNativeRegionsEntries.Name(nativeRegionIndexInSortedRegions);
+
+                if (buildFullNativePath)
+                {
+                    var foundRegionInLayer = SortedNativeRegionsEntries.RegionHierarchLayer[nativeRegionIndexInSortedRegions];
+                    if (foundRegionInLayer > 0)
+                    {
+                        // search backwards for parent regions.
+                        for (var iRegion = nativeRegionIndexInSortedRegions - 1; iRegion >= 0; iRegion--)
+                        {
+                            if (SortedNativeRegionsEntries.RegionHierarchLayer[iRegion] >= foundRegionInLayer
+                                || SortedNativeRegionsEntries.Address(iRegion) + SortedNativeRegionsEntries.Size(iRegion) < pointer)
+                                continue;
+                            if (SortedNativeRegionsEntries.Address(iRegion) <= pointer)
+                            {
+
+                                nativeRegionPath += $"{SortedNativeRegionsEntries.Name(iRegion)} / {nativeRegionPath}";
+                                foundRegionInLayer = SortedNativeRegionsEntries.RegionHierarchLayer[nativeRegionIndexInSortedRegions];
+                                // found a parent region, continue searching if it is not on layer 0 though as there should be another parent-region enclosing this one
+                                if (foundRegionInLayer == 0)
+                                    break;
+                            }
+                        }
+                    }
+                }
+
+                long idx = DynamicArrayAlgorithms.BinarySearch(SortedNativeAllocations, pointer);
+                // -1 means the address is smaller than the first starting Address,
+                if (idx != -1)
+                {
+                    if (idx < 0)
+                    {
+                        // otherwise, a negative Index just means there was no direct hit and ~idx - 1 will give us the index to the next smaller starting Address
+                        idx = ~idx - 1;
+                    }
+                    var startAddress = SortedNativeAllocations.Address(idx);
+                    if (pointer >= startAddress && pointer < (startAddress + SortedNativeAllocations.Size(idx)))
+                    {
+                        nativeAllocationIndex = new SourceIndex(SourceIndex.SourceId.NativeAllocation, SortedNativeAllocations[idx]);
+                        return NativeAllocationOrRegionSearchResult.FoundAllocation;
+                    }
+                }
+            }
+            else
+            {
+                // This pointer points out of range! Could be IL2CPP Virtual Machine Memory but it could just be entirely broken
+                return NativeAllocationOrRegionSearchResult.NotInTrackedMemory;
+            }
+            return nativeRegionIndexInSortedRegions >= 0 ? NativeAllocationOrRegionSearchResult.FoundRegion : NativeAllocationOrRegionSearchResult.NothingFound;
         }
 
         public void Dispose()
@@ -3187,7 +3356,7 @@ namespace Unity.MemoryProfiler.Editor
                         // Get associated memory label root
                         var rootReferenceId = snapshot.NativeGfxResourceReferences.RootId[Index];
                         if (rootReferenceId <= 0)
-                            return k_InvalidItemName;
+                            return InvalidItemName;
 
                         // Lookup native object index associated with memory label root
                         if (snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
@@ -3197,12 +3366,12 @@ namespace Unity.MemoryProfiler.Editor
                         if (snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out long rootIndex))
                             return snapshot.NativeRootReferences.AreaName[rootIndex] + ":" + snapshot.NativeRootReferences.ObjectName[rootIndex];
 
-                        return k_InvalidItemName;
+                        return InvalidItemName;
                     }
                 }
 
                 Debug.Assert(false, $"Unknown source link type {Id}, please report a bug.");
-                return k_InvalidItemName;
+                return InvalidItemName;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -3816,6 +3985,11 @@ namespace Unity.MemoryProfiler.Editor
             {
                 const int kMaxStackDepth = 16;
                 var hierarchyStack = new DynamicArray<long>(0, kMaxStackDepth, Allocator.Temp);
+#if DEBUG_VALIDATION
+                var connectionsToContainedObject = new List<ObjectData>();
+                var connectionsToEnclosedObject = new List<ObjectData>();
+#endif
+
                 for (long i = 0; i < m_ItemsCount; i++)
                 {
                     var point = m_CombinedData[i];
@@ -3901,19 +4075,19 @@ namespace Unity.MemoryProfiler.Editor
                                     ref var enclosingManagedObject = ref m_Snapshot.CrawledData.ManagedObjects[parentPoint.Source.Index];
                                     ref var containedManagedObject = ref m_Snapshot.CrawledData.ManagedObjects[point.Source.Index];
 #if DEBUG_VALIDATION
-                                    var connectionsToContainedObject = ObjectConnection.GetAllReferencingObjects(m_Snapshot, ObjectData.FromSourceLink(m_Snapshot, point.Source));
-                                    ObjectData[] connectionsToEnclosedObject = null;
+                                    ObjectConnection.GetAllReferencingObjects(m_Snapshot, point.Source, ref connectionsToContainedObject);
+                                    connectionsToEnclosedObject.Clear();
                                     try
                                     {
-                                        connectionsToEnclosedObject = ObjectConnection.GetAllReferencingObjects(m_Snapshot, ObjectData.FromSourceLink(m_Snapshot, parentPoint.Source));
+                                        ObjectConnection.GetAllReferencingObjects(m_Snapshot, parentPoint.Source, ref connectionsToEnclosedObject);
                                     }
                                     catch
                                     {
                                         Debug.LogError($"Failed to get field description for managed object idx: {point.Source.Index} of type {ObjectData.FromSourceLink(m_Snapshot, point.Source).GenerateTypeName(m_Snapshot)}");
                                     }
-                                    string GetFieldInfo(ObjectData [] connections)
+                                    string GetFieldInfo(List<ObjectData> connections)
                                     {
-                                        if(connections == null || connections.Length == 0)
+                                        if(connections == null || connections.Count == 0)
                                         {
                                             return "(No connections) ";
                                         }
@@ -3921,7 +4095,7 @@ namespace Unity.MemoryProfiler.Editor
                                             return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)} via {connections[0].GetFieldDescription(m_Snapshot)}) ";
                                         if (connections[0].IsArrayItem())
                                             return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)} via {connections[0].GenerateArrayDescription(m_Snapshot, true, true)}) ";
-                                        if(connections[0].isNative)
+                                        if(connections[0].isNativeObject)
                                             return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)} named \"{m_Snapshot.NativeObjects.ObjectName[connections[0].nativeObjectIndex]}\") ";
                                         return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)}) ";
                                     }

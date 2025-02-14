@@ -91,6 +91,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         Type = DataType.PureCSharpType;
                         break;
                     case ObjectDataType.NativeObject:
+                    case ObjectDataType.NativeAllocation:
                         Type = DataType.NativeObject;
                         break;
                     case ObjectDataType.Unknown:

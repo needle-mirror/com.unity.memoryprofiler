@@ -9,6 +9,8 @@ using UnityEditor;
 using Unity.MemoryProfiler.Editor.Managed;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
+using UnityEditor.MemoryProfiler;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 #if INSTANCE_ID_CHANGED
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
@@ -30,6 +32,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         Queue<ReferencePendingProcessing> m_ReferencesPendingProcessing = new Queue<ReferencePendingProcessing>();
         Dictionary<int, ReferencePendingProcessing> m_ExpansionStopGapsByTreeViewItemId = new Dictionary<int, ReferencePendingProcessing>();
 
+        List<ObjectData> m_CachedReferencedObjectsList = new List<ObjectData>();
         const int k_MaxDepthIncrement = 3;
         const int k_MaxArrayIncrement = 20;
         const int k_MaxTotalItemProcessingIncrement = 1000;
@@ -131,6 +134,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         return ProcessableObjectType.ManagedArray;
                     case ObjectDataType.NativeObject:
                         return ProcessableObjectType.NativeObject;
+                    case ObjectDataType.NativeAllocation: // These should never get registered for delayed processing anyways
                     default:
                         throw new NotImplementedException();
                 }
@@ -235,7 +239,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         ProcessManagedObjectFields(currentItem, m_CachedSnapshot);
                         break;
                     case ReferencePendingProcessing.ProcessableObjectType.ManagedArray:
-                        ProcessManagedArrayElements(currentItem, m_CachedSnapshot);
+                        // avoid quadratic processing times by allowing processing of k_MaxTotalItemProcessingIncrement * k_MaxArrayIncrement elements per cycle
+                        processed += ProcessManagedArrayElements(currentItem, m_CachedSnapshot, Math.Min(k_MaxArrayIncrement, k_MaxTotalItemProcessingIncrement - processed));
                         break;
                     case ReferencePendingProcessing.ProcessableObjectType.ManagedField:
                         ProcessField(currentItem, m_CachedSnapshot);
@@ -360,62 +365,77 @@ namespace Unity.MemoryProfiler.Editor.UI
             info.Root.AddChild(childItem);
         }
 
-        void ProcessIntPtr(CachedSnapshot cs, ObjectData fieldByIndex, ManagedObjectInspectorItem childItem, string value, ManagedObjectInspectorItem root)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        bool BoehmCouldReadFieldAsPointer(CachedSnapshot cs, ObjectData fieldByIndex)
+        {
+            return cs.TypeDescriptions.CouldBoehmReadFieldsOfThisTypeAsReferences(fieldByIndex.managedTypeIndex, cs) &&
+                // it could also be a genuine value type that would be valuable to show as is, so only interpret this as a reference if it points at something valid
+                fieldByIndex.managedObjectData.TryReadPointer(out var address) == BytesAndOffset.PtrReadError.Success &&
+                cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(address, out var objectIdentifyer);
+        }
+
+        void ProcessManagedPtr(CachedSnapshot cs, ObjectData fieldByIndex, ManagedObjectInspectorItem fieldItem, string value)
         {
             ulong pointer;
             if (fieldByIndex.managedObjectData.TryReadPointer(out pointer) != BytesAndOffset.PtrReadError.Success)
             {
-                childItem.Value = "Failed to read pointer!";
+                fieldItem.Value = "Failed to read pointer!";
                 return;
             }
             if (pointer == 0)
             {
-                childItem.Value = "null";
+                fieldItem.Value = "null";
                 return;
             }
             if (pointer == ulong.MaxValue)
             {
-                childItem.Value = "invalid";
+                fieldItem.Value = "invalid";
                 return;
             }
 
             if (cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(pointer, out var objectIdentifyer))
             {
-                m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(childItem, ObjectData.FromManagedObjectIndex(cs, objectIdentifyer)));
+                m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectIndex(cs, objectIdentifyer)));
             }
             else if (cs.NativeObjects.NativeObjectAddressToInstanceId.TryGetValue(pointer, out var _))
             {
-                EnqueueNativeObject(childItem, pointer, cs);
+                EnqueueNativeObject(fieldItem, pointer, cs);
             }
             else
             {
-                var data = cs.ManagedHeapSections.Find(pointer, cs.VirtualMachineInformation);
+                string fieldTypeName = string.Empty;
+                // cover the most common
+                if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeIntPtr)
+                    fieldTypeName = "(IntPtr)";
+                else if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeVoidPtr)
+                    fieldTypeName = "(void*)";
+                else if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeBytePtr)
+                    fieldTypeName = "(byte*)";
+                else
+                {
+                    var lastDot = fieldItem.TypeName.LastIndexOf('.');
+                    if (lastDot < 0)
+                        lastDot = 0;
+                    fieldTypeName = $"({fieldItem.TypeName.Substring(lastDot + 1)})";
+                }
+
+                var data = cs.ManagedHeapSections.Find(pointer, cs.VirtualMachineInformation, out MemorySectionType memorySectionType);
                 if (data.IsValid)
                 {
                     // TODO: caveat these objects as "potential managed objects" as beyond them fitting into the managed heap, we can't be sure they are actually managed objects or just random bytes pointed to.
                     // We do however ensure that they at least fit the type of the field they are in.
-                    var moi = ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data, fieldByIndex.managedTypeIndex);
+
+                    // Managed Objects can (afaik) not be found in VM Memory, so ignore that here
+                    var moi = memorySectionType != CachedSnapshot.MemorySectionType.GarbageCollector ? ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data, fieldByIndex.managedTypeIndex) : ManagedObjectInfo.Invalid;
                     if (moi.IsValid())
                     {
-                        m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(childItem, ObjectData.FromManagedObjectInfo(cs, moi)));
+                        m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectInfo(cs, moi)));
 #if DEBUG_VALIDATION
                         Debug.LogError("Managed Object Inspector found a possible Managed Object that the crawler missed!");
 #endif
                     }
                     else
                     {
-                        int iHeapSection = -1;
-                        for (int iManageHeapSection = 0; iManageHeapSection < cs.ManagedHeapSections.Count; iManageHeapSection++)
-                        {
-                            if (cs.ManagedHeapSections.StartAddress[iManageHeapSection] + cs.ManagedHeapSections.SectionSize[iManageHeapSection] < pointer)
-                                continue;
-                            if (cs.ManagedHeapSections.StartAddress[iManageHeapSection] <= pointer && cs.ManagedHeapSections.StartAddress[iManageHeapSection] + cs.ManagedHeapSections.SectionSize[iManageHeapSection] > pointer)
-                            {
-                                iHeapSection = iManageHeapSection;
-                            }
-                            break;
-                        }
-
                         // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
                         if (HidePointers && string.IsNullOrEmpty(value))
                             value = DetailFormatter.FormatPointer(pointer);
@@ -426,94 +446,73 @@ namespace Unity.MemoryProfiler.Editor.UI
                         {
                             bytes += data.Bytes[(long)data.Offset + b].ToString("X") + " ";
                         }
+
                         // lets get some debug info
-                        if (cs.ManagedHeapSections.SectionType[iHeapSection] == CachedSnapshot.MemorySectionType.GarbageCollector)
+                        if (memorySectionType == CachedSnapshot.MemorySectionType.GarbageCollector)
                             // some unsafe pointer outside of a fixed? Sounds Dangerous
-                            childItem.Value = $"(IntPtr) -> Managed Heap @{value} Data: {bytes}";
+                            fieldItem.Value = $"{fieldTypeName} -> Managed Heap @{value} Data: {bytes}";
                         else
                             // likely pointing at some Mono Object, e.g. vtable or the like
-                            childItem.Value = $"(IntPtr) -> Virtual Machine @{value} Data: {bytes}";
+                            fieldItem.Value = $"{fieldTypeName} -> Virtual Machine @{value} Data: {bytes}";
                     }
                 }
                 else
                 {
-                    FindNativeAllocationOrRegion(cs, pointer, childItem, value);
+                    FindNativeAllocationOrRegion(cs, pointer, fieldItem, value, fieldTypeName);
                 }
             }
         }
 
         void FindNativeAllocationOrRegion(CachedSnapshot cs, ulong pointer, ManagedObjectInspectorItem childItem, string value, string nativeFieldName = "(IntPtr)", string nativeAllocationTypeName = "Native Allocation")
         {
-            if (pointer == 0)
+
+            var result = cs.FindNativeAllocationOrRegion(pointer, out var nativeRegion, out var nativeAllocation, out var nativeRegionPath);
+
+            var succesfullFind = result switch
             {
-                childItem.Value = "Null / Uninitialized";
-                return;
-            }
-            else if (pointer == ulong.MaxValue)
-            {
-                childItem.Value = "Invalid";
-                return;
-            }
+                CachedSnapshot.NativeAllocationOrRegionSearchResult.NullOrUninitialized => false,
+                CachedSnapshot.NativeAllocationOrRegionSearchResult.Invalid => false,
+                CachedSnapshot.NativeAllocationOrRegionSearchResult.NothingFound => false,
+                CachedSnapshot.NativeAllocationOrRegionSearchResult.NotInTrackedMemory => true,
+                CachedSnapshot.NativeAllocationOrRegionSearchResult.FoundAllocation => true,
+                CachedSnapshot.NativeAllocationOrRegionSearchResult.FoundRegion => true,
+                _ => throw new NotImplementedException()
+            };
+
             // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
-            if (HidePointers && string.IsNullOrEmpty(value))
+            if (succesfullFind && HidePointers && string.IsNullOrEmpty(value))
                 value = DetailFormatter.FormatPointer(pointer);
-            string nativeRegionPath = null;
-            bool buildFullNativePath = false;
-            var nativeRegion = cs.SortedNativeRegionsEntries.Find(pointer, onlyDirectAddressMatches: false);
-            if (nativeRegion >= 0)
+
+            switch (result)
             {
-                nativeRegionPath = cs.SortedNativeRegionsEntries.Name(nativeRegion);
-
-                if (buildFullNativePath)
-                {
-                    var foundRegionInLayer = cs.SortedNativeRegionsEntries.RegionHierarchLayer[nativeRegion];
-                    if (foundRegionInLayer > 0)
-                    {
-                        // search backwards for parent regions.
-                        for (var iRegion = nativeRegion - 1; iRegion >= 0; iRegion--)
-                        {
-                            if (cs.SortedNativeRegionsEntries.RegionHierarchLayer[iRegion] >= foundRegionInLayer
-                                || cs.SortedNativeRegionsEntries.Address(iRegion) + cs.SortedNativeRegionsEntries.Size(iRegion) < pointer)
-                                continue;
-                            if (cs.SortedNativeRegionsEntries.Address(iRegion) <= pointer)
-                            {
-                                nativeRegionPath += $"{cs.SortedNativeRegionsEntries.Name(iRegion)} / {nativeRegionPath}";
-                                foundRegionInLayer = cs.SortedNativeRegionsEntries.RegionHierarchLayer[nativeRegion];
-                                // found a parent region, continue searching if it is not on layer 0 though as there should be another parent-region enclosing this one
-                                if (foundRegionInLayer == 0)
-                                    break;
-                            }
-                        }
-                    }
-                }
-
-                var nativeAllocation = cs.SortedNativeAllocations.Find(pointer, onlyDirectAddressMatches: false);
-                if (nativeAllocation >= 0)
-                {
-                    var rootReference = cs.SortedNativeAllocations.RootReferenceId(nativeAllocation);
-                    var allocationName = value;
-                    if (rootReference < cs.NativeRootReferences.Count)
-                    {
-                        allocationName = $"{cs.NativeRootReferences.AreaName[rootReference]} / {cs.NativeRootReferences.ObjectName[rootReference]} / {value}";
-                    }
+                case CachedSnapshot.NativeAllocationOrRegionSearchResult.NullOrUninitialized:
+                    childItem.Value = "Null / Uninitialized";
+                    return;
+                case CachedSnapshot.NativeAllocationOrRegionSearchResult.Invalid:
+                    childItem.Value = "Invalid";
+                    return;
+                case CachedSnapshot.NativeAllocationOrRegionSearchResult.NotInTrackedMemory:
+                    // This pointer points out of range! Could be IL2CPP Virtual Machine Memory but it could just be entirely broken
+                    childItem.Value = $"{nativeFieldName} -> Not in Tracked Memory! @{value}";
+                    return;
+                case CachedSnapshot.NativeAllocationOrRegionSearchResult.FoundAllocation:
+                    var allocationName = nativeAllocation.GetName(cs);
+                    if (allocationName == CachedSnapshot.InvalidItemName)
+                        allocationName = value;
                     var nativeObjectItem = new ManagedObjectInspectorItem(m_InspectorID, nativeFieldName, -1, nativeAllocationTypeName,
-                        allocationName, false, pointer, cs.SortedNativeAllocations.Size(nativeAllocation));
+                        allocationName, false, pointer, cs.NativeAllocations.Size[nativeAllocation.Index]);
                     nativeObjectItem.depth = childItem.depth + 1;
                     childItem.AddChild(nativeObjectItem);
-                    //Debug.LogError("Managed Object Inspector found a possible pointer to Native Allocation that the crawler missed!");
-                }
-                else
-                {
-                    var nativeObjectItem = new ManagedObjectInspectorItem(m_InspectorID, nativeFieldName, -1, "Native Region", $"{nativeRegionPath} / {value}", false, pointer, 0ul);
-                    nativeObjectItem.depth = childItem.depth + 1;
-                    childItem.AddChild(nativeObjectItem);
-                    //Debug.LogError("Managed Object Inspector found a possible pointer to Native Memory that the crawler missed!");
-                }
-            }
-            else
-            {
-                // This pointer points out of range! Could be IL2CPP Virtual Machine Memory but it could just be entirely broken
-                childItem.Value = $"{nativeFieldName} -> Not in Tracked Memory! @{value}";
+                    return;
+                case CachedSnapshot.NativeAllocationOrRegionSearchResult.FoundRegion:
+                    var nativeRegionItem = new ManagedObjectInspectorItem(m_InspectorID, nativeFieldName, -1, "Native Region", $"{nativeRegionPath} / {value}", false, pointer, 0ul);
+                    nativeRegionItem.depth = childItem.depth + 1;
+                    childItem.AddChild(nativeRegionItem);
+                    break;
+                case CachedSnapshot.NativeAllocationOrRegionSearchResult.NothingFound:
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -542,6 +541,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         static ulong GetIdentifyingPointer(ObjectData obj, CachedSnapshot cs)
         {
             var address = obj.GetObjectPointer(cs);
+            if (obj.dataType == ObjectDataType.Type)
+            {
+                address += cs.TypeDescriptions.TypeInfoAddress[obj.managedTypeIndex];
+            }
             return address;
         }
 
@@ -577,23 +580,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             return false;
         }
 
-        void ProcessManagedArrayElements(ReferencePendingProcessing item, CachedSnapshot snapshot)
+        int ProcessManagedArrayElements(ReferencePendingProcessing item, CachedSnapshot snapshot, int maxElementsToProcess)
         {
             if (item.ArrayInfo == null)
             {
                 // Only Validate and check recursion if this is not a continuation
                 if (!ValidateManagedObject(ref item.ObjectData, snapshot))
-                    return;
+                    return 0;
 
                 if (CheckRecursion(item.Root, GetIdentifyingPointer(item.ObjectData, snapshot)))
-                    return;
+                    return 0;
 
                 item.ArrayInfo = item.ObjectData.GetArrayInfo(snapshot);
                 item.IndexToContinueAt = 0;
             }
 
             var elementCount = item.ArrayInfo.Length;
-            var elementToStopAt = Math.Min(elementCount, item.IndexToContinueAt + k_MaxArrayIncrement);
+            var elementToStopAt = Math.Min(elementCount, item.IndexToContinueAt + maxElementsToProcess);
 
             for (var i = item.IndexToContinueAt; i < elementToStopAt; i++)
             {
@@ -602,7 +605,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     item.ArrayInfo, i);
                 ProcessField(field, snapshot);
             }
-
+            var processedElementCount = elementToStopAt - item.IndexToContinueAt;
             // if not all elements were added, add a placeholder to continue processing as needed by the user
             if (elementToStopAt < elementCount)
             {
@@ -611,13 +614,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 stopGapChild.depth = rootItem.depth + 1;
                 m_ExpansionStopGapsByTreeViewItemId.Add(stopGapChild.id, item);
                 item.Root.AddChild(stopGapChild);
-                return;
             }
+            return processedElementCount;
         }
 
-        void ProcessSpecialFieldsAndQueueChildElements(ObjectData field, int actualFielTypeIndex, CachedSnapshot cs, ref ManagedObjectInspectorItem fieldRootEntry)
+        void ProcessSpecialFieldsAndQueueChildElements(ObjectData field, int actualFielTypeIndex, CachedSnapshot cs, ref ManagedObjectInspectorItem fieldEntry)
         {
-            const string k_NativeArrayTypePrefix = "Unity.Collections.NativeArray<";
             // for array elements, field.IsField() is false
             if (field.IsField() && field.fieldIndex == cs.TypeDescriptions.IFieldUnityObjectMCachedPtr
                 // The field index alone doesn't make this field the m_CachedPtr field, the parent also needs inherit from UnityEngine.Object.
@@ -627,68 +629,48 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     if (nativeObjectPointer == 0)
                     {
-                        fieldRootEntry = new ManagedObjectInspectorItem(m_InspectorID, fieldRootEntry.DisplayName, fieldRootEntry.ManagedTypeIndex, fieldRootEntry.TypeName, $"{fieldRootEntry.Value} {TextContent.LeakedManagedShellHint}", fieldRootEntry.IsStatic, GetIdentifyingPointer(field, cs), fieldRootEntry.Size);
+                        fieldEntry = new ManagedObjectInspectorItem(m_InspectorID, fieldEntry.DisplayName, fieldEntry.ManagedTypeIndex, fieldEntry.TypeName, $"{fieldEntry.Value} {TextContent.LeakedManagedShellHint}", fieldEntry.IsStatic, GetIdentifyingPointer(field, cs), fieldEntry.Size);
                     }
                     else
                     {
-                        EnqueueNativeObject(fieldRootEntry, nativeObjectPointer, cs);
+                        EnqueueNativeObject(fieldEntry, nativeObjectPointer, cs);
                     }
                 }
             }
-            else if (fieldRootEntry.ManagedTypeIndex == cs.TypeDescriptions.ITypeIntPtr)
+            else if (fieldEntry.ManagedTypeIndex == cs.TypeDescriptions.ITypeIntPtr || fieldEntry.TypeName[fieldEntry.TypeName.Length - 1] == '*'
+                || BoehmCouldReadFieldAsPointer(cs, field))
             {
-                ProcessIntPtr(cs, field, fieldRootEntry, fieldRootEntry.Value, fieldRootEntry);
+                ProcessManagedPtr(cs, field, fieldEntry, fieldEntry.Value);
             }
-            else if ((field.IsArrayItem() || field.dataType == ObjectDataType.Value) && fieldRootEntry.TypeName.StartsWith(k_NativeArrayTypePrefix))
-            {
-                var countOfGenericOpen = 1;
-                var countOfGenericClose = 0;
-                unsafe
-                {
-                    fixed (char* c = fieldRootEntry.TypeName)
-                    {
-                        char* it = c + k_NativeArrayTypePrefix.Length;
-                        for (var charPos = k_NativeArrayTypePrefix.Length; charPos < fieldRootEntry.TypeName.Length; charPos++)
-                        {
-                            if (*it == '<')
-                                ++countOfGenericOpen;
-                            else if (*it == '>')
-                                ++countOfGenericClose;
-                            ++it;
-                        }
-                    }
-                }
-                if (countOfGenericOpen == countOfGenericClose && fieldRootEntry.TypeName.EndsWith(">"))
-                {
-                    // only parse types named "NativeArrays" that that end on the generic bracket they opened for the Native Array.
-                    // E.g. Avoid parsing Unity.Collections.NativeArray<System.Int32>[]
-                    if (field.managedObjectData.TryReadPointer(out var pointerToMBufferData) == BytesAndOffset.PtrReadError.Success)
-                    {
-                        FindNativeAllocationOrRegion(cs, pointerToMBufferData, fieldRootEntry, fieldRootEntry.Value, "m_Buffer", "void*");
-                    }
-                }
-            }
+            // This actually hides the other fields and the byte cost for the m_Buffer field, so don't do this but show the pointer info above instead
+            //else if ((field.IsArrayItem() || field.dataType == ObjectDataType.Value) &&  cs.TypeDescriptions.IsNativeArrayType(fieldRootEntry.ManagedTypeIndex, out var isNativeSlice))
+            //{
+            //    if (field.managedObjectData.TryReadPointer(out var pointerToMBufferData) == BytesAndOffset.PtrReadError.Success)
+            //    {
+            //        FindNativeAllocationOrRegion(cs, pointerToMBufferData, fieldRootEntry, fieldRootEntry.Value, "m_Buffer", isNativeSlice? "Byte*" : "void*");
+            //    }
+            //}
             else if (field.dataType == ObjectDataType.Value &&
-                    cs.TypeDescriptions.FieldIndicesInstance[fieldRootEntry.ManagedTypeIndex].Length == 1 &&
-                    GetFirstInstanceFieldIfValueType(cs, field, fieldRootEntry.ManagedTypeIndex, out var childField))
+                    cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Length == 1 &&
+                    GetFirstInstanceFieldIfValueType(cs, field, fieldEntry.ManagedTypeIndex, out var childField))
             {
                 // For Value type fields with exactly one value type field, show the value in-line to avoid having to expand too much.
                 // Give the type name of the field in brackets after the value to clarify it is not the same as the original field type
                 // For an enum field, this looks like e.g. : m_MyEnumValue | 0 (System.Int32) | MyEnumType
-                ProcessField(new ReferencePendingProcessing(fieldRootEntry, childField, cs.TypeDescriptions.FieldIndicesInstance[fieldRootEntry.ManagedTypeIndex], 0), cs);
-                var fieldInfo = fieldRootEntry.children[0] as ManagedObjectInspectorItem;
+                ProcessField(new ReferencePendingProcessing(fieldEntry, childField, cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex], 0), cs);
+                var fieldInfo = fieldEntry.children[0] as ManagedObjectInspectorItem;
                 // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
-                fieldRootEntry.Value = FormatFieldValueWithContentTypeNotMatchingFieldType(fieldInfo.Value, fieldInfo.TypeName);
-                fieldRootEntry.children.Clear();
+                fieldEntry.Value = FormatFieldValueWithContentTypeNotMatchingFieldType(fieldInfo.Value, fieldInfo.TypeName);
+                fieldEntry.children.Clear();
             }
             else if ((field.dataType == ObjectDataType.Value &&
-                    cs.TypeDescriptions.FieldIndicesInstance[fieldRootEntry.ManagedTypeIndex].Length >= 1) ||
+                    cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Length >= 1) ||
                 field.dataType == ObjectDataType.Array || field.dataType == ObjectDataType.ReferenceArray ||
                 field.dataType == ObjectDataType.Object || field.dataType == ObjectDataType.ReferenceObject)
             {
                 // string and null are fully handled by GetValue()
-                if (fieldRootEntry.Value != "null" && actualFielTypeIndex != cs.TypeDescriptions.ITypeString)
-                    m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldRootEntry, field));
+                if (fieldEntry.Value != "null" && actualFielTypeIndex != cs.TypeDescriptions.ITypeString)
+                    m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldEntry, field));
             }
         }
 
@@ -757,20 +739,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (CheckRecursion(root, identifyingPointer))
                 return;
 
-            var referencedObjects = nativeObjectData.GetAllReferencedObjects(cs);
+            // Only get native references and no field info.
+            nativeObjectData.GetAllReferencedObjects(cs, ref m_CachedReferencedObjectsList, treatUnityObjectsAsOneObject: false, addManagedObjectsWithFieldInfo: false);
 
-            int referencedObjectCount = referencedObjects.Length;
+            int referencedObjectCount = m_CachedReferencedObjectsList.Count;
 
             for (int i = 0; i < referencedObjectCount; i++)
             {
-                var referencedObject = referencedObjects[i];
-                if (referencedObject.isNative)
+                var referencedObject = m_CachedReferencedObjectsList[i];
+                if (referencedObject.isNativeObject)
                 {
                     // For now, don't go deeper on Native Object <-> Native Object
                     //if (referencedObject.nativeObjectIndex >= 0 && referencedObject.nativeObjectIndex != nativeObjectData.nativeObjectIndex)
                     //    m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing { objectData = referencedObject, root = root });
                     continue;
                 }
+                if (referencedObject.dataType == ObjectDataType.NativeAllocation)
+                    // Ignore Native Allocations referenced to from Native Objects. That shouldn't happen either way as we're not requesting managed references, but just to be sure.
+                    // Because ReferencePendingProcessing does not handle Native Allocations yet, skip them if they slip past anyways.
+                    continue;
                 var v = GetValue(referencedObject, root);
                 var name = "Native Reference";
                 var typename = referencedObject.GenerateTypeName(cs);

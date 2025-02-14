@@ -252,14 +252,29 @@ namespace Unity.MemoryProfiler.Editor.Format
     }
 
 
-    internal struct VirtualMachineInformation
+    internal readonly struct VirtualMachineInformation
     {
-        public uint PointerSize { get; internal set; }
-        public uint ObjectHeaderSize { get; internal set; }
-        public uint ArrayHeaderSize { get; internal set; }
-        public uint ArrayBoundsOffsetInHeader { get; internal set; }
-        public uint ArraySizeOffsetInHeader { get; internal set; }
-        public uint AllocationGranularity { get; internal set; }
+        public readonly uint PointerSize { get; }
+        public readonly uint ObjectHeaderSize { get; }
+        public readonly uint ArrayHeaderSize { get; }
+        public readonly uint ArrayBoundsOffsetInHeader { get; }
+        public readonly uint ArraySizeOffsetInHeader { get; }
+        public readonly uint AllocationGranularity { get; }
+        public VirtualMachineInformation(
+            uint pointerSize,
+            uint objectHeaderSize = 0,
+            uint arrayHeaderSize = 0,
+            uint arrayBoundsOffsetInHeader = 0,
+            uint arraySizeOffsetInHeader = 0,
+            uint allocationGranularity = 0)
+        {
+            PointerSize = pointerSize;
+            ObjectHeaderSize = objectHeaderSize;
+            ArrayHeaderSize = arrayHeaderSize;
+            ArrayBoundsOffsetInHeader = arrayBoundsOffsetInHeader;
+            ArraySizeOffsetInHeader = arraySizeOffsetInHeader;
+            AllocationGranularity = allocationGranularity;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, Size = 260)]

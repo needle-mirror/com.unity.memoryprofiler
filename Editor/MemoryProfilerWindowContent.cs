@@ -156,12 +156,15 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string HeldByGCHandleStatus = "Held Alive By GCHandle";
         public const string HeldByGCHandleHint = "This Object is pinned or otherwise held in memory because a GCHandle was allocated for it.";
 
+        public const string UnityObjectHeldByGCHandleStatus = "Unity Object Held Alive By GCHandle";
+        public const string UnityObjectHeldByGCHandleHint = "This Object has an m_CachedPtr field, indicating it is a Unity Object, yet no native object holding its GCHandle was captured in the snapshot. This could be due to a bug where native objects could change between taking a snapshot of the managed heap and capturing native objects. This was fixed in 6000.0.16f1, 2022.3.43f1, and 2021.3.44f1 so if you are on Unity versions higher than those, please report a bug.";
+
         public const string UnkownLivenessReasonStatus = "Bug: Liveness Reason Unknown";
         public const string UnkownLivenessReasonHint = "There is no reference pointing to this object and no GCHandle reported for it. This is a Bug, please report it using 'Help > Report a Bug' and attach the snapshot to the report.";
 
         public const string InvalidObjectErrorBoxMessage = "This is an invalid Managed Object, i.e. the Memory Profiler could not identify it's type and data. To help us in finding and fixing this issue, " + TextContent.InvalidObjectPleaseReportABugMessage;
 
-        public const string UnknownUnknownAllocationsErrorBoxMessage = "This is a bug in the netive code of the engine, please file a bug report. " +
+        public const string UnknownUnknownAllocationsErrorBoxMessage = "This is a bug in the native code of the engine, please file a bug report. " +
             "Chances are high that every single allocation here is a separate bug to be fixed by a different team and should be treated as such. " +
             "By their very nature, User facing releases lack the information needed to differentiate these allocations in a meaningful way. " +
             "To get an approximation of what constitutes a separate vs a duplicate bug the byte size of each allocation should be used (size in byte is given when hovering the Native Size). " +

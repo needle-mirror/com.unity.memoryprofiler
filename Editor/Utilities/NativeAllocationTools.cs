@@ -43,12 +43,12 @@ namespace Unity.MemoryProfiler.Editor
                     case ObjectDataType.BoxedValue:
                     case ObjectDataType.Object:
                     case ObjectDataType.ReferenceObject:
-                        return holdingObject.GetFieldDescription(snapshot); // FIXME on merge, truncateTypeNames: truncateTypeNames);
+                        return holdingObject.GetFieldDescription(snapshot, truncateTypeNames: truncateTypeNames);
                     case ObjectDataType.Array:
                     case ObjectDataType.ReferenceArray:
                         return holdingObject.displayObject.GenerateArrayDescription(snapshot, truncateTypeNames);
                     case ObjectDataType.NativeObject:
-                        break;
+                    case ObjectDataType.NativeAllocation:
                     default:
                         break;
                 }

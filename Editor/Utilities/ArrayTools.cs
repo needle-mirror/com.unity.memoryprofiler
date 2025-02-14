@@ -33,8 +33,8 @@ namespace Unity.MemoryProfiler.Editor
                 int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
                 arrayInfo.Rank = new int[rank];
 
-                var cursor = data.ManagedHeapSections.Find(bounds, virtualMachineInformation);
-                if (cursor.IsValid)
+                if (data.ManagedHeapSections.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor) &&
+                    cursor.IsValid)
                 {
                     arrayInfo.Length = 1;
                     for (int i = 0; i != rank; i++)
@@ -133,7 +133,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (iTypeDescriptionArrayType < 0) return null;
 
-            var bo = heap.Find(address, virtualMachineInformation);
+            heap.Find(address, virtualMachineInformation, out BytesAndOffset bo);
             ulong bounds;
             bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
@@ -142,7 +142,7 @@ namespace Unity.MemoryProfiler.Editor
                 return new int[1] { bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32() };
             }
 
-            var cursor = heap.Find(bounds, virtualMachineInformation);
+            heap.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor);
             int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
             int[] l = new int[rank];
             for (int i = 0; i != rank; i++)
@@ -161,7 +161,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             var heap = data.ManagedHeapSections;
-            var bo = heap.Find(address, data.VirtualMachineInformation);
+            heap.Find(address, data.VirtualMachineInformation, out BytesAndOffset bo);
             return ReadArrayLength(data, bo, iTypeDescriptionArrayType);
         }
 
@@ -185,7 +185,7 @@ namespace Unity.MemoryProfiler.Editor
             if (bounds == 0)
                 return bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
 
-            var cursor = heap.Find(bounds, virtualMachineInformation);
+            heap.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor);
             // Multidimensional arrays can have a total LongLength > int.MaxValue
             long length = 0;
 

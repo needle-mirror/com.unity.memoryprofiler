@@ -69,12 +69,12 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             needsIcon = other.needsIcon;
         }
 
-        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, PathsToRootDetailTreeViewItem potentialParent, bool truncateTypeNames) : this(data, cachedSnapshot, truncateTypeNames)
+        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, PathsToRootDetailTreeViewItem potentialParent, bool truncateTypeNames, bool referencesToItem = false) : this(data, cachedSnapshot, truncateTypeNames, referencesToItem)
         {
             HasCircularReference = CircularReferenceCheck(potentialParent);
         }
 
-        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames)
+        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames, bool referencesToItem = false)
         {
             id = s_IdGenerator++;
             depth = -1;
@@ -83,13 +83,14 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             HasCircularReference = false;
             if (cachedSnapshot != null)
             {
-                TypeName = data.GenerateTypeName(cachedSnapshot);
-                TruncatedTypeName = PathsToRootDetailView.TruncateTypeName(TypeName);
+                TypeName = data.GenerateTypeName(cachedSnapshot, truncateTypeName: false);
+                TruncatedTypeName = data.GenerateTypeName(cachedSnapshot, truncateTypeName: true);
                 // PathsToRootDetailTreeView will choose whether to show TypeName or TruncatedTypeName
                 // It thereby updates the view immediately on switching the settings
                 // GetDisplayName is a bit more involved and will only in a few cases include the type name
                 // currently, that display name will not get updated immediately as the setting changes
-                displayName = GetDisplayName(data, cachedSnapshot, truncateTypeNames);
+                displayName = GetDisplayName(data, cachedSnapshot, truncateTypeNames, referencesToItem);
+
                 SetObjectFlagsDataAndToolTip(data, cachedSnapshot);
             }
             else
@@ -101,58 +102,83 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
         }
 
-        string GetDisplayName(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames)
+        string GetDisplayName(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames, bool referencesToItem)
         {
             ManagedObjectInfo managedObjectInfo;
-            ObjectData displayObject = Data.displayObject;
+            var referencedItemName = "";
+            ObjectData displayObject = data.displayObject;
+            // for ReferencesTo Items reported as field data, we need to adjust
+            if (referencesToItem && (data.IsField() || data.IsArrayItem()))
+            {
+                // The field info comes from the parent
+                displayObject = data.Parent.Obj;
+                // but we also want to show the referenced target held by the field
+                referencedItemName = $"{data.GenerateObjectName(cachedSnapshot)} referenced by: ";
+            }
             switch (displayObject.dataType)
             {
                 case ObjectDataType.NativeObject:
                     var s = cachedSnapshot.NativeObjects.ObjectName[displayObject.nativeObjectIndex];
-                    return string.IsNullOrEmpty(s) ? "Unnamed Object" : s;
+                    return referencedItemName + (string.IsNullOrEmpty(s) ? "Unnamed Object" : s);
                 case ObjectDataType.Unknown:
-                    return "<unknown>";
+                    return referencedItemName + "<unknown>";
                 case ObjectDataType.Value:
-                    Debug.LogError("Connection to a value type should not happen.");
-                    return "Connection to Value";
+                    if (!displayObject.IsField())
+                    {
+                        Debug.LogError("Connection via a value that is not a fieldshould not happen.");
+                        return referencedItemName + "Connection to Value";
+                    }
+                    var fieldType = cachedSnapshot.FieldDescriptions.TypeIndex[displayObject.fieldIndex];
+                    var isPointerField = fieldType == cachedSnapshot.TypeDescriptions.ITypeIntPtr || cachedSnapshot.TypeDescriptions.TypeDescriptionName[fieldType].EndsWith('*');
+                    var referencingNativeData = data.codeType == CodeType.Native;
+                    return referencedItemName + displayObject.GetFieldDescription(cachedSnapshot, truncateTypeNames: truncateTypeNames)
+                        + (!referencingNativeData && !isPointerField ? " (Boehm reads pointer sized field as potential pointers)" : "");
+
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Object:
                     if (displayObject.isManaged)
                     {
                         if (displayObject.IsField())
                         {
-                            return displayObject.GetFieldDescription(cachedSnapshot);
+                            return referencedItemName + displayObject.GetFieldDescription(cachedSnapshot, truncateTypeNames: truncateTypeNames);
                         }
                         managedObjectInfo = displayObject.GetManagedObject(cachedSnapshot);
                         if (managedObjectInfo.NativeObjectIndex != -1)
                         {
-                            return cachedSnapshot.NativeObjects.ObjectName[managedObjectInfo.NativeObjectIndex];
+                            return referencedItemName + cachedSnapshot.NativeObjects.ObjectName[managedObjectInfo.NativeObjectIndex];
                         }
                         if (managedObjectInfo.ITypeDescription == cachedSnapshot.TypeDescriptions.ITypeString)
                         {
                             return StringTools.ReadFirstStringLine(managedObjectInfo.data, cachedSnapshot.VirtualMachineInformation, false);
                         }
                     }
-                    return $"[0x{displayObject.hostManagedObjectPtr:x8}]";
+                    return $"{referencedItemName}[0x{displayObject.hostManagedObjectPtr:x8}]";
                 case ObjectDataType.Array:
-                    return displayObject.GenerateArrayDescription(cachedSnapshot, truncateTypeName: truncateTypeNames);
+                    while (!data.IsArrayItem() && data.dataType != ObjectDataType.Array && data.dataType != ObjectDataType.ReferenceArray)
+                    {
+                        // The display object is an array, so there must be an array somewhere in its parents.
+                        // Don't grab the display object directly, as that would get rid of the array element info.
+                        data = data.Parent.Obj;
+                    }
+                    return referencedItemName + data.GenerateArrayDescription(cachedSnapshot, truncateTypeName: truncateTypeNames);
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
-                    if (displayObject.IsField()) return displayObject.GetFieldDescription(cachedSnapshot);
-                    if (displayObject.IsArrayItem()) return displayObject.GenerateArrayDescription(cachedSnapshot, truncateTypeName: truncateTypeNames);
+                    if (displayObject.IsField()) return referencedItemName + displayObject.GetFieldDescription(cachedSnapshot, truncateTypeNames: truncateTypeNames);
+                    if (displayObject.IsArrayItem()) return referencedItemName + displayObject.GenerateArrayDescription(cachedSnapshot, truncateTypeName: truncateTypeNames);
                     managedObjectInfo = displayObject.GetManagedObject(cachedSnapshot);
                     if (managedObjectInfo.NativeObjectIndex != -1)
                     {
-                        return cachedSnapshot.NativeObjects.ObjectName[managedObjectInfo.NativeObjectIndex];
+                        return referencedItemName + cachedSnapshot.NativeObjects.ObjectName[managedObjectInfo.NativeObjectIndex];
                     }
 
-                    return $"Unknown {displayObject.dataType}. Is not a field or array item";
+                    return $"{referencedItemName}Unknown {displayObject.dataType}. Is not a field or array item";
                 case ObjectDataType.Type:
                     var fieldName = string.Empty;
                     if (data.IsField())
                         fieldName = $".{data.GetFieldName(cachedSnapshot)}";
                     var typeName = truncateTypeNames ? TruncatedTypeName : TypeName;
-                    return $"Static field type reference on {typeName}{fieldName}";
+                    return $"{referencedItemName}Static field type reference on {typeName}{fieldName}";
+                case ObjectDataType.NativeAllocation: // should not be present outside of as a referencesToItem with field information to display
                 default:
                     throw new ArgumentOutOfRangeException();
             }

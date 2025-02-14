@@ -7,6 +7,19 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2025-02-14
+
+### Added
+- Managed fields referencing native allocations are now parsed as references. References show up in the References To tab for the managed objects holding the references, as well as in the Referenced By tab for native allocations under `Native > Unity Subsystems > UnsafeUtility` in the All Of Memory table. Note that this is not an exhaustive list of all references to these allocations, as stack variables could reference them as well but are not part of the snapshot. Thus, a native allocation without references is not necessarily leaked.
+- Native Allocations (e.g. those listed in `Native > Unity Subsystems > UnsafeUtility` in the All Of Memory table) are now named based on the field and object information of the first managed reference to them, making them easier to parse than address values and stand out from the list as having reference information.
+
+### Fixed
+- The Boehm GC treats any pointer sized field as potential managed pointer. So far the Memory Profiler only examined reference fields to find referenced objects (outside of those directly held by static fields or GCHandles). The Memory Profiler does not yet follow this logic as it would end up finding invalid Managed objects, but it now finds references from unsafe pointer fields to Managed Objects that are also held by a GC Handle.
+- The Managed Fields table now shows any pointer sized fields that might be holding managed objects as referencing these managed objects (Note: if they are not referenced otherwise, they won't sho up in the other tables).
+
+### Changed
+- The References To table now shows field information for references held by managed fields
+
 ## [1.1.4] - 2025-02-07
 
 ### Added

@@ -75,7 +75,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 IsUnityObjectType = IsMonoBehaviourType = IsComponentType = IsGameObjectType = IsTransformType = false;
                 return;
             }
-            if (objectData.isNative)
+            if (objectData.isNativeObject)
             {
                 IsUnityObjectType = true;
                 var nativeObjectData = objectData;
@@ -88,7 +88,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 else
                     ManagedTypeIndex = -1;
             }
-            else
+            else if (objectData.isManaged)
             {
                 IsUnityObjectType = false;
                 ManagedTypeIndex = objectData.managedTypeIndex;
@@ -99,6 +99,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 else
                     NativeTypeIndex = -1;
+            }
+            else
+            {
+                ManagedTypeIndex = NativeTypeIndex = -1;
+                IsUnityObjectType = false;
             }
 
             if (ManagedTypeIndex >= 0)
@@ -133,7 +138,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static UnifiedUnityObjectInfo Invalid => new UnifiedUnityObjectInfo(null, UnifiedType.Invalid, default(ObjectData));
         public bool IsValid => Type.IsUnityObjectType && (NativeObjectIndex != -1 || ManagedObjectIndex != -1);
 
-        public int NativeObjectIndex => NativeObjectData.nativeObjectIndex;
+        public long NativeObjectIndex => NativeObjectData.nativeObjectIndex;
         public ObjectData NativeObjectData;
         public readonly long ManagedObjectIndex;
         public ObjectData ManagedObjectData;
@@ -200,7 +205,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             ManagedObjectInfo managedObjectInfo = default;
             // get the managed/native counterpart and/or type
-            if (unityObject.isNative)
+            if (unityObject.isNativeObject)
             {
                 NativeObjectData = unityObject;
                 ManagedObjectIndex = snapshot.NativeObjects.ManagedObjectIndex[NativeObjectData.nativeObjectIndex];
@@ -208,7 +213,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (ManagedObjectData.IsValid)
                     managedObjectInfo = ManagedObjectData.GetManagedObject(snapshot);
             }
-            else
+            else if (unityObject.isManaged)
             {
                 ManagedObjectData = unityObject;
                 managedObjectInfo = unityObject.GetManagedObject(snapshot);
@@ -216,7 +221,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (managedObjectInfo.NativeObjectIndex >= -1)
                     NativeObjectData = ObjectData.FromNativeObjectIndex(snapshot, managedObjectInfo.NativeObjectIndex);
                 else
-                    NativeObjectData = default;
+                    NativeObjectData = ObjectData.Invalid;
+            }
+            else
+            {
+                ManagedObjectData = ObjectData.Invalid;
+                NativeObjectData = ObjectData.Invalid;
+                ManagedObjectIndex = -1;
             }
 
             // Native Object Only

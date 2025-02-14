@@ -32,29 +32,34 @@ namespace Unity.MemoryProfiler.Editor.Managed
             readonly long m_StartArrayIndex;
             readonly SourceIndex m_ArrayObjectIndex;
             readonly ManagedMemorySectionEntriesCache m_ManagedHeapBytes;
+            readonly NativeObjectOrAllocationFinder m_NativeObjectOrAllocationFinder;
             readonly VirtualMachineInformation m_VMInfo;
             [ReadOnly]
             readonly AddressToManagedIndexHashMap m_MangedObjectIndexByAddress;
-            int m_ArrayObjectTypeIndex;
+            readonly int m_ArrayObjectTypeIndex;
+            readonly FieldReferenceType m_ReferenceTypeArrayFieldType;
+            readonly long m_MaxObjectIndexFindableViaPointers;
 
             public ReferenceArrayCrawlerJobChunk(
-                in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap mangedObjectIndexByAddress,
-                SourceIndex arrayObjectIndex,
-                ref DynamicArray<StackCrawlData> resultingCrawlDataStack, BytesAndOffset arrayData,
-                 uint pointerSize, long startArrayIndex, long chunkElementCount, int arrayObjectTypeIndex)
+                in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap mangedObjectIndexByAddress, in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder,
+                in SourceIndex arrayObjectIndex,
+                ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in BytesAndOffset arrayData,
+                uint pointerSize, long startArrayIndex, long chunkElementCount, int arrayObjectTypeIndex, FieldReferenceType referenceTypeArrayFieldType, long maxObjectIndexFindableViaPointers)
             {
                 // assign all the fields
                 m_ManagedHeapBytes = managedHeapBytes;
                 m_VMInfo = vmInfo;
                 m_MangedObjectIndexByAddress = mangedObjectIndexByAddress;
+                m_NativeObjectOrAllocationFinder = nativeObjectOrAllocationFinder;
                 m_ArrayData = arrayData;
                 m_PointerSize = pointerSize;
                 m_StartArrayIndex = startArrayIndex;
                 m_ResultingCrawlDataStack = resultingCrawlDataStack;
                 m_ArrayObjectIndex = arrayObjectIndex;
                 m_ChunkElementCount = chunkElementCount;
-                // Set by InitJobTypeSpecificFields
                 m_ArrayObjectTypeIndex = arrayObjectTypeIndex;
+                m_ReferenceTypeArrayFieldType = referenceTypeArrayFieldType;
+                m_MaxObjectIndexFindableViaPointers = maxObjectIndexFindableViaPointers;
 #if DEBUG_JOBIFIED_CRAWLER
                 IndexOfFoundElement = -1;
 #endif
@@ -75,10 +80,13 @@ namespace Unity.MemoryProfiler.Editor.Managed
                             //if(something)
                             //  IndexOfFoundElement = m_ResultingCrawlDataStack.Count;
 #endif
-                            if (m_MangedObjectIndexByAddress.TryGetValue(arrayDataPtr, out var managedObjectIndex))
-                                m_ResultingCrawlDataStack.Push(new StackCrawlData() { Address = arrayDataPtr, ManagedObjectIndex = managedObjectIndex, TypeIndexOfTheTypeOwningTheField = m_ArrayObjectTypeIndex, ReferenceOwner = m_ArrayObjectIndex, FieldIndexOfTheFieldOnTheReferenceOwner = -1, FieldIndexOfTheActualField_WhichMayBeOnANestedValueType = -1, OffsetFromReferenceOwnerHeaderStartToFieldOnValueType = 0, IndexInReferenceOwningArray = index }, memClearForExcessExpansion: k_MemClearCrawlDataStack);
-                            else if (m_ManagedHeapBytes.Find(arrayDataPtr, m_VMInfo, out var bytes))
-                                m_ResultingCrawlDataStack.Push(new StackCrawlData() { Address = arrayDataPtr, Bytes = bytes, ManagedObjectIndex = -1, TypeIndexOfTheTypeOwningTheField = m_ArrayObjectTypeIndex, ReferenceOwner = m_ArrayObjectIndex, FieldIndexOfTheFieldOnTheReferenceOwner = -1, FieldIndexOfTheActualField_WhichMayBeOnANestedValueType = -1, OffsetFromReferenceOwnerHeaderStartToFieldOnValueType = 0, IndexInReferenceOwningArray = index }, memClearForExcessExpansion: k_MemClearCrawlDataStack);
+
+                            CrawlRawFieldData(arrayDataPtr, m_ReferenceTypeArrayFieldType, m_MaxObjectIndexFindableViaPointers,
+                                in m_MangedObjectIndexByAddress, in m_ManagedHeapBytes, m_VMInfo,
+                                ref m_ResultingCrawlDataStack, in m_NativeObjectOrAllocationFinder,
+                                m_ArrayObjectTypeIndex, in m_ArrayObjectIndex,
+                                allowStackExpansion: false,
+                                indexInReferenceOwningArray: index);
                         }
                     }
                 }

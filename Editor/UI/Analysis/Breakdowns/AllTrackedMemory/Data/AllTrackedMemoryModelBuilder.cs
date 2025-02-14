@@ -85,7 +85,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Index in CachedSnapshot.NativeRootReferences <-> size
             public Dictionary<SourceIndex, MemorySize> NativeRootReference2SizeMap { get; private set; }
 
-            // Index in CachedSnapshot.NativeRootReferences <-> size
+            // Index in CachedSnapshot.NativeRootReferences -> Index in CachedSnapshot.NativeAllocations -> size
             public Dictionary<SourceIndex, Dictionary<SourceIndex, MemorySize>> NativeRootReference2UnsafeAllocations2SizeMap { get; private set; }
 
             // All native regions not known to be used by any object or allocation (reserved memory)

@@ -184,6 +184,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 case ObjectDataType.NativeObject:
                     return FormatPointer(m_Snapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
+                case ObjectDataType.NativeAllocation:
+                    return NativeAllocationTools.ProduceNativeAllocationName(od.GetSourceLink(m_Snapshot), m_Snapshot, truncateTypeNames);
                 default:
                     return "<uninitialized type>";
             }

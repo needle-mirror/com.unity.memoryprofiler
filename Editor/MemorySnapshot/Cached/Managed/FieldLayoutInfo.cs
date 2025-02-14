@@ -2,6 +2,14 @@ using System;
 
 namespace Unity.MemoryProfiler.Editor.Managed
 {
+    enum FieldReferenceType : byte
+    {
+        ReferenceField,
+        IntPtr,
+        Ptr,
+        PotentialPointer
+    }
+
     readonly struct FieldLayoutInfo : IComparable<FieldLayoutInfo>
     {
         public readonly long RemainingFieldCountForThisType;
@@ -9,6 +17,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         public readonly int IndexOfTheTypeOfTheReferenceOwner;
         public readonly int OffsetFromPreviousAddress;
         public readonly int FieldIndexOnReferenceOwner;
+        public readonly FieldReferenceType FieldReferenceType;
         // Field Size is always PointerSize, so not part of this struct.
         // Can't be static as comparing snapshots from a 64 bit and a 32 bit platform could happen!
         // Check VM info instead.
@@ -23,7 +32,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
             int offsetFromPreviousAddress,
             int fieldIndexOnReferenceOwner,
             int actualFieldIndexOnPotentialNestedValueType,
-            int additionalFieldOffsetFromFieldOnReferenceOwnerToFieldOnValueType)
+            int additionalFieldOffsetFromFieldOnReferenceOwnerToFieldOnValueType,
+            FieldReferenceType fieldReferenceType)
         {
             RemainingFieldCountForThisType = remainingFieldCountForThisType;
             IndexOfTheTypeOfTheReferenceOwner = indexOfTheTypeOfTheReferenceOwner;
@@ -32,6 +42,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             FieldIndexOnReferenceOwner = fieldIndexOnReferenceOwner;
             ActualFieldIndexOnPotentialNestedValueType = actualFieldIndexOnPotentialNestedValueType;
             OffsetFromReferenceOwnerHeaderStartToFieldOnValueType = additionalFieldOffsetFromFieldOnReferenceOwnerToFieldOnValueType;
+            FieldReferenceType = fieldReferenceType;
         }
 
         public FieldLayoutInfo(FieldLayoutInfo copyFrom, int previousFieldsOffset, long remainingFieldCount) :
@@ -42,8 +53,9 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 offsetFromPreviousAddress: copyFrom.OffsetFromPreviousAddress - previousFieldsOffset,
                 fieldIndexOnReferenceOwner: copyFrom.FieldIndexOnReferenceOwner,
                 actualFieldIndexOnPotentialNestedValueType: copyFrom.ActualFieldIndexOnPotentialNestedValueType,
-                additionalFieldOffsetFromFieldOnReferenceOwnerToFieldOnValueType: copyFrom.OffsetFromReferenceOwnerHeaderStartToFieldOnValueType
-            )
+                additionalFieldOffsetFromFieldOnReferenceOwnerToFieldOnValueType: copyFrom.OffsetFromReferenceOwnerHeaderStartToFieldOnValueType,
+                fieldReferenceType: copyFrom.FieldReferenceType
+                )
         { }
 
         /// <summary>

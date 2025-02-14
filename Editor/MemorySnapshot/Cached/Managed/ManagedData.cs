@@ -3,6 +3,8 @@ using System.Diagnostics;
 using Unity.Collections;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Extensions;
+using System.Collections.Generic;
+
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
 using AddressToManagedIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
 using TypeIndexMappingHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<int, int>;
@@ -40,6 +42,9 @@ namespace Unity.MemoryProfiler.Editor
         ConnectionsHashMap m_ConnectionsFromMappedToSourceIndex;
         public ref ConnectionsHashMap ConnectionsFromMappedToSourceIndex => ref m_ConnectionsFromMappedToSourceIndex;
 
+        public HashSet<long> IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute { private set; get; }
+        public HashSet<long> IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle { private set; get; }
+
 #if DEBUG_VALIDATION
         // This Dictionary block is here to make the investigations for PROF-2420 easier.
         InvalidObjectsHashMap m_InvalidManagedObjectsReportedViaGCHandles;
@@ -58,6 +63,8 @@ namespace Unity.MemoryProfiler.Editor
             m_InvalidManagedObjectsReportedViaGCHandles = new InvalidObjectsHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
 #endif
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsInitialSize, rawConnectionsCount);
+            IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute = new HashSet<long>();
+            IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle = new HashSet<long>();
         }
 
         internal void AddUpTotalMemoryUsage(CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)

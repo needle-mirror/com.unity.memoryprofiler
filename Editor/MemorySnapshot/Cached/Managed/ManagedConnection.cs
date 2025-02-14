@@ -111,7 +111,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <param name="nativeIndex"></param>
         /// <param name="managedIndex"></param>
         /// <returns></returns>
-        public static ManagedConnection MakeUnityEngineObjectConnection(int nativeIndex, long managedIndex)
+        public static ManagedConnection MakeUnityEngineObjectConnection(long nativeIndex, long managedIndex)
         {
             return new ManagedConnection(
                 new SourceIndex(SourceIndex.SourceId.NativeObject, nativeIndex),
@@ -119,45 +119,56 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         public static ManagedConnection MakeConnection(
-            CachedSnapshot snapshot, SourceIndex fromIndex, long toIndex,
+            CachedSnapshot snapshot, SourceIndex fromIndex, SourceIndex toIndex,
             int fromField, int valueTypeFieldOwningITypeDescription, int valueTypeFieldFrom, int offsetFromReferenceOwnerHeaderStartToFieldOnValueType, long arrayIndexFrom)
         {
             if (!fromIndex.Valid)
                 throw new InvalidOperationException("Tried to add a Managed Connection without a valid source.");
 #if DEBUG_VALIDATION
-            if (fromField >= 0)
+            switch (fromIndex.Id)
             {
-                switch (fromIndex.Id)
-                {
-                    case SourceIndex.SourceId.ManagedObject:
-                        //from an object
+                case SourceIndex.SourceId.ManagedObject:
+                    //from an object
+                    if (fromField >= 0)
+                    {
                         if (snapshot.FieldDescriptions.IsStatic[fromField] == 1)
                         {
                             Debug.LogError($"Cannot form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) using a static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
                                 + (valueTypeFieldOwningITypeDescription >= 0?$", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} ":"")
                                 + (arrayIndexFrom >= 0?$" at array index {arrayIndexFrom}": "."));
                         }
-                        break;
-                    case SourceIndex.SourceId.ManagedType:
-                        //from a type static data
+                    }
+                    else if(arrayIndexFrom < 0)
+                        Debug.LogError($"Cannot form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) that is neither using a field (fromField: {fromField})"
+                                + $" nor an array index (arrayIndexFrom:{arrayIndexFrom})");
+                    break;
+                case SourceIndex.SourceId.ManagedType:
+                    //from a type static data
+                    if (fromField >= 0)
+                    {
                         if (snapshot.FieldDescriptions.IsStatic[fromField] == 0)
                         {
                             Debug.LogError($"Cannot form a connection from a type ({snapshot.TypeDescriptions.TypeDescriptionName[fromIndex.Index]}) using a non-static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
                                 + (valueTypeFieldOwningITypeDescription >= 0?$", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} ":"")
                                 + (arrayIndexFrom >= 0?$" at array index {arrayIndexFrom}": "."));
                         }
+                    }
+                    else if(arrayIndexFrom < 0)
+                        Debug.LogError($"Cannot form a connection from a Type ({snapshot.TypeDescriptions.TypeDescriptionName[fromIndex.Index]}) that is neither using a field (fromField: {fromField})"
+                                + $" nor an array index (arrayIndexFrom:{arrayIndexFrom})");
+                    break;
+                default:
+                    if (toIndex.Id != SourceIndex.SourceId.ManagedObject)
                         break;
-                    default:
-                        ref readonly var managedObject = ref snapshot.CrawledData.ManagedObjects[toIndex];
-                        unsafe
-                        {
-                            Debug.LogError($"Trying to form a connection from the field of a {fromIndex.Id} (index: {fromIndex.Index}, raw:{*(ulong*)(&fromIndex)}) to a managed Object (index: {toIndex}) of type {snapshot.TypeDescriptions.TypeDescriptionName[managedObject.ITypeDescription]}.");
-                        }
-                        break;
-                }
+                    ref readonly var managedObject = ref snapshot.CrawledData.ManagedObjects[toIndex.Index];
+                    unsafe
+                    {
+                        Debug.LogError($"Trying to form a connection from the field of a {fromIndex.Id} (index: {fromIndex.Index}, raw:{*(ulong*)(&fromIndex)}) to a managed Object (index: {toIndex}) of type {snapshot.TypeDescriptions.TypeDescriptionName[managedObject.ITypeDescription]}.");
+                    }
+                    break;
             }
 #endif
-            return new ManagedConnection(fromIndex, new SourceIndex(SourceIndex.SourceId.ManagedObject, toIndex), fromField, valueTypeFieldOwningITypeDescription, valueTypeFieldFrom, offsetFromReferenceOwnerHeaderStartToFieldOnValueType, arrayIndexFrom);
+            return new ManagedConnection(fromIndex, toIndex, fromField, valueTypeFieldOwningITypeDescription, valueTypeFieldFrom, offsetFromReferenceOwnerHeaderStartToFieldOnValueType, arrayIndexFrom);
         }
     }
 }

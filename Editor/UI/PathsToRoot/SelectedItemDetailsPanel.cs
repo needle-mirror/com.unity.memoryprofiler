@@ -172,6 +172,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public SelectedItemDetailsPanel(CachedSnapshot cachedSnapshot, VisualElement detailsPanelRoot)
         {
             m_CachedSnapshot = cachedSnapshot;
+            m_ShowDebugInfo = MemoryProfilerSettings.InternalMode;
 
             m_ManagedObjectInspectors.Add(new ManagedObjectInspector(0, new TreeViewState(), new MultiColumnHeaderWithTruncateTypeName(ManagedObjectInspector.CreateDefaultMultiColumnHeaderState())));
             var managedFieldInspectorFoldout = detailsPanelRoot.Q<Foldout>("selected-item-details__managed-field-inspector__foldout");

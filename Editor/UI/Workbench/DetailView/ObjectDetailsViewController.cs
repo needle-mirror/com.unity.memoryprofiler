@@ -3,6 +3,8 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using System.Collections.Generic;
+
 
 #if INSTANCE_ID_CHANGED
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
@@ -134,11 +136,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         static bool HasReferencesData(CachedSnapshot snapshot, SourceIndex sourceIndex)
         {
-            var itemObjectData = ObjectData.FromSourceLink(snapshot, sourceIndex);
-
-            return itemObjectData.IsValid &&
-                ObjectConnection.GetAllReferencingObjects(snapshot, itemObjectData).Length
-                + ObjectConnection.GetAllReferencedObjects(snapshot, itemObjectData).Length > 0;
+            var references = new List<ObjectData>();
+            ObjectConnection.GetAllReferencingObjects(snapshot, sourceIndex, ref references);
+            var refCount = references.Count;
+            ObjectConnection.GetAllReferencedObjects(snapshot, sourceIndex, ref references);
+            return sourceIndex.Valid && refCount + references.Count > 0;
         }
 
         static bool GfxResourceHasNativeObjectAssociation(CachedSnapshot snapshot, SourceIndex sourceIndex)
