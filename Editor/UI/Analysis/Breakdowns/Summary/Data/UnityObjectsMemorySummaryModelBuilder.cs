@@ -58,7 +58,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             for (int i = 0; i < list.Count && i < k_UxmlCategoryStyleIds.Length; i++)
             {
                 var item = list[i];
-                rows.Add(new MemorySummaryModel.Row(item.Key, item.Value.BaseSize, 0, item.Value.ComparedSize, 0, k_UxmlCategoryStyleIds[i], TextContent.ManagedObjectsDescription, null));
+                rows.Add(new MemorySummaryModel.Row(item.Key, item.Value.BaseSize, 0, item.Value.ComparedSize, 0, k_UxmlCategoryStyleIds[i], TextContent.TopUnityObjectCategoriesDescription, null));
 
                 totalTop10Base += item.Value.BaseSize;
                 totalTop10Compared += item.Value.ComparedSize;
@@ -66,7 +66,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Add "other" item for everything outside of top k_MaxTopElements
             if (list.Count > k_UxmlCategoryStyleIds.Length)
-                rows.Add(new MemorySummaryModel.Row(SummaryTextContent.kUnityObjectsCategoryOther, totalBase - totalTop10Base, 0, totalCompared - totalTop10Compared, 0, k_UxmlCategoryStyleOther, TextContent.ManagedObjectsDescription, null) { SortPriority = MemorySummaryModel.RowSortPriority.ShowLast });
+                rows.Add(new MemorySummaryModel.Row(SummaryTextContent.kUnityObjectsCategoryOther, totalBase - totalTop10Base, 0, totalCompared - totalTop10Compared, 0, k_UxmlCategoryStyleOther, TextContent.TopUnityObjectCategoriesDescription, null) { SortPriority = MemorySummaryModel.RowSortPriority.ShowLast });
 
             bool compareMode = m_ComparedSnapshot != null;
             return new MemorySummaryModel(

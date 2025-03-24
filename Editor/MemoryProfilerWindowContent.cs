@@ -143,6 +143,17 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         "This bar shows the amount of unused memory in that section." +
         k_SharedEmptyHeapDescription;
 
+        public static string TopUnityObjectCategoriesDescription = "To further analyse this Unity Object type's memory usage, switch to the Unity Objects tab.";
+        public static string MemoryProfilerModuleUnityObjectUsageDescription = "To further analyse this Unity Object type's memory usage, open the Memory Profiler and take a snapshot.";
+
+        public static string MemoryProfilerModuleGCAllocBreakdownName = "GC Allocated In Frame";
+        public static string MemoryProfilerModuleGCAllocMainThread = "GC.Alloc on Main Thread";
+        public static string MemoryProfilerModuleGCAllocMainThreadDescription = "Manage allocations that happened on Main Thread";
+        public static string MemoryProfilerModuleGCAllocMainThreadEditorOnly = "GC.Alloc on Main Thread [Editor Only]";
+        public static string MemoryProfilerModuleGCAllocMainThreadEditorOnlyDescription = "Manage allocations that happened on Main Thread but would only ever happen in the Editor";
+        public static string MemoryProfilerModuleGCAllocOtherThreads = "GC.Alloc on other threads";
+        public static string MemoryProfilerModuleGCAllocOtherThreadsDescription = "Manage allocations that happened on other threads";
+
         const string k_SharedEmptyHeapDescription =
             "\n\nWhen allocating new managed memory for Managed Objects, the Active Heap Section is checked for empty space first, which is the fastest way to allocate it. " +
             "If there is not enough Contiguous empty space in it, the Scripting VM needs to scan the Empty Block list and the remaining heap sections for space, which takes longer. " +

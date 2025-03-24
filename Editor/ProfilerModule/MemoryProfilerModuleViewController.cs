@@ -9,6 +9,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor;
+using UnityEditor.UIElements;
 
 namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 {
@@ -23,9 +24,10 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 
         // Model
         IConnectionState m_ConnectionState;
-        //ResidentMemoryInEditorSummaryModelBuilder m_DeviceBreakdownModelBuilder;
+        ResidentMemoryInEditorSummaryModelBuilder m_DeviceBreakdownModelBuilder;
         AllMemoryInEditorSummaryModelBuilder m_CommittedBreakdownModelBuilder;
         UnityObjectsMemoryInEditorSummaryModelBuilder m_UnityObjectsBreakdownModelBuilder;
+        GCAllocMemorySummaryModelBuilder m_GCAllocMemorySummaryModelBuilder;
 
         // View
         VisualElement m_Root;
@@ -33,6 +35,7 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
         VisualElement m_EditorWarningLabel;
         Button m_InstallPackageButton;
         Button m_ViewModeSelector;
+        VisualElement m_ViewModeSelectorSpacer;
         Label m_ViewModeLabel;
 
         VisualElement m_SimpleView;
@@ -40,6 +43,7 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
         VisualElement m_DeviceMemoryBreakdown;
         VisualElement m_CommittedMemoryBreakdown;
         VisualElement m_UnityObjectsBreakdown;
+        VisualElement m_GCAllocBreakdown;
 
         bool m_DataAvailable;
         ProfilerMemoryView m_ViewMode;
@@ -118,6 +122,7 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
             m_InstallPackageButton = toolbar.Q<Button>("memory-profiler-module__toolbar__install-package-button");
 
             m_ViewModeSelector = toolbar.Q<Button>("memory-profiler-module__toolbar__view-mode");
+            m_ViewModeSelectorSpacer = toolbar.Q<ToolbarSpacer>("memory-profiler-module__toolbar__view-mode-spacer");
             m_ViewModeLabel = m_ViewModeSelector.Q<Label>("memory-profiler-module__toolbar__view-mode-label");
 
             m_NoDataView = view.Q("memory-profiler-module__no-frame-data");
@@ -127,19 +132,14 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
             m_DeviceMemoryBreakdown = view.Q<VisualElement>("memory-profiler-module__content__system");
             m_CommittedMemoryBreakdown = view.Q<VisualElement>("memory-profiler-module__content__total");
             m_UnityObjectsBreakdown = view.Q<VisualElement>("memory-profiler-module__content__unity-objects");
+            m_GCAllocBreakdown = view.Q<VisualElement>("memory-profiler-module__content__gc-alloc");
             m_Root = view;
         }
 
         void SetupView()
         {
             // Toolbar mode switch
-            var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("Simple"), false, () => UpdateViewState(ProfilerMemoryView.Simple, true));
-            menu.AddItem(new GUIContent("Detailed"), false, () => UpdateViewState(ProfilerMemoryView.Detailed, true));
-            m_ViewModeSelector.clicked += () =>
-            {
-                menu.DropDown(UIElementsHelper.GetRect(m_ViewModeSelector));
-            };
+            SetupViewStateDropdown();
 
             m_NoDataView.Q<Label>("memory-profiler-module__no-frame-data__label").text = k_LabelNoFrameDataAvailable;
 
@@ -157,6 +157,17 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
         void RefreshEditorWarning()
         {
             UIElementsHelper.SetVisibility(m_EditorWarningLabel, m_ConnectionState?.connectionName == "Editor");
+        }
+
+        void SetupViewStateDropdown()
+        {
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Simple"), false, () => UpdateViewState(ProfilerMemoryView.Simple, true));
+            menu.AddItem(new GUIContent("Detailed"), false, () => UpdateViewState(ProfilerMemoryView.Detailed, true));
+            m_ViewModeSelector.clicked += () =>
+            {
+                menu.DropDown(UIElementsHelper.GetRect(m_ViewModeSelector));
+            };
         }
 
         void UpdateViewState(ProfilerMemoryView mode, bool force)
@@ -181,6 +192,9 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
             UIElementsHelper.SetVisibility(m_DetailedView, isDataAvailable && (mode == ProfilerMemoryView.Detailed));
 
             m_ViewModeLabel.text = mode == ProfilerMemoryView.Simple ? "Simple" : "Detailed";
+            // The View selecter is pointless in the package. Snapshots are only possible via the Memory Profiler Window
+            UIElementsHelper.SetVisibility(m_ViewModeSelector, false);
+            UIElementsHelper.SetVisibility(m_ViewModeSelectorSpacer, false);
         }
 
         void UpdateWidgetsFrame(long frame)
@@ -215,37 +229,42 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 
             if (m_CommittedBreakdownModelBuilder != null)
             {
-                // Hidden until we get physical memory size into profiler stream
-                UIElementsHelper.SetVisibility(m_DeviceMemoryBreakdown.parent, false);
-
                 m_CommittedBreakdownModelBuilder.Frame = frame;
                 m_UnityObjectsBreakdownModelBuilder.Frame = frame;
+                m_DeviceBreakdownModelBuilder.Frame = frame;
+                m_GCAllocMemorySummaryModelBuilder.Frame = frame;
                 foreach (var widget in m_WidgetControllers)
                 {
                     widget.Update();
                 }
+                UIElementsHelper.SetVisibility(m_DeviceMemoryBreakdown.parent, m_DeviceBreakdownModelBuilder.FrameHasTotalCommitedMemoryCounter);
             }
             else
             {
-                //Commented out until we get physical memory size into profiler stream
-                //m_DeviceMemoryBreakdown.Clear();
-                //m_DeviceBreakdownModelBuilder = new DeviceMemoryInEditorWidgetModelBuilder() { Frame = frame };
-                //AddController(m_DeviceMemoryBreakdown, new DeviceMemoryBreakdownViewController(m_DeviceBreakdownModelBuilder));
-                UIElementsHelper.SetVisibility(m_DeviceMemoryBreakdown.parent, false);
+                m_DeviceMemoryBreakdown.Clear();
+                m_DeviceBreakdownModelBuilder = new ResidentMemoryInEditorSummaryModelBuilder() { Frame = frame };
+                AddController(m_DeviceMemoryBreakdown, new ResidentMemorySummaryViewController(m_DeviceBreakdownModelBuilder));
+                m_DeviceBreakdownModelBuilder.Build();
+                UIElementsHelper.SetVisibility(m_DeviceMemoryBreakdown.parent, m_DeviceBreakdownModelBuilder.FrameHasTotalCommitedMemoryCounter);
 
-                m_CommittedBreakdownModelBuilder = new AllMemoryInEditorSummaryModelBuilder() { Frame = -1 };
+                m_CommittedBreakdownModelBuilder = new AllMemoryInEditorSummaryModelBuilder() { Frame = frame };
                 AddController(m_CommittedMemoryBreakdown, new GenericMemorySummaryViewController(m_CommittedBreakdownModelBuilder, false)
                 {
-                    TotalLabelFormat = "Total allocated memory: {0}",
+                    TotalLabelFormat = "Total Allocated: {0}",
                     Selectable = false
                 });
-                m_UnityObjectsBreakdownModelBuilder = new UnityObjectsMemoryInEditorSummaryModelBuilder() { Frame = -1 };
+                m_UnityObjectsBreakdownModelBuilder = new UnityObjectsMemoryInEditorSummaryModelBuilder() { Frame = frame };
                 AddController(m_UnityObjectsBreakdown, new GenericMemorySummaryViewController(m_UnityObjectsBreakdownModelBuilder, false)
                 {
                     TotalLabelFormat = null,
                     Selectable = false
                 });
-
+                m_GCAllocMemorySummaryModelBuilder = new GCAllocMemorySummaryModelBuilder() { Frame = frame };
+                AddController(m_GCAllocBreakdown, new GenericMemorySummaryViewController(m_GCAllocMemorySummaryModelBuilder, false)
+                {
+                    TotalLabelFormat = "Total GC Alloc in Frame: {0}",
+                    Selectable = false
+                });
             }
         }
 

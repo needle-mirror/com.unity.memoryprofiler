@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -20,18 +20,18 @@
     "com.unity.profiling.core": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.5"
+    "com.unity.memoryprofiler.tests": "1.1.6"
   },
   "_upm": {
-    "changelog": "### Added\n- Managed fields referencing native allocations are now parsed as references. References show up in the References To tab for the managed objects holding the references, as well as in the Referenced By tab for native allocations under `Native > Unity Subsystems > UnsafeUtility` in the All Of Memory table. Note that this is not an exhaustive list of all references to these allocations, as stack variables could reference them as well but are not part of the snapshot. Thus, a native allocation without references is not necessarily leaked.\n- Native Allocations (e.g. those listed in `Native > Unity Subsystems > UnsafeUtility` in the All Of Memory table) are now named based on the field and object information of the first managed reference to them, making them easier to parse than address values and stand out from the list as having reference information.\n\n### Fixed\n- The Boehm GC treats any pointer sized field as potential managed pointer. So far the Memory Profiler only examined reference fields to find referenced objects (outside of those directly held by static fields or GCHandles). The Memory Profiler does not yet follow this logic as it would end up finding invalid Managed objects, but it now finds references from unsafe pointer fields to Managed Objects that are also held by a GC Handle.\n- The Managed Fields table now shows any pointer sized fields that might be holding managed objects as referencing these managed objects (Note: if they are not referenced otherwise, they won't sho up in the other tables).\n\n### Changed\n- The References To table now shows field information for references held by managed fields"
+    "changelog": "### Added\n- Added info on which scripting backend a snapshot was captured from to the tooltip of the snapshot's entry in the snapshot list.\n\n### Fixed\n- Fixed calculation leading to an attempt to allocate negatively sized NativeHashmap<SourceIndex,UnsafeList<int>> backing memory for large connection maps for projects with Collections package versions <2.1.\n- Fixed the Memory Usage module details UI in the Profiler Window not getting properly overridden by UI from the Memory Profiler package. Compared to the state in 1.1.3 this override now also shows Resident vs Committed memory (where those counters are available in the profiler data), counts for the Top Unity Object categories and a bar for all GC Allocated In Frame split into main thread and other threads. The display for bar graphs has also been fixed.\n- Fixed the summary page's Top Unity Objects table showing incorrect Description texts on selecting elements of the table.\n- Fixed the manage object sizes given for boxed value types, which were missing the size of their object header."
   },
   "upmCi": {
-    "footprint": "cab3611e05f4d244c1a2865eed289f483f1442da"
+    "footprint": "bbff5e1dd9171a4f6e18662c9858fdd5688c6610"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "9af0687e062d2366531297d429bd2ae6c03c581d"
+    "revision": "326b3930cd27b17e9ece0fe3b822ce357d406b64"
   }
 }

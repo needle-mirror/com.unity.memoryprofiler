@@ -7,6 +7,17 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2025-03-24
+
+### Added
+- Added info on which scripting backend a snapshot was captured from to the tooltip of the snapshot's entry in the snapshot list.
+
+### Fixed
+- Fixed calculation leading to an attempt to allocate negatively sized NativeHashmap<SourceIndex,UnsafeList<int>> backing memory for large connection maps for projects with Collections package versions <2.1.
+- Fixed the Memory Usage module details UI in the Profiler Window not getting properly overridden by UI from the Memory Profiler package. Compared to the state in 1.1.3 this override now also shows Resident vs Committed memory (where those counters are available in the profiler data), counts for the Top Unity Object categories and a bar for all GC Allocated In Frame split into main thread and other threads. The display for bar graphs has also been fixed.
+- Fixed the summary page's Top Unity Objects table showing incorrect Description texts on selecting elements of the table.
+- Fixed the manage object sizes given for boxed value types, which were missing the size of their object header.
+
 ## [1.1.5] - 2025-02-14
 
 ### Added

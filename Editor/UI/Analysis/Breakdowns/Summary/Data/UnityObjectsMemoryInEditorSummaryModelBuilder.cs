@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Unity.MemoryProfiler.Editor.UIContentData;
-using UnityEditor.Profiling;
 using UnityEditorInternal;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -10,25 +9,20 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// In-Editor realtime Unity objects memory usage summary model builder for table view controller
     /// Collects data from counters and builds a model representation.
     /// </summary>
-    internal class UnityObjectsMemoryInEditorSummaryModelBuilder : IMemorySummaryModelBuilder<MemorySummaryModel>
+    internal class UnityObjectsMemoryInEditorSummaryModelBuilder : BaseProfilerModuleSummaryBuilder<MemorySummaryModel>
     {
-        public UnityObjectsMemoryInEditorSummaryModelBuilder()
+        List<MemorySummaryModel.Row> rows = new List<MemorySummaryModel.Row>();
+        public override MemorySummaryModel Build()
         {
-        }
-
-        public long Frame { get; set; }
-
-        public MemorySummaryModel Build()
-        {
-            var rows = new List<MemorySummaryModel.Row>();
+            rows.Clear();
             using (var data = ProfilerDriver.GetRawFrameDataView((int)Frame, 0))
             {
-                AddCounter(rows, "Textures", data, "Texture Memory");
-                AddCounter(rows, "Render Textures", data, "Render Textures Bytes");
-                AddCounter(rows, "Meshes", data, "Mesh Memory");
-                AddCounter(rows, "Materials", data, "Material Memory");
-                AddCounter(rows, "Animations", data, "AnimationClip Memory");
-                AddCounter(rows, "Audio", data, "AudioClip Memory");
+                AddCounter(rows, "Textures", data, "Texture Memory", "Texture Count", TextContent.MemoryProfilerModuleUnityObjectUsageDescription);
+                AddCounter(rows, "Render Textures", data, "Render Textures Bytes", "Render Textures Count", TextContent.MemoryProfilerModuleUnityObjectUsageDescription);
+                AddCounter(rows, "Meshes", data, "Mesh Memory", "Mesh Count", TextContent.MemoryProfilerModuleUnityObjectUsageDescription);
+                AddCounter(rows, "Materials", data, "Material Memory", "Material Count", TextContent.MemoryProfilerModuleUnityObjectUsageDescription);
+                AddCounter(rows, "Animations", data, "AnimationClip Memory", "AnimationClip Count", TextContent.MemoryProfilerModuleUnityObjectUsageDescription);
+                AddCounter(rows, "Audio", data, "AudioClip Memory", "AudioClip Count", TextContent.MemoryProfilerModuleUnityObjectUsageDescription);
             }
 
             // Sort
@@ -48,25 +42,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 0,
                 rows,
                 null);
-        }
-
-        void AddCounter(List<MemorySummaryModel.Row> rows, string name, RawFrameDataView data, string counterName)
-        {
-            GetCounterValue(data, counterName, out var value);
-            rows.Add(new MemorySummaryModel.Row(name, value, 0, 0, 0, $"grp-{rows.Count + 1}", TextContent.ManagedObjectsDescription, null));
-        }
-
-        bool GetCounterValue(RawFrameDataView data, string counterName, out ulong value)
-        {
-            if (!data.valid)
-            {
-                value = 0;
-                return false;
-            }
-
-            var markerId = data.GetMarkerId(counterName);
-            value = (ulong)data.GetCounterValueAsLong(markerId);
-            return true;
         }
     }
 }

@@ -1,0 +1,34 @@
+/*
+ * Generic Memory Usage Bar - dual bar with committed/resident sections
+ */
+.memory-bar-element
+{
+    flex-grow: 1;
+    border-width: 1px;
+    border-color: rgb(83, 83, 83);
+
+    min-width: 6px;
+}
+
+.memory-bar-element__committed-bar
+{
+    background-color: #D6D6D6;
+}
+
+.memory-bar-element__resident-bar-visible .memory-bar-element__committed-bar
+{
+    background-color: #858585;
+}
+
+.memory-bar-element__resident-bar
+{
+    background-color: #D6D6D6;
+}
+
+.memory-bar
+{
+    margin-top: 3px;
+    margin-bottom: 3px;
+    background-color: rgb(83, 83, 83);
+    flex-grow: 1;
+}

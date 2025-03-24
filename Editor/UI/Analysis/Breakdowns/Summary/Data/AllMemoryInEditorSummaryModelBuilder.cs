@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UIContentData;
-using UnityEditor.Profiling;
 using UnityEditorInternal;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -10,17 +9,12 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// All process memory usage as seen by OS broken down
     /// into a set of pre-defined high-level categories.
     /// </summary>
-    internal class AllMemoryInEditorSummaryModelBuilder : IMemorySummaryModelBuilder<MemorySummaryModel>
+    internal class AllMemoryInEditorSummaryModelBuilder : BaseProfilerModuleSummaryBuilder<MemorySummaryModel>
     {
-        public AllMemoryInEditorSummaryModelBuilder()
-        {
-        }
-
-        public long Frame { get; set; }
-
-        public MemorySummaryModel Build()
+        public override MemorySummaryModel Build()
         {
             var total = 0UL;
+            var committed = 0UL;
             var rows = new List<MemorySummaryModel.Row>();
             using (var data = ProfilerDriver.GetRawFrameDataView((int)Frame, 0))
             {
@@ -33,6 +27,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Older editors might not have the counter, in that case use total tracked
                 if (!GetCounterValue(data, "System Used Memory", out total))
                     total = totalTrackedReserved;
+
+                // Use system reported value as total value
+                // Older editors might not have the counter, in that case use total tracked
+                var frameHasTotalCommitedMemoryCounter = GetCounterValue(data, "App Committed Memory", out committed);
+                if (frameHasTotalCommitedMemoryCounter)
+                    total = committed;
 
                 // For platforms which don't report total committed, it might be too small
                 if (total < totalTrackedReserved)
@@ -60,19 +60,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 rows,
                 null
             );
-        }
-
-        private bool GetCounterValue(RawFrameDataView data, string counterName, out ulong value)
-        {
-            if (!data.valid)
-            {
-                value = 0;
-                return false;
-            }
-
-            var markerId = data.GetMarkerId(counterName);
-            value = (ulong)data.GetCounterValueAsLong(markerId);
-            return true;
         }
     }
 }

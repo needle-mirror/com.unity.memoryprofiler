@@ -369,6 +369,103 @@ namespace Unity.MemoryProfiler.Editor
                 return entryIdx < 0 ? new ReadableCallstack(string.Empty, null) : GetReadableCallstack(symbols, entryIdx);
             }
 
+            public void AppendCallstackLine(NativeCallstackSymbolEntriesCache symbols, ulong targetSymbol, StringBuilder stringBuilder,
+                List<KeyValuePair<int, string>> fileLinkHashToFileName = null, bool simplifyCallStacks = true, bool clickableCallStacks = true, bool terminateWithLineBreak = true)
+            {
+                if (symbols.SymbolToIndex.TryGetValue(targetSymbol, out var symbolIdx))
+                {
+                    // Format of symbols is: "0x0000000000000000 (Unity) OptionalNativeNamespace::NativeClass<PotentialTemplateType>::NativeMethod (at C:/Path/To/CPPorHeaderFile.h:428)\n"
+                    // or "0x0000000000000000 (Unity) Managed.Namespace.List.ClassName:MethodName (parametertypes,separated,by,comma) (at C:/Path/To/CSharpFile.cs:13)\n"
+                    // or "0x0000000000000000 (KERNEL32) BaseThreadInitThunk\n"
+                    // or "0x0000000000000000 ((<unknown>)) \n"
+                    try
+                    {
+                        var symbol = symbols.ReadableStackTrace[symbolIdx].AsSpan();
+                        var firstCharIndexOfAssemblyName = symbol.IndexOf('(');
+                        if (firstCharIndexOfAssemblyName > 0)
+                        {
+                            if (symbol[firstCharIndexOfAssemblyName + 1] == '(')
+                            {
+                                if (simplifyCallStacks)
+                                    stringBuilder.AppendLine("<unknown>");
+                                else
+                                    stringBuilder.Append(symbol);
+                                return;
+                            }
+                            if (!simplifyCallStacks)
+                            {
+                                var address = symbol.Slice(0, firstCharIndexOfAssemblyName);
+                                stringBuilder.Append(address);
+                            }
+                            symbol = symbol.Slice(firstCharIndexOfAssemblyName);
+                        }
+                        var lastCharIndexOfMethodName = symbol.LastIndexOf('(');
+                        if (lastCharIndexOfMethodName <= 0)
+                        {
+                            if (!terminateWithLineBreak)
+                            {
+                                var indexOfLineBreak = symbol.IndexOf('\n');
+                                if (indexOfLineBreak > 0)
+                                    symbol = symbol.Slice(0, indexOfLineBreak);
+                            }
+                            stringBuilder.Append(symbol);
+                            return;
+                        }
+                        var methodName = symbol.Slice(0, lastCharIndexOfMethodName);
+                        symbol = symbol.Slice(lastCharIndexOfMethodName);
+
+                        stringBuilder.Append(methodName);
+
+                        const string k_FileNamePrefix = "(at ";
+
+                        var fileNameStart = symbol.IndexOf(k_FileNamePrefix) + k_FileNamePrefix.Length;
+                        var fileNameEndIndex = symbol.LastIndexOf(':');
+                        var fileNameLength = fileNameEndIndex - fileNameStart;
+                        if (clickableCallStacks && fileNameLength > 0)
+                        {
+                            var fileName = symbol.Slice(fileNameStart, fileNameLength).ToString();
+                            var lineNumberEndIndex = symbol.LastIndexOf(')');
+                            var lineNumberChars = symbol.Slice(fileNameEndIndex + 1, lineNumberEndIndex - fileNameEndIndex - 1);
+
+                            if (!int.TryParse(lineNumberChars, out var lineNumber))
+                                lineNumber = 0;
+
+                            if (fileLinkHashToFileName != null)
+                            {
+                                // TextCore htlm tags have a character limit of 128 in Unity 2022 and 256 in Unity 6+,
+                                // so putting the full file path as the link might break. Using a hash also means less chars wasted.
+                                var fileNameHash = fileName.GetHashCode();
+                                fileLinkHashToFileName.Add(new KeyValuePair<int, string>(fileNameHash, fileName));
+
+                                stringBuilder.AppendFormat("\t(at <link=\"href='{0}' line='{1}'\"><color={3}><u>{2}:{1}</u></color></link>){4}", fileNameHash, lineNumber, fileName, EditorGUIUtility.isProSkin ? "#40a0ff" : "#0000FF", terminateWithLineBreak ? '\n' : "");
+                            }
+                            else
+                            {
+                                stringBuilder.AppendFormat("\t(at <link=\"href='{0}' line='{1}'\"><color={3}><u>{2}:{1}</u></color></link>){4}", fileName, lineNumber, fileName, EditorGUIUtility.isProSkin ? "#40a0ff" : "#0000FF", terminateWithLineBreak ? '\n' : "");
+                            }
+                        }
+                        else
+                        {
+                            if (!terminateWithLineBreak)
+                            {
+                                var indexOfLineBreak = symbol.IndexOf('\n');
+                                if (indexOfLineBreak > 0)
+                                    symbol = symbol.Slice(0, indexOfLineBreak);
+                            }
+                            stringBuilder.Append(symbol);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        stringBuilder.AppendLine(symbols.ReadableStackTrace[symbolIdx]);
+                    }
+                }
+                else
+                {
+                    stringBuilder.AppendLine("<unknown>");
+                }
+            }
+
             public ReadableCallstack GetReadableCallstack(NativeCallstackSymbolEntriesCache symbols, long idx, bool simplifyCallStacks = true, bool clickableCallStacks = true)
             {
                 var stringBuilder = new StringBuilder();
@@ -378,77 +475,7 @@ namespace Unity.MemoryProfiler.Editor
                 for (long i = 0; i < callstackSymbols.Count; ++i)
                 {
                     ulong targetSymbol = callstackSymbols[i];
-                    if (symbols.SymbolToIndex.TryGetValue(targetSymbol, out var symbolIdx))
-                    {
-                        // Format of symbols is: "0x0000000000000000 (Unity) OptionalNativeNamespace::NativeClass<PotentialTemplateType>::NativeMethod (at C:/Path/To/CPPorHeaderFile.h:428)\n"
-                        // or "0x0000000000000000 (Unity) Managed.Namespace.List.ClassName:MethodName (parametertypes,separated,by,comma) (at C:/Path/To/CSharpFile.cs:13)\n"
-                        // or "0x0000000000000000 (KERNEL32) BaseThreadInitThunk\n"
-                        // or "0x0000000000000000 ((<unknown>)) \n"
-                        try
-                        {
-                            var symbol = symbols.ReadableStackTrace[symbolIdx].AsSpan();
-                            var firstCharIndexOfAssemblyName = symbol.IndexOf('(');
-                            if (firstCharIndexOfAssemblyName > 0)
-                            {
-                                if (symbol[firstCharIndexOfAssemblyName + 1] == '(')
-                                {
-                                    if (simplifyCallStacks)
-                                        stringBuilder.AppendLine("<unknown>");
-                                    else
-                                        stringBuilder.Append(symbol);
-                                    continue;
-                                }
-                                if (simplifyCallStacks)
-                                {
-                                    var address = symbol.Slice(0, firstCharIndexOfAssemblyName);
-                                    stringBuilder.Append(address);
-                                }
-                                symbol = symbol.Slice(firstCharIndexOfAssemblyName);
-                            }
-                            var lastCharIndexOfMethodName = symbol.LastIndexOf('(');
-                            if (lastCharIndexOfMethodName <= 0)
-                            {
-                                stringBuilder.Append(symbol);
-                                continue;
-                            }
-                            var methodName = symbol.Slice(0, lastCharIndexOfMethodName);
-                            symbol = symbol.Slice(lastCharIndexOfMethodName);
-
-                            stringBuilder.Append(methodName);
-
-                            const string k_FileNamePrefix = "(at ";
-
-                            var fileNameStart = symbol.IndexOf(k_FileNamePrefix) + k_FileNamePrefix.Length;
-                            var fileNameEndIndex = symbol.LastIndexOf(':');
-                            var fileNameLength = fileNameEndIndex - fileNameStart;
-                            if (clickableCallStacks && fileNameLength > 0)
-                            {
-                                var fileName = symbol.Slice(fileNameStart, fileNameLength).ToString();
-                                // TextCore htlm tags have a character limit of 128 in Unity 2022 and 256 in Unity 6+,
-                                // so putting the full file path as the link might break. Using a hash also means less chars wasted.
-                                var fileNameHash = fileName.GetHashCode();
-                                fileLinkHashToFileName.Add(new KeyValuePair<int, string>(fileNameHash, fileName));
-                                var lineNumberEndIndex = symbol.LastIndexOf(')');
-                                var lineNumberChars = symbol.Slice(fileNameEndIndex + 1, lineNumberEndIndex - fileNameEndIndex - 1);
-
-                                if (!int.TryParse(lineNumberChars, out var lineNumber)) { lineNumber = 0; }
-
-                                stringBuilder.AppendFormat("\t(at <link=\"href='{0}' line='{1}'\"><color={3}><u>{2}:{1}</u></color></link>)\n", fileNameHash, lineNumber, fileName, EditorGUIUtility.isProSkin ? "#40a0ff" : "#0000FF");
-                            }
-                            else
-                            {
-                                stringBuilder.Append(symbol);
-                            }
-                        }
-                        catch (Exception)
-                        {
-                            stringBuilder.AppendLine(symbols.ReadableStackTrace[symbolIdx]);
-                        }
-                    }
-                    else
-                    {
-                        stringBuilder.AppendLine("<unknown>");
-                    }
+                    AppendCallstackLine(symbols, targetSymbol, stringBuilder, fileLinkHashToFileName, simplifyCallStacks, clickableCallStacks);
                 }
 
                 return new ReadableCallstack(stringBuilder.ToString(), fileLinkHashToFileName);
@@ -1876,7 +1903,31 @@ namespace Unity.MemoryProfiler.Editor
             public int Count;
             public DynamicArray<TypeFlags> Flags = default;
             public DynamicArray<int> BaseOrElementTypeIndex = default;
+
+            /// <summary>
+            /// Type size, which for value types does not include a header that would be added if they get boxed onto the heap.
+            /// For boxed value types (i.e. <seealso cref="HasFlag(int, TypeFlags)"/> for flag <seealso cref="TypeFlags.kValueType"/> is true)
+            /// on the heap (rather than e.g. non-boxed value types) you'll need to add
+            /// <seealso cref="VirtualMachineInformation.ObjectHeaderSize"/>.
+            /// You can also use <see cref="GetMinSizeForHeapObjectOfType"/> instead of checking manually if you need to add the header size
+            /// </summary>
             public DynamicArray<int> Size = default;
+            /// <summary>
+            /// Get's the size an object of this type would have on the heap.
+            /// This method only returns minimal size for strings or arrays instances, as their size depends on their length
+            /// and their full size can't be determined for all instances of their type, but only for a concrete object.
+            /// For all other types, it returns the definitive size on the heap.
+            ///
+            /// For the full size of strings use <see cref="ManagedHeapArrayDataTools.ReadArrayObjectSizeInBytes"/> instead.
+            /// For the full size of arrays use <see cref="StringTools.ReadStringObjectSizeInBytes"/ instead>.
+            /// </summary>
+            /// <param name="typeIndex"></param>
+            /// <param name="vmInfo"></param>
+            /// <returns></returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int GetMinSizeForHeapObjectOfType(long typeIndex, in VirtualMachineInformation vmInfo)
+                => Size[typeIndex] + (HasFlag(typeIndex, TypeFlags.kValueType) ? (int)vmInfo.ObjectHeaderSize : 0);
+
             public DynamicArray<ulong> TypeInfoAddress = default;
             enum TypeCategory
             {
@@ -2068,19 +2119,19 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public bool CouldBoehmReadFieldsOfThisTypeAsReferences(int arrayIndex, CachedSnapshot snapshot)
+            public bool CouldBoehmReadFieldsOfThisTypeAsReferences(long arrayIndex, CachedSnapshot snapshot)
             {
                 return (!HasFlag(arrayIndex, TypeFlags.kValueType) ||
                     (FieldIndicesInstance[arrayIndex].Length == 0 && Size[arrayIndex] == snapshot.VirtualMachineInformation.PointerSize));
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public bool HasFlag(int arrayIndex, TypeFlags flag)
+            public bool HasFlag(long arrayIndex, TypeFlags flag)
             {
                 return (Flags[arrayIndex] & flag) == flag;
             }
 
-            public int GetRank(int arrayIndex)
+            public int GetRank(long arrayIndex)
             {
                 int r = (int)(Flags[arrayIndex] & TypeFlags.kArrayRankMask) >> 16;
                 Checks.IsTrue(r >= 0);

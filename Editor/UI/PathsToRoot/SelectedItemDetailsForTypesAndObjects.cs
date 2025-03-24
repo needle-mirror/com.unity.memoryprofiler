@@ -5,7 +5,6 @@ using Unity.MemoryProfiler.Editor.UIContentData;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using System.Collections.Generic;
 using System.Text;
-using static Unity.MemoryProfiler.Editor.CachedSnapshot.NativeAllocationSiteEntriesCache;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -140,6 +139,51 @@ namespace Unity.MemoryProfiler.Editor.UI
                     Message = TextContent.NativeAllocationInternalModeCallStacksInfoBoxMessage,
                 });
             }
+        }
+
+        void AddCallstacksExportAndTreeViewButtons(long rootReferenceId)
+        {
+            const string exportJsonCallstacksButtonText = "Export Callstacks for Root (json)";
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportJsonCallstacksButtonText, exportJsonCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
+                onInteraction: () =>
+                {
+                    ExportUtility.WriteNativeRootCallstackInfoToJson(m_CachedSnapshot, rootReferenceId);
+                });
+
+            const string exportJsonInvertedCallstacksButtonText = "Export (Inverted) Callstacks for Root (json)";
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportJsonInvertedCallstacksButtonText, exportJsonInvertedCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
+                onInteraction: () =>
+                {
+                    ExportUtility.WriteNativeRootCallstackInfoToJson(m_CachedSnapshot, rootReferenceId, invertedCallstacks: true);
+                });
+
+            const string exportCsvCallstacksButtonText = "Export Callstacks for Root (csv)";
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportCsvCallstacksButtonText, exportCsvCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
+                onInteraction: () =>
+                {
+                    ExportUtility.WriteNativeRootCallstackInfoToCsv(m_CachedSnapshot, rootReferenceId);
+                });
+
+            const string exportCsvInvertedCallstacksButtonText = "Export (Inverted) Callstacks for Root (csv)";
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportCsvInvertedCallstacksButtonText, exportCsvInvertedCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
+                onInteraction: () =>
+                {
+                    ExportUtility.WriteNativeRootCallstackInfoToCsv(m_CachedSnapshot, rootReferenceId, invertedCallstacks: true);
+                });
+
+            const string openCallstacksButtonText = "Open Callstacks Table for Root";
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, openCallstacksButtonText, openCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
+                onInteraction: () =>
+                {
+                    ExportUtility.OpenCallstacksWindowForNativeRoot(m_CachedSnapshot, rootReferenceId);
+                });
+
+            const string openInvertedCallstacksButtonText = "Open (Inverted) Callstacks Table for Root";
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, openInvertedCallstacksButtonText, openInvertedCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
+                onInteraction: () =>
+                {
+                    ExportUtility.OpenCallstacksWindowForNativeRoot(m_CachedSnapshot, rootReferenceId, invertedCallstacks: true);
+                });
         }
 
         internal void HandleGfxResourceDetails(CachedSnapshot.SourceIndex source, string fallbackName, string fallbackDescription)
@@ -562,6 +606,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                    AddCallStacksInfoToUI(sourceIndex);
                });
 
+            if (MemoryProfilerSettings.InternalMode)
+            {
+                AddCallstacksExportAndTreeViewButtons(rootId);
+            }
 
             const bool k_UseFullDetailsPanelWidth = true;
             foreach (var text in callStackTexts)

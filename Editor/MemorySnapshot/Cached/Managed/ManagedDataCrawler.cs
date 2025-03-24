@@ -1594,8 +1594,6 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     }
                     else
                     {
-                        var typeSize = (uint)typeDescriptions.Size[iElementTypeDescription];
-
                         var jobChunks = new DynamicArray<ReferenceArrayCrawlerJobChunk>(0, chunkCountForCurrentBatch, Allocator.Persistent);
 
                         for (var i = 0; i < chunkCountForCurrentBatch && indexOfNextArrayElementToProcess < arrayLength; i++)
@@ -1644,9 +1642,9 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     logError: ignoreErrorsBecauseObjectIsSpeculative ? false : fieldType == snapshot.TypeDescriptions.ITypeString);
                 return validString ? size : 0;
             }
-
-            // array and string are the only types that are special, all other types just have one size, which is stored in the type description
-            return snapshot.TypeDescriptions.Size[iTypeDescription];
+            // Array and string are the only types that are special, all other types just have one size, which is stored in the type description,
+            // but boxed value types need to take the header size into account as well, so grab the size via GetMinSizeForHeapObjectOfType.
+            return snapshot.TypeDescriptions.GetMinSizeForHeapObjectOfType(iTypeDescription, in snapshot.VirtualMachineInformation);
         }
 
         internal static ManagedObjectInfo ParseObjectHeader(CachedSnapshot snapshot, ulong addressOfHeader, out bool wasAlreadyCrawled, bool ignoreErrorsBecauseObjectIsSpeculative, BytesAndOffset byteOffset, int typeOfReferencingField)
@@ -1705,32 +1703,36 @@ namespace Unity.MemoryProfiler.Editor.Managed
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool ValidateObjectHeaderType(CachedSnapshot snapshot, BytesAndOffset boHeader, int objectType, int fieldType, bool heldByNativeUnityObject, out long size, bool ignoreErrorsBecauseObjectIsSpeculative)
+        static bool ValidateObjectHeaderType(CachedSnapshot snapshot, BytesAndOffset boHeader, int objectType, int fieldType, bool heldByNativeUnityObject, out long sizeIncludingHeader, bool ignoreErrorsBecauseObjectIsSpeculative)
         {
-            if (objectType >= 0 && boHeader.CouldFitAllocation(snapshot.TypeDescriptions.Size[objectType]) && ObjectTypeCouldBeHeldByField(snapshot, objectType, fieldType, heldByNativeUnityObject))
+            // we're validating against the bytes starting from the header,
+            // but the type size might not include the header for a boxed value type, so grab the size for this via GetMinSizeForHeapObjectOfType
+            // to make sure that any potential header size is included in the check
+            if (objectType >= 0 && boHeader.CouldFitAllocation(snapshot.TypeDescriptions.GetMinSizeForHeapObjectOfType(objectType, in snapshot.VirtualMachineInformation))
+                && ObjectTypeCouldBeHeldByField(snapshot, objectType, fieldType, heldByNativeUnityObject))
             {
                 try
                 {
-                    size = SizeOfObjectInBytes(snapshot, objectType, fieldType, boHeader, snapshot.ManagedHeapSections, ignoreErrorsBecauseObjectIsSpeculative);
+                    sizeIncludingHeader = SizeOfObjectInBytes(snapshot, objectType, fieldType, boHeader, snapshot.ManagedHeapSections, ignoreErrorsBecauseObjectIsSpeculative);
                 }
                 catch
                 {
-                    size = 0;
+                    sizeIncludingHeader = 0;
                     return false;
                 }
-                if ((size > 0 && boHeader.CouldFitAllocation(size)))
+                if ((sizeIncludingHeader > 0 && boHeader.CouldFitAllocation(sizeIncludingHeader)))
                 {
                     return true;
                 }
             }
-            size = 0;
+            sizeIncludingHeader = 0;
             return false;
         }
 
         public static bool TryParseObjectHeader(CachedSnapshot snapshot, ulong addressOfHeader, out ManagedObjectInfo info, BytesAndOffset boHeader, int typeOfReferencingField, bool heldByNativeUnityObject, bool ignoreErrorsBecauseObjectIsSpeculative)
         {
             bool resolveFailed = false;
-            long size = 0;
+            long sizeIncludingHeader = 0;
             var heap = snapshot.ManagedHeapSections;
             info = new ManagedObjectInfo
             {
@@ -1747,7 +1749,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 info.PtrTypeInfo = ptrIdentity;
                 info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
 
-                if (!ValidateObjectHeaderType(snapshot, boHeader, info.ITypeDescription, typeOfReferencingField, heldByNativeUnityObject, out size, ignoreErrorsBecauseObjectIsSpeculative))
+                if (!ValidateObjectHeaderType(snapshot, boHeader, info.ITypeDescription, typeOfReferencingField, heldByNativeUnityObject, out sizeIncludingHeader, ignoreErrorsBecauseObjectIsSpeculative))
                 {
                     // invalid heap byte data. Resolution failed.
                     info.ITypeDescription = -1;
@@ -1759,7 +1761,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                         boIdentity.TryReadPointer(out var ptrTypeInfo);
                         info.PtrTypeInfo = ptrTypeInfo;
                         info.ITypeDescription = snapshot.TypeDescriptions.TypeInfo2ArrayIndex(info.PtrTypeInfo);
-                        resolveFailed = !ValidateObjectHeaderType(snapshot, boHeader, info.ITypeDescription, typeOfReferencingField, heldByNativeUnityObject, out size, ignoreErrorsBecauseObjectIsSpeculative);
+                        resolveFailed = !ValidateObjectHeaderType(snapshot, boHeader, info.ITypeDescription, typeOfReferencingField, heldByNativeUnityObject, out sizeIncludingHeader, ignoreErrorsBecauseObjectIsSpeculative);
                     }
                     else
                     {
@@ -1789,7 +1791,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 return false;
             }
 
-            info.Size = size;
+            info.Size = sizeIncludingHeader;
             info.data = boHeader;
             info.PtrObject = addressOfHeader;
             return true;

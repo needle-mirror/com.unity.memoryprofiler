@@ -1042,8 +1042,8 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             Allocator = allocator;
             SizeOfTValue = sizeOfValueT;
 
-            int keyOffset, nextOffset, bucketOffset;
-            int totalSize = CalculateDataSize(capacity, BucketCapacity, sizeOfValueT, out keyOffset, out nextOffset, out bucketOffset);
+            long keyOffset, nextOffset, bucketOffset;
+            var totalSize = CalculateDataSize(capacity, BucketCapacity, sizeOfValueT, out keyOffset, out nextOffset, out bucketOffset);
 
             Ptr = (byte*)Memory.Unmanaged.Allocate(totalSize, JobsUtility.CacheLineSize, allocator);
             Keys = (TKey*)(Ptr + keyOffset);
@@ -1098,8 +1098,8 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
 
         internal void ResizeExact(int newCapacity, int newBucketCapacity)
         {
-            int keyOffset, nextOffset, bucketOffset;
-            int totalSize = CalculateDataSize(newCapacity, newBucketCapacity, SizeOfTValue, out keyOffset, out nextOffset, out bucketOffset);
+            long keyOffset, nextOffset, bucketOffset;
+            var totalSize = CalculateDataSize(newCapacity, newBucketCapacity, SizeOfTValue, out keyOffset, out nextOffset, out bucketOffset);
 
             var oldPtr = Ptr;
             var oldKeys = Keys;
@@ -1134,7 +1134,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             ResizeExact(capacity, GetBucketSize(capacity));
         }
 
-        internal static int CalculateDataSize(int capacity, int bucketCapacity, int sizeOfTValue, out int outKeyOffset, out int outNextOffset, out int outBucketOffset)
+        internal static long CalculateDataSize(long capacity, long bucketCapacity, long sizeOfTValue, out long outKeyOffset, out long outNextOffset, out long outBucketOffset)
         {
             var sizeOfTKey = sizeof(TKey);
             var sizeOfInt = sizeof(int);

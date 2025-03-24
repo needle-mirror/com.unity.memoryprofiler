@@ -136,7 +136,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             catch (Exception ex)
             {
-                if (ex is DirectoryNotFoundException)
+                if (ex is DirectoryNotFoundException or UnauthorizedAccessException)
                 {
                     try
                     {

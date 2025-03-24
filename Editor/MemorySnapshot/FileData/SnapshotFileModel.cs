@@ -1,4 +1,5 @@
 using System;
+using Unity.Profiling.Memory;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
@@ -18,7 +19,9 @@ namespace Unity.MemoryProfiler.Editor
             bool memoryInformationAvailable,
             ulong totalAllocated,
             ulong totalResident,
-            ulong maxAvailable)
+            ulong maxAvailable,
+            CaptureFlags captureFlags,
+            string scriptingImplementation)
         {
             Name = name;
             FullPath = fullPath;
@@ -34,6 +37,8 @@ namespace Unity.MemoryProfiler.Editor
             TotalAllocatedMemory = totalAllocated;
             TotalResidentMemory = totalResident;
             MaxAvailableMemory = maxAvailable;
+            CaptureFlags = captureFlags;
+            ScriptingImplementation = scriptingImplementation;
         }
 
         public string Name { get; }
@@ -50,6 +55,8 @@ namespace Unity.MemoryProfiler.Editor
         public ulong TotalAllocatedMemory { get; }
         public ulong TotalResidentMemory { get; }
         public ulong MaxAvailableMemory { get; }
+        public CaptureFlags CaptureFlags { get; }
+        public string ScriptingImplementation { get; }
 
         public bool Equals(SnapshotFileModel other)
         {
@@ -66,7 +73,9 @@ namespace Unity.MemoryProfiler.Editor
                 MemoryInformationAvailable == other.MemoryInformationAvailable &&
                 TotalAllocatedMemory == other.TotalAllocatedMemory &&
                 TotalResidentMemory == other.TotalResidentMemory &&
-                MaxAvailableMemory == other.MaxAvailableMemory;
+                MaxAvailableMemory == other.MaxAvailableMemory &&
+                CaptureFlags == other.CaptureFlags &&
+                ScriptingImplementation == other.ScriptingImplementation;
         }
     }
 }

@@ -150,6 +150,31 @@ namespace Unity.MemoryProfiler.Editor
         public event Action LoadedSnapshotsChanged;
         public event Action AllSnapshotsChanged;
 
+        public CachedSnapshot LoadWithoutLoadingToUI(string filePath)
+        {
+            if (IsOpen(filePath))
+            {
+                if (Base.FullPath == filePath)
+                    return Base;
+                else if (Compared.FullPath == filePath)
+                    return Compared;
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                else
+                    throw new NotImplementedException("LoadWithoutLoadingToUI was not implemented for a UI with more than two open snapshots.");
+#endif
+            }
+
+            var reader = new FileReader();
+            ReadError err = reader.Open(filePath);
+            if (err != ReadError.Success)
+            {
+                // Close and dispose the reader
+                reader.Close();
+                throw new IOException($"Failed to open the file at {filePath}. Read Error {err}.");
+            }
+            return LoadSnapshot(reader);
+        }
+
         public void Load(string filePath)
         {
             if (IsOpen(filePath))
@@ -219,8 +244,8 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool IsOpen(string filePath)
         {
-            return PathHelpers.IsSamePath(m_BaseSnapshot?.FullPath, filePath) ||
-                PathHelpers.IsSamePath(m_ComparedSnapshot?.FullPath, filePath);
+            return ((m_BaseSnapshot?.Valid ?? false) && PathHelpers.IsSamePath(m_BaseSnapshot?.FullPath, filePath)) ||
+                ((m_ComparedSnapshot?.Valid ?? false) && PathHelpers.IsSamePath(m_ComparedSnapshot?.FullPath, filePath));
         }
 
         public bool ValidateName(string fileName)
@@ -349,7 +374,7 @@ namespace Unity.MemoryProfiler.Editor
 
             using var loadSnapshotEvent = MemoryProfilerAnalytics.BeginLoadSnapshotEvent();
 
-            ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", System.IO.Path.GetFileNameWithoutExtension(file.FullPath)));
+            ProgressBarDisplay.ShowBar(string.Format("Opening snapshot: {0}", Path.GetFileNameWithoutExtension(file.FullPath)));
             CachedSnapshot cachedSnapshot = null;
             try
             {

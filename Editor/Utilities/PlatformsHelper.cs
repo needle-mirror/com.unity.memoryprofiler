@@ -72,9 +72,11 @@ namespace Unity.MemoryProfiler.Editor
                 case PS5:
                     buildTarget = BuildTarget.PS5;
                     break;
+#if !ENABLE_CORECLR
                 case RuntimePlatform.XboxOne:
                     buildTarget = BuildTarget.XboxOne;
                     break;
+#endif
                 case GameCoreXboxSeries:
                 case GameCoreXboxOne:
                     buildTarget = BuildTarget.GameCoreXboxOne;

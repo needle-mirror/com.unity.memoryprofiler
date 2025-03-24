@@ -5,7 +5,14 @@ using System.Reflection;
 using Unity.Profiling.Editor;
 using UnityEditor;
 
+#if MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE
+// This should technically be the correct namespace...
+// ...but main editor code is using reflection with this namespace to find the CreateDetailsViewController func to automaticaly hook up the override,
+// so we'll retain the bad namespace ordering here for the time being
 namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
+#else
+namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
+#endif
 {
     internal static class MemoryProfilerModuleBridge
     {

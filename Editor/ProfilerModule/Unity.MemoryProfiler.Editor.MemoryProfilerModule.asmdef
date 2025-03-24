@@ -1,6 +1,6 @@
 {
     "name": "Unity.MemoryProfiler.Editor.MemoryProfilerModule",
-    "rootNamespace": "Unity.MemoryProfiler.MemoryProfilerModule.Editor.",
+    "rootNamespace": "Unity.MemoryProfiler.MemoryProfilerModule.Editor",
     "references": [
         "GUID:cffef5ef02bd3e04489c29e110974d50"
     ],
@@ -18,6 +18,11 @@
             "name": "Unity",
             "expression": "2022.2.0a12",
             "define": "MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY"
+        },
+        {
+            "name": "Unity",
+            "expression": "6000.2.0a8",
+            "define": "MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE"
         }
     ],
     "noEngineReferences": false

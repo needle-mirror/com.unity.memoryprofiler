@@ -53,6 +53,12 @@ namespace Unity.MemoryProfiler.Editor
             bool editorPlatform = snapshotMetadata.IsEditorCapture;
             var runtimePlatform = PlatformsHelper.GetRuntimePlatform(snapshotMetadata.Platform);
 
+            var scriptingBackendName = snapshotMetadata.TargetInfo.HasValue ? snapshotMetadata.TargetInfo.Value.ScriptingBackend.ToString() : "Unknown";
+
+            // Fix up the name of Mono to be nicer than Mono2x
+            if (snapshotMetadata.TargetInfo.HasValue && snapshotMetadata.TargetInfo.Value.ScriptingBackend == UnityEditor.ScriptingImplementation.Mono2x)
+                scriptingBackendName = "Mono";
+
             return new SnapshotFileModel(
                 Path.GetFileNameWithoutExtension(m_FileName),
                 m_FileName,
@@ -66,7 +72,9 @@ namespace Unity.MemoryProfiler.Editor
                 snapshotMetadata.TargetInfo.HasValue,
                 totalCommitted,
                 totalResident,
-                maxAvailable);
+                maxAvailable,
+                snapshotMetadata.CaptureFlags,
+                scriptingBackendName);
         }
     }
 }

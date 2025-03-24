@@ -157,6 +157,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_ColumnSnapshotA.Header, m_Model.CompareMode);
             UIElementsHelper.SetVisibility(m_ColumnSnapshotB.Header, m_Model.CompareMode);
             UIElementsHelper.SetVisibility(m_ColumnDifference.Header, m_Model.CompareMode);
+            UIElementsHelper.SetVisibility(m_ColumnDifference.Root, m_Model.CompareMode);
 
             // Build names column for the Legend Table
             RefreshColumnCells(ref m_ColumnName, (rowId, row, reusableCell) =>
@@ -164,17 +165,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return MakeNameCell(rowId, reusableCell);
             });
 
-            // Build Snapshot *A* column for the Legend Table
-            RefreshColumnCells(ref m_ColumnSnapshotA, (rowId, row, reusableCell) =>
-            {
-                return MakeSizeCell(rowId, reusableCell, row.BaseSize);
-            });
-
-            // Build Snapshot *B* and *diff* column for the Legend Table
-            UIElementsHelper.SetVisibility(m_ColumnSnapshotB.Root, m_Model.CompareMode);
-            UIElementsHelper.SetVisibility(m_ColumnDifference.Root, m_Model.CompareMode);
             if (m_Model.CompareMode)
             {
+                UIElementsHelper.SetVisibility(m_ColumnSnapshotA.Root, true);
+                // Build Snapshot *A* column for the Legend Table
+                RefreshColumnCells(ref m_ColumnSnapshotA, (rowId, row, reusableCell) =>
+                {
+                    return MakeSizeCell(rowId, reusableCell, row.BaseSize);
+                });
+
+                // Build Snapshot *B* and *diff* column for the Legend Table
+                UIElementsHelper.SetVisibility(m_ColumnSnapshotB.Root, true);
+
                 UIElementsHelper.SetVisibility(m_ColumnSnapshotB.Root, true);
                 RefreshColumnCells(ref m_ColumnSnapshotB, (rowId, row, reusableCell) =>
                 {
@@ -187,6 +189,35 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var diffTotal = (long)row.ComparedSize.Committed - (long)row.BaseSize.Committed;
                     var diffInner = (long)row.ComparedSize.Resident - (long)row.BaseSize.Resident;
                     return MakeSizeCell(rowId, reusableCell, diffTotal, diffInner);
+                });
+            }
+            else
+            {
+                var hasCounts = false;
+                for (int i = 0; i < m_Model.Rows.Count; i++)
+                {
+                    if (m_Model.Rows[i].BaseCount != MemorySummaryModel.Row.InvalidCount)
+                    {
+                        hasCounts = true;
+                        break;
+                    }
+                }
+                UIElementsHelper.SetVisibility(m_ColumnSnapshotA.Root, hasCounts);
+                if (hasCounts)
+                {
+                    // Build Counts for *A*
+                    RefreshColumnCells(ref m_ColumnSnapshotA, (rowId, row, reusableCell) =>
+                    {
+                        return MakeCountCell(rowId, reusableCell, row.BaseCount);
+                    });
+                }
+
+                UIElementsHelper.SetVisibility(m_ColumnSnapshotB.Root, true);
+                // Build Snapshot *A* column for the Legend Table
+                // but use *B* column so *A* Column can be used for a potential count
+                RefreshColumnCells(ref m_ColumnSnapshotB, (rowId, row, reusableCell) =>
+                {
+                    return MakeSizeCell(rowId, reusableCell, row.BaseSize);
                 });
             }
         }
@@ -271,6 +302,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 sizeText = "-" + sizeText;
             var item = reusableCell ?? ViewControllerUtility.Instantiate(m_SizeCellUxml);
             item.Q<Label>(k_UxmlCellValueLabel).text = sizeText;
+            item.tooltip = MakeTooltipText(rowId);
+            if (reusableCell == null)
+                RegisterCellCallbacks(item, rowId);
+            return item;
+        }
+
+        VisualElement MakeCountCell(int rowId, VisualElement reusableCell, long count)
+        {
+            var item = reusableCell ?? ViewControllerUtility.Instantiate(m_SizeCellUxml);
+            item.Q<Label>(k_UxmlCellValueLabel).text = count.ToString();
             item.tooltip = MakeTooltipText(rowId);
             if (reusableCell == null)
                 RegisterCellCallbacks(item, rowId);

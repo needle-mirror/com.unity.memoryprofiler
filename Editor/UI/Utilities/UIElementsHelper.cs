@@ -8,6 +8,15 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal static class UIElementsHelper
     {
+        public static void SetCustomSortModeEnabled(this MultiColumnTreeView treeView, bool enable)
+        {
+#if UNITY_6000_0_OR_NEWER
+            treeView.sortingMode = enable ? ColumnSortingMode.Custom : ColumnSortingMode.None;
+#else
+            treeView.sortingEnabled = enable;
+#endif
+        }
+
         public static void SetScrollViewVerticalScrollerVisibility(ScrollView view, bool alwaysOn)
         {
 #if UNITY_2021_1_OR_NEWER

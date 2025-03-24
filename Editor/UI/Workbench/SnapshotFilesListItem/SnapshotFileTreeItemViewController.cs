@@ -219,6 +219,40 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 BrowseCaptureFolder();
             });
+
+            // At this stage we can't check that the snapshot _actually_ contained callstack information or just had the capture flag set but didn't receive any data for it
+            // To reduce the risk of showing this context option
+            if (Unsupported.IsDeveloperMode() && Unsupported.IsSourceBuild() && Model.CaptureFlags.HasFlag(Profiling.Memory.CaptureFlags.NativeStackTraces))
+            {
+
+                const string openCallstacksButtonText = "Open Callstacks Table for Unknown Root (if callstack info was captured)";
+                binder.menu.AppendAction(openCallstacksButtonText,
+                    (a) =>
+                    {
+                        TryOpenCallstackWindow();
+                    });
+
+                const string openInvertedCallstacksButtonText = "Open (Inverted) Callstacks Table for Unknown Root (if callstack info was captured)";
+                binder.menu.AppendAction(openInvertedCallstacksButtonText,
+                    (a) =>
+                    {
+                        TryOpenCallstackWindow(invertedCallstacks: true);
+                    });
+
+            }
+        }
+
+        void TryOpenCallstackWindow(bool invertedCallstacks = false)
+        {
+            var snapshot = m_SnapshotDataService.LoadWithoutLoadingToUI(Model.FullPath);
+            if (snapshot.NativeCallstackSymbols.Count > 0)
+            {
+                ExportUtility.OpenCallstacksWindowForNativeRoot(snapshot, CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootId, invertedCallstacks: invertedCallstacks, callstackWindowOwnsSnapshot: true);
+            }
+            else
+            {
+                Debug.LogError("Snapshot did not contain any callstack info");
+            }
         }
 
         void BrowseCaptureFolder()

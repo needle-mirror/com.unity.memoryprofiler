@@ -85,7 +85,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         public struct Row
         {
-            public Row(string name, ulong baseTotal, ulong baseInner, ulong comparedTotal, ulong comparedInner, string styleId, string descr, string docsUrl)
+            public const long InvalidCount = -1;
+            public Row(string name, ulong baseTotal, ulong baseInner, ulong comparedTotal, ulong comparedInner, string styleId, string descr, string docsUrl, long baseCount = InvalidCount, long comparedCount = InvalidCount)
             {
                 Name = name;
                 BaseSize = new MemorySize(baseTotal, baseInner);
@@ -96,9 +97,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 CategoryId = IAnalysisViewSelectable.Category.None;
                 SortPriority = RowSortPriority.Normal;
                 ResidentSizeUnavailable = false;
+                BaseCount = baseCount;
+                ComparedCount = comparedCount;
             }
 
-            public Row(string name, MemorySize baseSize, MemorySize comparedSize, string styleId, string descr, string docsUrl)
+            public Row(string name, MemorySize baseSize, MemorySize comparedSize, string styleId, string descr, string docsUrl, long baseCount = InvalidCount, long comparedCount = InvalidCount)
             {
                 Name = name;
                 BaseSize = baseSize;
@@ -109,6 +112,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 CategoryId = IAnalysisViewSelectable.Category.None;
                 SortPriority = RowSortPriority.Normal;
                 ResidentSizeUnavailable = false;
+                BaseCount = baseCount;
+                ComparedCount = comparedCount;
             }
 
             /// <summary>
@@ -122,9 +127,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             public MemorySize BaseSize { get; }
 
             /// <summary>
+            /// Base snapshot element instance count
+            /// </summary>
+            public long BaseCount { get; }
+
+            /// <summary>
             /// Compared snapshot element memory size
             /// </summary>
             public MemorySize ComparedSize { get; }
+
+            /// <summary>
+            /// Compared snapshot element instance count
+            /// </summary>
+            public long ComparedCount { get; }
 
             /// <summary>
             /// Style id for associated bar element.
