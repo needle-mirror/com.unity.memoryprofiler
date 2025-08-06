@@ -10,7 +10,7 @@ using UnityEngine.Assertions;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
-#if INSTANCE_ID_CHANGED
+#if IMGUI_TREEVIEW_API_CHANGED
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
@@ -833,7 +833,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     cellRect.x += indent;
                     cellRect.width -= indent;
                     if (pathsToRootDetailTreeViewItem.Data.IsValid)
-                        GUI.DrawTexture(new Rect(cellRect.x, cellRect.y, 20, 20), pathsToRootDetailTreeViewItem.Data.isManaged ? Styles.CSharpIcon : Styles.CPlusPlusIcon);
+                        GUI.DrawTexture(new Rect(cellRect.x, cellRect.y, 20, 20),
+                            pathsToRootDetailTreeViewItem.Data.isManaged || pathsToRootDetailTreeViewItem.Data.dataType == ObjectDataType.GCHandle ? Styles.CSharpIcon : Styles.CPlusPlusIcon);
                     cellRect.x += 20;
                     cellRect.width -= 20;
                     if (pathsToRootDetailTreeViewItem.icon != null)

@@ -107,11 +107,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                     summary.GraphicsAndDrivers = new MemorySize(summary.GraphicsAndDrivers.Committed + delta, 0);
                     summary.EstimatedGraphicsAndDrivers = true;
                 }
-                else if (cs.MetaData.TargetInfo is not { RuntimePlatform: RuntimePlatform.Switch })
+                else if (!cs.UseDeviceMemoryForGraphics)
                 {
                     // Move untracked graphics memory to untracked category.
                     //
-                    // We special case to skip Switch here - all its GPU allocations are completely tracked, so we don't need to fudge values.
+                    // We special case to skip consoles here - all its GPU allocations are completely tracked, so we don't need to fudge values.
                     // Certain regions which we'd otherwise mark as "untracked" are actually GPU reserved, which isn't
                     // yet something that the memory profiler has first-class support for.
                     var untrackedGraphics = summary.GraphicsAndDrivers.Committed - memoryStats.Value.GraphicsUsedMemory;

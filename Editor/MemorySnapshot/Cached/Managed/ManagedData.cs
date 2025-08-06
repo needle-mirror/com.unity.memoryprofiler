@@ -43,7 +43,8 @@ namespace Unity.MemoryProfiler.Editor
         public ref ConnectionsHashMap ConnectionsFromMappedToSourceIndex => ref m_ConnectionsFromMappedToSourceIndex;
 
         public HashSet<long> IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute { private set; get; }
-        public HashSet<long> IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle { private set; get; }
+        public HashSet<long> IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle { private set; get; }
+        public HashSet<long> IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle { private set; get; }
 
 #if DEBUG_VALIDATION
         // This Dictionary block is here to make the investigations for PROF-2420 easier.
@@ -64,7 +65,8 @@ namespace Unity.MemoryProfiler.Editor
 #endif
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsInitialSize, rawConnectionsCount);
             IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute = new HashSet<long>();
-            IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle = new HashSet<long>();
+            IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle = new HashSet<long>();
+            IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle = new HashSet<long>();
         }
 
         internal void AddUpTotalMemoryUsage(CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)

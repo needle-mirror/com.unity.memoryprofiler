@@ -189,23 +189,35 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             }
 
-            if (m_CompareMode)
+            try
             {
-                if (m_BaseSnapshot != null)
+                if (m_CompareMode)
                 {
-                    UnloadSnapshot(ref m_ComparedSnapshot);
-                    m_ComparedSnapshot = LoadSnapshot(reader);
+                    if (m_BaseSnapshot != null)
+                    {
+                        UnloadSnapshot(ref m_ComparedSnapshot);
+                        m_ComparedSnapshot = LoadSnapshot(reader);
+                    }
+                    else
+                        m_BaseSnapshot = LoadSnapshot(reader);
                 }
                 else
+                {
+                    UnloadSnapshot(ref m_BaseSnapshot);
                     m_BaseSnapshot = LoadSnapshot(reader);
+                }
             }
-            else
+            catch
             {
-                UnloadSnapshot(ref m_BaseSnapshot);
-                m_BaseSnapshot = LoadSnapshot(reader);
+                // don't throw the exception explicitly but do a generic rethrow in order to not stomp the callstack
+                throw;
             }
-
-            LoadedSnapshotsChanged?.Invoke();
+            finally
+            {
+                // Don't let an exception prevent the UI from getting update,
+                // otherwise the UI gets into a limbo state where a snapshot is unloaded but still there in UI.
+                LoadedSnapshotsChanged?.Invoke();
+            }
         }
 
         public void Unload(string filePath)
@@ -497,7 +509,7 @@ namespace Unity.MemoryProfiler.Editor
             m_SnapshotFolderWatcher = null;
 
             EditorApplication.update -= Update;
-            MemoryProfilerSettings.SnapshotStoragePathChanged -= SetSnapshotsFolderDirty;
+            MemoryProfilerSettings.SnapshotStoragePathChanged -= SetupSnapshotFolderWatcher;
             UnloadAll();
         }
 

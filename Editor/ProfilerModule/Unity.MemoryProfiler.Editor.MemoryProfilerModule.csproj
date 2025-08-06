@@ -1,0 +1,29 @@
+<!-- Auto generated from '/Users/darius.skergelza/lanes/lane1/neutron/Packages/com.unity.memoryprofiler/Editor/ProfilerModule/Unity.MemoryProfiler.Editor.MemoryProfilerModule.asmdef' on 30 October 2024 11:51:09 +02 -->
+<Project Sdk="Unity.Sdk">
+  <PropertyGroup>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableUnityEngineReferences>true</EnableUnityEngineReferences>
+    <AssemblyName>Unity.MemoryProfiler.Editor.MemoryProfilerModule</AssemblyName>
+    <RootNamespace>Unity.MemoryProfiler.MemoryProfilerModule.Editor</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <UnityPlatformInclude>Editor</UnityPlatformInclude>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Unity.MemoryProfiler.Editor.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <UnityVersionDefine Include="Unity">
+      <Expression>2022.2.0a12</Expression>
+      <Define>MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>6000.2.0a8</Expression>
+      <Define>MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE</Define>
+    </UnityVersionDefine>
+  </ItemGroup>
+</Project>

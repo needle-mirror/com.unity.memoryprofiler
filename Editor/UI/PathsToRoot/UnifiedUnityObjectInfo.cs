@@ -166,14 +166,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // Native Object Only info
         public bool HasNativeSide => NativeObjectIndex != -1;
-        public readonly InstanceID InstanceId;
+        public readonly EntityId EntityId;
         public readonly ulong NativeSize;
         public readonly string NativeObjectName;
         public readonly HideFlags HideFlags;
         public readonly Format.ObjectFlags Flags;
         public readonly int NativeRefCount;
         public bool IsPersistentAsset => Flags.HasFlag(Format.ObjectFlags.IsPersistent) && !IsManager;
-        public bool IsRuntimeCreated => InstanceId.IsRuntimeCreated();
+        public bool IsRuntimeCreated => EntityId.IsRuntimeCreated();
         public bool IsManager => Flags.HasFlag(Format.ObjectFlags.IsManager);
         public bool IsDontUnload => Flags.HasFlag(Format.ObjectFlags.IsDontDestroyOnLoad) || HideFlags.HasFlag(HideFlags.DontUnloadUnusedAsset);
 
@@ -194,7 +194,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 NativeObjectData = default;
                 ManagedObjectData = default;
                 ManagedObjectIndex = -1;
-                InstanceId = InstanceID.None;
+                EntityId = EntityId.None;
                 NativeSize = 0;
                 NativeObjectName = string.Empty;
                 HideFlags = 0;
@@ -235,7 +235,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 Flags = NativeObjectData.GetFlags(snapshot);
 
-                InstanceId = NativeObjectData.GetInstanceID(snapshot);
+                EntityId = NativeObjectData.GetEntityId(snapshot);
                 NativeSize = snapshot.NativeObjects.Size[NativeObjectData.nativeObjectIndex];
                 NativeObjectName = snapshot.NativeObjects.ObjectName[NativeObjectData.nativeObjectIndex];
                 HideFlags = snapshot.NativeObjects.HideFlags[NativeObjectData.nativeObjectIndex];
@@ -246,7 +246,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else
             {
-                InstanceId = InstanceID.None;
+                EntityId = EntityId.None;
                 NativeSize = 0;
                 NativeObjectName = string.Empty;
                 HideFlags = 0;

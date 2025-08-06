@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
-#if INSTANCE_ID_CHANGED
+#if IMGUI_TREEVIEW_API_CHANGED
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
 #else
@@ -178,6 +178,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                         fieldName = $".{data.GetFieldName(cachedSnapshot)}";
                     var typeName = truncateTypeNames ? TruncatedTypeName : TypeName;
                     return $"{referencedItemName}Static field type reference on {typeName}{fieldName}";
+                case ObjectDataType.GCHandle:
+                    return displayObject.GenerateObjectName(cachedSnapshot);
                 case ObjectDataType.NativeAllocation: // should not be present outside of as a referencesToItem with field information to display
                 default:
                     throw new ArgumentOutOfRangeException();

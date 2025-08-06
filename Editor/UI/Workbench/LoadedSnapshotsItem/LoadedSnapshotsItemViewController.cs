@@ -76,7 +76,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ProductLabel.text = Model.ProductName;
             m_SessionLabel.text = m_SnapshotDataService.SessionNames[Model.SessionId];
 
-            m_ImageAndMetaContainer.tooltip = $"Metadata Description: {Model.MetadataDescription}";
+            m_ImageAndMetaContainer.tooltip = $"Metadata Description:\n{Model.MetadataDescription}";
 
             UIElementsHelper.SetVisibility(m_NoDataContainer, false);
 

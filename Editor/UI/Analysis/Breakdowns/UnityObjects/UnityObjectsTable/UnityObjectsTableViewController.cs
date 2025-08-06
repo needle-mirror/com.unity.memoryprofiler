@@ -116,7 +116,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public ITextFilter UnityObjectTypeNameFilter { get; private set; }
 
-        public IInstancIdFilter SourceIndexFilter { get; private set; }
+        public IEntityIdFilter SourceIndexFilter { get; private set; }
 
         void OnSearchFilterChanged(IScopedFilter<string> searchFilter)
         {
@@ -127,7 +127,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             IScopedFilter<string> searchStringFilter = null,
             ITextFilter unityObjectNameFilter = null,
             ITextFilter unityObjectTypeNameFilter = null,
-            IInstancIdFilter unityObjectInstanceIdFilter = null)
+            IEntityIdFilter unityObjectInstanceIdFilter = null)
         {
             SearchStringFilter = searchStringFilter;
             UnityObjectNameFilter = unityObjectNameFilter;

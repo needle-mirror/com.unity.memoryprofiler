@@ -5,7 +5,6 @@ using UnityEditor;
 using UnityEngine;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.Profiling.Memory;
-using UnityEngine.UIElements.Experimental;
 
 
 #if UNITY_2021_2_OR_NEWER

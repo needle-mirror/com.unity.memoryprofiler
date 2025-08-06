@@ -7,6 +7,29 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2025-08-06
+
+### Added
+- Added a UTC timestamp, as well as the current frame count, Time.realtimeSinceStartupAsDouble and (when capturing a snapshot from a Unity Editor) EditorApplication.timeSinceStartup to the default snapshot metadata injector (which is included in builds made with this version of the package included, unless a [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html) instance is present). This should make correlating snapshots to timing captures easier. The time reflects the start of the capture taking process and the metadata can be observed by hovering the snapshot in the list of captures (while not in Play Mode).
+
+### Fixed
+- Fixed loading of a capture with an invalid native root allocation reference from a graphics resource ([PROFB-359](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-359)).
+- Fixed an issue where the list of snapshots would jump to the wrong position after opening one.
+- Fixed issue where non-Latin characters in a project's Product Name would result in an incorrectly named memory snapshot file ([PROFB-346](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-346)).
+- Fixed case where it was possible to rename a snapshot to an empty string.
+- Fixed SnapshotDataService leaking when opening and closing the Memory Profiler window.
+- Fixed repeated references via multiple fields on the same object leading to a status of "Bug! Liveness Reason Unknown" on the referenced object ([PROFB-351](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-351)).
+- Fixed an issue where managed references to smaller native alloctions (<16B), e.g. for NativeArrays, would not be found and listed in the References To or Managed Fields list, instead refering to a reference to a Native Region ([PROFB-353](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-353)).
+- Reattributed PlayStation 5's GPU memory from Native to Graphics in the Summary view and All Of Memory table.
+- Fixed inclusion of allocated GPU memory on the PlayStation 5 on the All Of Memory table under `Native > Unity Subsystem > Unknown`. Instead, it is now shown under `Graphics (Estimated)` and/or `Untracked > Graphics`.
+- Fixed icon for captures made on Apple Vision Pro.
+
+### Changed
+- Improved the handling of exceptions thrown during a snapshot opening process so that previously opened snapshots apear properly as closed int UI and a mismatch between UI and loading state do not lead to follow on-exceptions.
+- Improved the documentation for [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html).
+- Added GCHandles allocated for managed objects to the list of references if they are not associated with a native object (where that native object would then be placed in the references list).
+- Clarified that the option to break down reserved memory only affects reserved native memory to avoid confusion ([PROFB-369](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-369)).
+
 ## [1.1.6] - 2025-03-24
 
 ### Added

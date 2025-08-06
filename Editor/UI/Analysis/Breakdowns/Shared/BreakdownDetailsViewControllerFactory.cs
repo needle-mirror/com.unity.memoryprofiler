@@ -43,6 +43,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 CachedSnapshot.SourceIndex.SourceId.NativeType or
                 CachedSnapshot.SourceIndex.SourceId.ManagedType => new TypeDetailsViewController(snapshot, source, childCount),
 
+                CachedSnapshot.SourceIndex.SourceId.GCHandleIndex => new SimpleDetailsViewController(name, TextContent.GCHandleDescription, string.Empty),
+
                 _ => new SimpleDetailsViewController(name, TextContent.NonTypedGroupDescription, string.Empty),
             };
         }

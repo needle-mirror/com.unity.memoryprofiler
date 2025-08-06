@@ -5,11 +5,17 @@ using Unity.MemoryProfiler.Editor.UIContentData;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using System.Collections.Generic;
 using System.Text;
+using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class SelectedItemDetailsForTypesAndObjects
     {
+        // The unique refcount is currently not flat out available for all objects after crawling and would require further processing, wheras managedObjectInfo.RefCount IS available.
+        // We currently don't need the refcount at scale, e.g. in a table column, but just in the Selected Item details, where it is more helpfull to match the Reference list count above it.
+        // Keeping this option open in case this changes and reworking the refcount to work at scale turns out not to scale too well when we do need that refcount statt
+        const bool k_UseUniqueRefCountInUI = true;
+
 #pragma warning disable 0649
         long m_CurrentSelectionIdx;
 #pragma warning restore 0649
@@ -52,6 +58,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
                     HandleNativeRootReferenceDetails(source, fallbackName, fallbackDescription, childCount);
                     break;
+                case SourceIndex.SourceId.GCHandleIndex:
+                    HandleGCHandleDetails(source);
+                    break;
                 default:
                     break;
             }
@@ -75,6 +84,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Managed Type", type.ManagedTypeName);
             if (type.HasNativeType)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Native Type", type.NativeTypeName);
+        }
+
+        internal void HandleGCHandleDetails(CachedSnapshot.SourceIndex sourceIndex)
+        {
+            if (!sourceIndex.Valid)
+                return;
+
+            m_UI.SetItemName(sourceIndex);
+
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.GCHandleStatus, TextContent.GCHandleHint);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.GCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
         }
 
         internal void HandleObjectDetails(UnifiedType type)
@@ -345,58 +365,104 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", fullLength.ToString());
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", $"\"{str}\"", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel | SelectedItemDynamicElementOptions.ShowTitle);
             }
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", managedObjectInfo.RefCount.ToString());
+
+            GetDetailedManagedReferenceCounts(managedObjectInfo.ManagedObjectIndex, out var uniqueReferenceCount, out var _, out var _, out var repeatRefCount, out var nonUnityObjectGCHandleCount, out var heldByGCHandle);
+
+            var refCount = k_UseUniqueRefCountInUI ? uniqueReferenceCount : managedObjectInfo.RefCount;
+
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", refCount.ToString());
+
+            if (!k_UseUniqueRefCountInUI && repeatRefCount > 0)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.RepeatReferencesLabel, repeatRefCount.ToString(), tooltip: TextContent.RepeatReferencesTooltip);
+
+            if (nonUnityObjectGCHandleCount > 0)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.NonUnityObjectGCHandleReferencesLabel, nonUnityObjectGCHandleCount.ToString(), tooltip: TextContent.NonUnityObjectGCHandleReferencesTooltip);
+
             m_UI.SetManagedObjectInspector(m_CurrentSelectionObjectData);
 
-            var references = new List<ObjectData>();
-            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot,
-                new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectInfo.ManagedObjectIndex), ref references, searchMode: ObjectConnection.UnityObjectReferencesSearchMode.Raw);
-            // GCHandles that do not belong to a Native Object increase the RefCount without adding an entry to the references list.
-            if (managedObjectInfo.RefCount > references.Count)
+            // GCHandles that do not belong to a Native Object increase the RefCount and adding an entry to the references list.
+            // For older patch release versions of Unity there was a timing issue Native Objects could be changed between the moment where GCHandles
+            // got reported and where the Native Objects got reported, meaning we would end up with a GCHandle that was technically supposed to belong to a
+            // Native Object that since got destroyed. This would now be listed as a non-Native-Object reference in the references table and there is no way
+            // to reasonably call that out as a potential bug in the captured runtime version (something that was previously attempted by checking
+            // the (non-unique, non-GCHandle-including) references list count against the RefCount, and then reported as UnkownLivenessReasonStatus.
+            if (heldByGCHandle)
             {
-                if (m_CachedSnapshot.CrawledData.IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute.Contains(managedObjectInfo.ManagedObjectIndex))
-                {
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UsedByNativeCodeStatus, TextContent.UsedByNativeCodeHint);
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UsedByNativeCodeHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
-                }
-                else if (m_CachedSnapshot.CrawledData.IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle.Contains(managedObjectInfo.ManagedObjectIndex))
-                {
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.HeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.HeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
-                }
-                else
-                {
-                    // We are getting into Bug territory: Either this looked like a Managed Object during crawling but no native object was found, or we have legit no idea why it is alive
-                    bool heldByGCHandle = false;
-                    for (long i = 0; i < m_CachedSnapshot.GcHandles.UniqueCount; i++)
-                    {
-                        if (m_CachedSnapshot.GcHandles.Target[i] == managedObjectInfo.PtrObject)
-                        {
-                            heldByGCHandle = true;
-                            break;
-                        }
-                    }
-                    if (heldByGCHandle)
-                    {
-                        // it is not in IndicesOfManagedObjectsHeldByNonNativeObjectRelatedGCHandle so the inverse must be true and this is held by a Unity Object
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnityObjectHeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnityObjectHeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
-                    }
-                    else
-                    {
-                        // This has to be an issue in the Managed Crawler, the UI or some other processing of the snapshot,
-                        // as Objects without a GCHandle or a reference to them aren't found by the Managed Crawler.
-                        // If we eventually attempt to read "empty" managed heap space, we may find Managed Objects
-                        // with no references that are about to be collected (outside of a Free Block), or already collected (inside a Free Block).
-                        // TODO: adjust this logic when that happens and make sure to mark or list these objects somehow/somewhere so we can exclude them here
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnkownLivenessReasonStatus, TextContent.UnkownLivenessReasonHint);
-                        m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnkownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
-                    }
-                }
+                UpdateStatusForGCHandleHeldObjectWithoutNativeObject(managedObjectInfo.ManagedObjectIndex, false);
+            }
+            else if (uniqueReferenceCount > 0)
+            {
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.ReferencedManagedObjectStatus, TextContent.ReferencedManagedObjectHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.ReferencedManagedObjectHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+            }
+            // We are getting into Bug territory: Either this looked like a Managed Object during crawling but no native object was found, or we have legit no idea why it is alive
+            else
+            {
+                Checks.CheckEquals(managedObjectInfo.RefCount, uniqueReferenceCount);
+
+                // This has to be an issue in the Managed Crawler, the UI or some other processing of the snapshot,
+                // as Objects without a GCHandle or a reference to them aren't found by the Managed Crawler.
+                // If we eventually attempt to read "empty" managed heap space, we may find Managed Objects
+                // with no references that are about to be collected (outside of a Free Block), or already collected (inside a Free Block).
+                // TODO: adjust this logic when that happens and make sure to mark or list these objects somehow/somewhere so we can exclude them here
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnkownLivenessReasonStatus, TextContent.UnkownLivenessReasonHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnkownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
             }
 
             var objectAddress = m_CurrentSelectionObjectData.GetObjectPointer(m_CachedSnapshot, false);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Managed Address", DetailFormatter.FormatPointer(objectAddress));
+        }
+
+        void GetDetailedManagedReferenceCounts(long managedObjectIndex, out long uniqueReferenceCount, out long uniqueManagedReferenceCount, out long uniqueNativeReferenceCount, out long repeatRefCount, out long nonUnityObjectGCHandleCount, out bool heldByGCHandle)
+        {
+            if (managedObjectIndex < 0)
+            {
+                uniqueReferenceCount = 0;
+                uniqueManagedReferenceCount = 0;
+                uniqueNativeReferenceCount = 0;
+                repeatRefCount = 0;
+                nonUnityObjectGCHandleCount = 0;
+                heldByGCHandle = false;
+                return;
+            }
+            var uniqueReferences = new List<ObjectData>();
+            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot,
+                new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex), ref uniqueReferences, searchMode: ObjectConnection.UnityObjectReferencesSearchMode.Raw, ignoreRepeatedManagedReferences: true);
+            var references = new List<ObjectData>();
+            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot,
+                new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex), ref references, searchMode: ObjectConnection.UnityObjectReferencesSearchMode.Raw, ignoreRepeatedManagedReferences: false);
+
+            uniqueReferenceCount = uniqueReferences.Count;
+            repeatRefCount = references.Count - uniqueReferenceCount;
+
+            uniqueManagedReferenceCount = uniqueNativeReferenceCount = nonUnityObjectGCHandleCount = 0;
+            for (int i = 0; i < uniqueReferenceCount; i++)
+            {
+                switch (uniqueReferences[i].dataType)
+                {
+                    case ObjectDataType.Value:
+                    case ObjectDataType.Object:
+                    case ObjectDataType.Array:
+                    case ObjectDataType.BoxedValue:
+                    case ObjectDataType.ReferenceObject:
+                    case ObjectDataType.ReferenceArray:
+                    case ObjectDataType.Type:
+                        ++uniqueManagedReferenceCount;
+                        break;
+                    case ObjectDataType.NativeObject:
+                        ++uniqueNativeReferenceCount;
+                        break;
+                    case ObjectDataType.GCHandle:
+                        ++nonUnityObjectGCHandleCount;
+                        break;
+                    case ObjectDataType.Unknown:
+                    case ObjectDataType.NativeAllocation:
+                    default:
+                        throw new NotImplementedException();
+                }
+            }
+            // the first indices are reserved for objects held by GCHandles
+            heldByGCHandle = managedObjectIndex < m_CachedSnapshot.GcHandles.UniqueCount;
         }
 
         private void AddBasicGroupSizeUILine(string description, ulong value)
@@ -460,8 +526,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                     $"{selectedUnityObject.NativeSize:N0} B\n\nThis is the value that would've been returned by calling GetRuntimeMemorySizeLong at runtime. It combines native and gpu allocation estimates.");
             }
 
+            GetDetailedManagedReferenceCounts(selectedUnityObject.ManagedObjectIndex, out var uniqueReferenceCount, out var uniqueManagedReferenceCount, out var uniqueNativeReferenceCount, out var repeatRefCount, out var nonUnityObjectGCHandleCount, out var heldByGCHandle);
+
+            var refCount = k_UseUniqueRefCountInUI ? uniqueReferenceCount : selectedUnityObject.TotalRefCount;
+            var nativeRefCount = k_UseUniqueRefCountInUI ? uniqueNativeReferenceCount : selectedUnityObject.NativeRefCount;
+            var managedRefCount = k_UseUniqueRefCountInUI ? uniqueManagedReferenceCount : selectedUnityObject.ManagedRefCount;
+
             var refCountExtra = (selectedUnityObject.IsFullUnityObjet && selectedUnityObject.TotalRefCount > 0) ? $"({selectedUnityObject.NativeRefCount} Native + {selectedUnityObject.ManagedRefCount} Managed)" : string.Empty;
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", $"{selectedUnityObject.TotalRefCount} {refCountExtra}{(selectedUnityObject.IsFullUnityObjet ? " + 2 Self References" : "")}");
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", $"{refCount} {refCountExtra}{(selectedUnityObject.IsFullUnityObjet ? " + 2 Self References" : "")}");
+
+            if (!k_UseUniqueRefCountInUI && repeatRefCount > 0)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.RepeatReferencesLabel, repeatRefCount.ToString(), tooltip: TextContent.RepeatReferencesTooltip);
+
+            if (nonUnityObjectGCHandleCount > 0)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.NonUnityObjectGCHandleReferencesLabel, nonUnityObjectGCHandleCount.ToString(), tooltip: TextContent.NonUnityObjectGCHandleReferencesTooltip);
 
             if (selectedUnityObject.IsFullUnityObjet && !selectedUnityObject.ManagedObjectData.IsValid)
             {
@@ -487,7 +565,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             // Debug info
-            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Instance ID", selectedUnityObject.InstanceId.ToString());
+            var instanceIdLabel = m_CachedSnapshot.MetaData.UnityVersionMajor >= 6000 && m_CachedSnapshot.MetaData.UnityVersionMinor >= 3 ? "Entity ID" : "Instance ID";
+            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, instanceIdLabel, selectedUnityObject.EntityId.ToString());
             if (selectedUnityObject.HasNativeSide)
             {
                 var flagsLabel = "";
@@ -512,7 +591,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Native Index", $"U:{selectedUnityObject.NativeObjectData.GetUnifiedObjectIndex(m_CachedSnapshot)} N:{selectedUnityObject.NativeObjectData.nativeObjectIndex}");
             if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Managed Index", $"U:{selectedUnityObject.ManagedObjectData.GetUnifiedObjectIndex(m_CachedSnapshot)} M:{selectedUnityObject.ManagedObjectData.GetManagedObjectIndex(m_CachedSnapshot)}");
 
-            UpdateStatusAndHint(selectedUnityObject);
+            UpdateStatusAndHint(selectedUnityObject, heldByGCHandle);
 
             if (selectedUnityObject.IsFullUnityObjet)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, "Self References", "The Managed and Native parts of this UnityEngine.Object reference each other. This is normal."
@@ -750,27 +829,59 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.SetDescription(description);
         }
 
-        void UpdateStatusAndHint(UnifiedUnityObjectInfo m_SelectedUnityObject)
+        void UpdateStatusAndHint(UnifiedUnityObjectInfo selectedUnityObject, bool heldByGCHandle)
         {
-            if (m_SelectedUnityObject.IsLeakedShell)
+            if (heldByGCHandle && !selectedUnityObject.HasNativeSide)
             {
-                UpdateStatusAndHintForLeakedShellObject(m_SelectedUnityObject);
+                // This differes from a Leaked Shell as there is a GCHandle allocated for this object,
+                // which, for Unity Objects, would normally indicate the presence of a Native Object.
+                UpdateStatusForGCHandleHeldObjectWithoutNativeObject(selectedUnityObject.ManagedObjectIndex, true);
             }
-            else if (m_SelectedUnityObject.IsAssetObject && !m_SelectedUnityObject.IsPersistentAsset)
+            else if (selectedUnityObject.IsLeakedShell)
             {
-                UpdateStatusAndHintForDynamicAssets(m_SelectedUnityObject);
+                UpdateStatusAndHintForLeakedShellObject(selectedUnityObject);
             }
-            else if (m_SelectedUnityObject.IsPersistentAsset)
+            else if (selectedUnityObject.IsAssetObject && !selectedUnityObject.IsPersistentAsset)
             {
-                UpdateStatusAndHintForPersistentAssets(m_SelectedUnityObject);
+                UpdateStatusAndHintForDynamicAssets(selectedUnityObject);
             }
-            else if (m_SelectedUnityObject.IsSceneObject)
+            else if (selectedUnityObject.IsPersistentAsset)
             {
-                UpdateStatusAndHintForSceneObjects(m_SelectedUnityObject);
+                UpdateStatusAndHintForPersistentAssets(selectedUnityObject);
             }
-            else if (m_SelectedUnityObject.IsManager)
+            else if (selectedUnityObject.IsSceneObject)
             {
-                UpdateStatusAndHintForManagers(m_SelectedUnityObject);
+                UpdateStatusAndHintForSceneObjects(selectedUnityObject);
+            }
+            else if (selectedUnityObject.IsManager)
+            {
+                UpdateStatusAndHintForManagers(selectedUnityObject);
+            }
+        }
+
+        void UpdateStatusForGCHandleHeldObjectWithoutNativeObject(long managedObjectIndex, bool isUnityObjectType)
+        {
+            if (m_CachedSnapshot.CrawledData.IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute.Contains(managedObjectIndex))
+            {
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UsedByNativeCodeStatus, TextContent.UsedByNativeCodeHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UsedByNativeCodeHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+            }
+            else if (!isUnityObjectType && m_CachedSnapshot.CrawledData.IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle.Contains(managedObjectIndex))
+            {
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.GCHandleHeldManagedObjectStatus, TextContent.GCHandleHeldManagedObjectHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.GCHandleHeldManagedObjectHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+            }
+            else if (isUnityObjectType || m_CachedSnapshot.CrawledData.IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle.Contains(managedObjectIndex))
+            {
+                // There may be some types that do not get properly found to be Unity Object types but which have objects with m_CachedPtr fields
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.LeakedShellHeldByGCHandleStatus, TextContent.LeakedShellHeldByGCHandleHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.LeakedShellHeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+            }
+            else
+            {
+                // this case should normally be captured via IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.HeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.HeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
             }
         }
 

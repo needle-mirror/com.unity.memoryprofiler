@@ -18,38 +18,62 @@ using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.Profiling;
 using UnityEditor;
-using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Managed;
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
-using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.InstanceID>;
-using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.InstanceID, long>;
+#if !ENTITY_ID_CHANGED_SIZE
+using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
+using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.EntityId, long>;
+#else
+using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, UnityEngine.EntityId>;
+using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<UnityEngine.EntityId, long>;
+#endif
 using AddressToIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
 #else
-using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.InstanceID>;
-using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.InstanceID, long>;
+#if !ENTITY_ID_CHANGED_SIZE
+using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
+using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.EntityId, long>;
+#else
+using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, UnityEngine.EntityId>;
+using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<UnityEngine.EntityId, long>;
+#endif
 using AddressToIndex = Unity.Collections.NativeHashMap<ulong, long>;
+#endif
+using HideFlags = UnityEngine.HideFlags;
+using RuntimePlatform = UnityEngine.RuntimePlatform;
+using Debug = UnityEngine.Debug;
+using UnityException = UnityEngine.UnityException;
+
+#if !ENTITY_ID_CHANGED_SIZE
+// the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
+// so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
+using EntityId = Unity.MemoryProfiler.Editor.EntityId;
+#else
+// This should be greyed out by the IDE, otherwise you're missing an alias above
+using UnityEngine;
+using EntityId = UnityEngine.EntityId;
 #endif
 
 namespace Unity.MemoryProfiler.Editor
 {
-#if !INSTANCE_ID_CHANGED
+    // TODO: EntityId to be moved to EditorSelectionAndEntityIdUtilities.cs
+#if !ENTITY_ID_CHANGED_SIZE
     // For simple API compatibility usage in versions pre InstanceId change
-    struct InstanceID : IEquatable<InstanceID>, IComparable<InstanceID>
+    struct EntityId : IEquatable<EntityId>, IComparable<EntityId>
     {
         ulong m_Id;
 
-        public static InstanceID None => new InstanceID { m_Id = 0 };
-        public static InstanceID From(ulong id) => new InstanceID { m_Id = id };
+        public static EntityId None => new EntityId { m_Id = 0 };
+        public static EntityId From(ulong id) => new EntityId { m_Id = id };
         internal bool IsRuntimeCreated() => m_Id < 0;
-        public override bool Equals(object obj) => obj is InstanceID id && Equals(id);
-        public bool Equals(InstanceID other) => m_Id == other.m_Id;
+        public override bool Equals(object obj) => obj is EntityId id && Equals(id);
+        public bool Equals(EntityId other) => m_Id == other.m_Id;
         public override int GetHashCode() => m_Id.GetHashCode();
-        public int CompareTo(InstanceID other) => m_Id.CompareTo(other.m_Id);
-        public static bool operator ==(InstanceID a, InstanceID b) => a.Equals(b);
-        public static bool operator !=(InstanceID a, InstanceID b) => !a.Equals(b);
-        public static explicit operator ulong(InstanceID instanceID) => instanceID.m_Id;
+        public int CompareTo(EntityId other) => m_Id.CompareTo(other.m_Id);
+        public static bool operator ==(EntityId a, EntityId b) => a.Equals(b);
+        public static bool operator !=(EntityId a, EntityId b) => !a.Equals(b);
+        public static explicit operator ulong(EntityId instanceID) => instanceID.m_Id;
         public override string ToString()
         {
             if (m_Id > uint.MaxValue)
@@ -59,10 +83,14 @@ namespace Unity.MemoryProfiler.Editor
     }
 #endif
 
-
-    static class InstanceIdHelper
+    // TODO: EntityAndInstanceIdHelper to be moved to EditorSelectionAndEntityIdUtilities.cs
+    static class EntityAndInstanceIdHelper
     {
-        public static void ConvertInstanceId(this DynamicArray<int> intInstanceIds, ref DynamicArray<InstanceID> instanceIds)
+#if ENTITY_ID_STRUCT_AVAILABLE && ENTITY_ID_CHANGED_SIZE
+        public static bool IsRuntimeCreated(this EntityId id) => ((long)(ulong)id) < 0;
+#endif
+
+        public static void ConvertInstanceIdIntsToEntityIds(this DynamicArray<int> intInstanceIds, ref DynamicArray<EntityId> instanceIds)
         {
             if (intInstanceIds.Count == 0)
             {
@@ -74,7 +102,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             // We are reading old snapshot data here so its not as though those instance IDs mean anything
             // beyond their pure values relative to other usages of the same valus within the snapshot.
-            // I.e. they are fake either way but as long as their value is consistently transposed to InstanceID for everything in the snapshot,
+            // I.e. they are fake either way but as long as their value is consistently transposed to EntityId for everything in the snapshot,
             // everything still works as expected.
             // So while we're just converting to bogus values to make sure all relevant lookups still work, we might as well do it the fast way
 
@@ -83,38 +111,66 @@ namespace Unity.MemoryProfiler.Editor
             {
                 // Safe conversion as old data naturally enforce the limit of int.MaxValue for these
                 var elementCount = (int)intInstanceIds.Count;
-                UnsafeUtility.MemCpyStride(instanceIds.GetUnsafePtr(), sizeof(InstanceID), intInstanceIds.GetUnsafePtr(), sizeof(int), sizeof(int), elementCount);
+                UnsafeUtility.MemCpyStride(instanceIds.GetUnsafePtr(), sizeof(EntityId), intInstanceIds.GetUnsafePtr(), sizeof(int), sizeof(int), elementCount);
             }
 
             //// The slow path. Break comment block in case of failure of the above.
             //for (int i = 0; i < intInstanceIds.Count; i++)
             //{
-            //    instanceIds[i] = InstanceID.From((ulong)intInstanceIds[i]);
+            //    instanceIds[i] = EntityId.From((ulong)intInstanceIds[i]);
             //}
         }
 
-#if INSTANCE_ID_CHANGED
-        public static InstanceID Convert(InstanceID id) => id;
+        public static EntityId GetEntityId(this UnityEngine.Object obj)
+        {
+            if (obj != null)
+#if ENTITY_ID_STRUCT_AVAILABLE
+                return Convert(obj.GetEntityId());
 #else
-        public static InstanceID Convert(int id) => ConvertInt(id);
+                return Convert(obj.GetInstanceID());
+#endif
+            else return EntityId.None;
+        }
+
+#if ENTITY_ID_CHANGED_SIZE
+        // EntityId is UnityEngine.EntityId
+        public static EntityId Convert(EntityId id) => id;
+        public static EntityId ConvertToUnityEntityId(EntityId id) => id;
+        public static EntityId ConvertFromUnityEntityId(EntityId id) => id;
+#else
+        public static int ConvertToInt(this EntityId id)
+        {
+            int instanceId = 0;
+            unsafe
+            {
+                UnsafeUtility.MemCpyStride(&instanceId, sizeof(int), &id, sizeof(EntityId), sizeof(EntityId), 1);
+            }
+            return instanceId;
+        }
+#if ENTITY_ID_STRUCT_AVAILABLE
+        public static UnityEngine.EntityId ConvertToUnityEntityId(EntityId id) => (UnityEngine.EntityId)id.ConvertToInt();
+        public static EntityId ConvertFromUnityEntityId(UnityEngine.EntityId id) => ConvertInt((int)id);
+        public static EntityId Convert(UnityEngine.EntityId id) => ConvertFromUnityEntityId(id);
+#endif
+        public static EntityId Convert(int id) => ConvertInt(id);
 #endif
         /// <summary>
-        /// Call <see cref="Convert"/> if <paramref name="id"/> would be an <see cref="InstanceID"/>
-        /// depending on the define of INSTANCE_ID_CHANGED being true or false.
+        /// Call <see cref="Convert"/> if <paramref name="id"/> would be an <see cref="EntityId"/>
+        /// depending on the define of ENTITY_ID_CHANGED_SIZE being true or false.
         /// </summary>
         /// <param name="id"></param>
         /// <returns></returns>
-        public static InstanceID ConvertInt(int id)
+        public static EntityId ConvertInt(int id)
         {
             ulong instanceId = 0;
             unsafe
             {
-                UnsafeUtility.MemCpyStride(&instanceId, sizeof(InstanceID), &id, sizeof(int), sizeof(int), 1);
+                UnsafeUtility.MemCpyStride(&instanceId, sizeof(EntityId), &id, sizeof(int), sizeof(int), 1);
             }
-            return InstanceID.From(instanceId);
+            return EntityId.From(instanceId);
         }
 
-        public static bool TryConvertToInstanceID(this string instanceIdStr, out InstanceID instanceId)
+        public static bool TryConvertToEntityID(this string instanceIdStr, out EntityId instanceId)
         {
             if (!string.IsNullOrEmpty(instanceIdStr))
             {
@@ -125,16 +181,16 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 if (long.TryParse(instanceIdStr, out var instanceIDLong))
                 {
-                    instanceId = InstanceID.From((ulong)instanceIDLong);
+                    instanceId = EntityId.From((ulong)instanceIDLong);
                     return true;
                 }
                 if (ulong.TryParse(instanceIdStr, out var instanceIDULong))
                 {
-                    instanceId = InstanceID.From(instanceIDULong);
+                    instanceId = EntityId.From(instanceIDULong);
                     return true;
                 }
             }
-            instanceId = InstanceID.From(0UL);
+            instanceId = EntityId.From(0UL);
             return false;
         }
     }
@@ -227,6 +283,15 @@ namespace Unity.MemoryProfiler.Editor
     internal class CachedSnapshot : IDisposable
     {
         public const string InvalidItemName = "<No Name>";
+
+        static CachedSnapshot()
+        {
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
+#pragma warning disable CS0184 // 'is' expression's given expression is never of the provided type (until it is, because UnityEngine was accidentally included.)
+            Debug.Assert(!(typeof(EntityId) is UnityEngine.EntityId), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+#pragma warning restore CS0184 // 'is' expression's given expression is never of the provided type
+#endif
+        }
 
         public bool Valid { get { return !m_Disposed && CrawledData.Crawled; } }
         bool m_Disposed = false;
@@ -603,10 +668,10 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<int> NumAllocations = default;
             public readonly bool UsesDynamicHeapAllocator = false;
             public readonly bool UsesSystemAllocator;
-            public readonly long SwitchGPUAllocatorIndex = -1;
+            public HashSet<long> GPUAllocatorIndices = new HashSet<long>();
 
             const string k_DynamicHeapAllocatorName = "ALLOC_DEFAULT_MAIN";
-            const string k_SwitchGPUAllocatorName = "ALLOC_GPU";
+            const string k_GPUAllocatorName = "ALLOC_GPU";
 
             public NativeMemoryRegionEntriesCache(ref IFileReader reader)
             {
@@ -637,14 +702,10 @@ namespace Unity.MemoryProfiler.Editor
                         UsesDynamicHeapAllocator = true;
                     }
 
-                    if (SwitchGPUAllocatorIndex == -1 && MemoryRegionName[i].Equals(k_SwitchGPUAllocatorName))
+                    if (MemoryRegionName[i].StartsWith(k_GPUAllocatorName))
                     {
-                        SwitchGPUAllocatorIndex = i;
+                        GPUAllocatorIndices.Add(i);
                     }
-
-                    // Nothing left to check if we've found an instance of both
-                    if (UsesDynamicHeapAllocator && SwitchGPUAllocatorIndex != -1)
-                        break;
                 }
                 if (Count > 0)
                     UsesSystemAllocator = !UsesDynamicHeapAllocator;
@@ -945,22 +1006,22 @@ namespace Unity.MemoryProfiler.Editor
             // each scenes offset into the main roots list
             public DynamicArray<int> RootOffsets = default;
             // first index is for the scene then the second is the array of ids for that scene
-            public InstanceID[][] SceneIndexedRootTransformInstanceIds;
-            public InstanceID[][] SceneIndexedRootGameObjectInstanceIds;
+            public EntityId[][] SceneIndexedRootTransformInstanceIds;
+            public EntityId[][] SceneIndexedRootGameObjectInstanceIds;
             // all of the root transform instance ids
-            public DynamicArray<InstanceID> AllRootTransformInstanceIds = default;
+            public DynamicArray<EntityId> AllRootTransformInstanceIds = default;
             // all of the root gameobject instance ids
-            public DynamicArray<InstanceID> AllRootGameObjectInstanceIds = default;
+            public DynamicArray<EntityId> AllRootGameObjectInstanceIds = default;
             // hash set of the ids to avoid duplication ( not sure we really need this)
-            public HashSet<InstanceID> RootTransformInstanceIdHashSet = default;
-            public HashSet<InstanceID> RootGameObjectInstanceIdHashSet = default;
+            public HashSet<EntityId> RootTransformInstanceIdHashSet = default;
+            public HashSet<EntityId> RootGameObjectInstanceIdHashSet = default;
             // tree structures for each scene of the transforms and gameobjects so that we can lookup the structure easily
             public TransformTree[] SceneHierarchies;
 
             public class TransformTree
             {
-                public InstanceID InstanceId { get; private set; } = NativeObjectEntriesCache.InstanceIDNone;
-                public InstanceID GameObjectID { get; set; } = NativeObjectEntriesCache.InstanceIDNone;
+                public EntityId InstanceId { get; private set; } = NativeObjectEntriesCache.InstanceIDNone;
+                public EntityId GameObjectID { get; set; } = NativeObjectEntriesCache.InstanceIDNone;
                 public TransformTree Parent = null;
 
                 static ReadOnlyCollection<TransformTree> s_EmptyList = new List<TransformTree>().AsReadOnly();
@@ -977,12 +1038,12 @@ namespace Unity.MemoryProfiler.Editor
                     IsScene = isScene;
                 }
 
-                public TransformTree(InstanceID instanceId)
+                public TransformTree(EntityId instanceId)
                 {
                     InstanceId = instanceId;
                 }
 
-                public void AddChild(InstanceID instanceId)
+                public void AddChild(EntityId instanceId)
                 {
                     // only a parent (aka Scene at the root) is allowed to have an invalid instance ID
                     // no recursion or self references are allowed either
@@ -999,7 +1060,7 @@ namespace Unity.MemoryProfiler.Editor
                         m_Children.Add(child);
                 }
 
-                public void AddChildren(ICollection<InstanceID> instanceIds)
+                public void AddChildren(ICollection<EntityId> instanceIds)
                 {
                     foreach (var instanceId in instanceIds)
                     {
@@ -1046,31 +1107,31 @@ namespace Unity.MemoryProfiler.Editor
                     ConvertDynamicArrayByteBufferToManagedArray(tmp, ref AssetPath);
                 }
 
-                SceneIndexedRootTransformInstanceIds = new InstanceID[Count][];
+                SceneIndexedRootTransformInstanceIds = new EntityId[Count][];
                 var rootCount = reader.GetEntryCount(EntryType.SceneObjects_RootIds);
                 RootCounts = reader.Read(EntryType.SceneObjects_RootIdCounts, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
                 RootOffsets = reader.Read(EntryType.SceneObjects_RootIdOffsets, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
 
                 if (reader.FormatVersion < FormatVersion.InstanceIDAsAStruct)
                 {
-                    // Read file has the old InstanceID format
+                    // Read file has the old EntityId format
                     using var instanceIDInts = reader.Read(EntryType.SceneObjects_RootIds, 0, rootCount, Allocator.Temp).Result.Reinterpret<int>();
                     // Clear the memory on alloc. The MemCpyStride in ConvertInstanceId won't initialize the blank spaces
-                    AllRootTransformInstanceIds = new DynamicArray<InstanceID>(rootCount, Allocator.Persistent, memClear: true);
-                    instanceIDInts.ConvertInstanceId(ref AllRootTransformInstanceIds);
+                    AllRootTransformInstanceIds = new DynamicArray<EntityId>(rootCount, Allocator.Persistent, memClear: true);
+                    instanceIDInts.ConvertInstanceIdIntsToEntityIds(ref AllRootTransformInstanceIds);
                 }
                 else
                 {
-                    AllRootTransformInstanceIds = reader.Read(EntryType.SceneObjects_RootIds, 0, rootCount, Allocator.Persistent).Result.Reinterpret<InstanceID>();
+                    AllRootTransformInstanceIds = reader.Read(EntryType.SceneObjects_RootIds, 0, rootCount, Allocator.Persistent).Result.Reinterpret<EntityId>();
                 }
-                RootTransformInstanceIdHashSet = new HashSet<InstanceID>();
+                RootTransformInstanceIdHashSet = new HashSet<EntityId>();
                 for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
                 {
                     RootTransformInstanceIdHashSet.Add(AllRootTransformInstanceIds[i]);
                 }
                 for (int i = 0; i < Count; i++)
                 {
-                    SceneIndexedRootTransformInstanceIds[i] = new InstanceID[RootCounts[i]];
+                    SceneIndexedRootTransformInstanceIds[i] = new EntityId[RootCounts[i]];
                     for (int ii = 0; ii < RootCounts[i]; ii++)
                     {
                         SceneIndexedRootTransformInstanceIds[i][ii] = AllRootTransformInstanceIds[ii + RootOffsets[i]];
@@ -1114,7 +1175,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public void GenerateGameObjectData(CachedSnapshot snapshot)
             {
-                AllRootGameObjectInstanceIds = new DynamicArray<InstanceID>(AllRootTransformInstanceIds.Count, Allocator.Persistent);
+                AllRootGameObjectInstanceIds = new DynamicArray<EntityId>(AllRootTransformInstanceIds.Count, Allocator.Persistent);
                 {
                     var cachedList = new List<int>();
                     for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
@@ -1122,16 +1183,16 @@ namespace Unity.MemoryProfiler.Editor
                         AllRootGameObjectInstanceIds[i] = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, AllRootTransformInstanceIds[i]);
                     }
                 }
-                RootGameObjectInstanceIdHashSet = new HashSet<InstanceID>();
+                RootGameObjectInstanceIdHashSet = new HashSet<EntityId>();
                 for (int i = 0; i < AllRootGameObjectInstanceIds.Count; i++)
                 {
                     RootGameObjectInstanceIdHashSet.Add(AllRootGameObjectInstanceIds[i]);
                 }
 
-                SceneIndexedRootGameObjectInstanceIds = new InstanceID[Count][];
+                SceneIndexedRootGameObjectInstanceIds = new EntityId[Count][];
                 for (int i = 0; i < Count; i++)
                 {
-                    SceneIndexedRootGameObjectInstanceIds[i] = new InstanceID[RootCounts[i]];
+                    SceneIndexedRootGameObjectInstanceIds[i] = new EntityId[RootCounts[i]];
                     for (int ii = 0; ii < RootCounts[i]; ii++)
                     {
                         SceneIndexedRootGameObjectInstanceIds[i][ii] = AllRootGameObjectInstanceIds[ii + RootOffsets[i]];
@@ -1142,7 +1203,7 @@ namespace Unity.MemoryProfiler.Editor
             public void CreateTransformTrees(CachedSnapshot snapshot)
             {
                 if (!snapshot.HasSceneRootsAndAssetbundles || SceneHierarchies == null) return;
-                var cachedHashSet = new HashSet<InstanceID>();
+                var cachedHashSet = new HashSet<EntityId>();
                 foreach (var hierarchy in SceneHierarchies)
                 {
                     foreach (var child in hierarchy.Children)
@@ -1152,7 +1213,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            void AddTransforms(TransformTree id, CachedSnapshot snapshot, HashSet<InstanceID> cachedHashSet)
+            void AddTransforms(TransformTree id, CachedSnapshot snapshot, HashSet<EntityId> cachedHashSet)
             {
                 id.GameObjectID = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, id.InstanceId);
                 if (ObjectConnection.TryGetConnectedTransformInstanceIdsFromTransformInstanceId(snapshot, id.InstanceId, id.Parent.InstanceId, ref cachedHashSet))
@@ -1304,13 +1365,13 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeObjectEntriesCache : IDisposable
         {
-            public static readonly InstanceID InstanceIDNone = InstanceID.None;
+            public static readonly EntityId InstanceIDNone = EntityId.None;
             public const long FirstValidObjectIndex = 0;
             public const long InvalidObjectIndex = 0;
 
             public long Count;
             public string[] ObjectName;
-            public DynamicArray<InstanceID> InstanceId = default;
+            public DynamicArray<EntityId> InstanceId = default;
             public DynamicArray<ulong> Size = default;
             public DynamicArray<int> NativeTypeArrayIndex = default;
             public DynamicArray<HideFlags> HideFlags = default;
@@ -1321,8 +1382,8 @@ namespace Unity.MemoryProfiler.Editor
 
             //secondary data
             public DynamicArray<int> RefCount = default;
+            public AddressToInstanceId NativeObjectAddressToEntityId { private set; get; }
             // TODO: Use Native Hashmaps for these to optimze out GC Allocs
-            public AddressToInstanceId NativeObjectAddressToInstanceId { private set; get; }
             public Dictionary<long, int> RootReferenceIdToIndex { private set; get; }
             public Dictionary<long, long> GCHandleIndexToIndex { private set; get; }
             public InstanceIdToNativeObjectIndex InstanceId2Index;
@@ -1335,7 +1396,7 @@ namespace Unity.MemoryProfiler.Editor
             unsafe public NativeObjectEntriesCache(ref IFileReader reader)
             {
                 Count = reader.GetEntryCount(EntryType.NativeObjects_InstanceId);
-                NativeObjectAddressToInstanceId = new AddressToInstanceId((int)Count, Allocator.Persistent);
+                NativeObjectAddressToEntityId = new AddressToInstanceId((int)Count, Allocator.Persistent);
                 RootReferenceIdToIndex = new Dictionary<long, int>((int)Count);
                 GCHandleIndexToIndex = new Dictionary<long, long>((int)Count);
                 InstanceId2Index = new InstanceIdToNativeObjectIndex((int)Count, Allocator.Persistent);
@@ -1348,12 +1409,12 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     using var instanceIDs = reader.Read(EntryType.NativeObjects_InstanceId, 0, Count, Allocator.Temp).Result.Reinterpret<int>();
                     // Clear the memory on alloc. The MemCpyStride in ConvertInstanceId won't initialize the blank spaces
-                    InstanceId = new DynamicArray<InstanceID>(Count, Allocator.Persistent, memClear: true);
-                    instanceIDs.ConvertInstanceId(ref InstanceId);
+                    InstanceId = new DynamicArray<EntityId>(Count, Allocator.Persistent, memClear: true);
+                    instanceIDs.ConvertInstanceIdIntsToEntityIds(ref InstanceId);
                 }
                 else
                 {
-                    InstanceId = reader.Read(EntryType.NativeObjects_InstanceId, 0, Count, Allocator.Persistent).Result.Reinterpret<InstanceID>();
+                    InstanceId = reader.Read(EntryType.NativeObjects_InstanceId, 0, Count, Allocator.Persistent).Result.Reinterpret<EntityId>();
                 }
                 Size = reader.Read(EntryType.NativeObjects_Size, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
                 NativeTypeArrayIndex = reader.Read(EntryType.NativeObjects_NativeTypeArrayIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
@@ -1375,7 +1436,7 @@ namespace Unity.MemoryProfiler.Editor
                 for (long i = 0; i < NativeObjectAddress.Count; ++i)
                 {
                     var id = InstanceId[i];
-                    NativeObjectAddressToInstanceId.Add(NativeObjectAddress[i], id);
+                    NativeObjectAddressToEntityId.Add(NativeObjectAddress[i], id);
                     RootReferenceIdToIndex.Add(RootReferenceId[i], (int)i);
                     InstanceId2Index[id] = (int)i;
                     TotalSizes += Size[i];
@@ -1438,7 +1499,7 @@ namespace Unity.MemoryProfiler.Editor
                 ManagedObjectIndex.Dispose();
                 RefCount.Dispose();
                 ObjectName = null;
-                NativeObjectAddressToInstanceId.Dispose();
+                NativeObjectAddressToEntityId.Dispose();
                 RootReferenceIdToIndex = null;
                 InstanceId2Index.Dispose();
                 MetaDataBufferIndicies.Dispose();
@@ -1876,6 +1937,7 @@ namespace Unity.MemoryProfiler.Editor
             const string k_UnityScriptableObjectTypeName = "UnityEngine.ScriptableObject";
             const string k_UnityComponentObjectTypeName = "UnityEngine.Component";
             const string k_UnityGameObjectTypeName = "UnityEngine.GameObject";
+            const string k_UnityEditorEditorTypeName = "UnityEditor.Editor";
 
             const string k_SystemObjectTypeName = "System.Object";
             const string k_SystemValueTypeName = "System.ValueType";
@@ -1981,6 +2043,7 @@ namespace Unity.MemoryProfiler.Editor
             public readonly int ITypeUnityScriptableObject = ITypeInvalid;
             public readonly int ITypeUnityComponent = ITypeInvalid;
             public readonly int ITypeUnityGameObject = ITypeInvalid;
+            public readonly int ITypeUnityEditorEditor = ITypeInvalid;
             public Dictionary<ulong, int> TypeInfoToArrayIndex { get; private set; }
             // only fully initialized after the Managed Crawler is done stitching up Objects. Might be better to be moved over to ManagedData
             public Dictionary<int, int> UnityObjectTypeIndexToNativeTypeIndex { get; private set; }
@@ -2086,6 +2149,8 @@ namespace Unity.MemoryProfiler.Editor
                 typeNameToIndex.GetOrInitializeValue(k_UnityScriptableObjectTypeName, out ITypeUnityScriptableObject, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_UnityComponentObjectTypeName, out ITypeUnityComponent, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_UnityGameObjectTypeName, out ITypeUnityGameObject, ITypeInvalid);
+
+                typeNameToIndex.GetOrInitializeValue(k_UnityEditorEditorTypeName, out ITypeUnityEditorEditor, ITypeInvalid);
 
                 InitSecondaryItems(fieldDescriptions, nativeTypes, vmInfo, typeNameToIndex);
             }
@@ -2541,22 +2606,22 @@ namespace Unity.MemoryProfiler.Editor
                 if (Count == 0)
                     return;
 
-                DynamicArray<InstanceID> instanceIDFrom;
-                DynamicArray<InstanceID> instanceIDTo;
+                DynamicArray<EntityId> instanceIDFrom;
+                DynamicArray<EntityId> instanceIDTo;
                 if (reader.FormatVersion < FormatVersion.InstanceIDAsAStruct)
                 {
                     From = reader.Read(EntryType.Connections_From, 0, Count, allocator).Result.Reinterpret<int>();
                     To = reader.Read(EntryType.Connections_To, 0, Count, allocator).Result.Reinterpret<int>();
                     // Clear the memory on alloc. The MemCpyStride in ConvertInstanceId won't initialize the blank spaces
-                    instanceIDFrom = new DynamicArray<InstanceID>(Count, Allocator.Temp, memClear: true);
-                    instanceIDTo = new DynamicArray<InstanceID>(Count, Allocator.Temp, memClear: true);
-                    From.ConvertInstanceId(ref instanceIDFrom);
-                    To.ConvertInstanceId(ref instanceIDTo);
+                    instanceIDFrom = new DynamicArray<EntityId>(Count, Allocator.Temp, memClear: true);
+                    instanceIDTo = new DynamicArray<EntityId>(Count, Allocator.Temp, memClear: true);
+                    From.ConvertInstanceIdIntsToEntityIds(ref instanceIDFrom);
+                    To.ConvertInstanceIdIntsToEntityIds(ref instanceIDTo);
                 }
                 else
                 {
-                    instanceIDFrom = reader.Read(EntryType.Connections_From, 0, Count, allocator).Result.Reinterpret<InstanceID>();
-                    instanceIDTo = reader.Read(EntryType.Connections_To, 0, Count, allocator).Result.Reinterpret<InstanceID>();
+                    instanceIDFrom = reader.Read(EntryType.Connections_From, 0, Count, allocator).Result.Reinterpret<EntityId>();
+                    instanceIDTo = reader.Read(EntryType.Connections_To, 0, Count, allocator).Result.Reinterpret<EntityId>();
                 }
 
                 if (connectionsNeedRemaping)
@@ -2586,18 +2651,18 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             void RemapInstanceIdsToUnifiedIndex(NativeObjectEntriesCache nativeObjects, long gcHandlesCount,
-                DynamicArray<InstanceID> instanceIDFrom, DynamicArray<InstanceID> instanceIDTo)
+                DynamicArray<EntityId> instanceIDFrom, DynamicArray<EntityId> instanceIDTo)
             {
                 var instanceIds = nativeObjects.InstanceId;
                 var gcHandlesIndices = nativeObjects.ManagedObjectIndex;
 
                 // Create two temporary acceleration structures:
-                // - Native object InstanceID to GC object
-                // - Native object InstanceID to Unified Index
+                // - Native object EntityId to GC object
+                // - Native object EntityId to Unified Index
                 //
                 // Unified Index - [0..gcHandlesCount)[0..nativeObjects.Count]
-                var instanceIDToUnifiedIndex = new Dictionary<InstanceID, int>();
-                var instanceIDToGcHandleIndex = new Dictionary<InstanceID, int>();
+                var instanceIDToUnifiedIndex = new Dictionary<EntityId, int>();
+                var instanceIDToGcHandleIndex = new Dictionary<EntityId, int>();
                 for (int i = 0; i < instanceIds.Count; ++i)
                 {
                     if (gcHandlesIndices[i] != -1)
@@ -2700,10 +2765,13 @@ namespace Unity.MemoryProfiler.Editor
                 VirtualMachineInformation vmInfo;
                 reader.ReadUnsafe(EntryType.Metadata_VirtualMachineInformation, &vmInfo, sizeof(VirtualMachineInformation), 0, 1);
 
+                // Re-enable this check once we add capture of the VM memory on CoreCLR. It is disabled currently to allow us to have snapshot tests running that are unrelated to VM memory. https://jira.unity3d.com/browse/VM-1768
+#if !ENABLE_CORECLR
                 if (!VMTools.ValidateVirtualMachineInfo(vmInfo))
                 {
                     throw new UnityException("Invalid VM info. Snapshot file is corrupted.");
                 }
+#endif
 
                 m_Reader = reader;
                 long ticks;
@@ -2900,7 +2968,7 @@ namespace Unity.MemoryProfiler.Editor
                         for (var iRegion = nativeRegionIndexInSortedRegions - 1; iRegion >= 0; iRegion--)
                         {
                             if (SortedNativeRegionsEntries.RegionHierarchLayer[iRegion] >= foundRegionInLayer
-                                || SortedNativeRegionsEntries.Address(iRegion) + SortedNativeRegionsEntries.Size(iRegion) < pointer)
+                                || SortedNativeRegionsEntries.Address(iRegion) + SortedNativeRegionsEntries.FullSize(iRegion) < pointer)
                                 continue;
                             if (SortedNativeRegionsEntries.Address(iRegion) <= pointer)
                             {
@@ -2925,7 +2993,7 @@ namespace Unity.MemoryProfiler.Editor
                         idx = ~idx - 1;
                     }
                     var startAddress = SortedNativeAllocations.Address(idx);
-                    if (pointer >= startAddress && pointer < (startAddress + SortedNativeAllocations.Size(idx)))
+                    if (pointer >= startAddress && pointer < (startAddress + SortedNativeAllocations.FullSize(idx)))
                     {
                         nativeAllocationIndex = new SourceIndex(SourceIndex.SourceId.NativeAllocation, SortedNativeAllocations[idx]);
                         return NativeAllocationOrRegionSearchResult.FoundAllocation;
@@ -2938,6 +3006,14 @@ namespace Unity.MemoryProfiler.Editor
                 return NativeAllocationOrRegionSearchResult.NotInTrackedMemory;
             }
             return nativeRegionIndexInSortedRegions >= 0 ? NativeAllocationOrRegionSearchResult.FoundRegion : NativeAllocationOrRegionSearchResult.NothingFound;
+        }
+
+        public bool UseDeviceMemoryForGraphics
+        {
+            get
+            {
+                return NativeMemoryRegions.GPUAllocatorIndices.Count > 0;
+            }
         }
 
         public void Dispose()
@@ -2987,7 +3063,7 @@ namespace Unity.MemoryProfiler.Editor
             void Preload();
             long Count { get; }
             ulong Address(long index);
-            ulong Size(long index);
+            ulong FullSize(long index);
         }
 
         public abstract class IndirectlySortedEntriesCache<TSortComparer>
@@ -3038,7 +3114,7 @@ namespace Unity.MemoryProfiler.Editor
                 m_Loaded = true;
             }
 
-            public abstract ulong Size(long index);
+            public abstract ulong FullSize(long index);
 
             public virtual void Dispose()
             {
@@ -3049,7 +3125,7 @@ namespace Unity.MemoryProfiler.Editor
             /// Uses <see cref="DynamicArrayAlgorithms.BinarySearch"/> to quickly find an item
             /// which has a start <see cref="Address(long)"/> matching the provided <paramref name="address"/>,
             /// or, if <paramref name="onlyDirectAddressMatches"/> is false, where the <paramref name="address"/> falls between
-            /// the items start <see cref="Address(long)"/> and last address (using <see cref="Size(long)"/>).
+            /// the items start <see cref="Address(long)"/> and last address (using <see cref="FullSize(long)"/>).
             ///
             /// If there are 0 sized items at the address, the last item will be returned.
             /// </summary>
@@ -3076,7 +3152,7 @@ namespace Unity.MemoryProfiler.Editor
                     return idx;
                 if (onlyDirectAddressMatches)
                     return -1;
-                var size = Size(idx);
+                var size = FullSize(idx);
                 if (address > foundAddress && (address < (foundAddress + size) || size == 0))
                 {
                     return idx;
@@ -3086,7 +3162,7 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         /// <summary>
-        /// User for entry caches that don't have any overlaps and no items of size 0 (or if, not right next to each other,
+        /// Used for entry caches that don't have any overlaps and no items of size 0 (or if, not right next to each other,
         /// i.e. <see cref="SortedNativeObjects"/> are fine to use this instead of <see cref="IndirectlySortedEntriesCacheSortedByAddressAndSizeArray"/>
         /// as while some Native Objects may report a size of 0, their addresses will never match
         /// </summary>
@@ -3111,7 +3187,7 @@ namespace Unity.MemoryProfiler.Editor
             protected abstract ref readonly DynamicArray<ulong> Addresses { get; }
             protected abstract ref readonly DynamicArray<ulong> Sizes { get; }
             public override ulong Address(long index) => Addresses[this[index]];
-            public override ulong Size(long index) => Sizes[this[index]];
+            public override ulong FullSize(long index) => Sizes[this[index]];
         }
 
 
@@ -3144,7 +3220,7 @@ namespace Unity.MemoryProfiler.Editor
                 for (long i = 0; i < count; i++)
                 {
                     sbyte currentLayer = -1;
-                    var regionEnd = Address(i) + Size(i);
+                    var regionEnd = Address(i) + FullSize(i);
 
                     if (regionLayerStack.Count > 0)
                     {
@@ -3209,7 +3285,7 @@ namespace Unity.MemoryProfiler.Editor
             protected override IndexedManagedObjectAddressComparer SortingComparer => new IndexedManagedObjectAddressComparer(in m_Snapshot.CrawledData.ManagedObjects);
 
             public override ulong Address(long index) => m_Snapshot.CrawledData.ManagedObjects[this[index]].PtrObject;
-            public override ulong Size(long index) => (ulong)m_Snapshot.CrawledData.ManagedObjects[this[index]].Size;
+            public override ulong FullSize(long index) => (ulong)m_Snapshot.CrawledData.ManagedObjects[this[index]].Size;
         }
 
         public class SortedNativeAllocationsCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArray
@@ -3220,6 +3296,11 @@ namespace Unity.MemoryProfiler.Editor
 
             protected override ref readonly DynamicArray<ulong> Addresses => ref m_Snapshot.NativeAllocations.Address;
             protected override ref readonly DynamicArray<ulong> Sizes => ref m_Snapshot.NativeAllocations.Size;
+
+            // The allocation start address discounts padding and overhead sizes used for Allocation headers
+            // (overhead size also includes potential footers but those don't matter for the start address)
+            // in order to find allocations based on pointers into the allocation, we therefore need to consider the full size of the allocation.
+            public override ulong FullSize(long index) => m_Snapshot.NativeAllocations.Size[this[index]] + (ulong)m_Snapshot.NativeAllocations.OverheadSize[this[index]] + (ulong)m_Snapshot.NativeAllocations.PaddingSize[this[index]];
 
             public int MemoryRegionIndex(long index) => m_Snapshot.NativeAllocations.MemoryRegionIndex[this[index]];
             public long RootReferenceId(long index) => m_Snapshot.NativeAllocations.RootReferenceId[this[index]];
@@ -3234,10 +3315,10 @@ namespace Unity.MemoryProfiler.Editor
             public override long Count => m_Snapshot.NativeObjects.Count;
 
             protected override ref readonly DynamicArray<ulong> Addresses => ref m_Snapshot.NativeObjects.NativeObjectAddress;
-            public override ulong Size(long index) => m_Snapshot.NativeObjects.Size[this[index]];
+            public override ulong FullSize(long index) => m_Snapshot.NativeObjects.Size[this[index]];
 
             public string Name(long index) => m_Snapshot.NativeObjects.ObjectName[this[index]];
-            public InstanceID InstanceId(long index) => m_Snapshot.NativeObjects.InstanceId[this[index]];
+            public EntityId InstanceId(long index) => m_Snapshot.NativeObjects.InstanceId[this[index]];
             public int NativeTypeArrayIndex(long index) => m_Snapshot.NativeObjects.NativeTypeArrayIndex[this[index]];
             public HideFlags HideFlags(long index) => m_Snapshot.NativeObjects.HideFlags[this[index]];
             public ObjectFlags Flags(long index) => m_Snapshot.NativeObjects.Flags[this[index]];
@@ -3338,6 +3419,7 @@ namespace Unity.MemoryProfiler.Editor
                 ManagedType,
                 NativeRootReference,
                 GfxResource,
+                GCHandleIndex
             }
 
             readonly ulong m_Data;
@@ -3419,6 +3501,10 @@ namespace Unity.MemoryProfiler.Editor
 
                         return InvalidItemName;
                     }
+                    case SourceId.GCHandleIndex:
+                        if (snapshot.NativeObjects.GCHandleIndexToIndex.TryGetValue(Index, out var nativeObjectIndex))
+                            return new SourceIndex(SourceId.NativeObject, nativeObjectIndex).GetName(snapshot);
+                        return $"GCHandle index: {Index}";
                 }
 
                 Debug.Assert(false, $"Unknown source link type {Id}, please report a bug.");
@@ -3780,31 +3866,31 @@ namespace Unity.MemoryProfiler.Editor
 
                     case SourceIndex.SourceId.NativeMemoryRegion:
                     {
-                        if (m_Snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.Switch })
+                        // On some consoles, we see some "Native" allocations which are actually graphics memory.
+                        // This is likely an issue for us because these platforms have the combination of being
+                        // unified memory that uses BaseAllocators for graphics, with no VirtualQuery equivalent.
+                        // See what region the memory was allocated in to let us decide how to tag it.
+                        if (m_Snapshot.UseDeviceMemoryForGraphics)
                         {
-                            // On Switch, we see some "Native" allocations which are actually graphics memory.
-                            // This is likely an issue for us because Switch has the combination of being
-                            // unified memory that uses BaseAllocators for graphics, with no VirtualQuery equivalent.
-                            // See what region the memory was allocated in to let us decide how to tag it.
-
-                            if (m_Snapshot.NativeMemoryRegions.ParentIndex[source.Index] == m_Snapshot.NativeMemoryRegions.SwitchGPUAllocatorIndex)
-                                return PointType.Device; // In Switch's case, this is specifically GPU reserved memory, which we don't properly support at time of writing.
+                            long memIndex = m_Snapshot.NativeMemoryRegions.ParentIndex[source.Index];
+                            if (m_Snapshot.NativeMemoryRegions.GPUAllocatorIndices.Contains(memIndex))
+                                return PointType.Device; // In this case, this is specifically GPU reserved memory, which we don't properly support at time of writing.
                         }
                         return PointType.NativeReserved;
                     }
                     case SourceIndex.SourceId.NativeAllocation:
                     {
-                        if (m_Snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.Switch })
+                        // On some consoles, we see some "Native" allocations which are actually graphics memory.
+                        // This is likely an issue for us because these platforms have the combination of being
+                        // unified memory that uses BaseAllocators for graphics, with no VirtualQuery equivalent.
+                        // See what region the memory was allocated in to let us decide how to tag it.
+                        if (m_Snapshot.UseDeviceMemoryForGraphics)
                         {
-                            // On Switch, we see some "Native" allocations which are actually graphics memory.
-                            // This is likely an issue for us because Switch has the combination of being
-                            // unified memory that uses BaseAllocators for graphics, with no VirtualQuery equivalent.
-                            // See what region the memory was allocated in to let us decide how to tag it.
                             var memIndex = m_Snapshot.NativeAllocations.MemoryRegionIndex[source.Index];
                             var parentIndex = m_Snapshot.NativeMemoryRegions.ParentIndex[memIndex];
                             memIndex = (parentIndex != 0) ? parentIndex : memIndex;
 
-                            if (memIndex == m_Snapshot.NativeMemoryRegions.SwitchGPUAllocatorIndex)
+                            if (m_Snapshot.NativeMemoryRegions.GPUAllocatorIndices.Contains(memIndex))
                                 return PointType.Device;
                         }
 

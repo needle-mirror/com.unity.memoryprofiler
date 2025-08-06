@@ -6,7 +6,7 @@ using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using System.Collections.Generic;
 
 
-#if INSTANCE_ID_CHANGED
+#if IMGUI_TREEVIEW_API_CHANGED
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
 #else
 using UnityEditor.IMGUI.Controls;

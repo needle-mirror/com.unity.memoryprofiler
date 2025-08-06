@@ -171,8 +171,9 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
 
             if (UnsafeUtility.IsNativeContainerType<TKey>() || UnsafeUtility.IsNativeContainerType<TValue>())
                 AtomicSafetyHandle.SetNestedContainer(m_Safety, true);
-
+#if !UNITY_COLLECTIONS_CHANGED
             CollectionHelper.SetStaticSafetyId<NativeHashMap<TKey, TValue>>(ref m_Safety, ref s_staticSafetyId.Data);
+#endif
             AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
 #endif
         }
@@ -589,7 +590,9 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
                 m_Data = data.m_Data;
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 m_Safety = data.m_Safety;
+#if !UNITY_COLLECTIONS_CHANGED
                 CollectionHelper.SetStaticSafetyId<ReadOnly>(ref m_Safety, ref s_staticSafetyId.Data);
+#endif
 #endif
             }
 
@@ -1346,8 +1349,11 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
 
         internal NativeArray<TKey> GetKeyArray(AllocatorManager.AllocatorHandle allocator)
         {
+#if !UNITY_COLLECTIONS_CHANGED
             var result = CollectionHelper.CreateNativeArray<TKey>(Count, allocator, NativeArrayOptions.UninitializedMemory);
-
+#else
+            var result = new NativeArray<TKey>(Count, allocator, NativeArrayOptions.UninitializedMemory);
+#endif
             for (int i = 0, count = 0, max = result.Length, capacity = BucketCapacity
                 ; i < capacity && count < max
                 ; ++i
@@ -1369,7 +1375,11 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
         internal NativeArray<TValue> GetValueArray<TValue>(AllocatorManager.AllocatorHandle allocator)
             where TValue : unmanaged
         {
+#if !UNITY_COLLECTIONS_CHANGED
             var result = CollectionHelper.CreateNativeArray<TValue>(Count, allocator, NativeArrayOptions.UninitializedMemory);
+#else
+            var result = new NativeArray<TValue>(Count, allocator, NativeArrayOptions.UninitializedMemory);
+#endif
 
             for (int i = 0, count = 0, max = result.Length, capacity = BucketCapacity
                 ; i < capacity && count < max

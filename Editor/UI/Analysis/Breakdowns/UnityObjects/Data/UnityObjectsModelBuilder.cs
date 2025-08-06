@@ -14,7 +14,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         // This filter is kind of a hack that is used to leave the Base and Compare tables empty.
         // To avoid the cost of having to rebuild a model that is entirely empty while iterating
         // over all Unity Objects in the snapshot, using this exact instance will sidestep the model generation entirely.
-        public static readonly IInstancIdFilter ShowNoObjectsAtAllFilter = MatchesInstanceIdFilter.Create(CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone, null);
+        public static readonly IEntityIdFilter ShowNoObjectsAtAllFilter = MatchesInstanceIdFilter.Create(CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone, null);
 
         protected int m_ItemId;
 
@@ -468,7 +468,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 IScopedFilter<string> searchStringFilter = null,
                 ITextFilter unityObjectNameFilter = null,
                 ITextFilter unityObjectTypeNameFilter = null,
-                IInstancIdFilter unityObjectInstanceIDFilter = null,
+                IEntityIdFilter unityObjectInstanceIDFilter = null,
                 bool flattenHierarchy = false,
                 bool potentialDuplicatesFilter = false,
                 bool disambiguateByInstanceId = false,
@@ -494,7 +494,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public ITextFilter UnityObjectTypeNameFilter { get; }
 
             // Only include the Unity Object with this instance ID. Null means do not filter by instance id. CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone (0) can be used to filter everything (used for comparison).
-            public IInstancIdFilter UnityObjectInstanceIDFilter { get; }
+            public IEntityIdFilter UnityObjectInstanceIDFilter { get; }
 
             // Flatten the hierarchy to a single level, removing all groups; transforms the tree into a list of its leaf nodes.
             public bool FlattenHierarchy { get; }

@@ -151,20 +151,25 @@ namespace Unity.MemoryProfiler.Editor
 
             SessionState.SetIntArray(k_TreePersistencyItemIdsKey, usedIds.ToArray());
 
-            m_SnapshotsCollection.SetRootItems(tree);
-            m_SnapshotsCollection.RefreshItems();
-            if (sessionsToExpand.Count > 0)
+            // Add a delayed execution here to avoid Windows scrolling to the wrong place: PROFB-333
+            m_SnapshotsCollection.schedule.Execute(() =>
             {
-                // Expand everything next frame, as otherwise
-                // TreeView might expand it wrongly
-                m_SnapshotsCollection.schedule.Execute(() =>
+                m_SnapshotsCollection.SetRootItems(tree);
+                m_SnapshotsCollection.RefreshItems();
+
+                if (sessionsToExpand.Count > 0)
                 {
-                    foreach (var id in sessionsToExpand)
+                    // Expand everything next frame, as otherwise
+                    // TreeView might expand it wrongly
+                    m_SnapshotsCollection.schedule.Execute(() =>
                     {
-                        m_SnapshotsCollection.ExpandItem(id);
-                    }
-                });
-            }
+                        foreach (var id in sessionsToExpand)
+                        {
+                            m_SnapshotsCollection.ExpandItem(id);
+                        }
+                    });
+                }
+            });
         }
 
         VisualElement MakeTreeItem()

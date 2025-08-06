@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEditor;
 using System.Runtime.CompilerServices;
-#if INSTANCE_ID_CHANGED
+#if IMGUI_TREEVIEW_API_CHANGED
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 #else
 using UnityEditor.IMGUI.Controls;

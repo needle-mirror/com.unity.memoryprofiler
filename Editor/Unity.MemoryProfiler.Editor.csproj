@@ -1,0 +1,64 @@
+<!-- Auto generated from '/Users/darius.skergelza/lanes/lane1/neutron/Packages/com.unity.memoryprofiler/Editor/Unity.MemoryProfiler.Editor.asmdef' on 30 October 2024 11:51:09 +02 -->
+<Project Sdk="Unity.Sdk">
+  <PropertyGroup>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableUnityEngineReferences>true</EnableUnityEngineReferences>
+    <AssemblyName>Unity.MemoryProfiler.Editor</AssemblyName>
+    <RootNamespace>Unity.MemoryProfiler.Editor</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <UnityPlatformInclude>Editor</UnityPlatformInclude>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.cs" Exclude="ProfilerModule/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runtime/Unity.MemoryProfiler.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <UpmProjectReference Include="Unity.EditorCoroutines.Editor.csproj" />
+    <UpmProjectReference Include="Unity.Collections.csproj" />
+    <UpmProjectReference Include="Unity.Burst.csproj" />
+    <UpmProjectReference Include="Unity.Profiling.Core.csproj" />
+    <UpmProjectReference Include="Unity.Mathematics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <UnityVersionDefine Include="Unity">
+      <Expression>2022.2.0a13</Expression>
+      <Define>MEMORY_PROFILER_API_PUBLIC</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>ENTITY_ID_CHANGED_SIZE</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>CSHARP_7_3_OR_NEWER</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="com.unity.collections">
+      <Expression>2.1.0</Expression>
+      <Define>UNMANAGED_NATIVE_HASHMAP_AVAILABLE</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>6000.2.0b2</Expression>
+      <Define>IMGUI_TREEVIEW_API_CHANGED</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>6000.2.0a8</Expression>
+      <Define>ENTITY_ID_STRUCT_AVAILABLE</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>6000.3.0a1</Expression>
+      <Define>SELECTION_USES_ENTITY_ID</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>UNITY_COLLECTIONS_CHANGED</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity.Profiling.Core">
+      <Expression>1.0.0</Expression>
+      <Define>PROFILING_CORE_AVAILABLE</Define>
+    </UnityVersionDefine>
+  </ItemGroup>
+</Project>

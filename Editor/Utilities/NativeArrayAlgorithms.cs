@@ -328,7 +328,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             // No direct hit was found but the last compared item was bigger than the searched for item
             // Check if the last item fit the search criteria
             var lastChecked = left - 1;
-            if (lastChecked >= 0 && array.Address(lastChecked) + array.Size(lastChecked) < value)
+            if (lastChecked >= 0 && array.Address(lastChecked) + array.FullSize(lastChecked) < value)
                 return lastChecked;
             // If it didn't, this result is going to be negative but if the calling code is looking for an insertion point within the sorted array,
             // or will happily consider the item that is just slightly smaller than the searched item as the found item, it can do

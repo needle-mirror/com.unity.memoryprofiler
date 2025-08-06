@@ -694,7 +694,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public BuildArgs(
                 IScopedFilter<string> searchStringFilter,
                 ITextFilter unityObjectNameFilter,
-                IInstancIdFilter unityObjectInstanceIDFilter,
+                IEntityIdFilter unityObjectInstanceIDFilter,
                 bool flattenHierarchy,
                 bool includeUnchanged,
                 bool disambiguateByInstanceId,
@@ -719,7 +719,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public ITextFilter UnityObjectNameFilter { get; }
 
             // Only include the Unity Object with this instance ID. Null means do not filter by instance id. CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone (0) can be used to filter everything (used for comparison).
-            public IInstancIdFilter UnityObjectInstanceIDFilter { get; }
+            public IEntityIdFilter UnityObjectInstanceIDFilter { get; }
 
             // Include unchanged Unity Objects.
             public bool IncludeUnchanged { get; }

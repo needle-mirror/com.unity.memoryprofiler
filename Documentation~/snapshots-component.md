@@ -1,42 +1,44 @@
-# Snapshots component
+# Snapshots panel reference
 
-The Snapshots component displays a list of memory snapshots in your project. You can select an individual snapshot for analysis, or compare any two snapshots. The Memory Profiler package can capture snapshots of the Unity Editor or of a running Player.
+The left panel of the [Memory Profiler window](memory-profiler-window-reference.md) is the Snapshots panel. The Snapshots panel displays a list of [memory snapshots](snapshots.md) in your project. You can select an individual snapshot for analysis, or compare any two snapshots. The Memory Profiler package can capture snapshots of the Unity Editor or of a running Player.
 
-> [!NOTE]
-> Editor-only snapshots don't include a screenshot.
+![The Snapshots panel](images/snapshots-panel.png)<br/>_The Snapshots panel with a single snapshot selected._
 
-![The Snapshots component](images/snapshots-component.png)
+The Snapshots panel displays a list of all snapshots saved to or loaded into your project. It has the following modes:
 
-A - [Open Snapshots Pane](#open-snapshots-pane)</br>
-B - List of available snapshots</br>
+* **Single Snapshot**: Display information about a single snapshot in the Memory Profiler window.
+* **Compare Snapshots**: Select two snapshots [to compare data](snapshots-comparison.md). The Memory Profiler window then displays the differences between the two snapshots' data.
 
-Each snapshot in the list displays a screenshot of the profiling target during the capture, a default name, and the time and date of the capture. If there are snapshots in the list from more than one session, Unity sorts them into logical groups, which you can click on to expand or collapse them.
+## Open snapshots
 
-Unity stores the date on each snapshot in Universal Coordinated Time (UTC) format and converts it to your computer's local time. Hover your cursor over the date to see which Project the snapshot is from.
+The area at the top of the Snapshots panel displays the currently selected snapshot or snapshots. By default, the __Single Snapshot__ mode is active, which enables you to view one snapshot at a time. Select the __Compare Snapshots__ mode to choose two snapshots to compare to each other. When in __Compare Snapshots__ mode, Unity keeps both snapshots in active memory to minimize the time needed to switch between them. For more information, refer to [Compare two snapshots](snapshots-comparison.md).
 
-## Path to captured snapshots
+## Snapshot list
 
-When you create a snapshot for the first time, Unity creates a sub-folder in your Project folder called `MemoryCaptures`. By default, the Memory Profiler stores all snapshots in this folder.
+Each snapshot in the list contains the following information:
 
-To change the default storage path for the snapshots, go to __Edit__ &gt; __Preferences__ &gt; __Analysis__ &gt; __MemoryProfiler__ and edit the __Memory Snapshot Storage Path__ property. The default value is "MemoryCapture".
+|**Information**|**Description**|
+|---|---|
+|**Screenshot**|A screenshot of the target during capture. Editor-only snapshots don't include a screenshot. If you don't want to include a screenshot with a snapshot, select the **Capture** dropdown, and disable the **Snapshot** setting.|
+|**Product name**|The product name, set in **Project Settings** &gt; **Player** &gt; **Product Name**.|
+|**Time and date**|The time and date that the snapshot was captured. Unity stores the date on each snapshot in Universal Coordinated Time (UTC) format and converts it to your computer's local time.|
+|**Memory overview**|Displays the total resident memory as a portion of the maximum amount of memory available.|
 
-The path in this property is relative, which means it must start with:
+## Snapshot contextual information
 
-* "./" if the `MemoryCaptures` folder is within the Project folder
-* "../" if the `MemoryCaptures` folder is one level above the `Project` folder in the hierarchy.
+Whenever you hover over a snapshot, the following information is displayed in a contextual box:
 
-![Memory Profiler Preferences](images/preferences-memory-profiler.png) <br/> *Memory Profiler Preferences*
+|**Information**|**Description**|
+|---|---|
+|**Snapshot name**|The file name of the snapshot.|
+|**Platform**|The platform the snapshot was captured on.|
+|**Scripting backend**|The Unity [scripting backend](xref:um-scripting-backends) of the project.|
+|**Unity version**|The version of the Unity Editor used to capture the snapshot.|
+|**Metadata Description**|A customizable string value provided at runtime via the [MetadataCollect API](xref:Unity.MemoryProfiler.MetadataCollect). By default this entails the Project name, the time at which the runtime begun taking the snapshot, the frame count as the capture was taken, and the time since the startup of the application and optionally when the Editor entered Play mode. You can use the [MetadataCollect API](xref:Unity.MemoryProfiler.MetadataCollect) to provide other context information such as the current level.|
+|**Memory data**|Displays the maximum amount of memory available, the total resident memory, and the total allocated memory.|
 
-## Open Snapshots pane
+## Additional resources
 
-The __Open Snapshots__ pane displays the currently selected snapshot or snapshots. By default, the __Single Snapshot__ mode is active, which enables you to view one snapshot at a time. Select the __Compare Snapshots__ mode to choose two snapshots to compare to each other. When in __Compare Snapshots__ mode, Unity keeps both snapshots in active memory to minimize the time needed to switch between them. For more information, see [Compare two snapshots](snapshots-comparison.md).
-
-Unity displays details about any selected snapshot in the __Open Snapshots__ pane, including:
-
-* The screenshot associated with the snapshot
-* The snapshot's name
-* The time and date of capture
-* The session you captured it in
-* The project you used to capture it
-* Icons to identify the platform and application you used to capture it (whether in the Editor or a Player)
-* The total memory used by your application during the snapshot, and the total resources available at the time
+* [Main panel reference](main-component.md)
+* [References panel reference](references-component.md)
+* [Selection Details panel reference](selection-details-component.md)

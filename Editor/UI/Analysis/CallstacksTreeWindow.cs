@@ -100,6 +100,8 @@ namespace Unity.MemoryProfiler.Editor
     class CallstacksTreeWindow : EditorWindow
     {
         const string k_ViewDataKey = "com.Unity.MemoryProfiler.CallStacksTreeWindow.m_TreeView";
+        const string k_CallstackNull = "null";
+
         [Serializable]
         public struct SymbolTreeViewItemData
         {
@@ -322,7 +324,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 var itemData = m_TreeView.GetItemDataForIndex<CallstacksTreeWindow.SymbolTreeViewItemData>(rowIndex);
 
-                var displayText = itemData.CallstackEntry?.ToString() ?? "null";
+                var displayText = itemData.CallstackEntry?.ToString() ?? k_CallstackNull;
                 if (string.IsNullOrEmpty(displayText))
                     displayText = k_NoName;
                 ((Label)element).text = displayText;
@@ -380,7 +382,7 @@ namespace Unity.MemoryProfiler.Editor
 
                 var dropdown = ((DropdownField)element);
 
-                var callstackText = itemData.CallstackEntry.ToString();
+                var callstackText = itemData.CallstackEntry?.ToString() ?? k_CallstackNull;
 
                 if (callstackText == "Root" || callstackText == itemData.AreaName)
                 {
@@ -536,6 +538,8 @@ namespace Unity.MemoryProfiler.Editor
             ProgressBarDisplay.UpdateProgress(m_CurrentProgressStep++ / m_CurrentProgressTotalStepCount, "Rebuilding Tree UI");
             m_TreeView?.Rebuild();
             ProgressBarDisplay.ClearBar();
+            // bring the window forward once done
+            EditorApplication.delayCall += () => Focus();
         }
 
         struct BranchLevelData

@@ -84,10 +84,10 @@ namespace Unity.MemoryProfiler.Editor
             if (objectBrief)
             {
                 string result = "{";
-                var iid = od.GetInstanceID(m_Snapshot);
+                var iid = od.GetEntityId(m_Snapshot);
                 if (iid != ObjectData.InvalidInstanceID)
                 {
-                    result += "InstanceID=" + iid;
+                    result += "EntityId=" + iid;
                 }
                 int fieldCount = od.GetInstanceFieldCount(m_Snapshot);
                 if (fieldCount > 0)
@@ -186,6 +186,8 @@ namespace Unity.MemoryProfiler.Editor
                     return FormatPointer(m_Snapshot.NativeObjects.NativeObjectAddress[od.nativeObjectIndex]);
                 case ObjectDataType.NativeAllocation:
                     return NativeAllocationTools.ProduceNativeAllocationName(od.GetSourceLink(m_Snapshot), m_Snapshot, truncateTypeNames);
+                case ObjectDataType.GCHandle:
+                    return od.GenerateObjectName(m_Snapshot);
                 default:
                     return "<uninitialized type>";
             }

@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -20,18 +20,18 @@
     "com.unity.profiling.core": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.6"
+    "com.unity.memoryprofiler.tests": "1.1.7"
   },
   "_upm": {
-    "changelog": "### Added\n- Added info on which scripting backend a snapshot was captured from to the tooltip of the snapshot's entry in the snapshot list.\n\n### Fixed\n- Fixed calculation leading to an attempt to allocate negatively sized NativeHashmap<SourceIndex,UnsafeList<int>> backing memory for large connection maps for projects with Collections package versions <2.1.\n- Fixed the Memory Usage module details UI in the Profiler Window not getting properly overridden by UI from the Memory Profiler package. Compared to the state in 1.1.3 this override now also shows Resident vs Committed memory (where those counters are available in the profiler data), counts for the Top Unity Object categories and a bar for all GC Allocated In Frame split into main thread and other threads. The display for bar graphs has also been fixed.\n- Fixed the summary page's Top Unity Objects table showing incorrect Description texts on selecting elements of the table.\n- Fixed the manage object sizes given for boxed value types, which were missing the size of their object header."
+    "changelog": "### Added\n- Added a UTC timestamp, as well as the current frame count, Time.realtimeSinceStartupAsDouble and (when capturing a snapshot from a Unity Editor) EditorApplication.timeSinceStartup to the default snapshot metadata injector (which is included in builds made with this version of the package included, unless a [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html) instance is present). This should make correlating snapshots to timing captures easier. The time reflects the start of the capture taking process and the metadata can be observed by hovering the snapshot in the list of captures (while not in Play Mode).\n\n### Fixed\n- Fixed loading of a capture with an invalid native root allocation reference from a graphics resource ([PROFB-359](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-359)).\n- Fixed an issue where the list of snapshots would jump to the wrong position after opening one.\n- Fixed issue where non-Latin characters in a project's Product Name would result in an incorrectly named memory snapshot file ([PROFB-346](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-346)).\n- Fixed case where it was possible to rename a snapshot to an empty string.\n- Fixed SnapshotDataService leaking when opening and closing the Memory Profiler window.\n- Fixed repeated references via multiple fields on the same object leading to a status of \"Bug! Liveness Reason Unknown\" on the referenced object ([PROFB-351](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-351)).\n- Fixed an issue where managed references to smaller native alloctions (<16B), e.g. for NativeArrays, would not be found and listed in the References To or Managed Fields list, instead refering to a reference to a Native Region ([PROFB-353](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-353)).\n- Reattributed PlayStation 5's GPU memory from Native to Graphics in the Summary view and All Of Memory table.\n- Fixed inclusion of allocated GPU memory on the PlayStation 5 on the All Of Memory table under `Native > Unity Subsystem > Unknown`. Instead, it is now shown under `Graphics (Estimated)` and/or `Untracked > Graphics`.\n- Fixed icon for captures made on Apple Vision Pro.\n\n### Changed\n- Improved the handling of exceptions thrown during a snapshot opening process so that previously opened snapshots apear properly as closed int UI and a mismatch between UI and loading state do not lead to follow on-exceptions.\n- Improved the documentation for [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html).\n- Added GCHandles allocated for managed objects to the list of references if they are not associated with a native object (where that native object would then be placed in the references list).\n- Clarified that the option to break down reserved memory only affects reserved native memory to avoid confusion ([PROFB-369](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-369))."
   },
   "upmCi": {
-    "footprint": "bbff5e1dd9171a4f6e18662c9858fdd5688c6610"
+    "footprint": "66ca31ebca0358e9a84ba5c34602333e8e786156"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "326b3930cd27b17e9ece0fe3b822ce357d406b64"
+    "revision": "de02ad15e8359f16152566b523fc6f29cc8f14ff"
   }
 }

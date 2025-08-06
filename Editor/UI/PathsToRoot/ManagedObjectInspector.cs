@@ -3,18 +3,27 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using Unity.MemoryProfiler.Editor.UIContentData;
-#if DEBUG_VALIDATION
-using UnityEditor;
-#endif
 using Unity.MemoryProfiler.Editor.Managed;
 using UnityEditor.IMGUI.Controls;
-using UnityEngine;
-using UnityEditor.MemoryProfiler;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
-#if INSTANCE_ID_CHANGED
+#if IMGUI_TREEVIEW_API_CHANGED
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#endif
+using GUIContent = UnityEngine.GUIContent;
+using TextAlignment = UnityEngine.TextAlignment;
+using Rect = UnityEngine.Rect;
+using GUI = UnityEngine.GUI;
+using Debug = UnityEngine.Debug;
+#if !ENTITY_ID_CHANGED_SIZE
+// the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
+// so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
+using EntityId = Unity.MemoryProfiler.Editor.EntityId;
+#else
+using EntityId = UnityEngine.EntityId;
+// This should be greyed out by the IDE, otherwise you're missing an alias above
+using UnityEngine;
 #endif
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -134,7 +143,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                         return ProcessableObjectType.ManagedArray;
                     case ObjectDataType.NativeObject:
                         return ProcessableObjectType.NativeObject;
-                    case ObjectDataType.NativeAllocation: // These should never get registered for delayed processing anyways
+
+                    // These should never get registered for delayed processing anyways
+                    case ObjectDataType.NativeAllocation:
+                    case ObjectDataType.GCHandle:
+
                     default:
                         throw new NotImplementedException();
                 }
@@ -397,7 +410,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectIndex(cs, objectIdentifyer)));
             }
-            else if (cs.NativeObjects.NativeObjectAddressToInstanceId.TryGetValue(pointer, out var _))
+            else if (cs.NativeObjects.NativeObjectAddressToEntityId.TryGetValue(pointer, out var _))
             {
                 EnqueueNativeObject(fieldItem, pointer, cs);
             }
@@ -715,11 +728,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (address == 0)
                 return;
-            if (!cs.NativeObjects.NativeObjectAddressToInstanceId.ContainsKey(address)) return;
-            var instanceId = cs.NativeObjects.NativeObjectAddressToInstanceId[address];
-            if (instanceId == InstanceID.None)
+            if (!cs.NativeObjects.NativeObjectAddressToEntityId.ContainsKey(address)) return;
+            var entityId = cs.NativeObjects.NativeObjectAddressToEntityId[address];
+            if (entityId == EntityId.None)
                 return;
-            var index = cs.NativeObjects.InstanceId2Index[instanceId];
+            var index = cs.NativeObjects.InstanceId2Index[entityId];
             var nativeObjectData = ObjectData.FromNativeObjectIndex(cs, index);
             if (!nativeObjectData.IsValid)
                 return;

@@ -25,6 +25,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             NativeObject,
             UnifiedUnityObject,
 
+            GCHandle,
+
             LeakedShell,
         }
 
@@ -54,6 +56,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                         m_DataTypeIcon.AddToClassList(k_ClassDataTypeNative);
                         m_DataTypeIcon.tooltip = TextContent.DataTypeNativeTooltip;
                         break;
+                    case DataType.GCHandle:
+                        m_DataTypeIcon.AddToClassList(k_ClassDataTypeGCHandle);
+                        m_DataTypeIcon.tooltip = TextContent.DataTypeGCHandleTooltip;
+                        break;
                     case DataType.UnifiedUnityType:
                     case DataType.UnifiedUnityObject:
                         m_DataTypeIcon.AddToClassList(k_ClassDataTypeUnified);
@@ -64,6 +70,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         m_DataTypeIcon.tooltip = TextContent.DataTypeLeakedShellTooltip;
                         break;
                     default:
+                        m_DataTypeIcon.AddToClassList(k_ClassDataTypeUnknown);
                         break;
                 }
             }
@@ -93,6 +100,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     case ObjectDataType.NativeObject:
                     case ObjectDataType.NativeAllocation:
                         Type = DataType.NativeObject;
+                        break;
+                    case ObjectDataType.GCHandle:
+                        Type = DataType.GCHandle;
                         break;
                     case ObjectDataType.Unknown:
                     default:
@@ -174,6 +184,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_ClassIconItem = "type-icon";
         const string k_ClassDataTypeIcon = "data-type-icon";
         const string k_ClassDataTypeNative = "data-type-icon__native";
+        const string k_ClassDataTypeGCHandle = "data-type-icon__managed"; // Why is this the script file icon and not the same as PathsToRootDetailView.Styles.CSharpIconContent?
         const string k_ClassDataTypeManaged = "data-type-icon__managed";
         const string k_ClassDataTypeUnified = "data-type-icon__unified";
         const string k_ClassDataTypeLeakedShell = "data-type-icon__leaked-shell";
@@ -387,6 +398,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var od = ObjectData.FromGfxResourceIndex(cs, (int)source.Index);
                     ShowIcons(true);
                     SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
+                    break;
+                }
+                case CachedSnapshot.SourceIndex.SourceId.GCHandleIndex:
+                {
+                    ShowIcons(true);
+                    SetLabelData(cs, "GCHandle", source.GetName(cs));
+                    Type = DataType.GCHandle;
                     break;
                 }
                 default:

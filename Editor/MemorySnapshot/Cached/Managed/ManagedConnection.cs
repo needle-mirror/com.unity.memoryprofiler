@@ -133,13 +133,13 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         if (snapshot.FieldDescriptions.IsStatic[fromField] == 1)
                         {
-                            Debug.LogError($"Cannot form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) using a static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
+                            Debug.LogError($"Can't form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) using a static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
                                 + (valueTypeFieldOwningITypeDescription >= 0?$", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} ":"")
                                 + (arrayIndexFrom >= 0?$" at array index {arrayIndexFrom}": "."));
                         }
                     }
                     else if(arrayIndexFrom < 0)
-                        Debug.LogError($"Cannot form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) that is neither using a field (fromField: {fromField})"
+                        Debug.LogError($"Can't form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) that is neither using a field (fromField: {fromField})"
                                 + $" nor an array index (arrayIndexFrom:{arrayIndexFrom})");
                     break;
                 case SourceIndex.SourceId.ManagedType:
@@ -154,8 +154,15 @@ namespace Unity.MemoryProfiler.Editor
                         }
                     }
                     else if(arrayIndexFrom < 0)
-                        Debug.LogError($"Cannot form a connection from a Type ({snapshot.TypeDescriptions.TypeDescriptionName[fromIndex.Index]}) that is neither using a field (fromField: {fromField})"
+                        Debug.LogError($"Can't form a connection from a Type ({snapshot.TypeDescriptions.TypeDescriptionName[fromIndex.Index]}) that is neither using a field (fromField: {fromField})"
                                 + $" nor an array index (arrayIndexFrom:{arrayIndexFrom})");
+                    break;
+                case SourceIndex.SourceId.GCHandleIndex:
+                    // from a (not Native Object held) GCHandle
+                    if (snapshot.NativeObjects.GCHandleIndexToIndex.TryGetValue(fromIndex.Index, out var nativeObjectIndex))
+                    {
+                        Debug.LogError($"Can't form a connection from a GCHandle (index: {fromIndex.Index}) if that handle is held by a Native Object (index: {nativeObjectIndex}). Use the Native Object to create the connection instead.");
+                    }
                     break;
                 default:
                     if (toIndex.Id != SourceIndex.SourceId.ManagedObject)

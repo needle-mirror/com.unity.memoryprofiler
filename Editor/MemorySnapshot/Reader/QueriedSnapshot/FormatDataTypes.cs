@@ -277,7 +277,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         }
     }
 
-    [StructLayout(LayoutKind.Sequential, Size = 260)]
+    [StructLayout(LayoutKind.Sequential, Size = 264)]
     internal unsafe struct ProfileTargetMemoryStats : IEquatable<ProfileTargetMemoryStats>
     {
         const int k_FreeBlockPowOf2BucketCount = 32;
@@ -298,6 +298,7 @@ namespace Unity.MemoryProfiler.Editor.Format
         public readonly uint FreeBlockBucketCount;
         fixed uint m_FreeBlockBuckets[k_FreeBlockPowOf2BucketCount];
         fixed byte m_Padding[k_PaddingSize];
+        // + 4 bytes for alignment
 
         public bool Equals(ProfileTargetMemoryStats other)
         {
@@ -320,6 +321,16 @@ namespace Unity.MemoryProfiler.Editor.Format
                             && FreeBlockBucketCount == other.FreeBlockBucketCount
                             && UnsafeUtility.MemCmp(freeBlocks, other.m_FreeBlockBuckets, sizeof(uint) * k_FreeBlockPowOf2BucketCount) == 0;
                 }
+        }
+
+        internal bool CompareFreeBlockBucketsToFragmentionInfo(NativeArray<int> FreeBlockBuckets)
+        {
+            unsafe
+            {
+                fixed (void* freeBlocks = m_FreeBlockBuckets)
+                    return FreeBlockBucketCount == FreeBlockBuckets.Length
+                           && UnsafeUtility.MemCmp(freeBlocks, FreeBlockBuckets.GetUnsafePtr(), sizeof(uint) * k_FreeBlockPowOf2BucketCount) == 0;
+            }
         }
     };
 
@@ -364,16 +375,13 @@ namespace Unity.MemoryProfiler.Editor.Format
             }
         }
 
-        unsafe string MakeStringFromBuffer(byte* srcPtr, uint length)
+        string MakeStringFromBuffer(byte* srcPtr, uint length)
         {
             if (length == 0)
                 return string.Empty;
 
-            string str = new string('A', (int)length);
-            fixed (char* dstPtr = str)
-            {
-                UnsafeUtility.MemCpyStride(dstPtr, sizeof(char), srcPtr, sizeof(byte), sizeof(byte), (int)length);
-            }
+            ReadOnlySpan<byte> tmp = new(srcPtr, (int)length);
+            var str = System.Text.Encoding.UTF8.GetString(tmp);
 
             return str;
         }

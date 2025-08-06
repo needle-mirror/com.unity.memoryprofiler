@@ -197,8 +197,7 @@ namespace Unity.MemoryProfiler.Editor
             var nativeAllocations = snapshot.NativeAllocations;
             var rootReferenceId = nativeAllocations.RootReferenceId[source.Index];
 
-            if (snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.Switch }
-                && snapshot.EntriesMemoryMap.GetPointType(source) == EntriesMemoryMapCache.PointType.Device)
+            if (snapshot.UseDeviceMemoryForGraphics && snapshot.EntriesMemoryMap.GetPointType(source) == EntriesMemoryMapCache.PointType.Device)
             {
                 m_NativeAllocationsThatAreUntrackedGraphicsResources += size;
                 return;
@@ -259,11 +258,21 @@ namespace Unity.MemoryProfiler.Editor
             // If no native objects are reported, their graphics allocations are still rooted to their native object roots
             var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
             var nativeRootReferences = snapshot.NativeRootReferences;
+            var invalidRootIdReported = false;
             for (long i = 0; i < nativeGfxResourceReferences.Count; i++)
             {
                 var source = new SourceIndex(SourceIndex.SourceId.GfxResource, i);
                 var rootId = nativeGfxResourceReferences.RootId[i];
-                var rootIndex = rootId >= CachedSnapshot.NativeRootReferenceEntriesCache.FirstValidRootId ? nativeRootReferences.IdToIndex[rootId] : CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootIndex;
+                var rootIndex = NativeRootReferenceEntriesCache.InvalidRootIndex;
+                if (rootId >= NativeRootReferenceEntriesCache.FirstValidRootId)
+                {
+                    if (!nativeRootReferences.IdToIndex.TryGetValue(rootId, out rootIndex) && !invalidRootIdReported)
+                    {
+                        // Report only the first invalid root id to avoid spamming
+                        Debug.LogAssertion($"Unknown link to the Native Root allocation {rootId} for the Graphics resource {i}, please report a bug.");
+                        invalidRootIdReported = true;
+                    }
+                }
 
                 var size = 0UL;
                 size = nativeGfxResourceReferences.GfxSize[i];

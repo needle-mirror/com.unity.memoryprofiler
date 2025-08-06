@@ -1,32 +1,52 @@
-# Managed Shell Objects
+# Analyzing Unity object memory leaks
 
-## What are Managed Shells?
-In Unity a lot of the objects and types used in building your application have some part of them implemented in native code and often a good chunk of their data stored in native allocations that are handled by Unity's memory manager under the hood. When you can interact with these in your C# scripts via our Scripting API, you usually encounter these as types that inherit from `UnityEngine.Object`, which has an equivalent on the native side as NamedObject. For simplicity sake, we call these __Unity Objects__ in the Memory Profiler.
+The objects and types that Unity uses to build your application are partially implemented in native code, with a significant part of their data stored in native memory managed by Unity's memory manager.
 
-For your scripts to be able to interact with the native objects and their memory, Unity creates managed wrapper objects for each of the objects your managed code interacts with, on demand. Their on demand creation means that, for example, a `BoxCollider` or a `Texture` that is loaded into memory without any C# code handling that loading (e.g. a scene load for an object with such a component and a `Renderer`, that references a `Material` that references the `Texture`) will just be created as a native object. If C# code then queries the `BoxCollider` component, or accesses component fields referencing the `Texture`, Unity will create their managed wrapper of the managed types `UnityEngine.BoxCollider` and `UnityEngine.Texture2D`. Once such a wrapper is created, it is cached and held onto by the native object, until it is destroyed, meaning subsequent access to it won't create a new wrapper.
+These objects typically appear as types inheriting from `UnityEngine.Object`, which corresponds to a native counterpart called `NamedObject`. The Memory Profiler refers to these objects as __Unity Objects__.
 
-## What are Leaked Managed Shells?
+## How Unity manages references to native objects
 
-The native part of a __Unity Object__ can be destroyed, e.g. because the __Scene__ that a `GameObject` or `Component` resides in has been unloaded, or because `UnityEngine.Object.Destroy()` is called on these. If C# code holds a reference to a __Unity Object__, after it has been destroyed, it keeps the managed wrapper object, its __Managed Shell__, in memory. Due to an overload of the `==` operator and the implicit conversion to bool for managed types inheriting from `UnityEngine.Object`, this reference may appear to be `== null` and implicitly converts to `false`. This is why these objects are sometimes called __"fake null"__ objects.
+For your C# scripts to interact with native objects, Unity creates managed wrapper objects on demand. These wrapper objects are called managed shells.
 
-## How Bad are Leaked Manage Shells?
+Unity can load objects that don't have any C# code handling as native objects, such as a `BoxCollider` or a `Texture`. The first time these objects are accessed from C# code, Unity creates a managed shell, such as `UnityEngine.BoxCollider` or `UnityEngine.Texture2D`. This is tracked in the Profiler as a GC.Alloc event. Unity caches the managed shell and reuses it until the native object is destroyed. Unity objects derived from `MonoBehaviour` or `ScriptableObject` always have a managed shell as soon as they are created.
 
-The impact on your memory usage for holding on to these __Leaked Managed Shell__ objects is often not huge, as the majority memory held by most of these type of objects is native memory. Most of the types in Unity's API layer, e.g. the Material in the example above, also only reference other __Unity Objects__ through native references and only expose properties that will fetch the __Managed Shell__ object for these when queried. A __Leaked Managed Shell__ of a Material does therefore not hold on to the __Texture Asset__.
+> [!TIP]
+> Caching managed shells explicitly in scripts doesn't reduce the amount of managed memory that Unity allocates. However, avoiding using methods like `GetComponent` or properties on built-in Unity object types such as `GameObject.transform` in performance critical sections can reduce the amount of time that your code crosses over to native code to retrieve the handle to the managed shell. This is a minor CPU optimization that might lead to a high managed memory footprint to store the pointer, and might impact on [managed shell memory leaks](#managed-shell-memory-leaks).
 
-The same is __not__ true for your own C# types. If e.g. your `MonoBehaviour` or `ScriptableObject` derived types hold a reference to a Texture, or managed types that may consume a lot of memory, like huge arrays or other collections, leaking a managed shell of such a type can have devastating effects on your memory usage beyond the small amount held by just the __Leaked Managed Shell__ itself as the referenced memory will be kept from being unloaded. In case of __Asset__ type __Unity Objects__, i.e. __Unity Objects__ that are not __Game Objects__ or their __Components__, such references will not only keep their Managed Shells but also their native memory from being freed up by `Resources.UnloadUnusedAssets()` or a destructive Scene unload.
+## Managed shell memory leaks
 
-## How to Analyze Leaked Managed Shells?
+If your code holds a reference to a Unity object whose native part has been destroyed (for example when a scene with the object in is unloaded, or when `UnityEngine.Object.Destroy` is called), its managed shell remains in memory.
 
-If you enter `“(Leaked Managed Shell)”` into the search field of the [All Of Memory](all-memory-tab.md) table, you can get a quick overview of all of these in your snapshot and check if any of these could be problematic. You can see what they might still hold on to via the __Managed Fields__ data group in the [Selection Details component](selection-details-component.md) and the __References To__ tab of the [Referencing component](references-component.md).
+Because of the overloaded `==` operator and the implicit conversion to `bool` for managed types inheriting from `UnityEngine.Object`, this reference might appear to be `== null` and implicitly convert to `false`. This behavior is why such objects are sometimes referred to as fake null objects.
 
-If you want to ensure that a Leaked Managed Shell will be properly unloaded in the future:
+Once a Unity object becomes a leaked managed shell it serves no further purpose, so monitoring these type of objects and reducing their count can be a good way to reduce memory usage.
 
- 1. Go over the references shown in __Referenced By__ tab on the [References component](references-component.md) to find out what is referencing them.
- 2. Find reference to these in the C# code.
- 3. Make sure to manually set these references to `null`.
+## Memory impact of managed shell memory leaks
 
-Once that is done, the managed __Garbage Collector__ will take care of the rest.
+The memory impact of leaked managed shells depends on the type of objects:
 
-## Counter Indicators
+* For most Unity native types, leaked shells hold minimal memory because they reference native objects selectively. For instance, a leaked `Material` shell doesn't retain its texture references.
+* For custom C# types, such as classes derived from `MonoBehaviour` or `ScriptableObject`, the impact can be severe if managed shells hold references to memory-intensive data (such as large arrays or textures). Leaking such references prevents both managed and native memory from being freed during `Resources.UnloadUnusedAssets` or scene unloads.
 
-Always nulling all references to __Unity Objects__ can be a premature optimization. For example, if the references are confined to objects in a scene that will eventually be unloaded and there is no cumulative effect because it is only a finite set of objects, it can be safe to ignore these. That said, once a __Unity Object__ becomes a __Leaked Managed Shell__, it serves no further purpose, so monitoring these type of objects via the Memory Profiler and reducing their count can be a good way to keep abreast of instances where paying closer attention to your lifetime management of these objects could be usefull to avoid surprises.
+## Finding managed shell memory leaks
+
+To find managed shell memory leaks:
+
+1. Open the [All Of Memory tab](main-component.md#all-of-memory-tab) of the Main panel.
+1. Enter `“(Leaked Managed Shell)”` into the search field.
+
+Use the __Managed Fields__ data group in the [Selection Details panel](selection-details-component.md) and the __References To__ tab of the [References panel](references-component.md) to find out what references these objects still hold onto.
+
+To ensure that Unity properly unloads a leaked managed shell in future:
+
+1. Use the __Referenced By__ tab on the [References panel](references-component.md) to find out what is referencing them.
+1. Find reference to these in the C# code.
+1. Manually set these references to `null`.
+
+> [!TIP]
+> You don't always need to set all references to `null`. For example, if the references are confined to objects in a scene that are eventually unloaded.
+
+## Additional resources
+
+* [Memory Profiler reference](memory-profiler-window-section.md)
+* [Find memory leaks](find-memory-leaks.md)

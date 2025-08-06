@@ -1,45 +1,60 @@
-# Open, import and capture snapshots
+# Capture and import snapshots
 
-## Capture a snapshot
+To capture a snapshot in the Memory Profiler window:
 
-You can capture a snapshot from the Editor, from an application running in Play mode in the Editor, or from a player running on your local machine or connected device. Use the __Attach to Player__ dropdown in the Profiler Window toolbar to choose between these options.
+1. Open the Memory Profiler window: **Window** &gt; **Analysis** &gt; **Memory Profiler**.
+1. Use the [Attach to Player](memory-profiler-window-reference.md#memory-profiler-toolbar) dropdown in the toolbar of the Memory Profiler window to set a source for the snapshot. You can capture a snapshot from the following sources:
 
-By default, the Memory Profiler captures Editor snapshots. When an application is running in Play mode or in a Player, Unity adds those options to the dropdown menu. They don't appear in the dropdown if no application is running.
+    * The Unity Editor.
+    * A player running on your local machine or device.
 
-After you choose a capture target in the dropdown menu, you can use the following buttons to capture a new snapshot:
+1. Use one of the following buttons to capture a snapshot:
 
-* The __Capture New Snapshot__ button is visible in the Memory Profiler window when you have no snapshots selected.
-* The __Capture__ button is always visible in the control bar in the Memory Profiler window.
+    * __Capture New Snapshot__ in the Memory Profiler window when you have no snapshots selected.
+    * __Capture__ button in the toolbar.
 
-Both buttons perform the same operation. Alongside the __Capture__ button on the control bar there is a __Choose Capture Flags__ dropdown menu, which you can use to configure the snapshot. See the table entry in [Memory Profiler window](memory-profiler-window-reference.md) for more information.
+Use the **Capture** dropdown menu to configure the snapshot. For more information, refer to [Memory Profiler window reference](memory-profiler-window-reference.md#memory-profiler-toolbar).
 
-You can also capture a memory snapshot through a script. For information about how to capture snapshots this way, see the [Memory Profiler.TakeSnapshot](https://docs.unity3d.com/ScriptReference/Profiling.Memory.Experimental.MemoryProfiler.TakeSnapshot.html) Scripting API documentation. For more information about using custom metadata with snapshots in code, see [MetaData](https://docs.unity3d.com/ScriptReference/Profiling.Memory.Experimental.MetaData.html) and [Add Player hook](snapshots-concepts.md#add-player-hook).
+
+> [!NOTE]
+> There is no clean separation between the memory used for Play mode and memory used for the Editor that runs in Play mode, so Editor snapshots always contain more memory and have a different memory usage behavior than a Player does, even if it runs on the same platform as the Editor. Taking Editor snapshots is therefore only recommended for faster iteration flows while optimizing, whereas the final result of optimization work should always be checked by analyzing the usage of a Player build.
+
+## Open snapshots
+
+To open a single snapshot and view its associated data, select the snapshot from the list in the [Snapshot panel](snapshots-component.md) with a single click. Opening a snapshot might take a long time because a snapshot can contain a lot of data.
+
+To open two snapshots and compare them, select the __Compare Snapshots__ tab, then select the two snapshots you want to compare from the list.
+
+[The Main panel](main-component.md) then displays different visualizations of the snapshot data.
+
+> [!TIP]
+> Clicking the snapshot name doesn't open the snapshot. Instead, this opens a renaming text box which you can use to rename the snapshot. You can also open a context menu via a right click on the snapshot to rename or delete the snapshot, as well as opening its containing folder.
+
 
 ## Import snapshots
 
 If you already have access to existing memory snapshots, you can import them into the Memory Profiler. You can import a snapshot in any of the following ways:
 
 * [Copy the snapshot into your `Project` folder](#copy-snapshots-into-the-project-folder)
-* [Use the __Import__ button in the __Snapshots component__](#use-the-import-button-in-the-snapshots-component)
+* [Use the Import button in the Memory Profiler window](#use-the-import-button-in-the-memory-profiler-window)
 
 ### Copy snapshots into the Project folder
 
 1. Inside your Project folder, find or create a folder named `MemoryCaptures`.
-2. Copy the snapshot files to this folder.
-3. Open the [Memory Profiler window](memory-profiler-window-reference.md), and you can see the added snapshot in the Snapshots component.
+1. Copy the snapshot files to this folder.
 
-### Use the Import button in the Snapshots component
+The Memory Profiler window then displays the snapshots in the [snapshots panel](snapshots-component.md).
 
-1. In the Memory Profiler window toolbar, click on the __Import__ button. This opens a file browser window.
-2. In the file browser window, locate and open the memory snapshot you want to import. When you import a .snap file, Unity copies the file to your `MemoryCaptures` folder. Unity creates this folder if it doesn't already exist.
+### Use the Import button in the Memory Profiler window
 
-## Opening snapshots
+1. Open the Memory Profiler window: **Window** &gt; **Analysis** &gt; **Memory Profiler**.
+1. In the toolbar, select the __Import__ button. This opens a file browser window.
+1. In the file browser window, locate and open the memory snapshot you want to import.
 
-To open a single snapshot and view its associated data, select the snapshot from the list in the Snapshot Panel with a single click. Opening a snapshot might take a long time because a snapshot can contain a lot of data.
+When you import a `.snap` file, Unity copies the file to your `MemoryCaptures` folder. Unity creates this folder if it doesn't already exist.
 
-To open two snapshots and compare them, enable the __Compare Snapshots__ mode in the [Open Snapshots pane](snapshots-component.md#open-snapshots-pane), then select the two snapshots you want to compare from the list.
+## Additional resources
 
-[The Main component](main-component.md) then displays different visualizations of the snapshot data.
-
-> [!TIP]
-> Clicking the snapshot name doesn't open the snapshot; instead, this opens a renaming text box which you can use to rename the snapshot.
+* [Snapshots introduction](snapshots-concepts.md)
+* [Snapshots panel reference](snapshots-component.md)
+* [Compare two snapshots](snapshots-comparison.md)

@@ -19,7 +19,12 @@ namespace Unity.MemoryProfiler.Editor
         public const RuntimePlatform EmbeddedLinuxX64 = (RuntimePlatform)41 /*RuntimePlatform.EmbeddedLinuxX64*/;
         public const RuntimePlatform EmbeddedLinuxX86 = (RuntimePlatform)42 /*RuntimePlatform.EmbeddedLinuxX86*/;
 
-        static readonly RuntimePlatform[] k_PlatformsHideResidentMemory = new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch, RuntimePlatform.WebGLPlayer };
+        static readonly RuntimePlatform[] k_PlatformsHideResidentMemory =
+            new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch,
+#if UNITY_6000_0 || UNITY_6000_3_OR_NEWER && !ENABLE_CORECLR
+            RuntimePlatform.Switch2,
+#endif
+            RuntimePlatform.WebGLPlayer };
 
         public static BuildTarget GetBuildTarget(this RuntimePlatform runtimePlatform)
         {
@@ -84,6 +89,11 @@ namespace Unity.MemoryProfiler.Editor
                 case RuntimePlatform.Switch:
                     buildTarget = BuildTarget.Switch;
                     break;
+#if UNITY_6000_0 || UNITY_6000_3_OR_NEWER && !ENABLE_CORECLR
+                case RuntimePlatform.Switch2:
+                    buildTarget = BuildTarget.Switch2;
+                    break;
+#endif
 #if !UNITY_2022_2_OR_NEWER
                 case RuntimePlatform.Lumin:
                     buildTarget = BuildTarget.Lumin;
@@ -109,6 +119,11 @@ namespace Unity.MemoryProfiler.Editor
                     buildTarget = BuildTarget.CloudRendering;
 #endif
                     break;
+#if UNITY_2022_3_OR_NEWER
+                case RuntimePlatform.VisionOS:
+                    buildTarget = BuildTarget.VisionOS;
+                    break;
+#endif
                 default:
                     // Unknown target
                     break;

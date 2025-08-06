@@ -1,26 +1,31 @@
 # Find memory leaks
 
-Memory leaks cause your application to perform worse over time and might eventually lead to a crash.
+Memory leaks cause your application to perform worse over time and might lead to a crash.
 
-Memory leaks typically happen for one of two reasons:
+Memory leaks typically happen for one of the following reasons:
 
-* Your project lacks code to release an object from memory, which leads to the object remaining in memory permanently.
-* An object stays in memory because of an unintentional reference.
+* Missing code to release objects from memory.
+* Unintentional references keeping objects in memory.
 
-You need to capture and compare multiple snapshots to identify memory leaks. To learn how to do this, see [Compare two snapshots](snapshots-comparison.md).
+To identify memory leaks, capture and compare multiple snapshots. Refer to [Compare two snapshots](snapshots-comparison.md) for more information.
 
-## Find memory leaks that happen after Scene unload
+## Detect memory leaks after scene unload
 
-There are multiple ways that memory leaks happen. A common cause of leaks is user-allocated objects or resources that your code doesn't release after your application unloads a __Scene__.
+Leaks often result from user-allocated objects or resources not released after a scene unload.
 
-To identify this type of leak with the Memory Profiler package:
+To identify this type of leak perform the following steps:
 
-1. Attach the Memory Profiler to a running Player. For instructions on how to attach the Memory Profiler to a Player, see [Capture a snapshot](snapshot-capture.md).
-1. Load an empty [Scene](https://docs.unity3d.com/Manual/CreatingScenes.html) in the Player.
-1. [Create a snapshot](snapshot-capture.md) of the empty Scene.
-1. Load the Scene you want to test for leaks.
-1. Play partway through the Scene.
-1. Unload the Scene or switch to an empty Scene. To fully unload Assets in the last opened Scene, you need to either call [Resources.UnloadUnusedAssets](https://docs.unity3d.com/ScriptReference/Resources.UnloadUnusedAssets.html) or load into two new Scenes (e.g. Load Empty Scene twice).
-1. Take another snapshot. You can optionally close the Player after you take this snapshot.
-1. Follow the instructions in [Compare two snapshots](snapshots-comparison.md) to open and compare both snapshots.
-1. Use any of the three [Memory Profiler window](memory-profiler-window-reference.md) tabs to evaluate the two snapshots. Any increase in memory use in the second snapshot is potentially due to a memory leak.
+1. Open **Window** &gt; **Analysis** &gt; **Memory Profiler**.
+1. Use the [Attach to Player](memory-profiler-window-reference.md#memory-profiler-toolbar) dropdown to set the source as a running Player.
+1. Load an empty [scene](xref:um-creating-scenes) and [create a snapshot](snapshot-capture.md) of it.
+1. Load the test scene, play partway through, then unload it or change to an empty scene. To fully unload assets, call [`Resources.UnloadUnusedAssets`](xref:UnityEngine.Resources.UnloadUnusedAssets) or load two new scenes consecutively.
+1. Take another snapshot and optionally close the Player.
+1. [Compare snapshots](snapshots-comparison.md) and use any of the [Memory Profiler tabs](memory-profiler-window-reference.md) to inspect the snapshots.
+
+Increased memory usage in the second snapshot might indicate a memory leak.
+
+## Additional resources
+
+* [Compare two snapshots](snapshots-comparison.md)
+* [Memory Profiler window reference](memory-profiler-window-reference.md)
+* [Analyzing Unity object memory leaks](managed-shell-objects.md)

@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Diagnostics;
-#if ENABLE_CORECLR
+#if UNITY_COLLECTIONS_CHANGED
 using Allocator = Unity.Collections.AllocatorManager;
 using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
 using static Unity.Collections.AllocatorManager;
@@ -177,8 +177,9 @@ namespace Unity.MemoryProfiler.Editor.Containers
             if (m_Capacity != 0)
             {
                 var allocSize = m_Capacity * sizeof(T);
-#if ENABLE_CORECLR
-                m_Data = allocator.Allocate(sizeof(T), UnsafeUtility.AlignOf<T>(), allocSize);
+#if UNITY_COLLECTIONS_CHANGED
+                CalculateAllocationSize(ref m_Capacity, out var sizeOf);
+                m_Data = (T*)allocator.Allocate(sizeOf, UnsafeUtility.AlignOf<T>(), (int)m_Capacity);
 #else
                 m_Data = (T*)UnsafeUtility.Malloc(allocSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
 #endif
@@ -189,6 +190,24 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 m_Data = null;
             IsCreated = true;
         }
+
+#if UNITY_COLLECTIONS_CHANGED
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void CalculateAllocationSize(ref long capacity, out int sizeOf)
+        {
+            // Allocate doesn't take long, so if the allocation is bigger than int.MaxValue, split it up
+            sizeOf = sizeof(T);
+            if(capacity > int.MaxValue)
+            {
+                sizeOf = int.MaxValue;
+                var cap = capacity / int.MaxValue;
+                // round up the amount of times int.MaxValue is needed if the capacity isn't exatly a multiple of int.MaxValue.
+                if (capacity % int.MaxValue > 0)
+                    ++cap;
+                capacity = cap;
+            }
+        }
+#endif
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, AllocatorType allocator)
@@ -358,15 +377,16 @@ namespace Unity.MemoryProfiler.Editor.Containers
                     _ => throw new NotImplementedException(),
                 };
 
-#if ENABLE_CORECLR
-                if (m_Allocator.IsValid)
+#if UNITY_COLLECTIONS_CHANGED
+                if (m_Allocator == default)
 #else
                 if (m_Allocator == Allocator.None)
 #endif
                     throw new NotSupportedException("Resizing a DynamicArray that acts as a slice of another DynamicArray is not allowed");
 
-#if ENABLE_CORECLR
-                var newMem = allocator.Allocate(sizeof(T), UnsafeUtility.AlignOf<T>(), newCapacity * sizeof(T));
+#if UNITY_COLLECTIONS_CHANGED
+                CalculateAllocationSize(ref newCapacity, out var sizeOf);
+                var newMem = (T*)m_Allocator.Allocate(sizeOf, UnsafeUtility.AlignOf<T>(), (int)newCapacity);
 #else
                 var newMem = (T*)UnsafeUtility.Malloc(newCapacity * sizeof(T), UnsafeUtility.AlignOf<T>(), m_Allocator);
 #endif
@@ -374,8 +394,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 if (m_Data != null)
                 {
                     UnsafeUtility.MemCpy(newMem, m_Data, Count * sizeof(T));
-#if ENABLE_CORECLR
-                    Memory.Unmanaged.Free(m_Data, m_Allocator);
+#if UNITY_COLLECTIONS_CHANGED
+                    Free(m_Allocator, m_Data);
 #else
                     UnsafeUtility.Free(m_Data, m_Allocator);
 #endif
@@ -471,7 +491,13 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public void Dispose()
         {
-            if (IsCreated && m_Data != null && m_Allocator > Allocator.None)
+            if (IsCreated && m_Data != null
+#if UNITY_COLLECTIONS_CHANGED
+                && m_Allocator == default
+#else
+                && m_Allocator > Allocator.None
+#endif
+                )
             {
                 if (typeof(IDisposable).IsAssignableFrom(typeof(T)))
                 {
@@ -480,8 +506,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
                         ((IDisposable)m_Data[i]).Dispose();
                     }
                 }
-#if ENABLE_CORECLR
-                    Memory.Unmanaged.Free(m_Data, m_Allocator);
+#if UNITY_COLLECTIONS_CHANGED
+                Free(m_Allocator, m_Data);
 #else
                 UnsafeUtility.Free(m_Data, m_Allocator);
 #endif
@@ -490,7 +516,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_Count = 0;
             m_Data = null;
             m_Allocator =
-#if ENABLE_CORECLR
+#if UNITY_COLLECTIONS_CHANGED
                 default;
 #else
                 Allocator.Invalid;

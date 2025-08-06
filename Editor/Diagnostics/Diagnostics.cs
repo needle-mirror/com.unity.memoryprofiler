@@ -67,10 +67,10 @@ namespace Unity.MemoryProfiler.Editor.Diagnostics
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG"), MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void CheckEquals<T>(T rhs, T lhs) where T : IEquatable<T>
+        public static void CheckEquals<T>(T expected, T actual) where T : IEquatable<T>
         {
-            if (!rhs.Equals(lhs))
-                throw new Exception($"Expected: {rhs}, but actual value was: {lhs}.");
+            if (!expected.Equals(actual))
+                throw new Exception($"Expected: {expected}, but actual value was: {actual}.");
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG"), MethodImpl(MethodImplOptions.AggressiveInlining)]

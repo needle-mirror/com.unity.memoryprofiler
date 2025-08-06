@@ -4,11 +4,21 @@ using System.Runtime.InteropServices;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 #endif
 using Unity.MemoryProfiler.Editor.Format;
-using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Unity.MemoryProfiler.Editor.Managed;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
+
+using Debug = UnityEngine.Debug;
+#if !ENTITY_ID_CHANGED_SIZE
+// the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
+// so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
+using EntityId = Unity.MemoryProfiler.Editor.EntityId;
+#else
+using EntityId = UnityEngine.EntityId;
+// This should be greyed out by the IDE, otherwise you're missing an alias above
+using UnityEngine;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -24,6 +34,7 @@ namespace Unity.MemoryProfiler.Editor
         Type,
         NativeObject,
         NativeAllocation,
+        GCHandle,
     }
 
     internal enum CodeType
@@ -53,12 +64,21 @@ namespace Unity.MemoryProfiler.Editor
     }
     internal struct ObjectData
     {
+        static ObjectData()
+        {
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
+#pragma warning disable CS0184 // 'is' expression's given expression is never of the provided type (until it is, because UnityEngine was accidentally included.)
+            Debug.Assert(!(typeof(EntityId) is UnityEngine.EntityId), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+#pragma warning restore CS0184 // 'is' expression's given expression is never of the provided type
+#endif
+        }
+
         private void SetManagedType(CachedSnapshot snapshot, int iType)
         {
             m_data.managed.iType = iType;
         }
 
-        public static InstanceID InvalidInstanceID
+        public static EntityId InvalidInstanceID
         {
             get
             {
@@ -257,6 +277,7 @@ namespace Unity.MemoryProfiler.Editor
                     case ObjectDataType.NativeAllocation:
                         return true;
                     case ObjectDataType.Unknown:
+                    case ObjectDataType.GCHandle:
                     default:
                         return false;
                 }
@@ -352,6 +373,8 @@ namespace Unity.MemoryProfiler.Editor
                     return snapshot.NativeObjects.NativeObjectAddress[nativeObjectIndex];
                 case ObjectDataType.NativeAllocation:
                     return snapshot.NativeAllocations.Address[m_data.native.index];
+                case ObjectDataType.GCHandle:
+                    return snapshot.GcHandles.Target[m_data.native.index];
                 case ObjectDataType.Type:
                     if (m_data.managed.iType >= 0)
                         return snapshot.TypeDescriptions.TypeInfoAddress[m_data.managed.iType];
@@ -415,6 +438,7 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.Object:
                 case ObjectDataType.NativeObject:
                 case ObjectDataType.NativeAllocation:
+                case ObjectDataType.GCHandle:
                 default:
                     Debug.LogError("Requesting Array info on an invalid data type");
                     return null;
@@ -671,7 +695,7 @@ namespace Unity.MemoryProfiler.Editor
             return this;
         }
 
-        public InstanceID GetInstanceID(CachedSnapshot snapshot)
+        public EntityId GetEntityId(CachedSnapshot snapshot)
         {
             var nativeIndex = nativeObjectIndex;
             if (nativeIndex < 0)
@@ -763,6 +787,8 @@ namespace Unity.MemoryProfiler.Editor
                         return new SourceIndex(SourceIndex.SourceId.ManagedObject, targetManagedObject.ManagedObjectIndex);
                     else
                         return new SourceIndex();
+                case ObjectDataType.GCHandle:
+                    return new SourceIndex(SourceIndex.SourceId.GCHandleIndex, m_data.native.index);
             }
 
             return new SourceIndex();
@@ -931,7 +957,11 @@ namespace Unity.MemoryProfiler.Editor
             if ((managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeVoidPtr || managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeBytePtr)
                 && Parent != null && (Parent.Obj.managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeIntPtr || cachedSnapshot.TypeDescriptions.IsNativeContainerType(Parent.Obj.managedTypeIndex)))
             {
-                return Parent.Obj.GetFieldDescription(cachedSnapshot, truncateTypeNames, addClassNameOfHoldingTypeOrObject, addFieldTypeInfo, addHoldingObjectInfo);
+                if (Parent.Obj.IsField())
+                    return Parent.Obj.GetFieldDescription(cachedSnapshot, truncateTypeNames, addClassNameOfHoldingTypeOrObject, addFieldTypeInfo, addHoldingObjectInfo);
+
+                if (Parent.Obj.IsArrayItem())
+                    return Parent.Obj.GenerateArrayDescription(cachedSnapshot, truncateTypeNames, addClassNameOfHoldingTypeOrObject);
             }
 
             string parentType = string.Empty;
@@ -978,6 +1008,9 @@ namespace Unity.MemoryProfiler.Editor
 
             if (m_dataType == ObjectDataType.NativeAllocation)
                 return DetailFormatter.FormatPointer(GetObjectPointer(cachedSnapshot));
+
+            if (m_dataType == ObjectDataType.GCHandle)
+                return GetSourceLink(cachedSnapshot).GetName(cachedSnapshot);
 
             var managedObjectInfo = GetManagedObject(cachedSnapshot);
             if (managedObjectInfo.IsValid())
@@ -1042,6 +1075,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 case ObjectDataType.NativeAllocation:
                     return "Native Allocation";
+                case ObjectDataType.GCHandle:
+                    return "GCHandle";
                 case ObjectDataType.Unknown:
                 default:
                     return "<unintialized type>";
@@ -1062,6 +1097,8 @@ namespace Unity.MemoryProfiler.Editor
                     return FromGfxResourceIndex(snapshot, (int)source.Index);
                 case SourceIndex.SourceId.NativeAllocation:
                     return FromNativeAllocationIndex(snapshot, (int)source.Index);
+                case SourceIndex.SourceId.GCHandleIndex:
+                    return FromGCHandleIndex(snapshot, (int)source.Index);
                 default:
                     return ObjectData.Invalid;
             }
@@ -1131,6 +1168,16 @@ namespace Unity.MemoryProfiler.Editor
             return o;
         }
 
+        public static ObjectData FromGCHandleIndex(CachedSnapshot snapshot, int index)
+        {
+            if (index < 0 || index >= snapshot.GcHandles.UniqueCount)
+                return ObjectData.Invalid;
+            ObjectData o = new ObjectData();
+            o.m_dataType = ObjectDataType.GCHandle;
+            o.m_data.native.index = index;
+            return o;
+        }
+
         public static ObjectData FromManagedObjectInfo(CachedSnapshot snapshot, ManagedObjectInfo moi)
         {
             if (!moi.IsKnownType)
@@ -1189,7 +1236,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 if (o.managedObjectData.IsValid)
                 {
-                    if (ManagedDataCrawler.TryParseObjectHeader(snapshot, ptr, out var info, o.managedObjectData, typeIndexOfTheFieldHoldingThePtr, heldByNativeUnityObject: false, ignoreErrorsBecauseObjectIsSpeculative: true))
+                    if (ManagedDataCrawler.TryParseObjectHeader(snapshot, ptr, out var info, o.managedObjectData, typeIndexOfTheFieldHoldingThePtr, ignoreErrorsBecauseObjectIsSpeculative: true))
                     {
                         if (asTypeIndex >= 0)
                         {
@@ -1277,12 +1324,12 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool IsRootTransform(CachedSnapshot cs)
         {
-            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootTransformInstanceIdHashSet.Contains(GetInstanceID(cs));
+            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootTransformInstanceIdHashSet.Contains(GetEntityId(cs));
         }
 
         public bool IsRootGameObject(CachedSnapshot cs)
         {
-            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootGameObjectInstanceIdHashSet.Contains(GetInstanceID(cs));
+            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootGameObjectInstanceIdHashSet.Contains(GetEntityId(cs));
         }
 
         public string GetAssetPath(CachedSnapshot cs)
@@ -1291,7 +1338,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 for (int ii = 0; ii < cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i].Length; ii++)
                 {
-                    if (cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i][ii].Equals(GetInstanceID(cs)))
+                    if (cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i][ii].Equals(GetEntityId(cs)))
                         return cs.SceneRoots.Path[i];
                 }
             }

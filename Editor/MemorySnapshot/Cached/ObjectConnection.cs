@@ -1,13 +1,30 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using Debug = UnityEngine.Debug;
+
+#if  !ENTITY_ID_CHANGED_SIZE
+// the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
+// so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
+using EntityId = Unity.MemoryProfiler.Editor.EntityId;
+#else
+using EntityId = UnityEngine.EntityId;
+// This should be greyed out by the IDE, otherwise you're missing an alias above
+using UnityEngine;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
     internal struct ObjectConnection
     {
+        static ObjectConnection()
+        {
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
+#pragma warning disable CS0184 // 'is' expression's given expression is never of the provided type (until it is, because UnityEngine was accidentally included.)
+            Debug.Assert(!(typeof(EntityId) is UnityEngine.EntityId), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+#pragma warning restore CS0184 // 'is' expression's given expression is never of the provided type
+#endif
+        }
         public enum UnityObjectReferencesSearchMode
         {
             /// <summary>
@@ -173,8 +190,9 @@ namespace Unity.MemoryProfiler.Editor
                             case SourceIndex.SourceId.ManagedObject:
                             case SourceIndex.SourceId.ManagedType:
                             case SourceIndex.SourceId.NativeObject:
+                            case SourceIndex.SourceId.GCHandleIndex:
                             // Currently intentional possible connections:
-                            // Managed Object / Managed Type / Native Object -> Managed Object
+                            // Managed Object / Managed Type / Native Object / GCHandleIndex -> Managed Object
                                 break;
                             default:
                                 throw new NotImplementedException();
@@ -314,6 +332,10 @@ namespace Unity.MemoryProfiler.Editor
                                     referencedObjects.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
                                 }
                                 break;
+                            case SourceIndex.SourceId.GCHandleIndex:
+                                // GCHandles just hold a plain reference to the object, no field info present
+                                referencedObjects.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
+                                break;
                             default:
                                 // Not just not implemented but also technically dubious if something else where to have a connection to a Managed Object
                                 throw new NotImplementedException();
@@ -361,7 +383,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <param name="parentTransformInstanceIdToIgnore">If you are only looking for child transforms, pass in the parent ID so it will be ignored. -1 if no parent should be ignored.</param>
         /// <param name="outInstanceIds">The connected instanceIDs if any where found, otherwise it is empty.</param>
         /// <returns>Returns True if connected Transform IDs were found, False if not.</returns>
-        public static bool TryGetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, InstanceID transformInstanceID, InstanceID parentTransformInstanceIdToIgnore, ref HashSet<InstanceID> outInstanceIds)
+        public static bool TryGetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, EntityId transformInstanceID, EntityId parentTransformInstanceIdToIgnore, ref HashSet<EntityId> outInstanceIds)
         {
             var found = outInstanceIds;
             found.Clear();
@@ -371,7 +393,7 @@ namespace Unity.MemoryProfiler.Editor
                 foreach (var connection in list)
                 {
                     var possiblyConnectedTransform = ObjectData.FromSourceLink(snapshot, connection);
-                    var instanceIdOfPossibleConnection = possiblyConnectedTransform.GetInstanceID(snapshot);
+                    var instanceIdOfPossibleConnection = possiblyConnectedTransform.GetEntityId(snapshot);
                     if (possiblyConnectedTransform.isNativeObject && snapshot.NativeTypes.IsTransformOrRectTransform(snapshot.NativeObjects.NativeTypeArrayIndex[possiblyConnectedTransform.nativeObjectIndex])
                         && instanceIdOfPossibleConnection != NativeObjectEntriesCache.InstanceIDNone && instanceIdOfPossibleConnection != parentTransformInstanceIdToIgnore && instanceIdOfPossibleConnection != transformInstanceID
                         // Skip connections that jump from prefab to instance or vice versa.
@@ -387,7 +409,7 @@ namespace Unity.MemoryProfiler.Editor
             return false;
         }
 
-        public static InstanceID GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, InstanceID instanceID)
+        public static EntityId GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, EntityId instanceID)
         {
             var transform = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.InstanceId2Index[instanceID]);
             if (snapshot.Connections.ReferenceTo.TryGetValue(transform.GetSourceLink(snapshot), out var list))

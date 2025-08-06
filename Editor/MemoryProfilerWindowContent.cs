@@ -161,17 +161,32 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "while the Garbage Collection happens asynchronously. When it is not used, a new section is only allocated if there is not enough space after the collection either." +
             "\n\nThis Memory could also still be occupied by Objects that have been abandoned after the last GC.Alloc sweep and are waiting for collection in the next one.";
 
+
+        public const string RepeatReferencesLabel = "Repeat References";
+        public const string RepeatReferencesTooltip = "'Repeat References' are references from managed objects already listed in the 'Referenced By' list but e.g. originating from a different field or array index. The 'Referenced By' list does not list each such reference for the sake of brevity.";
+        public const string NonUnityObjectGCHandleReferencesLabel = "GCHandles";
+        public const string NonUnityObjectGCHandleReferencesTooltip = "'GCHandles' are references from GCHandles, excluding those held by the native side of a Unity Object. Existing native Unity Object references via GCHandles are listed in the 'Referenced By' list as a reference from the native object, instead of via its GCHandle.";
+
         public const string UsedByNativeCodeStatus = "Empty Array Required by Unity's subsystems";
         public const string UsedByNativeCodeHint = "This array's Type is marked with a [UsedByNativeCode] or [RequiredByNativeCode] Attribute in the Unity code-base and the array exists so that the Type is not compiled out on build. It is held in memory via a GCHandle. You can search the public C# reference repository for those attributes https://github.com/Unity-Technologies/UnityCsReference/.";
 
         public const string HeldByGCHandleStatus = "Held Alive By GCHandle";
-        public const string HeldByGCHandleHint = "This Object is pinned or otherwise held in memory because a GCHandle was allocated for it.";
+        public const string HeldByGCHandleHint = "This object is pinned or otherwise held in memory because a GCHandle was allocated for it.";
 
-        public const string UnityObjectHeldByGCHandleStatus = "Unity Object Held Alive By GCHandle";
-        public const string UnityObjectHeldByGCHandleHint = "This Object has an m_CachedPtr field, indicating it is a Unity Object, yet no native object holding its GCHandle was captured in the snapshot. This could be due to a bug where native objects could change between taking a snapshot of the managed heap and capturing native objects. This was fixed in 6000.0.16f1, 2022.3.43f1, and 2021.3.44f1 so if you are on Unity versions higher than those, please report a bug.";
+        public const string GCHandleHeldManagedObjectStatus = HeldByGCHandleStatus;
+        public const string GCHandleHeldManagedObjectHint = "This managed object is pinned or otherwise held in memory because a GCHandle was allocated for it.";
+
+        public static readonly string LeakedShellHeldByGCHandleStatus = $"{TextContent.LeakedManagedShellName} Held Alive By GCHandle";
+        public const string LeakedShellHeldByGCHandleHint = "This Unity Object is held alve by a GCHandle, yet no native object holding its GCHandle was captured in the snapshot. This could be because some other code took a GCHandle to it, or due to a bug where native objects could change between taking a snapshot of the managed heap and capturing native objects. This was fixed in 6000.0.16f1, 2022.3.43f1, and 2021.3.44f1 so if you are on Unity versions higher than those, look for code that allocates GCHandles.";
+
+        public const string ReferencedManagedObjectStatus = "Referenced Managed Object";
+        public const string ReferencedManagedObjectHint = "This managed object is being referenced. If you did not expect to see it, check the references panel to see where those references are coming from";
 
         public const string UnkownLivenessReasonStatus = "Bug: Liveness Reason Unknown";
         public const string UnkownLivenessReasonHint = "There is no reference pointing to this object and no GCHandle reported for it. This is a Bug, please report it using 'Help > Report a Bug' and attach the snapshot to the report.";
+
+        public const string GCHandleStatus = "A GCHandle";
+        public const string GCHandleHint = GCHandleDescription + " This GCHandle is not associated with the native object behind the managed shell of a Unity Object. Check your code if you call GCHandle.Alloc(), UnsafeUtility.PinGCArrayAndGetDataAddress(), or UnsafeUtility.PinGCObjectAndGetAddress() anywhere.";
 
         public const string InvalidObjectErrorBoxMessage = "This is an invalid Managed Object, i.e. the Memory Profiler could not identify it's type and data. To help us in finding and fixing this issue, " + TextContent.InvalidObjectPleaseReportABugMessage;
 
@@ -238,6 +253,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2019.4.29f1 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
 #endif
 
+        public const string DataTypeGCHandleTooltip = "This is a GCHandle (one that is not held by a Native Unity Object).";
         public const string DataTypeNativeTooltip = "This is a Native Unity Object or Type (i.e. one that is derived from UnityEngine.Object).";
         public const string DataTypeManagedTooltip = "This is an Object of a pure C# type or such a Type itself (i.e. one that is not derived from UnityEngine.Object).";
         public const string DataTypeUnifiedUnityTooltip = "This is a full Unity Object (i.e. one that is derived from UnityEngine.Object), containing a Managed Shell and a Native Unity Object, or the Managed Type of such an Object.";
@@ -260,6 +276,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "You can read more about different types of Unity allocators and their settings on \"Memory allocator customization\" documentation page." +
             "\n\nYou can investigate which object holds specific allocator chunk by turning \"Show Memory Map view\" in Memory Profiler settings. " +
             "In Memory Map view you can see which objects resides in a specific allocator chunk.";
+        public const string GCHandleDescription = "A GCHandle that was allocated to reference this managed object.";
     }
 
     internal static class DocumentationUrls
@@ -270,7 +287,8 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         const string k_AnchorChar = "%23";
         public const string WorkbenchHelp = "manual/snapshots-component.html";
         public const string IndexHelp = "manual/index.html";
-        public const string OpenSnapshotsPane = LatestPackageVersionBaseUrl + WorkbenchHelp + k_AnchorChar + "snapshots-component#open-snapshots-pane";
+        public const string MemoryOnDeviceHelp = "manual/memory-on-device.html";
+        public const string OpenSnapshotsPane = LatestPackageVersionBaseUrl + WorkbenchHelp + k_AnchorChar + "snapshots-component#open-snapshots";
         public const string AnalysisWindowHelp = LatestPackageVersionBaseUrl + "manual/main-component.html";
 #if UNITY_2022_3_OR_NEWER || UNITY_2023_2_OR_NEWER
         public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Unity.Profiling.Memory.CaptureFlags.html";
@@ -280,7 +298,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Profiling.Memory.Experimental.CaptureFlags.html";
 #endif
 
-        public const string UntrackedMemoryDocumentation = LatestPackageVersionBaseUrl + IndexHelp + k_AnchorChar + "known-limitations";
+        public const string UntrackedMemoryDocumentation = LatestPackageVersionBaseUrl + MemoryOnDeviceHelp + k_AnchorChar + "untracked-memory";
     }
 
     internal static class FileExtensionContent

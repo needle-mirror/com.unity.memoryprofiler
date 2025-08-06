@@ -458,9 +458,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_WaitingForFilteringToBeAppliedToCompareView = true;
 
             var objectNameFilter = MatchesTextFilter.Create(objectName);
-            IInstancIdFilter sourceIndexFilter = null;
+            IEntityIdFilter sourceIndexFilter = null;
             if(!string.IsNullOrEmpty(instancId)
-                && instancId.Substring(NativeObjectTools.NativeObjectIdFormatStringPrefix.Length).TryConvertToInstanceID(out var instanceIdValue))
+                && instancId.Substring(NativeObjectTools.NativeObjectIdFormatStringPrefix.Length).TryConvertToEntityID(out var instanceIdValue))
             {
                 var snapshot = snapshotType switch
                 {

@@ -1,0 +1,19 @@
+<!-- Auto generated from '/Users/darius.skergelza/lanes/lane1/neutron/Packages/com.unity.memoryprofiler/Runtime/Unity.MemoryProfiler.asmdef' on 30 October 2024 11:51:09 +02 -->
+<Project Sdk="Unity.Sdk">
+  <PropertyGroup>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableUnityEngineReferences>true</EnableUnityEngineReferences>
+    <AssemblyName>Unity.MemoryProfiler</AssemblyName>
+    <RootNamespace>Unity.MemoryProfiler</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <UnityVersionDefine Include="Unity">
+      <Expression>2022.2.0a13</Expression>
+      <Define>MEMORY_PROFILER_API_PUBLIC</Define>
+    </UnityVersionDefine>
+  </ItemGroup>
+</Project>

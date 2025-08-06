@@ -29,7 +29,7 @@ namespace Unity.MemoryProfiler.Editor
 
             var totalResident = 0UL;
             var totalCommitted = 0UL;
-            DateTime timestamp = DateTime.Now;
+            DateTime timestamp = default;
             unsafe
             {
                 long ticks;

@@ -6,11 +6,20 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 
+#if UNITY_COLLECTIONS_CHANGED
+using Allocator = Unity.Collections.AllocatorManager;
+using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
+using static Unity.Collections.AllocatorManager;
+#else
+using Allocator = Unity.Collections.Allocator;
+using AllocatorType = Unity.Collections.Allocator;
+#endif
+
 namespace Unity.MemoryProfiler.Editor.Containers
 {
     internal struct NestedDynamicArray<T> : IDisposable, IEnumerable<DynamicArrayRef<T>> where T : unmanaged
     {
-        readonly Allocator m_Allocator;
+        readonly AllocatorType m_Allocator;
         DynamicArray<DynamicArrayRef<T>> m_NestedArrays;
         readonly DynamicArray<DynamicArray<T>> m_Data;
         public long SectionCount { readonly get; private set; }

@@ -49,6 +49,7 @@ namespace Unity.MemoryProfiler.Editor
                         return holdingObject.displayObject.GenerateArrayDescription(snapshot, truncateTypeNames);
                     case ObjectDataType.NativeObject:
                     case ObjectDataType.NativeAllocation:
+                    case ObjectDataType.GCHandle:
                     default:
                         break;
                 }

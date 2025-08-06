@@ -8,9 +8,25 @@ using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.Search;
-using UnityEngine;
 using static Unity.MemoryProfiler.Editor.QuickSearchUtility;
 using Object = UnityEngine.Object;
+using GUIContent = UnityEngine.GUIContent;
+using Texture = UnityEngine.Texture;
+using Texture2D = UnityEngine.Texture2D;
+using RenderTexture = UnityEngine.RenderTexture;
+using HideFlags = UnityEngine.HideFlags;
+using GameObject = UnityEngine.GameObject;
+using Vector2 = UnityEngine.Vector2;
+using Debug = UnityEngine.Debug;
+#if !ENTITY_ID_CHANGED_SIZE
+// the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
+// so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
+using EntityId = Unity.MemoryProfiler.Editor.EntityId;
+#else
+using EntityId = UnityEngine.EntityId;
+// This should be greyed out by the IDE, otherwise you're missing an alias above
+using UnityEngine;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -546,7 +562,7 @@ namespace Unity.MemoryProfiler.Editor
             return EditorSessionUtility.InstanceIdPingingSupportedByUnityVersion && EditorSessionUtility.CurrentSessionId == sessionId;
         }
 
-        public static void Ping(InstanceID instanceId, uint sessionId, bool logWarning = true)
+        public static void Ping(EntityId instanceId, uint sessionId, bool logWarning = true)
         {
             if (!EditorSessionUtility.InstanceIdPingingSupportedByUnityVersion)
             {
@@ -557,44 +573,19 @@ namespace Unity.MemoryProfiler.Editor
 
             if (CanPingByInstanceId(sessionId))
             {
-                ClearInstanceIdSelection();
-                SetActiveInstanceId(instanceId);
-                PingByInstanceId(instanceId);
+                EditorSelectionUtility.ClearSelection();
+                EditorSelectionUtility.SetActiveSelection(instanceId);
+                // ping the object in an instance id/ entity id independent manner
+                if (Selection.activeObject)
+                    EditorGUIUtility.PingObject(Selection.activeObject);
             }
             else if (logWarning)
                 UnityEngine.Debug.LogWarningFormat(TextContent.InstanceIdPingingOnlyWorksInSameSessionMessage, EditorSessionUtility.CurrentSessionId, sessionId);
         }
 
-        static void ClearInstanceIdSelection()
-        {
-#if !INSTANCE_ID_CHANGED
-            Selection.instanceIDs = new int[0];
-#else
-            Selection.instanceIDs = new InstanceID[0];
-#endif
-        }
-
-        static void SetActiveInstanceId(InstanceID instanceId)
-        {
-#if !INSTANCE_ID_CHANGED
-            Selection.activeInstanceID = (int)(ulong)instanceId;
-#else
-            Selection.activeInstanceID = instanceId;
-#endif
-        }
-
-        static void PingByInstanceId(InstanceID instanceId)
-        {
-#if !INSTANCE_ID_CHANGED
-            EditorGUIUtility.PingObject((int)(ulong)instanceId);
-#else
-            EditorGUIUtility.PingObject(instanceId);
-#endif
-        }
-
         public static async Task<Findings> FindObject(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo, CancellationToken cancellationToken)
         {
-            // If the object belongs to the same session there is a chance that it is still loaded and can be used based on the InstanceID
+            // If the object belongs to the same session there is a chance that it is still loaded and can be used based on the EntityId
             // (e.g. Texture)
             if (snapshot.MetaData.SessionGUID == EditorSessionUtility.CurrentSessionId)
             {
@@ -626,10 +617,10 @@ namespace Unity.MemoryProfiler.Editor
 
         static Findings FindByInstanceID(CachedSnapshot snapshot, UnifiedUnityObjectInfo unifiedUnityObjectInfo)
         {
-            var oldSelection = Selection.instanceIDs;
-            var oldActiveSelection = Selection.activeInstanceID;
-            ClearInstanceIdSelection();
-            SetActiveInstanceId(unifiedUnityObjectInfo.InstanceId);
+            using var oldSelection = EditorSelectionUtility.GetSelectedObjects(Collections.Allocator.Temp);
+            var oldActiveSelection = EditorSelectionUtility.GetActiveSelection();
+            EditorSelectionUtility.ClearSelection();
+            EditorSelectionUtility.SetActiveSelection(unifiedUnityObjectInfo.EntityId);
             if (Selection.activeObject != null)
             {
                 var typeMismatch = CheckTypeMismatch(Selection.activeObject, unifiedUnityObjectInfo, snapshot);
@@ -637,13 +628,13 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     var obj = Selection.activeObject;
                     // maybe use Undo for this
-                    Selection.instanceIDs = oldSelection;
-                    Selection.activeInstanceID = oldActiveSelection;
+                    EditorSelectionUtility.SetSelectedObjects(oldSelection);
+                    EditorSelectionUtility.SetActiveSelection(oldActiveSelection);
                     return new Findings(obj, 100, null, null, isDynamicObject: true);
                 }
             }
-            Selection.instanceIDs = oldSelection;
-            Selection.activeInstanceID = oldActiveSelection;
+            EditorSelectionUtility.SetSelectedObjects(oldSelection);
+            EditorSelectionUtility.SetActiveSelection(oldActiveSelection);
             return new Findings() { FailReason = SearchFailReason.NotFound };
         }
 
@@ -815,7 +806,7 @@ namespace Unity.MemoryProfiler.Editor
             Texture2D preview = null;
             if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(obj, out var guid, out fileId))
             {
-                assetPath = AssetDatabase.GUIDToAssetPath(new GUID(guid));
+                assetPath = AssetDatabase.GUIDToAssetPath(new GUID(guid.ToString()));
             }
             if (!string.IsNullOrEmpty(assetPath))
             {

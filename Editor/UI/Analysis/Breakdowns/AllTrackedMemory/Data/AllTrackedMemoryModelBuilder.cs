@@ -428,8 +428,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var nativeAllocations = snapshot.NativeAllocations;
             var rootReferenceId = nativeAllocations.RootReferenceId[source.Index];
 
-            if (snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.Switch }
-                && snapshot.EntriesMemoryMap.GetPointType(source) == EntriesMemoryMapCache.PointType.Device)
+            if (snapshot.UseDeviceMemoryForGraphics && snapshot.EntriesMemoryMap.GetPointType(source) == EntriesMemoryMapCache.PointType.Device)
             {
                 // Handled via ProcessedNativeRoots.NativeAllocationsThatAreUntrackedGraphicsResources
                 return;
@@ -544,8 +543,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (args.BreakdownNativeReserved && !NameFilter(args, name))
                 return;
 
-            if (snapshot.MetaData.TargetInfo is { RuntimePlatform: RuntimePlatform.Switch } &&
-                snapshot.NativeMemoryRegions.ParentIndex[source.Index] == snapshot.NativeMemoryRegions.SwitchGPUAllocatorIndex)
+            var memIndex = snapshot.NativeMemoryRegions.ParentIndex[source.Index];
+            if (snapshot.UseDeviceMemoryForGraphics && snapshot.NativeMemoryRegions.GPUAllocatorIndices.Contains(memIndex))
                 AddItemSizeToMap(gpuSizesMap, source, size);
             else
                 AddItemSizeToMap(regionsTotalMap, source, size);

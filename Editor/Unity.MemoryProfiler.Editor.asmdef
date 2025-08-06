@@ -27,12 +27,42 @@
         {
             "name": "Unity",
             "expression": "7000.0.0a1",
-            "define": "INSTANCE_ID_CHANGED"
+            "define": "ENTITY_ID_CHANGED_SIZE"
+        },
+        {
+            "name": "Unity",
+            "expression": "7000.0.0a1",
+            "define": "CSHARP_7_3_OR_NEWER"
         },
         {
             "name": "com.unity.collections",
             "expression": "2.1.0",
             "define": "UNMANAGED_NATIVE_HASHMAP_AVAILABLE"
+        },
+        {
+            "name": "Unity",
+            "expression": "6000.2.0b2",
+            "define": "IMGUI_TREEVIEW_API_CHANGED"
+        },
+        {
+            "name": "Unity",
+            "expression": "6000.2.0a8",
+            "define": "ENTITY_ID_STRUCT_AVAILABLE"
+        },
+        {
+            "name": "Unity",
+            "expression": "6000.3.0a1",
+            "define": "SELECTION_USES_ENTITY_ID"
+        },
+        {
+            "name": "Unity",
+            "expression": "7000.0.0a1",
+            "define": "UNITY_COLLECTIONS_CHANGED"
+        },
+        {
+            "name": "Unity.Profiling.Core",
+            "expression": "1.0.0",
+            "define": "PROFILING_CORE_AVAILABLE"
         }
     ],
     "noEngineReferences": false

@@ -324,6 +324,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void TryRename(string newSnapshotName)
         {
+            if (string.IsNullOrEmpty(newSnapshotName))
+                return;
+
             if (!m_SnapshotDataService.ValidateName(newSnapshotName))
                 return;
 

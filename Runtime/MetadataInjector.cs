@@ -65,9 +65,11 @@ namespace Unity.MemoryProfiler
     /// <example>
     /// <code lang="cs"><![CDATA[
     /// using Unity.MemoryProfiler;
-    /// using Unity.Profiling.Memory;
-    /// using UnityEngine.Scripting;
+    /// using Unity.Profiling.Memory
     /// using UnityEngine;
+    /// #if UNITY_EDITOR
+    /// using UnityEditor;
+    /// #endif
     ///
     /// public class SnapshotMetadataProvider : MonoBehaviour
     /// {
@@ -96,10 +98,15 @@ namespace Unity.MemoryProfiler
     ///         m_MetadataProvider = metadataProvider;
     ///     }
     ///
-    ///     public CollectMetadata(MemorySnapshotMetadata data)
+    ///     public override void CollectMetadata(MemorySnapshotMetadata data)
     ///     {
-    ///         // This is what the metadata default implementation of the package sets as the destcription.
-    ///         // data.Description = $"Project name: { Application.productName }";
+    ///         // This is what the metadata default implementation of the package sets as the description:
+    ///         data.Description += $"Project name: { Application.productName }\n"
+    ///                             + $"This Memory Snapshot capture started at {System.DateTime.UtcNow} (UTC)\n"
+    ///                             + $"Time.realtimeSinceStartup: {FormatSecondsToTime(Time.realtimeSinceStartupAsDouble)}\n";
+    /// #if UNITY_EDITOR
+    ///         data.Description += $"EditorApplication.timeSinceStartup: {FormatSecondsToTime(EditorApplication.timeSinceStartup)}\n";
+    /// #endif
     ///         // Implementing one or more MetadataCollect types, will cause the default implementation to no longer execute.
     ///         // If you want to retain that default description, you can do so by mirroring the code in your implementation.
     ///         // The product name is however already part of the general memory snapshot metadata so you won't lose that detail if you don't.
@@ -107,7 +114,19 @@ namespace Unity.MemoryProfiler
     ///         // Note that if there are multiple MetadataCollect instances, each one will be called in the order in which they were created.
     ///         // To avoid overwriting what previous instance added to the Description, only append.
     ///         // Description is initialized as empty string so there is no need to check against null (unless one of your implementation sets it to null).
+    ///         // Terminating with '\n' is a good convention to follow, in case there are other Metadata Providers that will add to this string.
     ///         data.Description += $"Captured in Level: {m_MetadataProvider.levelName}\n";
+    ///     }
+    ///
+    ///     string FormatSecondsToTime(double timeInSeconds)
+    ///     {
+    ///         var seconds = (int)timeInSeconds;
+    ///         var ms = (int)((timeInSeconds - seconds) * 1000);
+    ///         var minutes = seconds / 60;
+    ///         seconds %= 60;
+    ///         var hours = minutes / 60;
+    ///         minutes %= 60;
+    ///         return $"{hours:00}:{minutes:00}:{seconds:00}.{ms:000}";
     ///     }
     /// }
     /// ]]></code>
@@ -125,63 +144,14 @@ namespace Unity.MemoryProfiler
         /// When implementing your own version, remember to call the base constructor to ensure your instance is registered with <see cref="Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata"/>.
         /// </remarks>
         /// <example>
-        /// <para>You can create one or more instances of a MetadataCollector to be created by e.g. a MonoBehaviour in a scene, like this:</para>
+        /// <para>You can inject a collector with InitializeOnLoadMethod or RuntimeInitializeOnLoadMethod to easily and globally add it to the project.</para>
         /// <code lang="cs"><![CDATA[
         /// using Unity.MemoryProfiler;
         /// using Unity.Profiling.Memory;
-        /// using UnityEngine.Scripting;
-        /// using UnityEngine;
-        ///
-        /// public class SnapshotMetadataProvider : MonoBehaviour
-        /// {
-        ///     public string levelName = "Default Level Name";
-        ///     MyMetadataCollect m_MetadataCollector;
-        ///
-        ///     void Start()
-        ///     {
-        ///         m_MetadataCollector = new MyMetadataCollect(this);
-        ///     }
-        ///
-        ///     void OnDestroy()
-        ///     {
-        ///         // Remember to dispose of the collector, so it won't leak.
-        ///         m_MetadataCollector.Dispose();
-        ///     }
-        /// }
-        ///
-        /// public class MyMetadataCollect : MetadataCollect
-        /// {
-        ///     SnapshotMetadataProvider m_MetadataProvider;
-        ///
-        ///     // Make sure to call the base constructor, which will handle the subscription to the MemoryProfiler.CreatingMetadata event.
-        ///     public MyMetadataCollect(SnapshotMetadataProvider metadataProvider) : base()
-        ///     {
-        ///         m_MetadataProvider = metadataProvider;
-        ///     }
-        ///
-        ///     public CollectMetadata(MemorySnapshotMetadata data)
-        ///     {
-        ///         // This is what the metadata default implementation of the package sets as the destcription.
-        ///         // data.Description = $"Project name: { Application.productName }";
-        ///         // Implementing one or more MetadataCollect types, will cause the default implementation to no longer execute.
-        ///         // If you want to retain that default description, you can do so by mirroring the code in your implementation.
-        ///         // The product name is however already part of the general memory snapshot metadata so you won't lose that detail if you don't.
-        ///
-        ///         // Note that if there are multiple MetadataCollect instances, each one will be called in the order in which they were created.
-        ///         // To avoid overwriting what previous instance added to the Description, only append.
-        ///         // Description is initialized as empty string so there is no need to check against null (unless one of your implementation sets it to null).
-        ///         data.Description += $"Captured in Level: {m_MetadataProvider.levelName}\n";
-        ///     }
-        /// }
-        /// ]]></code>
-        /// <para>You can also inject a collector with InitializeOnLoadMethod or RuntimeInitializeOnLoadMethod to easily and globally add it to the project.</para>
-        /// <code lang="cs"><![CDATA[
-        /// using Unity.MemoryProfiler;
-        /// using Unity.Profiling.Memory;
-        /// using UnityEngine.Scripting;
-        /// using UnityEngine;
         /// #if UNITY_EDITOR
         /// using UnityEditor;
+        /// #else
+        /// using UnityEngine;
         /// #endif
         ///
         /// public class MySingletonMetadataCollect : MetadataCollect
@@ -213,10 +183,15 @@ namespace Unity.MemoryProfiler
         ///     {
         ///     }
         ///
-        ///     public CollectMetadata(MemorySnapshotMetadata data)
+        ///     public override void CollectMetadata(MemorySnapshotMetadata data)
         ///     {
-        ///         // This is what the metadata default implementation of the package sets as the destcription.
-        ///         // data.Description = $"Project name: { Application.productName }";
+        ///         // This is what the metadata default implementation of the package sets as the description.
+        ///         data.Description += $"\nProject name: { Application.productName }\n"
+        ///                             + $"This Memory Snapshot capture started at {System.DateTime.UtcNow} (UTC)\n"
+        ///                             + $"Time.realtimeSinceStartup: {FormatSecondsToTime(Time.realtimeSinceStartupAsDouble)}\n";
+        /// #if UNITY_EDITOR
+        ///         data.Description += $"EditorApplication.timeSinceStartup: {FormatSecondsToTime(EditorApplication.timeSinceStartup)}\n";
+        /// #endif
         ///         // Implementing one or more MetadataCollect types, will cause the default implementation to no longer execute.
         ///         // If you want to retain that default description, you can do so by mirroring the code in your implementation.
         ///         // The product name is however already part of the general memory snapshot metadata so you won't lose that detail if you don't.
@@ -224,7 +199,19 @@ namespace Unity.MemoryProfiler
         ///         // Note that if there are multiple MetadataCollect instances, each one will be called in the order in which they were created.
         ///         // To avoid overwriting what previous instance added to the Description, only append.
         ///         // Description is initialized as empty string so there is no need to check against null (unless one of your implementation sets it to null).
+        ///         // Terminating with '\n' is a good convention to follow, in case there are other Metadata Providers that will add to this string.
         ///         data.Description += $"This is meta added by {nameof(MySingletonMetadataCollect)}\n";
+        ///     }
+        ///
+        ///     string FormatSecondsToTime(double timeInSeconds)
+        ///     {
+        ///         var seconds = (int)timeInSeconds;
+        ///         var ms = (int)((timeInSeconds - seconds) * 1000);
+        ///         var minutes = seconds / 60;
+        ///         seconds %= 60;
+        ///         var hours = minutes / 60;
+        ///         minutes %= 60;
+        ///         return $"{hours:00}:{minutes:00}:{seconds:00}.{ms:000}";
         ///     }
         /// }
         /// ]]></code>
@@ -318,11 +305,31 @@ namespace Unity.MemoryProfiler
         public override void CollectMetadata(UnityMetaData data)
         {
 #if MEMORY_PROFILER_API_PUBLIC
-            data.Description = $"Project name: { Application.productName }";
+            data.Description += $"Project name: {Application.productName}\n"
+                              + $"This Memory Snapshot capture started at {DateTime.UtcNow} (UTC)\n"
+                              + $"Time.frameCount: {Time.frameCount}\n"
+                              + $"Time.realtimeSinceStartup: {FormatSecondsToTime(Time.realtimeSinceStartupAsDouble)}\n"
+#if !UNITY_EDITOR
+                            // ugly but slightly better for runtime performance than adding the next line via accessing the property again
+                               ;
+#else
+                              + $"EditorApplication.timeSinceStartup: {FormatSecondsToTime(EditorApplication.timeSinceStartup)}\n";
+#endif
 #else
             data.content = $"Project name: { Application.productName }";
             data.platform = string.Empty;
 #endif
+        }
+
+        string FormatSecondsToTime(double timeInSeconds)
+        {
+            var seconds = (int)timeInSeconds;
+            var ms = (int)((timeInSeconds - seconds) * 1000);
+            var minutes = seconds / 60;
+            seconds %= 60;
+            var hours = minutes / 60;
+            minutes %= 60;
+            return $"{hours:00}:{minutes:00}:{seconds:00}.{ms:000}";
         }
     }
 }
