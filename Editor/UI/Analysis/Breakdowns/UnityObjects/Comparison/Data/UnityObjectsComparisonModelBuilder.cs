@@ -1,7 +1,6 @@
 #if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Unity.MemoryProfiler.Editor.Extensions;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;

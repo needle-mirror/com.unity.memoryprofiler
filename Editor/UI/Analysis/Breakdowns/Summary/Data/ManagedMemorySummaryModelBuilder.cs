@@ -35,16 +35,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SummaryTextContent.kManagedMemoryTitle,
                 SummaryTextContent.kManagedMemoryDescription,
                 compareMode,
-                a.Total,
-                b.Total,
+                a.Total.Committed,
+                b.Total.Committed,
                 new List<MemorySummaryModel.Row>() {
-                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryVM, a.VM, 0, b.VM, 0, "virtual-machine",
+                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryVM, a.VM, b.VM, "virtual-machine",
                     TextContent.ManagedDomainDescription +
                     (m_SnapshotB != null ? string.Format(TextContent.ManagedDomainDescriptionStaticFieldAddendumDiff, EditorUtility.FormatBytes(a.VMStaticFields), EditorUtility.FormatBytes(b.VMStaticFields))
                     : string.Format(TextContent.ManagedDomainDescriptionStaticFieldAddendumOneSnapshot, EditorUtility.FormatBytes(a.VMStaticFields)))
                     , null),
-                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryObjects, a.Objects, 0, b.Objects, 0, "objects", TextContent.ManagedObjectsDescription, null),
-                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryFreeHeap, a.EmptyHeapSpace, 0, b.EmptyHeapSpace, 0, "free-in-active-heap-section", TextContent.EmptyActiveHeapDescription, null),
+                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryObjects, a.Objects, b.Objects, "objects", TextContent.ManagedObjectsDescription, null),
+                    new MemorySummaryModel.Row(SummaryTextContent.kManagedMemoryCategoryFreeHeap, a.EmptyHeapSpace, b.EmptyHeapSpace, "free-in-active-heap-section", TextContent.EmptyActiveHeapDescription, null),
                 },
                 null);
         }
@@ -54,30 +54,40 @@ namespace Unity.MemoryProfiler.Editor.UI
             CalculateTotal(cs, out res);
 
             // Add VM root.
-            var vmRootSize = cs.NativeRootReferences.AccumulatedSizeOfVMRoot;
+            MemorySize vmRootSize;
+            if (cs.NativeRootReferences.VMRootReferenceIndex.Valid)
+            {
+                // use root reference data with resident information as build for the ProcessedNativeRoots if the a VMRootReferenceIndex was found for the snapshot
+                vmRootSize = cs.ProcessedNativeRoots.Data[cs.NativeRootReferences.VMRootReferenceIndex.Index].AccumulatedRootSizes.NativeSize;
+            }
+            else
+            {
+                var vmRootSizeCommitted = cs.NativeRootReferences.AccumulatedSizeOfVMRoot;
+                vmRootSize = new MemorySize(vmRootSizeCommitted, 0);
+            }
             res.VM += vmRootSize;
             res.Total += vmRootSize;
         }
 
         static void CalculateTotal(CachedSnapshot cs, out Summary res)
         {
-            var data = cs.EntriesMemoryMap.Data;
             var summary = new Summary();
-            cs.EntriesMemoryMap.ForEachFlat((_, address, size, source) =>
+            cs.EntriesMemoryMap.ForEachFlatWithResidentSize((_, address, size, residentSize, source) =>
             {
                 switch (source.Id)
                 {
                     case SourceIndex.SourceId.ManagedHeapSection:
                     {
-                        summary.Total += size;
+                        var memSize = new MemorySize(size, residentSize);
+                        summary.Total += memSize;
                         var sectionType = cs.ManagedHeapSections.SectionType[source.Index];
                         switch (sectionType)
                         {
                             case MemorySectionType.VirtualMachine:
-                                summary.VM += size;
+                                summary.VM += memSize;
                                 break;
                             case MemorySectionType.GarbageCollector:
-                                summary.EmptyHeapSpace += size;
+                                summary.EmptyHeapSpace += memSize;
                                 break;
                             default:
                                 Debug.Assert(false, $"Unknown managed memory section type ({sectionType}), plese report a bug.");
@@ -87,8 +97,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     }
                     case SourceIndex.SourceId.ManagedObject:
                     {
-                        summary.Total += size;
-                        summary.Objects += size;
+                        var memSize = new MemorySize(size, residentSize);
+                        summary.Total += memSize;
+                        summary.Objects += memSize;
                         return;
                     }
                     default:
@@ -106,12 +117,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         struct Summary
         {
-            public ulong Total;
+            public MemorySize Total;
 
-            public ulong VM;
+            public MemorySize VM;
             public long VMStaticFields;
-            public ulong Objects;
-            public ulong EmptyHeapSpace;
+            public MemorySize Objects;
+            public MemorySize EmptyHeapSpace;
         }
     }
 }

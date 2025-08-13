@@ -63,6 +63,16 @@
             "name": "Unity.Profiling.Core",
             "expression": "1.0.0",
             "define": "PROFILING_CORE_AVAILABLE"
+        },
+        {
+            "name": "Unity",
+            "expression": "[6000.0.52f1,6000.1.0)",
+            "define": "S2AVAILABLE"
+        },
+        {
+            "name": "Unity",
+            "expression": "[6000.3.0a1,7000)",
+            "define": "S2AVAILABLE"
         }
     ],
     "noEngineReferences": false

@@ -41,12 +41,13 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
             [ReadOnly]
             readonly NativeObjectOrAllocationFinder m_NativeObjectOrAllocationFinder;
+            MemoryProfilerSettings.FeatureFlags.CrawlerFlags m_ConfigurableCrawlerOptions;
 
             readonly long m_MaxObjectIndexFindableViaPointers;
 
             public StaticFieldsCrawlerJobChunk(
                 in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap managedObjectIndexByAddress,
-                in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder,
+                in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, MemoryProfilerSettings.FeatureFlags.CrawlerFlags configurableCrawlerOptions,
                 ref DynamicArray<StackCrawlData> resultingCrawlDataStack,
                 in DynamicArrayRef<StaticTypeFieldCrawlerData> staticTypeData,
                 in DynamicArrayRef<FieldLayoutInfo> fieldLayoutInfos,
@@ -61,6 +62,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 StaticTypeData = staticTypeData;
                 FieldLayoutInfos = fieldLayoutInfos;
                 m_MaxObjectIndexFindableViaPointers = maxObjectIndexFindableViaPointers;
+                m_ConfigurableCrawlerOptions = configurableCrawlerOptions;
 #if DEBUG_JOBIFIED_CRAWLER
                 IndexOfFoundElement = -1;
 #endif
@@ -87,7 +89,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #endif
                     var type = new SourceIndex(SourceIndex.SourceId.ManagedType, typeIndex);
                     CrawlRawObjectData(m_ManagedHeapBytes, in m_VMInfo, m_MangedObjectIndexByAddress,
-                        in m_NativeObjectOrAllocationFinder,
+                        in m_NativeObjectOrAllocationFinder, m_ConfigurableCrawlerOptions,
                         ref m_ResultingCrawlDataStack, in fieldLayouts, StaticTypeData[index].Bytes, in type, m_MaxObjectIndexFindableViaPointers);
 
                 }

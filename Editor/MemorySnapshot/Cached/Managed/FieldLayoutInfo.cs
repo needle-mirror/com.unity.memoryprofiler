@@ -7,7 +7,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         ReferenceField,
         IntPtr,
         Ptr,
-        PotentialPointer
+        PotentialPointerToNativeAllocation
     }
 
     readonly struct FieldLayoutInfo : IComparable<FieldLayoutInfo>

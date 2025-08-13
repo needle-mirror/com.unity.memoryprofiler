@@ -404,14 +404,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             foreach (var typeIndexToTypeObjectsKvp in typeIndexToTypeObjectsMap)
             {
-                var potentialDuplicateObjectsMap = new Dictionary<Tuple<string, MemorySize>, DictionaryOrList>();
+                var potentialDuplicateObjectsMap = new Dictionary<Tuple<string, ulong>, DictionaryOrList>();
                 // Break type objects into separate lists based on name & size.
                 Debug.Assert(typeIndexToTypeObjectsKvp.Value.ListOfObjects != null, "Potential Duplicates filtering can't yet be used together with Instance ID disambiguation");
                 var typeObjects = typeIndexToTypeObjectsKvp.Value.ListOfObjects;
                 foreach (var typeObject in typeObjects)
                 {
                     var data = typeObject.data;
-                    var nameSizeTuple = new Tuple<string, MemorySize>(data.Name, data.TotalSize);
+                    // using ulong instead of MemorySize to avoid differing residency state to prevent objects from being evaluated as potential duplicates.
+                    var nameSizeTuple = new Tuple<string, ulong>(data.Name, data.NativeSize.Committed + data.ManagedSize.Committed);
                     var nameSizeTypeObjects = potentialDuplicateObjectsMap.GetOrAdd(nameSizeTuple);
                     nameSizeTypeObjects.ListOfObjects ??= new List<TreeViewItemData<UnityObjectsModel.ItemData>>();
                     nameSizeTypeObjects.ListOfObjects.Add(typeObject);

@@ -122,8 +122,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             // Add Mono or IL2CPP VM allocations
-            var vmRootSize = cs.NativeRootReferences.AccumulatedSizeOfVMRoot;
-            ReassignMemoryToAnotherCategory(ref summary.Managed, ref summary.Native, vmRootSize);
+            if (cs.NativeRootReferences.VMRootReferenceIndex.Valid)
+            {
+                // use root reference data with resident information as build for the ProcessedNativeRoots if the a VMRootReferenceIndex was found for the snapshot
+                var vmRootSize = cs.ProcessedNativeRoots.Data[cs.NativeRootReferences.VMRootReferenceIndex.Index].AccumulatedRootSizes.NativeSize;
+                summary.Managed += vmRootSize;
+                summary.Native -= vmRootSize;
+            }
+            else
+            {
+                var vmRootSize = cs.NativeRootReferences.AccumulatedSizeOfVMRoot;
+                ReassignMemoryToAnotherCategory(ref summary.Managed, ref summary.Native, vmRootSize);
+            }
         }
 
         bool HasResidentMemory()

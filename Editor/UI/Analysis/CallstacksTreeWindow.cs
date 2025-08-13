@@ -471,7 +471,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             m_Model = updatedModel;
             m_TreeView?.SetRootItems(m_Model.children as IList<TreeViewItemData<SymbolTreeViewItemData>>);
-            m_TreeView?.Rebuild();
+            m_TreeView?.RefreshItems();
         }
 
         float m_CurrentProgressTotalStepCount;
@@ -536,7 +536,7 @@ namespace Unity.MemoryProfiler.Editor
             if (m_RebuildButton != null)
                 UIElementsHelper.SetVisibility(m_RebuildButton, m_UsesSplitModel);
             ProgressBarDisplay.UpdateProgress(m_CurrentProgressStep++ / m_CurrentProgressTotalStepCount, "Rebuilding Tree UI");
-            m_TreeView?.Rebuild();
+            m_TreeView?.RefreshItems();
             ProgressBarDisplay.ClearBar();
             // bring the window forward once done
             EditorApplication.delayCall += () => Focus();

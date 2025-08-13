@@ -7,6 +7,21 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.8] - 2025-08-13
+
+### Added
+- Adde an option to the Memory Profiler preferences to consider all pointer sized fields as potential pointers to native allocations. By default such fields are only considered when they are found on types in the `Unity.Entites` namespace, which helps analyse DOTS and Entities usage of unmanaged memory. Turning this option on can improve reference discovery for native memory, but can also produce false positives and slow down snapshot opening times. If you want to make your own usages of memory allocated vie `UnsafeUtility` easier, it is recommended to instead store references to it as actual pointers or `IntPtr`s.
+
+### Fixed
+- Compilation issues on Unity versions between 6000.0.0a1 and 6000.0.52f1.
+- UI issues due to too long paths and resulting failures to import the files.
+- Fixed potential duplicates in Unity Objects table not finding potential duplicates if their resident memory size differs ([PROFB-367](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-367)).
+- Fixed discrepancies in the resident amounts given for native and managed memory on the Summary page compared to the All Of Memmory Page when inspecting captures from IL2CPP. The resident amounts used for the VM memory where not properly reattributed.
+
+### Changed
+- Improved the analysis of managed data to find DOTS/Entites related references to unmanaged memory when that memory is referenced from types in the `Unity.Entites` namespace.
+- Switched on resident memory breakdown for the managed memory section on the Summary page.
+
 ## [1.1.7] - 2025-08-06
 
 ### Added

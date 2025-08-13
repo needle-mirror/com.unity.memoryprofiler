@@ -29,6 +29,8 @@ namespace Unity.MemoryProfiler.Editor
             public static readonly GUIContent ResetSettings = EditorGUIUtility.TrTextContent("Revert to default settings");
 
             public static readonly GUIContent ResetOptOutDialogsButton = EditorGUIUtility.TrTextContent("Reset Opt-Out settings for dialog prompts", "All dialogs that you have previously opted out of will show up again when they get triggered.");
+
+            public static readonly GUIContent ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations = EditorGUIUtility.TrTextContent("Parse pointer sized fields as ref. to native", "Normally, only some structs in the Unity.Entities namespace get their pointer sized fields examined as potentially pointing at native allocations when opening a snapshot. Enabling this option could lead to longer capture opening times, and increases the chance of false positives in the references found from managed fields to native allocations. This is only really usefull if you have code that stores pointers in fields that are not pointers or IntPtrs.");
         }
         static class Style
         {
@@ -131,6 +133,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 MemoryProfilerSettings.ShowReservedMemoryBreakdown = EditorGUILayout.Toggle(Content.ShowReservedMemoryBreakdown, MemoryProfilerSettings.ShowReservedMemoryBreakdown);
                 MemoryProfilerSettings.ShowMemoryMapView = EditorGUILayout.Toggle(Content.ShowAllSystemMemoryView, MemoryProfilerSettings.ShowMemoryMapView);
+                MemoryProfilerSettings.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations = EditorGUILayout.Toggle(Content.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations, MemoryProfilerSettings.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations);
 
                 if (MemoryProfilerSettings.InternalMode)
                     MemoryProfilerSettings.AssetSearchSetting = (QuickSearchUtility.AssetSearchSetting)EditorGUILayout.EnumPopup(Content.AssetSearchSettings, MemoryProfilerSettings.AssetSearchSetting);

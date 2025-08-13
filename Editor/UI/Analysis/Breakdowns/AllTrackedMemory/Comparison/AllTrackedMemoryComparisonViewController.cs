@@ -1,8 +1,8 @@
 using System;
-using System.Linq;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
 using UnityEngine.UIElements;
+using Unity.MemoryProfiler.Editor.Extensions;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -110,8 +110,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_BaseViewController.ClearSelection();
             m_ComparedViewController.ClearSelection();
 
-            var selectedItems = m_TreeView.GetSelectedItems<ComparisonTableModel.ComparisonData>();
-            var selectedItem = selectedItems.First();
+            var selectedItem = m_TreeView.GetSelectedItems<ComparisonTableModel.ComparisonData>().First();
 
             m_WaitingForFilteringToBeAppliedToBaseView = true;
             m_WaitingForFilteringToBeAppliedToCompareView = true;

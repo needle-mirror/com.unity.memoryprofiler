@@ -42,10 +42,11 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
             [ReadOnly]
             readonly NativeObjectOrAllocationFinder m_NativeObjectOrAllocationFinder;
+            readonly MemoryProfilerSettings.FeatureFlags.CrawlerFlags m_ConfigurableCrawlerOptions;
 
             public StructArrayCrawlerJobChunk(
                 in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap mangedObjectIndexByAddress,
-                in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder,
+                in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, MemoryProfilerSettings.FeatureFlags.CrawlerFlags configurableCrawlerOptions,
                 in SourceIndex arrayObjectIndex,
                 ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in BytesAndOffset arrayData,
                 in DynamicArrayRef<FieldLayoutInfo> fieldLayoutInfos,
@@ -64,6 +65,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 m_ArrayObjectIndex = arrayObjectIndex;
                 m_ChunkElementCount = chunkElementCount;
                 FieldLayoutInfo = fieldLayoutInfos;
+                m_ConfigurableCrawlerOptions = configurableCrawlerOptions;
 #if DEBUG_JOBIFIED_CRAWLER
                 IndexOfFoundElement = -1;
 #endif
@@ -80,7 +82,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #endif
                     var indexInArray = m_StartArrayIndex + index;
                     CrawlRawObjectData(m_ManagedHeapBytes, in m_VMInfo, m_MangedObjectIndexByAddress,
-                        in m_NativeObjectOrAllocationFinder,
+                        in m_NativeObjectOrAllocationFinder, m_ConfigurableCrawlerOptions,
                         ref m_ResultingCrawlDataStack, in FieldLayoutInfo, m_ArrayData.Add((ulong)(indexInArray * m_TypeSize)), in m_ArrayObjectIndex,
                         fromArrayIndex: indexInArray, maxObjectIndexFindableViaPointers: m_MaxObjectIndexFindableViaPointers);
                 }

@@ -21,7 +21,7 @@ namespace Unity.MemoryProfiler.Editor
 
         static readonly RuntimePlatform[] k_PlatformsHideResidentMemory =
             new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch,
-#if UNITY_6000_0 || UNITY_6000_3_OR_NEWER && !ENABLE_CORECLR
+#if S2AVAILABLE
             RuntimePlatform.Switch2,
 #endif
             RuntimePlatform.WebGLPlayer };
@@ -89,7 +89,7 @@ namespace Unity.MemoryProfiler.Editor
                 case RuntimePlatform.Switch:
                     buildTarget = BuildTarget.Switch;
                     break;
-#if UNITY_6000_0 || UNITY_6000_3_OR_NEWER && !ENABLE_CORECLR
+#if S2AVAILABLE
                 case RuntimePlatform.Switch2:
                     buildTarget = BuildTarget.Switch2;
                     break;

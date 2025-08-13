@@ -29,6 +29,7 @@ namespace Unity.MemoryProfiler.Editor
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
         const string k_ShowReservedMemoryBreakdown = "Unity.MemoryProfiler.Editor.ShowReservedMemoryBreakdown";
         const string k_ShowMemoryMapView = "Unity.MemoryProfiler.Editor.ShowMemoryMapView";
+        const string k_ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocationsKey = "Unity.MemoryProfiler.Editor.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations";
         const string k_SnapshotCaptureFlagsKey = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureFlags.v2"; // upgraded to v2 because the default changed
         const string k_SnapshotCaptureCaptureWithScreenshot = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureWithScreenshot";
         const string k_SnapshotGCCollectWhenCapturingEditor = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotGCCollectWhenCapturingEditor";
@@ -44,15 +45,27 @@ namespace Unity.MemoryProfiler.Editor
         /// There are some things that only make sense for those with access to Unity's source code, like internal Engineers, Unity QA and customers with source code access.
         /// Use this to make it easier to spot these use cases.
         /// </summary>
-        public static bool InternalMode => Unsupported.IsDeveloperMode() || Unsupported.IsDeveloperBuild();
+        public static bool InternalMode;
         public static bool InternalModeOrSnapshotWithCallSites(CachedSnapshot cachedSnapshot) => InternalMode || cachedSnapshot.NativeAllocationSites.Count > 0;
+
+        [RuntimeInitializeOnLoadMethod]
+        static void RuntimeInitialize()
+        {
+            InternalMode = Unsupported.IsDeveloperMode() || Unsupported.IsDeveloperBuild();
+
+            FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 = InternalMode;
+            FeatureFlags.EnableUnknownUnknownAllocationBreakdown_2024_10 = InternalMode;
+            FeatureFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations;
+        }
 
         internal static class FeatureFlags
         {
+
+
             // For By Status and Path From Roots
             public static bool GenerateTransformTreesForByStatusTable_2022_09 { get; set; } = false;
             // Mostly for internal debugging purposes as native allocation callstacks are not yet supported without source access and this feature is mostly useless without them.
-            public static bool EnableDynamicAllocationBreakdown_2024_10 { get; set; } = InternalMode;
+            public static bool EnableDynamicAllocationBreakdown_2024_10 { get; set; } = false;
 
             /// <summary>
             /// Allocations in the All of Memory table under Native > Sub Systems > Unknown > Unknowns are bugs in Unity's C++ code.
@@ -62,7 +75,7 @@ namespace Unity.MemoryProfiler.Editor
             /// Non-Source-Code-Users can usually not do too much about these and don't benefit much from these being split out and called out as bugs.
             /// That said, after we've done wider sweeps to resolve these issues in the code base, we can consider enabling these for everyone to make it easier to catch stray allocations that escape us.
             /// </summary>
-            public static bool EnableUnknownUnknownAllocationBreakdown_2024_10 { get; set; } = InternalMode;
+            public static bool EnableUnknownUnknownAllocationBreakdown_2024_10 { get; set; } = false;
 
             /// <summary>
             /// Displaying the count only makes sense once Managed references to Native allocations are crawled.
@@ -70,11 +83,48 @@ namespace Unity.MemoryProfiler.Editor
             public static bool ShowFoundReferencesForNativeAllocations_2024_10 { get; set; } = true;
 
             // When changing this, update Unity.MemoryProfiler.Tests.Helpers.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects
+            /// <summary>
+            /// This option is on because when holding a GCHandle to an object and only having pointer fields referencing its address,
+            /// those are the best hint at where that GCHandle is held, as the GCHandle field itself doesn't have a direct reference to the held object.
+            /// </summary>
             public static readonly bool ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects = true;
-            // When changing this, update Unity.MemoryProfiler.Tests.Helpers.ManagedCrawlerConsidersPointersToManagedObjects
-            public const bool ManagedCrawlerConsidersPointersToManagedObjects = false;
-            // When changing this, update Unity.MemoryProfiler.Tests.Helpers.ManagedCrawlerConsidersPotentialPointersToManagedObjects
-            public const bool ManagedCrawlerConsidersPotentialPointersToManagedObjects = false;
+
+            /// <summary>
+            /// Non pointer value type fields of pointer size are considered as pointers at native memory.
+            /// This is mostly done as some data in DOTS/Entities projects use non pointer fields to store the addresses of native
+            /// memory. There is a chance that references found this way are bogus, but for cases where this is the only thing
+            /// referencing a native allocation, it can be invaluable to see the connection, so the by-catch is worth the risk.
+            ///
+            /// Cases where these values would match a managed object can safely be ignored however. Unity's Boehm has precise type info
+            /// so that it only considers reference fields as holding references to managed objects when crawling the heap (as opposed to on the stack,
+            /// where it Boehm DOES consider such variables as potential pointers that would exclude the object from getting GC'ed).
+            ///
+            /// When changing this, update Unity.MemoryProfiler.Tests.Helpers.ManagedCrawlerConsidersPotentialPointersToManagedObjects
+            /// </summary>
+            public static bool ManagedCrawlerConsidersPotentialPointersToNativeAllocations = true;
+
+            public static bool ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = false;
+
+            /// <summary>
+            /// This struct is only used for the non readonly flags, to allow for burst compiling the crawler functions
+            /// </summary>
+            public struct CrawlerFlags
+            {
+                public bool ManagedCrawlerConsidersPotentialPointersToNativeAllocations;
+                public bool ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace;
+            }
+
+            public static CrawlerFlags ConfigurableCrawlerOptions
+            {
+                get
+                {
+                    return new CrawlerFlags
+                    {
+                        ManagedCrawlerConsidersPotentialPointersToNativeAllocations = ManagedCrawlerConsidersPotentialPointersToNativeAllocations,
+                        ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace
+                    };
+                }
+            }
         }
 
         public static string MemorySnapshotStoragePath
@@ -199,7 +249,6 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-#if UNITY_2021_2_OR_NEWER
         public static bool MemoryProfilerPackageOverridesMemoryModuleUI
         {
             get
@@ -217,8 +266,8 @@ namespace Unity.MemoryProfiler.Editor
                 EditorPrefs.SetBool(k_MemoryProfilerPackageOverridesMemoryModuleUIEditorPerf, value);
             }
         }
-        public static event Action InstallUIOverride = delegate {};
-        public static event Action UninstallUIOverride = delegate {};
+        public static event Action InstallUIOverride = delegate { };
+        public static event Action UninstallUIOverride = delegate { };
 
         public static bool ShowReservedMemoryBreakdown
         {
@@ -247,7 +296,21 @@ namespace Unity.MemoryProfiler.Editor
                 EditorPrefs.SetBool(k_ShowMemoryMapView, value);
             }
         }
-#endif
+
+        public static bool ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocationsKey, false);
+            }
+            set
+            {
+                if (value == ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations)
+                    return;
+                EditorPrefs.SetBool(k_ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocationsKey, value);
+                FeatureFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = value;
+            }
+        }
 
         public static void ResetMemorySnapshotStoragePathToDefault()
         {

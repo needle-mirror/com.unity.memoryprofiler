@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -54,6 +55,26 @@ namespace Unity.MemoryProfiler.Editor.Extensions
                 list = new List<TValue>() { listItemValue };
                 dictionary.Add(key, list);
             }
+        }
+
+        public static TElement First<TElement>(this IEnumerable<TElement> collection)
+        {
+            var enumerator = collection.GetEnumerator();
+            if (enumerator.MoveNext())
+            {
+                return enumerator.Current;
+            }
+            throw new InvalidOperationException("The enumeration is empty");
+        }
+
+        public static TElement FirstOrDefault<TElement>(this IEnumerable<TElement> collection)
+        {
+            var enumerator = collection.GetEnumerator();
+            if (enumerator.MoveNext())
+            {
+                return enumerator.Current;
+            }
+            return default;
         }
     }
 }

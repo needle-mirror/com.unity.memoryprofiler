@@ -130,7 +130,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
             AddController(m_ResidentMemoryBreakdown, isSupportedSnapshots && HasResidentMemoryInformation(), residentMemoryController);
 
-            var managedMemoryController = new GenericMemorySummaryViewController(new ManagedMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
+            var managedMemoryController = new GenericMemorySummaryViewController(new ManagedMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), HasDetailedResidentMemoryInformation())
             {
                 TotalLabelFormat = "Total: {0}",
                 InspectAction = () =>

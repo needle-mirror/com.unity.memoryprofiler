@@ -33,6 +33,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             readonly SourceIndex m_ArrayObjectIndex;
             readonly ManagedMemorySectionEntriesCache m_ManagedHeapBytes;
             readonly NativeObjectOrAllocationFinder m_NativeObjectOrAllocationFinder;
+            readonly MemoryProfilerSettings.FeatureFlags.CrawlerFlags m_ConfigurableCrawlerOptions;
             readonly VirtualMachineInformation m_VMInfo;
             [ReadOnly]
             readonly AddressToManagedIndexHashMap m_MangedObjectIndexByAddress;
@@ -41,7 +42,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
             readonly long m_MaxObjectIndexFindableViaPointers;
 
             public ReferenceArrayCrawlerJobChunk(
-                in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap mangedObjectIndexByAddress, in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder,
+                in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap mangedObjectIndexByAddress,
+                in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, MemoryProfilerSettings.FeatureFlags.CrawlerFlags configurableCrawlerOptions,
                 in SourceIndex arrayObjectIndex,
                 ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in BytesAndOffset arrayData,
                 uint pointerSize, long startArrayIndex, long chunkElementCount, int arrayObjectTypeIndex, FieldReferenceType referenceTypeArrayFieldType, long maxObjectIndexFindableViaPointers)
@@ -60,6 +62,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 m_ArrayObjectTypeIndex = arrayObjectTypeIndex;
                 m_ReferenceTypeArrayFieldType = referenceTypeArrayFieldType;
                 m_MaxObjectIndexFindableViaPointers = maxObjectIndexFindableViaPointers;
+                m_ConfigurableCrawlerOptions = configurableCrawlerOptions;
 #if DEBUG_JOBIFIED_CRAWLER
                 IndexOfFoundElement = -1;
 #endif
@@ -83,7 +86,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
                             CrawlRawFieldData(arrayDataPtr, m_ReferenceTypeArrayFieldType, m_MaxObjectIndexFindableViaPointers,
                                 in m_MangedObjectIndexByAddress, in m_ManagedHeapBytes, m_VMInfo,
-                                ref m_ResultingCrawlDataStack, in m_NativeObjectOrAllocationFinder,
+                                ref m_ResultingCrawlDataStack, in m_NativeObjectOrAllocationFinder, m_ConfigurableCrawlerOptions,
                                 m_ArrayObjectTypeIndex, in m_ArrayObjectIndex,
                                 allowStackExpansion: false,
                                 indexInReferenceOwningArray: index);

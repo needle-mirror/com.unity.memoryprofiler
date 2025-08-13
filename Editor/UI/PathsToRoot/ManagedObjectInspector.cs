@@ -379,12 +379,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool BoehmCouldReadFieldAsPointer(CachedSnapshot cs, ObjectData fieldByIndex)
+        bool TryReadFieldAsPointerAtGCHandleHeldObject(CachedSnapshot cs, ObjectData fieldByIndex)
         {
-            return cs.TypeDescriptions.CouldBoehmReadFieldsOfThisTypeAsReferences(fieldByIndex.managedTypeIndex, cs) &&
+            return MemoryProfilerSettings.FeatureFlags.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects &&
+                cs.TypeDescriptions.CouldThisFieldBeReadAsAnAddress(fieldByIndex.managedTypeIndex, cs) &&
                 // it could also be a genuine value type that would be valuable to show as is, so only interpret this as a reference if it points at something valid
                 fieldByIndex.managedObjectData.TryReadPointer(out var address) == BytesAndOffset.PtrReadError.Success &&
-                cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(address, out var objectIdentifyer);
+                cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(address, out var objectIdentifyer) && objectIdentifyer < cs.GcHandles.UniqueCount;
         }
 
         void ProcessManagedPtr(CachedSnapshot cs, ObjectData fieldByIndex, ManagedObjectInspectorItem fieldItem, string value)
@@ -651,7 +652,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
             else if (fieldEntry.ManagedTypeIndex == cs.TypeDescriptions.ITypeIntPtr || fieldEntry.TypeName[fieldEntry.TypeName.Length - 1] == '*'
-                || BoehmCouldReadFieldAsPointer(cs, field))
+                || TryReadFieldAsPointerAtGCHandleHeldObject(cs, field))
             {
                 ProcessManagedPtr(cs, field, fieldEntry, fieldEntry.Value);
             }

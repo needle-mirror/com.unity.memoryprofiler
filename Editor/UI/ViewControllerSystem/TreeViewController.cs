@@ -151,7 +151,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected virtual void RefreshView()
         {
             m_TreeView.SetRootItems(m_Model.RootNodes);
-            m_TreeView.Rebuild();
+            m_TreeView.RefreshItems();
             RestoreSelection();
         }
 

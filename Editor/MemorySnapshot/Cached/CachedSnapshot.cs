@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -2184,7 +2183,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public bool CouldBoehmReadFieldsOfThisTypeAsReferences(long arrayIndex, CachedSnapshot snapshot)
+            public bool CouldThisFieldBeReadAsAnAddress(long arrayIndex, CachedSnapshot snapshot)
             {
                 return (!HasFlag(arrayIndex, TypeFlags.kValueType) ||
                     (FieldIndicesInstance[arrayIndex].Length == 0 && Size[arrayIndex] == snapshot.VirtualMachineInformation.PointerSize));
@@ -2212,7 +2211,11 @@ namespace Unity.MemoryProfiler.Editor
             static readonly ProfilerMarker k_TypeFieldArraysBuild = new ProfilerMarker("MemoryProfiler.TypeFields.TypeFieldArrayBuilding");
             void InitSecondaryItems(FieldDescriptionEntriesCache fieldDescriptions, NativeTypeEntriesCache nativeTypes, VirtualMachineInformation vmInfo, Dictionary<string, int> typeNameToIndex)
             {
-                TypeInfoToArrayIndex = Enumerable.Range(0, (int)TypeInfoAddress.Count).ToDictionary(x => TypeInfoAddress[x], x => x);
+                TypeInfoToArrayIndex = new Dictionary<ulong, int>((int)TypeInfoAddress.Count);
+                for (int i = 0; i < TypeInfoAddress.Count; i++)
+                {
+                    TypeInfoToArrayIndex[TypeInfoAddress[i]] = i;
+                }
 
                 if (ITypeUnityScriptableObject > ITypeInvalid)
                     UnityObjectTypeIndexToNativeTypeIndex.Add(ITypeUnityScriptableObject, nativeTypes.ScriptableObjectIdx);
