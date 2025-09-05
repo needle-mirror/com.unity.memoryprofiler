@@ -133,16 +133,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (MemoryProfilerSettings.FeatureFlags.ShowFoundReferencesForNativeAllocations_2024_10)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Found References", references.Count.ToString(), TextContent.NativeAllocationFoundReferencesHint);
 
-            if (MemoryProfilerSettings.FeatureFlags.EnableUnknownUnknownAllocationBreakdown_2024_10 &&
+            if (MemoryProfilerSettings.EnableUnrootedAllocationBreakdown(m_CachedSnapshot) &&
                 m_CachedSnapshot.NativeAllocations.RootReferenceId[source.Index] <= 0)
             {
                 m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
                 {
                     IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Error,
                     Message =
-                    MemoryProfilerSettings.InternalModeOrSnapshotWithCallSites(m_CachedSnapshot) ?
-                    TextContent.UnknownUnknownAllocationsErrorBoxMessageInternalMode
-                    : TextContent.UnknownUnknownAllocationsErrorBoxMessage,
+                    MemoryProfilerSettings.InternalMode ?
+                    TextContent.UnrootedUnrootedAllocationsErrorBoxMessageInternalMode
+                    : TextContent.UnrootedUnrootedAllocationsErrorBoxMessage,
                 });
             }
 
@@ -151,7 +151,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 AddCallStacksInfoToUI(source);
             }
             // Give a hint to internal users or those with the potential to get call stacks.
-            else if (MemoryProfilerSettings.InternalModeOrSnapshotWithCallSites(m_CachedSnapshot))
+            else if (MemoryProfilerSettings.EnableUnrootedAllocationBreakdown(m_CachedSnapshot))
             {
                 m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
                 {
@@ -685,7 +685,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                    AddCallStacksInfoToUI(sourceIndex);
                });
 
-            if (MemoryProfilerSettings.InternalMode)
+            if (MemoryProfilerSettings.InternalMode && ExportUtility.LoadCallstackMappingProviderConfig != null)
             {
                 AddCallstacksExportAndTreeViewButtons(rootId);
             }
@@ -810,12 +810,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return true;
             }
             var callstack = m_CachedSnapshot.NativeAllocationSites.GetReadableCallstack(
-                m_CachedSnapshot.NativeCallstackSymbols, callstackInfo.Index, simplifyCallStacks: simplifyCallStacks, clickableCallStacks: clickableCallStacks);
+                m_CachedSnapshot.NativeMemoryLabels, m_CachedSnapshot.NativeCallstackSymbols,
+                callstackInfo.Index, simplifyCallStacks: simplifyCallStacks, clickableCallStacks: clickableCallStacks);
             if (!string.IsNullOrEmpty(callstack.Callstack))
             {
                 callStackTexts.Add((
                     $"Call Stack {++callstackCount}",
-                    $"Allocation {DetailFormatter.FormatPointer(address)} made in {region} : {areaAndObjectName}",
+                    $"Allocation {DetailFormatter.FormatPointer(address)} made with label {callstack.MemLabel} in {region} : {areaAndObjectName}",
                     $"\n\n{callstack.Callstack}",
                     callstack.FileLinkHashToFileName));
             }
@@ -989,7 +990,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void UpdateStatusAndHintForSceneObjects(UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var statusSummary = (selectedUnityObject.IsRuntimeCreated ? "Runtime Created " : "Loaded ") +
+            var statusSummary = (selectedUnityObject.IsRuntimeCreated ? "Run-time created " : "Loaded ") +
                 (selectedUnityObject.IsDontUnload ? "DontDestroyOnLoad " : string.Empty) +
                 "Scene Object";
 

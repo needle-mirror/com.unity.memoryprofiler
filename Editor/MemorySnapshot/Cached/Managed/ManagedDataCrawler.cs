@@ -56,6 +56,7 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.Managed
 {
+    [BurstCompile]
     static partial class ManagedDataCrawler
     {
         static ManagedDataCrawler()
@@ -1059,32 +1060,33 @@ namespace Unity.MemoryProfiler.Editor.Managed
             CrawlRawObjectData(
                 in crawlData.CachedMemorySnapshot.ManagedHeapSections, in crawlData.CachedMemorySnapshot.VirtualMachineInformation, in crawlData.CachedMemorySnapshot.CrawledData.MangedObjectIndexByAddress,
                 in crawlData.NativeObjectOrAllocationFinder, crawlData.ConfigurableCrawlerOptions,
-                ref crawlData.CrawlDataStack, in fieldLayouts, bytesAndOffsetOfFieldDataWithoutHeader, in indexOfFrom, maxObjectIndexFindableViaPointers,
+                ref crawlData.CrawlDataStack, in fieldLayouts, in bytesAndOffsetOfFieldDataWithoutHeader, in indexOfFrom, maxObjectIndexFindableViaPointers,
                 fromArrayIndex, allowStackExpansion: allowStackExpansion);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         static void CrawlRawObjectData(
             in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap managedObjectIndexByAddress,
-            in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
-            ref DynamicArray<StackCrawlData> crawlDataStack, in DynamicArrayRef<FieldLayoutInfo> fieldLayouts, BytesAndOffset bytesAndOffsetOfFieldDataWithoutHeader,
+            in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, in MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
+            ref DynamicArray<StackCrawlData> crawlDataStack, in DynamicArrayRef<FieldLayoutInfo> fieldLayouts, in BytesAndOffset bytesAndOffsetOfFieldDataWithoutHeader,
             in SourceIndex indexOfFrom, long maxObjectIndexFindableViaPointers,
             long fromArrayIndex = -1, bool allowStackExpansion = false)
         {
             // Can't use foreach here or Burst won't like this method anymore
             // ReSharper disable once ForCanBeConvertedToForeach
+            var bytes = bytesAndOffsetOfFieldDataWithoutHeader;
             for (var i = 0; i < fieldLayouts.Count; i++)
             {
                 ref var fieldLayout = ref fieldLayouts[i];
-                bytesAndOffsetOfFieldDataWithoutHeader = bytesAndOffsetOfFieldDataWithoutHeader.Add((ulong)fieldLayout.OffsetFromPreviousAddress);
+                bytes = bytes.Add((ulong)fieldLayout.OffsetFromPreviousAddress);
 
-                if (bytesAndOffsetOfFieldDataWithoutHeader.TryReadPointer(out var address) != BytesAndOffset.PtrReadError.Success
+                if (bytes.TryReadPointer(out var address) != BytesAndOffset.PtrReadError.Success
                     || address == 0)
                     continue;
 
                 CrawlRawFieldData(address, fieldLayout.FieldReferenceType, maxObjectIndexFindableViaPointers,
                     in managedObjectIndexByAddress, in managedHeapBytes, in vmInfo,
-                    ref crawlDataStack, in nativeObjectOrAllocationFinder, crawlerFlags,
+                    ref crawlDataStack, in nativeObjectOrAllocationFinder, in crawlerFlags,
                     fieldLayout.IndexOfTheTypeOwningTheActualFieldIndex, in indexOfFrom,
                     allowStackExpansion,
                     fromArrayIndex,
@@ -1095,11 +1097,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
             }
         }
 
-
         [MethodImpl(MethodImplOptions.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         static void CrawlRawFieldData(ulong arrayDataPtr, FieldReferenceType referenceTypeArrayFieldType, long maxObjectIndexFindableViaPointers,
             in AddressToManagedIndexHashMap mangedObjectIndexByAddress, in ManagedMemorySectionEntriesCache ManagedHeapSections, in VirtualMachineInformation vmInfo,
-            ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
+            ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, in MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
             int typeIndexOfTheTypeOwningTheField, in SourceIndex referenceOwner,
             bool allowStackExpansion,
             long indexInReferenceOwningArray = -1,

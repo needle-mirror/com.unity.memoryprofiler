@@ -1,9 +1,9 @@
 using System;
 using System.Collections;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
-using Unity.MemoryProfiler.Editor.UIContentData;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -221,8 +221,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             });
 
             // At this stage we can't check that the snapshot _actually_ contained callstack information or just had the capture flag set but didn't receive any data for it
-            // To reduce the risk of showing this context option
-            if (Unsupported.IsDeveloperMode() && Unsupported.IsSourceBuild() && Model.CaptureFlags.HasFlag(Profiling.Memory.CaptureFlags.NativeStackTraces))
+            // To reduce the risk of showing this context option, check that we are in internal mode and have a callstack mapping provider loading call available.
+            if (MemoryProfilerSettings.InternalMode
+                && Model.CaptureFlags.HasFlag(Profiling.Memory.CaptureFlags.NativeStackTraces)
+                && ExportUtility.LoadCallstackMappingProviderConfig != null)
             {
 
                 const string openCallstacksButtonText = "Open Callstacks Table for Unknown Root (if callstack info was captured)";
@@ -244,15 +246,26 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void TryOpenCallstackWindow(bool invertedCallstacks = false)
         {
-            var snapshot = m_SnapshotDataService.LoadWithoutLoadingToUI(Model.FullPath);
-            if (snapshot.NativeCallstackSymbols.Count > 0)
+            void ConfigLoadCallback(ExportUtility.ICallstackMapping mappingInfo, Exception exception)
             {
-                ExportUtility.OpenCallstacksWindowForNativeRoot(snapshot, CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootId, invertedCallstacks: invertedCallstacks, callstackWindowOwnsSnapshot: true);
+                if (exception != null)
+                {
+                    if (exception is not OperationCanceledException)
+                        Debug.LogException(exception);
+                    return;
+                }
+                var snapshot = m_SnapshotDataService.LoadWithoutLoadingToUI(Model.FullPath);
+                if (snapshot.NativeCallstackSymbols.Count > 0)
+                {
+                    ExportUtility.OpenCallstacksWindowForNativeRoot(snapshot, CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootId, invertedCallstacks: invertedCallstacks, callstackWindowOwnsSnapshot: true, callstackMapping: mappingInfo);
+                }
+                else
+                {
+                    Debug.LogError("Snapshot did not contain any callstack info");
+                }
             }
-            else
-            {
-                Debug.LogError("Snapshot did not contain any callstack info");
-            }
+            // Load the CallstacksMapping Info first to frontload user interaction before starting the longer operation of loading the snapshot
+            ExportUtility.LoadCallstackMappingProviderConfig.Invoke(ConfigLoadCallback);
         }
 
         void BrowseCaptureFolder()

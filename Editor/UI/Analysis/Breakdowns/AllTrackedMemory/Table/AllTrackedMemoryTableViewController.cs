@@ -77,7 +77,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public AllTrackedMemoryModel Model => m_Model;
 
         public IScopedFilter<string> SearchFilter { get; private set; }
-
+        // TODO: this looks to be unused and can probably be removed?
         public ITextFilter ItemNameFilter { get; private set; }
 
         public IEnumerable<ITextFilter> ItemPathFilter { get; private set; }
@@ -271,11 +271,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
                     return null;
                 }
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                catch
+                {
+                    // don't throw the exception explicitly but do a generic rethrow in order to not stomp the callstack
+                    throw;
+                }
+#else
                 catch (Exception e)
                 {
                     Debug.LogException(e);
                     return null;
                 }
+#endif
             }, (model) =>
                 {
                     // Update model.

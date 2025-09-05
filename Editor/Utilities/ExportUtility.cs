@@ -19,9 +19,9 @@ namespace Unity.MemoryProfiler.Editor
         public const string InvalidMappedAreaName = null;
 
         /// <summary>
-        /// A function that takes the plaform name and Unity version as string and provides an <see cref="ICallstackMapping"/> for a snapshot from that platfrom and version.
+        /// A function that loads a <see cref="ICallstackMapping"/> config data.
         /// </summary>
-        public static Action<string, string, Action<ICallstackMapping, Exception>> CallstackMappingProvider { get; set; } = null;
+        public static Action<Action<ICallstackMapping, Exception>> LoadCallstackMappingProviderConfig { get; set; } = null;
 
         public interface ICallstackMapping
         {
@@ -30,16 +30,37 @@ namespace Unity.MemoryProfiler.Editor
             List<string> GetMappedAreas();
             bool IsAreaIgnored(int areaId);
 
-            int TryMap(string callstack, out string areaName);
-
-            bool UpdateMapping(string callstack, int areaId);
+            bool UpdateMapping(string callstack, string memLabel, int areaId);
             void SaveMapping();
             void ClearNonExplicitMappings();
+
+            void Init(string runtimePlatformName, string playerUnityVersion, Action<ICallstackMapping, Exception> callback);
+
+            /// <summary>
+            ///
+            /// </summary>
+            /// <param name="callstack"></param>
+            /// <param name="memLabel"></param>
+            /// <param name="areaName"></param>
+            /// <param name="areaId"></param>
+            /// <exception cref="InvalidOperationException"> Throws an cref="InvalidOperationException" if <see cref="Init"/> was not called first. </exception>
+            /// <returns></returns>
+            bool TryMap(string callstack, string memLabel, out string areaName, out int areaId);
         }
 
         public static void WriteNativeRootCallstackInfoToJson(CachedSnapshot snapshot, long nativeRootId, bool invertedCallstacks = false)
         {
-            void Callback(ICallstackMapping mappingInfo, Exception exception)
+            void ConfigLoadCallback(ICallstackMapping mappingInfo, Exception exception)
+            {
+                if (exception != null)
+                {
+                    if (exception is not OperationCanceledException)
+                        Debug.LogException(exception);
+                    return;
+                }
+                mappingInfo.Init(snapshot.MetaData.Platform, snapshot.MetaData.UnityVersion, ConfigInitCallback);
+            }
+            void ConfigInitCallback(ICallstackMapping mappingInfo, Exception exception)
             {
                 if (exception != null)
                 {
@@ -49,17 +70,27 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 var symbolTree = CallstacksUtility.BuildSymbolNodeTree(snapshot, nativeRootId, latestStackEntryAsRoot: !invertedCallstacks);
                 var model = CallstacksTreeWindow.GenerateTreeViewModel(snapshot, symbolTree, mappingInfo);
-                var splitModel = CallstacksTreeWindow.SplitModelByAreaId(model, mappingInfo, !invertedCallstacks);
+                var splitModel = CallstacksTreeWindow.SplitModelByAreaId(model, mappingInfo, invertedCallstacks ? TreeSplittingLogic.TakeLastAreaIdFound : TreeSplittingLogic.TakeFirstAreaIdFound);
                 WriteTreeToJson(snapshot, splitModel);
             }
-            CallstackMappingProvider?.Invoke(snapshot.MetaData.Platform, snapshot.MetaData.UnityVersion, Callback);
+            LoadCallstackMappingProviderConfig?.Invoke(ConfigLoadCallback);
         }
 
-        public static void OpenCallstacksWindowForNativeRoot(CachedSnapshot snapshot, long nativeRootId, bool invertedCallstacks = false, bool callstackWindowOwnsSnapshot = false)
+        public static void OpenCallstacksWindowForNativeRoot(CachedSnapshot snapshot, long nativeRootId, bool invertedCallstacks = false, bool callstackWindowOwnsSnapshot = false, ICallstackMapping callstackMapping = null)
         {
             var clearedBar = false;
 
-            void Callback(ICallstackMapping mappingInfo, Exception exception)
+            void ConfigLoadCallback(ICallstackMapping mappingInfo, Exception exception)
+            {
+                if (exception != null)
+                {
+                    if (exception is not OperationCanceledException)
+                        Debug.LogException(exception);
+                    return;
+                }
+                mappingInfo.Init(snapshot.MetaData.Platform, snapshot.MetaData.UnityVersion, ConfigInitCallback);
+            }
+            void ConfigInitCallback(ICallstackMapping mappingInfo, Exception exception)
             {
                 try
                 {
@@ -85,7 +116,10 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
-            CallstackMappingProvider?.Invoke(snapshot.MetaData.Platform, snapshot.MetaData.UnityVersion, Callback);
+            if (callstackMapping == null)
+                LoadCallstackMappingProviderConfig?.Invoke(ConfigLoadCallback);
+            else
+                callstackMapping.Init(snapshot.MetaData.Platform, snapshot.MetaData.UnityVersion, ConfigInitCallback);
         }
 
         public static void WriteNativeRootCallstackInfoToCsv(CachedSnapshot snapshot, long nativeRootId, bool invertedCallstacks = false)

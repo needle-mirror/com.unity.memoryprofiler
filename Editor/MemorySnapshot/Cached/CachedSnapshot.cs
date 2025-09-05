@@ -147,8 +147,20 @@ namespace Unity.MemoryProfiler.Editor
             return instanceId;
         }
 #if ENTITY_ID_STRUCT_AVAILABLE
-        public static UnityEngine.EntityId ConvertToUnityEntityId(EntityId id) => (UnityEngine.EntityId)id.ConvertToInt();
-        public static EntityId ConvertFromUnityEntityId(UnityEngine.EntityId id) => ConvertInt((int)id);
+        public unsafe static UnityEngine.EntityId ConvertToUnityEntityId(EntityId id)
+        {
+            var eId = stackalloc UnityEngine.EntityId[1];
+            var eIdInt = (int*)eId;
+            eIdInt[0] = id.ConvertToInt();
+            return eId[0];
+        }
+        public unsafe static EntityId ConvertFromUnityEntityId(UnityEngine.EntityId id)
+        {
+            var eId = stackalloc UnityEngine.EntityId[1];
+            UnsafeUtility.CopyStructureToPtr(ref id, eId);
+            var eIdInt = (int*)eId;
+            return ConvertInt(eIdInt[0]);
+        }
         public static EntityId Convert(UnityEngine.EntityId id) => ConvertFromUnityEntityId(id);
 #endif
         public static EntityId Convert(int id) => ConvertInt(id);
@@ -279,9 +291,12 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    [BurstCompile]
     internal class CachedSnapshot : IDisposable
     {
         public const string InvalidItemName = "<No Name>";
+        public const string UnrootedItemName = "Unrooted";
+        public const string UnknownMemlabelName = "Unknown MemLabel";
 
         static CachedSnapshot()
         {
@@ -342,11 +357,11 @@ namespace Unity.MemoryProfiler.Editor
         public class NativeAllocationSiteEntriesCache : IDisposable
         {
             // Call Side Ids are pointers, so 0 is an invalid Site Id
-            public const long SiteIdNullPointer = 0;
+            public const ulong SiteIdNullPointer = 0;
             public long Count;
-            public DynamicArray<long> Id = default;
-            public DynamicArray<int> memoryLabelIndex = default;
-            public readonly Dictionary<long, long> IdToIndex;
+            public DynamicArray<ulong> Id = default;
+            public DynamicArray<int> MemoryLabelIndex = default;
+            public readonly Dictionary<ulong, long> IdToIndex;
 
             public NestedDynamicArray<ulong> callstackSymbols => m_callstackSymbolsReadOp.CompleteReadAndGetNestedResults();
             NestedDynamicSizedArrayReadOperation<ulong> m_callstackSymbolsReadOp;
@@ -358,11 +373,11 @@ namespace Unity.MemoryProfiler.Editor
                 if (Count == 0)
                     return;
 
-                Id = reader.Read(EntryType.NativeAllocationSites_Id, 0, Count, Allocator.Persistent).Result.Reinterpret<long>();
-                memoryLabelIndex = reader.Read(EntryType.NativeAllocationSites_MemoryLabelIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
+                Id = reader.Read(EntryType.NativeAllocationSites_Id, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
+                MemoryLabelIndex = reader.Read(EntryType.NativeAllocationSites_MemoryLabelIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
 
                 m_callstackSymbolsReadOp = reader.AsyncReadDynamicSizedArray<ulong>(EntryType.NativeAllocationSites_CallstackSymbols, 0, Count, Allocator.Persistent);
-                IdToIndex = new Dictionary<long, long>((int)Count);
+                IdToIndex = new Dictionary<ulong, long>((int)Count);
                 for (long idx = 0; idx < Count; idx++)
                 {
                     IdToIndex[Id[idx]] = idx;
@@ -371,10 +386,12 @@ namespace Unity.MemoryProfiler.Editor
 
             public readonly struct ReadableCallstack
             {
+                public readonly string MemLabel;
                 public readonly string Callstack;
                 public readonly List<KeyValuePair<int, string>> FileLinkHashToFileName;
-                public ReadableCallstack(string callstack, List<KeyValuePair<int, string>> fileLinkHashToFileName)
+                public ReadableCallstack(string memLabel, string callstack, List<KeyValuePair<int, string>> fileLinkHashToFileName)
                 {
+                    MemLabel = memLabel;
                     Callstack = callstack;
                     FileLinkHashToFileName = fileLinkHashToFileName;
                 }
@@ -382,7 +399,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public readonly struct CallStackInfo : IEquatable<CallStackInfo>
             {
-                public readonly long Id;
+                public readonly ulong Id;
                 public readonly long Index;
                 public readonly int MemoryLabelIndex;
                 public readonly DynamicArrayRef<ulong> CallstackSymbols;
@@ -390,7 +407,7 @@ namespace Unity.MemoryProfiler.Editor
                 // Checking the Index and that there is actual symbols should suffice here
                 public readonly bool Valid => /* Id != NullPointerId &&*/ Index >= 0 && CallstackSymbols.IsCreated;
 
-                public CallStackInfo(long id, long index, int memoryLabelIndex, DynamicArrayRef<ulong> callstackSymbols)
+                public CallStackInfo(ulong id, long index, int memoryLabelIndex, DynamicArrayRef<ulong> callstackSymbols)
                 {
                     Id = id;
                     Index = index;
@@ -411,14 +428,38 @@ namespace Unity.MemoryProfiler.Editor
                 public override int GetHashCode() => HashCode.Combine(Id, CallstackSymbols);
             }
 
-            public CallStackInfo GetCallStackInfo(long id)
+            public CallStackInfo GetCallStackInfo(ulong id)
             {
                 if (id != SiteIdNullPointer && IdToIndex.TryGetValue(id, out var index))
-                    return new CallStackInfo(id, index, memoryLabelIndex[index], callstackSymbols[index]);
+                    return new CallStackInfo(id, index, MemoryLabelIndex[index], callstackSymbols[index]);
                 return new CallStackInfo(id, -1, -1, new DynamicArrayRef<ulong>());
             }
 
-            public ReadableCallstack GetReadableCallstackForId(NativeCallstackSymbolEntriesCache symbols, long id)
+            public string GetMemLabelName(CachedSnapshot snapshot, SourceIndex nativeAllocationIndex)
+            {
+                if (Count <= 0 || !nativeAllocationIndex.Valid || nativeAllocationIndex.Id is not SourceIndex.SourceId.NativeAllocation)
+                    return null;
+                var siteId = snapshot.NativeAllocations.AllocationSiteId[nativeAllocationIndex.Index];
+                var memLabelIndex = GetMemLabel(siteId);
+
+                string memLabelName = memLabelIndex.Valid ? snapshot.NativeMemoryLabels.MemoryLabelName[memLabelIndex.Index] : CachedSnapshot.UnknownMemlabelName;
+                return memLabelName;
+            }
+
+            static readonly SourceIndex k_FakeInvalidlyLabeledAllocationIndex = new SourceIndex(SourceIndex.SourceId.None, (long)SourceIndex.SpecialNoneCase.UnknownMemLabel);
+            public SourceIndex GetMemLabel(ulong siteId)
+            {
+                if (siteId == NativeAllocationSiteEntriesCache.SiteIdNullPointer
+                    || !IdToIndex.TryGetValue(siteId, out var siteIndex))
+                    siteIndex = -1;
+                var memLabelIndex = siteIndex >= 0 ? MemoryLabelIndex[siteIndex] : -1;
+                if (memLabelIndex <= CachedSnapshot.NativeMemoryLabelEntriesCache.InvalidMemLabelIndex)
+                    memLabelIndex = -1;
+                var memLabelSourceIndex = memLabelIndex >= 0 ? new SourceIndex(SourceIndex.SourceId.MemoryLabel, memLabelIndex) : k_FakeInvalidlyLabeledAllocationIndex;
+                return memLabelSourceIndex;
+            }
+
+            public ReadableCallstack GetReadableCallstackForId(NativeMemoryLabelEntriesCache memLabels, NativeCallstackSymbolEntriesCache symbols, ulong id)
             {
                 long entryIdx = -1;
                 for (long i = 0; i < Id.Count; ++i)
@@ -430,7 +471,7 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
 
-                return entryIdx < 0 ? new ReadableCallstack(string.Empty, null) : GetReadableCallstack(symbols, entryIdx);
+                return entryIdx < 0 ? new ReadableCallstack(string.Empty, string.Empty, null) : GetReadableCallstack(memLabels, symbols, entryIdx);
             }
 
             public void AppendCallstackLine(NativeCallstackSymbolEntriesCache symbols, ulong targetSymbol, StringBuilder stringBuilder,
@@ -530,7 +571,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            public ReadableCallstack GetReadableCallstack(NativeCallstackSymbolEntriesCache symbols, long idx, bool simplifyCallStacks = true, bool clickableCallStacks = true)
+            public ReadableCallstack GetReadableCallstack(NativeMemoryLabelEntriesCache memLabels, NativeCallstackSymbolEntriesCache symbols, long idx, bool simplifyCallStacks = true, bool clickableCallStacks = true)
             {
                 var stringBuilder = new StringBuilder();
 
@@ -542,14 +583,17 @@ namespace Unity.MemoryProfiler.Editor
                     AppendCallstackLine(symbols, targetSymbol, stringBuilder, fileLinkHashToFileName, simplifyCallStacks, clickableCallStacks);
                 }
 
-                return new ReadableCallstack(stringBuilder.ToString(), fileLinkHashToFileName);
+                return new ReadableCallstack(
+                    MemoryLabelIndex[idx] >= NativeMemoryLabelEntriesCache.InvalidMemLabelIndex ?
+                    memLabels.MemoryLabelName[MemoryLabelIndex[idx]] : CachedSnapshot.UnknownMemlabelName,
+                    stringBuilder.ToString(), fileLinkHashToFileName);
             }
 
 
             public void Dispose()
             {
                 Id.Dispose();
-                memoryLabelIndex.Dispose();
+                MemoryLabelIndex.Dispose();
                 if (m_callstackSymbolsReadOp.IsCreated)
                 {
                     // Dispose the read operation first to abort it ...
@@ -724,6 +768,19 @@ namespace Unity.MemoryProfiler.Editor
 
         public class NativeMemoryLabelEntriesCache : IDisposable
         {
+            /// <summary>
+            /// The first memory label index is kMemTempLabels, i.e. the delimiter and start for all temp labels.
+            /// The range of temp labels goes from kMemTempLabels to kMemRegularLabels (excluding both of these delimiters).
+            /// The non-temp labels go from kMemRegularLabels to kMemLabelCount (excluding both of these delimiters).
+            ///
+            /// So not only is index 0 a delimiter, temp labeled allocations, in order to not incur a pefromance hit on these,
+            /// do not record a callstack and callsite, they also are not even registered with the Memory Profiler,
+            /// so there won't be any allocations in a snapshot that have these memory labels assigned to them.
+            ///
+            /// NOTE: -1 is the default value that gets serialized if no callstack info is present,
+            /// so for validity, check for _greater than_ <see cref="InvalidMemLabelIndex"/>.
+            /// </summary>
+            public const long InvalidMemLabelIndex = 0;
             public long Count;
             public string[] MemoryLabelName;
             public DynamicArray<ulong> MemoryLabelSizes = default;
@@ -821,7 +878,7 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<ulong> Size = default;
             public DynamicArray<int> OverheadSize = default;
             public DynamicArray<int> PaddingSize = default;
-            public DynamicArray<long> AllocationSiteId = default;
+            public DynamicArray<ulong> AllocationSiteId = default;
 
             public NativeAllocationEntriesCache(ref IFileReader reader, bool allocationSites /*do not read allocation sites if they aren't present*/)
             {
@@ -838,7 +895,7 @@ namespace Unity.MemoryProfiler.Editor
                 PaddingSize = reader.Read(EntryType.NativeAllocations_PaddingSize, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
 
                 if (allocationSites)
-                    AllocationSiteId = reader.Read(EntryType.NativeAllocations_AllocationSiteId, 0, Count, Allocator.Persistent).Result.Reinterpret<long>();
+                    AllocationSiteId = reader.Read(EntryType.NativeAllocations_AllocationSiteId, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
             }
 
             public void Dispose()
@@ -878,7 +935,7 @@ namespace Unity.MemoryProfiler.Editor
                         nativeObjectName = snapshot.NativeObjects.ObjectName[objectIndex];
                 }
 
-                // Try to see is memory label root associated with any memory area
+                // Try to see if memory label root is associated with any memory area
                 if (snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out long rootIndex))
                 {
                     var allocationObjectName = snapshot.NativeRootReferences.ObjectName[rootIndex];
@@ -1673,6 +1730,7 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         // Eventual TODO: Add on demand load of sections, and unused chunks unload
+        [BurstCompile]
         public struct ManagedMemorySectionEntriesCache : IDisposable
         {
             static readonly ProfilerMarker k_CacheFind = new ProfilerMarker("ManagedMemorySectionEntriesCache.Find");
@@ -2986,7 +3044,7 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
 
-                long idx = DynamicArrayAlgorithms.BinarySearch(SortedNativeAllocations, pointer);
+                long idx = DynamicArrayAlgorithms.BinarySearch(SortedNativeAllocations.UnsafeCache, pointer);
                 // -1 means the address is smaller than the first starting Address,
                 if (idx != -1)
                 {
@@ -3069,12 +3127,14 @@ namespace Unity.MemoryProfiler.Editor
             ulong FullSize(long index);
         }
 
-        public abstract class IndirectlySortedEntriesCache<TSortComparer>
+        public abstract class IndirectlySortedEntriesCache<TSortComparer, TUnsafeCache>
             : IDisposable, ISortedEntriesCache
             where TSortComparer : unmanaged, IRefComparer<long>
+            where TUnsafeCache : unmanaged, ISortedEntriesCache
         {
             protected CachedSnapshot m_Snapshot;
-            DynamicArray<long> m_Sorting;
+            protected DynamicArray<long> m_Sorting;
+            protected bool Loaded => m_Loaded;
             bool m_Loaded;
 
             protected IndirectlySortedEntriesCache(CachedSnapshot snapshot)
@@ -3111,8 +3171,11 @@ namespace Unity.MemoryProfiler.Editor
                     var count = m_Sorting.Count;
                     for (long i = 0; i < count; ++i)
                         m_Sorting[i] = i;
-                    var comparer = Comparer;
-                    DynamicArrayAlgorithms.IntrospectiveSort(0, Count, ref comparer);
+                    if (count > 0)
+                    {
+                        var comparer = Comparer;
+                        DynamicArrayAlgorithms.IntrospectiveSort(0, Count, ref comparer);
+                    }
                 }
                 m_Loaded = true;
             }
@@ -3123,6 +3186,11 @@ namespace Unity.MemoryProfiler.Editor
             {
                 m_Sorting.Dispose();
             }
+
+            /// <summary>
+            /// A burst compatible way to access the sorted data. It is not safe to use if the holding object has been disposed.
+            /// </summary>
+            public virtual TUnsafeCache UnsafeCache { get; }
 
             /// <summary>
             /// Uses <see cref="DynamicArrayAlgorithms.BinarySearch"/> to quickly find an item
@@ -3140,7 +3208,7 @@ namespace Unity.MemoryProfiler.Editor
             /// -1 means the item wasn't found.</returns>
             public long Find(ulong address, bool onlyDirectAddressMatches)
             {
-                var idx = DynamicArrayAlgorithms.BinarySearch(this, address);
+                var idx = DynamicArrayAlgorithms.BinarySearch(this.UnsafeCache, address);
                 if (idx < 0)
                 {
                     // -1 means the address is smaller than the first Address, early out with -1
@@ -3169,7 +3237,8 @@ namespace Unity.MemoryProfiler.Editor
         /// i.e. <see cref="SortedNativeObjects"/> are fine to use this instead of <see cref="IndirectlySortedEntriesCacheSortedByAddressAndSizeArray"/>
         /// as while some Native Objects may report a size of 0, their addresses will never match
         /// </summary>
-        public abstract class IndirectlySortedEntriesCacheSortedByAddressArray : IndirectlySortedEntriesCache<IndexedArrayValueComparer<ulong>>
+        public abstract class IndirectlySortedEntriesCacheSortedByAddressArray<TUnsafeCache> : IndirectlySortedEntriesCache<IndexedArrayValueComparer<ulong>, TUnsafeCache>
+            where TUnsafeCache : unmanaged, ISortedEntriesCache
         {
             protected unsafe override IndexedArrayValueComparer<ulong> SortingComparer =>
                 new IndexedArrayValueComparer<ulong>(in Addresses);
@@ -3181,7 +3250,8 @@ namespace Unity.MemoryProfiler.Editor
         /// <summary>
         /// Used for entry caches that can have overlapping regions or those which border right next to each other while having sizes of 0
         /// </summary>
-        public abstract class IndirectlySortedEntriesCacheSortedByAddressAndSizeArray : IndirectlySortedEntriesCache<IndexedArrayRangeValueComparer<ulong>>
+        public abstract class IndirectlySortedEntriesCacheSortedByAddressAndSizeArray<TUnsafeCache> : IndirectlySortedEntriesCache<IndexedArrayRangeValueComparer<ulong>, TUnsafeCache>
+            where TUnsafeCache : unmanaged, ISortedEntriesCache
         {
             protected unsafe override IndexedArrayRangeValueComparer<ulong> SortingComparer =>
                 new IndexedArrayRangeValueComparer<ulong>(in Addresses, in Sizes, AllowExactlyOverlappingRegions);
@@ -3193,8 +3263,58 @@ namespace Unity.MemoryProfiler.Editor
             public override ulong FullSize(long index) => Sizes[this[index]];
         }
 
+        /// <summary>
+        /// Used for entry caches that can have overlapping regions or those which border right next to each other while having sizes of 0
+        /// </summary>
+        public abstract class IndirectlySortedEntriesCacheSortedByAddressAndSizeArrayWithCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArray<UnsafeAddressAndSizeCache>
+        {
+            public IndirectlySortedEntriesCacheSortedByAddressAndSizeArrayWithCache(CachedSnapshot snapshot) : base(snapshot) { }
 
-        public class SortedNativeMemoryRegionEntriesCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArray
+            public override void Preload()
+            {
+                var wasLoaded = Loaded;
+                base.Preload();
+                if (!wasLoaded)
+                {
+                    m_UnsafeCache = new UnsafeAddressAndSizeCache(m_Sorting, Addresses, Sizes);
+                }
+            }
+            UnsafeAddressAndSizeCache m_UnsafeCache;
+            public override UnsafeAddressAndSizeCache UnsafeCache
+            {
+                get
+                {
+                    if (Loaded)
+                        return m_UnsafeCache;
+                    Preload();
+                    return m_UnsafeCache;
+                }
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public readonly struct UnsafeAddressAndSizeCache : CachedSnapshot.ISortedEntriesCache
+        {
+            public long Count => m_Addresses.Count;
+
+            public long this[long index] => m_Sorting[index];
+            readonly DynamicArray<long> m_Sorting;
+            readonly DynamicArray<ulong> m_Addresses;
+            readonly DynamicArray<ulong> m_Sizes;
+            public ulong Address(long index) => m_Addresses[this[index]];
+            public ulong FullSize(long index) => m_Sizes[this[index]];
+
+            public UnsafeAddressAndSizeCache(DynamicArray<long> sorting, DynamicArray<ulong> addresses, DynamicArray<ulong> sizes)
+            {
+                m_Sorting = sorting;
+                m_Addresses = addresses;
+                m_Sizes = sizes;
+            }
+            // already preloaded
+            public void Preload() { }
+        }
+
+        public class SortedNativeMemoryRegionEntriesCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArrayWithCache
         {
             public readonly DynamicArray<byte> RegionHierarchLayer;
             public SortedNativeMemoryRegionEntriesCache(CachedSnapshot snapshot) : base(snapshot)
@@ -3253,7 +3373,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        public class SortedManagedObjectsCache : IndirectlySortedEntriesCache<SortedManagedObjectsCache.IndexedManagedObjectAddressComparer>
+        public class SortedManagedObjectsCache : IndirectlySortedEntriesCache<SortedManagedObjectsCache.IndexedManagedObjectAddressComparer, SortedManagedObjectsCache.UnsafeManagedObjectsCache>
         {
             /// <summary>
             /// This comparer is used to sort <seealso cref="IndirectlySortedEntriesCache.m_Sorting"/>
@@ -3289,9 +3409,51 @@ namespace Unity.MemoryProfiler.Editor
 
             public override ulong Address(long index) => m_Snapshot.CrawledData.ManagedObjects[this[index]].PtrObject;
             public override ulong FullSize(long index) => (ulong)m_Snapshot.CrawledData.ManagedObjects[this[index]].Size;
+
+            public override void Preload()
+            {
+                if (!m_Snapshot.CrawledData.Crawled)
+                    throw new InvalidOperationException("Can't use SortedManagedObjectsCache before crawling is done");
+                var wasLoaded = Loaded;
+                base.Preload();
+                if (!wasLoaded)
+                {
+                    m_UnsafeCache = new UnsafeManagedObjectsCache(m_Sorting, m_Snapshot.CrawledData.ManagedObjects);
+                }
+            }
+            UnsafeManagedObjectsCache m_UnsafeCache;
+            public override UnsafeManagedObjectsCache UnsafeCache
+            {
+                get
+                {
+                    if (Loaded)
+                        return m_UnsafeCache;
+                    Preload();
+                    return m_UnsafeCache;
+                }
+            }
+            [StructLayout(LayoutKind.Sequential)]
+            public readonly struct UnsafeManagedObjectsCache : CachedSnapshot.ISortedEntriesCache
+            {
+                public long Count => m_ManagedObjects.Count;
+
+                public long this[long index] => m_Sorting[index];
+                readonly DynamicArray<long> m_Sorting;
+                readonly DynamicArray<ManagedObjectInfo> m_ManagedObjects;
+                public ulong Address(long index) => m_ManagedObjects[this[index]].PtrObject;
+                public ulong FullSize(long index) => (ulong)m_ManagedObjects[this[index]].Size;
+
+                public UnsafeManagedObjectsCache(DynamicArray<long> sorting, DynamicArray<ManagedObjectInfo> managedObjects)
+                {
+                    m_Sorting = sorting;
+                    m_ManagedObjects = managedObjects;
+                }
+                // already preloaded
+                public void Preload() { }
+            }
         }
 
-        public class SortedNativeAllocationsCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArray
+        public class SortedNativeAllocationsCache : IndirectlySortedEntriesCacheSortedByAddressAndSizeArray<SortedNativeAllocationsCache.UnsafeNativeAllocationsCache>
         {
             public SortedNativeAllocationsCache(CachedSnapshot snapshot) : base(snapshot) { }
 
@@ -3307,12 +3469,59 @@ namespace Unity.MemoryProfiler.Editor
 
             public int MemoryRegionIndex(long index) => m_Snapshot.NativeAllocations.MemoryRegionIndex[this[index]];
             public long RootReferenceId(long index) => m_Snapshot.NativeAllocations.RootReferenceId[this[index]];
-            public long AllocationSiteId(long index) => m_Snapshot.NativeAllocations.AllocationSiteId[this[index]];
+            public ulong AllocationSiteId(long index) => m_Snapshot.NativeAllocations.AllocationSiteId[this[index]];
             public int OverheadSize(long index) => m_Snapshot.NativeAllocations.OverheadSize[this[index]];
             public int PaddingSize(long index) => m_Snapshot.NativeAllocations.PaddingSize[this[index]];
+
+            public override void Preload()
+            {
+                var wasLoaded = Loaded;
+                base.Preload();
+                if (!wasLoaded)
+                {
+                    m_UnsafeCache = new UnsafeNativeAllocationsCache(m_Sorting, Addresses, Sizes, m_Snapshot.NativeAllocations.OverheadSize, m_Snapshot.NativeAllocations.PaddingSize);
+                }
+            }
+            UnsafeNativeAllocationsCache m_UnsafeCache;
+            public override UnsafeNativeAllocationsCache UnsafeCache
+            {
+                get
+                {
+                    if (Loaded)
+                        return m_UnsafeCache;
+                    Preload();
+                    return m_UnsafeCache;
+                }
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            public readonly struct UnsafeNativeAllocationsCache : CachedSnapshot.ISortedEntriesCache
+            {
+                public long Count => m_Addresses.Count;
+
+                public long this[long index] => m_Sorting[index];
+                readonly DynamicArray<long> m_Sorting;
+                readonly DynamicArray<ulong> m_Addresses;
+                readonly DynamicArray<ulong> m_Sizes;
+                readonly DynamicArray<int> m_OverheadSizes;
+                readonly DynamicArray<int> m_PaddingSizes;
+                public ulong Address(long index) => m_Addresses[this[index]];
+                public ulong FullSize(long index) => m_Sizes[this[index]] + (ulong)m_OverheadSizes[this[index]] + (ulong)m_PaddingSizes[this[index]];
+
+                public UnsafeNativeAllocationsCache(DynamicArray<long> sorting, DynamicArray<ulong> addresses, DynamicArray<ulong> sizes, DynamicArray<int> overheadSizes, DynamicArray<int> paddingSizes)
+                {
+                    m_Sorting = sorting;
+                    m_Addresses = addresses;
+                    m_Sizes = sizes;
+                    m_OverheadSizes = overheadSizes;
+                    m_PaddingSizes = paddingSizes;
+                }
+                // already preloaded
+                public void Preload() { }
+            }
         }
 
-        public class SortedNativeObjectsCache : IndirectlySortedEntriesCacheSortedByAddressArray
+        public class SortedNativeObjectsCache : IndirectlySortedEntriesCacheSortedByAddressArray<UnsafeAddressAndSizeCache>
         {
             public SortedNativeObjectsCache(CachedSnapshot snapshot) : base(snapshot) { }
             public override long Count => m_Snapshot.NativeObjects.Count;
@@ -3328,6 +3537,28 @@ namespace Unity.MemoryProfiler.Editor
             public long RootReferenceId(long index) => m_Snapshot.NativeObjects.RootReferenceId[this[index]];
             public int Refcount(long index) => m_Snapshot.NativeObjects.RefCount[this[index]];
             public int ManagedObjectIndex(long index) => m_Snapshot.NativeObjects.ManagedObjectIndex[this[index]];
+
+
+            public override void Preload()
+            {
+                var wasLoaded = Loaded;
+                base.Preload();
+                if (!wasLoaded)
+                {
+                    m_UnsafeCache = new UnsafeAddressAndSizeCache(m_Sorting, Addresses, m_Snapshot.NativeObjects.Size);
+                }
+            }
+            UnsafeAddressAndSizeCache m_UnsafeCache;
+            public override UnsafeAddressAndSizeCache UnsafeCache
+            {
+                get
+                {
+                    if (Loaded)
+                        return m_UnsafeCache;
+                    Preload();
+                    return m_UnsafeCache;
+                }
+            }
         }
 
 
@@ -3422,7 +3653,15 @@ namespace Unity.MemoryProfiler.Editor
                 ManagedType,
                 NativeRootReference,
                 GfxResource,
-                GCHandleIndex
+                GCHandleIndex,
+                MemoryLabel
+            }
+
+            public enum SpecialNoneCase : long
+            {
+                None,
+                UnrootedAllocation,
+                UnknownMemLabel,
             }
 
             readonly ulong m_Data;
@@ -3452,7 +3691,15 @@ namespace Unity.MemoryProfiler.Editor
                 switch (Id)
                 {
                     case SourceId.None:
-                        return string.Empty;
+                        switch ((SpecialNoneCase)Index)
+                        {
+                            case SpecialNoneCase.UnrootedAllocation:
+                                return UnrootedItemName;
+                            case SpecialNoneCase.UnknownMemLabel:
+                                return UnknownMemlabelName;
+                            default:
+                                return string.Empty;
+                        }
 
                     case SourceId.SystemMemoryRegion:
                     {
@@ -3508,6 +3755,8 @@ namespace Unity.MemoryProfiler.Editor
                         if (snapshot.NativeObjects.GCHandleIndexToIndex.TryGetValue(Index, out var nativeObjectIndex))
                             return new SourceIndex(SourceId.NativeObject, nativeObjectIndex).GetName(snapshot);
                         return $"GCHandle index: {Index}";
+                    case SourceId.MemoryLabel:
+                        return Index >= NativeMemoryLabelEntriesCache.InvalidMemLabelIndex ? snapshot.NativeMemoryLabels.MemoryLabelName[Index] : UnknownMemlabelName;
                 }
 
                 Debug.Assert(false, $"Unknown source link type {Id}, please report a bug.");

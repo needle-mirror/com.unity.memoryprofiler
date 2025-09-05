@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -20,18 +20,18 @@
     "com.unity.profiling.core": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.8"
+    "com.unity.memoryprofiler.tests": "1.1.9"
   },
   "_upm": {
-    "changelog": "### Added\n- Adde an option to the Memory Profiler preferences to consider all pointer sized fields as potential pointers to native allocations. By default such fields are only considered when they are found on types in the `Unity.Entites` namespace, which helps analyse DOTS and Entities usage of unmanaged memory. Turning this option on can improve reference discovery for native memory, but can also produce false positives and slow down snapshot opening times. If you want to make your own usages of memory allocated vie `UnsafeUtility` easier, it is recommended to instead store references to it as actual pointers or `IntPtr`s.\n\n### Fixed\n- Compilation issues on Unity versions between 6000.0.0a1 and 6000.0.52f1.\n- UI issues due to too long paths and resulting failures to import the files.\n- Fixed potential duplicates in Unity Objects table not finding potential duplicates if their resident memory size differs ([PROFB-367](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-367)).\n- Fixed discrepancies in the resident amounts given for native and managed memory on the Summary page compared to the All Of Memmory Page when inspecting captures from IL2CPP. The resident amounts used for the VM memory where not properly reattributed.\n\n### Changed\n- Improved the analysis of managed data to find DOTS/Entites related references to unmanaged memory when that memory is referenced from types in the `Unity.Entites` namespace.\n- Switched on resident memory breakdown for the managed memory section on the Summary page."
+    "changelog": "### Changed\n- Renamed Unknown to Unrooted as that more properly describes these allocations. Further, if a snapshot is taken from a Player or Editor is started with the commandline option `-enable-memoryprofiler-callstacks` (only available for 6000.3 or newer, for older versions Unity's source code would have to have been compiled with the precompiler directive `ENABLE_STACKS_ON_ALL_ALLOCS`) AND when doing so on a Unity version where the bug ([UUM-116049](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-116049)) has been fixed, AND if the Unity Editor opening the snapshot is in `internal mode`, then the Unrooted allocations are split out into the Memory Labels which had been used for their allocation. Note: this is predominantly a debug tool for Unity Engine developers to fix their unrooted allocations."
   },
   "upmCi": {
-    "footprint": "db1389dc75617829209c332b3c9a6925f23ccec5"
+    "footprint": "ed6e9a54e66b5d8209a954e8fdbe0822b378ac8e"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "24dcaa42bacc7bb770cc54b2e9280f96d20e8431"
+    "revision": "c4494933e54217e8f082621c4d851df48eeecfdb"
   }
 }

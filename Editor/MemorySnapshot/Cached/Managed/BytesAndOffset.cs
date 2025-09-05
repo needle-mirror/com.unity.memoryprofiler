@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.UIContentData;
@@ -9,6 +10,7 @@ using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {
+    [StructLayout(LayoutKind.Sequential)]
     readonly struct BytesAndOffset
     {
         const ulong k_InvalidPtr = unchecked(0xffffffffffffffff);

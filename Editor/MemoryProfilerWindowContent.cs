@@ -190,22 +190,24 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 
         public const string InvalidObjectErrorBoxMessage = "This is an invalid Managed Object, i.e. the Memory Profiler could not identify it's type and data. To help us in finding and fixing this issue, " + TextContent.InvalidObjectPleaseReportABugMessage;
 
-        public const string UnknownUnknownAllocationsErrorBoxMessage = "This is a bug in the native code of the engine, please file a bug report. " +
+        public const string UnrootedUnrootedAllocationsErrorBoxMessage = "This is a bug in the native code of the engine, please file a bug report. " +
             "Chances are high that every single allocation here is a separate bug to be fixed by a different team and should be treated as such. " +
             "By their very nature, User facing releases lack the information needed to differentiate these allocations in a meaningful way. " +
             "To get an approximation of what constitutes a separate vs a duplicate bug the byte size of each allocation should be used (size in byte is given when hovering the Native Size). " +
             "\nNote: It is likely that this memory is actually needed, but without it being properly rooted, there is no way to tell." +
             "\nUnity's staff is making a best effort attempt to catch these internally, but there are a myriad of ways of using the engine so that it is impossible to catch all possible scenarios.";
 
-        public const string UnknownUnknownAllocationsErrorBoxMessageInternalMode = UnknownUnknownAllocationsErrorBoxMessage +
-            "\n\nThose with access to Unity's source code can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h to see where in the code base it was allocated from, and with that info disambiguate the issue further. ";
+        public const string UnrootedUnrootedAllocationsErrorBoxMessageInternalMode = UnrootedUnrootedAllocationsErrorBoxMessage +
+            "\n\nThose with access to Unity's source code can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h to see where in the code base it was allocated from, and with that info disambiguate the issue further. "
+            + "\nWhen capturing Editors or Players using Unity 6000.3 or newer, the same can be achieved by starting them with the commandline option '-enable-memoryprofiler-callstacks', though callstacks might not be getting properly symbolicated. "
+            ;
 
         public const string NativeAllocationFoundReferencesHint =
             "Only references from Managed Objects to this allocation are found. References from the stack or native code are not found. " +
             "0 'Found References' does not necessarily mean that this allocation is leaked.";
 
         public const string NativeAllocationInternalModeCallStacksInfoBoxMessage =
-            "If you have access to Unity's source code, you can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h to see where this allocation was made.";
+            "If you have access to Unity's source code, you can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h to see where this allocation was made. If you are using Unity 6000.3 or newer you can also add '-enable-memoryprofiler-callstacks' as a commandline option to the Player or Editor you want to capture a snapshot from.";
 
         const string NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipBase = "Clicking this will reload the table and then all allocations under this root will be ";
         public const string NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipReveal = NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipBase + "shown.";

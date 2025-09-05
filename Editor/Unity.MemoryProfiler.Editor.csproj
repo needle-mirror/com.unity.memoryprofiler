@@ -60,5 +60,17 @@
       <Expression>1.0.0</Expression>
       <Define>PROFILING_CORE_AVAILABLE</Define>
     </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>6000.3.0a1</Expression>
+      <Define>UNITY_6000_3_OR_NEWER</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>ENABLE_MEMORY_PROFILER_DEBUG</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>DEBUG_VALIDATION</Define>
+    </UnityVersionDefine>
   </ItemGroup>
 </Project>

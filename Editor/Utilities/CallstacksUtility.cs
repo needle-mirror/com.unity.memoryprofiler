@@ -5,13 +5,13 @@ using System.Text;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using UnityEditor;
-using UnityEngine.UIElements;
+using Unity.Burst;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
-using static Unity.MemoryProfiler.Editor.CallstacksTreeWindow;
 using static Unity.MemoryProfiler.Editor.ExportUtility;
 
 namespace Unity.MemoryProfiler.Editor
 {
+    [BurstCompile]
     readonly struct PartialCallstackSymbolsRef<T> : IEquatable<PartialCallstackSymbolsRef<T>>, IEqualityComparer<PartialCallstackSymbolsRef<T>>
         where T : unmanaged
     {
@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor
             return new PartialCallstackSymbolsRef<T>(m_CallstackRef, indexForCutoff, m_Inverted);
         }
 
-        [Burst.BurstCompile(CompileSynchronously = true, DisableDirectCall = false, OptimizeFor = Burst.OptimizeFor.Performance)]
+        [BurstCompile(CompileSynchronously = true, DisableDirectCall = false, OptimizeFor = Burst.OptimizeFor.Performance)]
         static int BuildHashCode(in DynamicArrayRef<T> callstackRef, long depth, bool inverted)
         {
             if (depth <= 0)
@@ -167,6 +167,7 @@ namespace Unity.MemoryProfiler.Editor
             public ulong ParentSymbol { get; internal set; }
             public PartialCallstackSymbolsRef<ulong> ParentSymbolsChain { get; internal set; }
             public StringBuilder Callstack { get; internal set; }
+            public string MemLabel { get; internal set; }
             public SourceIndex ItemIndex { get; internal set; }
         }
 
@@ -251,6 +252,13 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         foreach (var itemIndex in currentNodeLevel.Node.Values)
                         {
+                            string memLabel = string.Empty;
+                            if (snapshot.NativeAllocationSites.Count > 0)
+                            {
+                                var siteId = snapshot.NativeAllocations.AllocationSiteId[itemIndex.Index];
+                                var memLabelSourceIndex = snapshot.NativeAllocationSites.GetMemLabel(siteId);
+                                memLabel = memLabelSourceIndex.Valid ? snapshot.NativeMemoryLabels.MemoryLabelName[memLabelSourceIndex.Index] : CachedSnapshot.UnknownMemlabelName;
+                            }
                             yield return new CallstackNodeWalker
                             {
                                 Symbol = currentNodeLevel.Node.Symbol,
@@ -259,6 +267,7 @@ namespace Unity.MemoryProfiler.Editor
                                 // When yielding per callstack line, the callstack for this line is reported either before or after all of these items
                                 Callstack = yieldPerCallstackLine ? null : currentNodeLevel.SymbolicatedCallstack,
                                 ItemIndex = itemIndex,
+                                MemLabel = memLabel,
                             };
                         }
                     }

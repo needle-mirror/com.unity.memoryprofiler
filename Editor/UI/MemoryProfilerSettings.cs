@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.Profiling.Memory;
+using System.Runtime.InteropServices;
 
 
 #if UNITY_2021_2_OR_NEWER
@@ -46,15 +47,27 @@ namespace Unity.MemoryProfiler.Editor
         /// Use this to make it easier to spot these use cases.
         /// </summary>
         public static bool InternalMode;
-        public static bool InternalModeOrSnapshotWithCallSites(CachedSnapshot cachedSnapshot) => InternalMode || cachedSnapshot.NativeAllocationSites.Count > 0;
 
-        [RuntimeInitializeOnLoadMethod]
+        /// <summary>
+        /// Allocations in the All of Memory table under Native > Sub Systems > Unrooted > Unrooted are bugs in Unity's C++ code.
+        /// To make it easier to analyze and fix these, internal developer nee to be able to see these split out by allocation.
+        /// Together with native callstack recording getting enabled in MemoryProfiler.h via the define ENABLE_STACKS_ON_ALL_ALLOCS
+        /// (or for 600.3 or newer and using the commandline option `-enable-memoryprofiler-callstacks`), they can be analyzed and fixed.
+        ///
+        /// Non-Source-Code-Users pre Unity 6000.3 can usually not do too much about these and don't benefit much from these being split out and called out as bugs.
+        /// That said, after we've done wider sweeps to resolve these issues in the code base, we can consider enabling these for everyone to make it easier to catch stray allocations that escape us.
+        /// </summary>
+        public static bool EnableUnrootedAllocationBreakdown(CachedSnapshot cachedSnapshot) => InternalMode || cachedSnapshot.NativeAllocationSites.Count > 0
+            // uncomment to make Unrooted allocations get broken down by MemLabel for all users of 6.3 without hiding it under internal mode
+            //|| (cachedSnapshot.NativeAllocationSites.Count > 0 && cachedSnapshot.MetaData?.UnityVersionMajor >= 6000 && cachedSnapshot.MetaData?.UnityVersionMinor >= 3)
+            ;
+
+        [InitializeOnLoadMethod, RuntimeInitializeOnLoadMethod]
         static void RuntimeInitialize()
         {
             InternalMode = Unsupported.IsDeveloperMode() || Unsupported.IsDeveloperBuild();
 
             FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 = InternalMode;
-            FeatureFlags.EnableUnknownUnknownAllocationBreakdown_2024_10 = InternalMode;
             FeatureFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations;
         }
 
@@ -66,16 +79,6 @@ namespace Unity.MemoryProfiler.Editor
             public static bool GenerateTransformTreesForByStatusTable_2022_09 { get; set; } = false;
             // Mostly for internal debugging purposes as native allocation callstacks are not yet supported without source access and this feature is mostly useless without them.
             public static bool EnableDynamicAllocationBreakdown_2024_10 { get; set; } = false;
-
-            /// <summary>
-            /// Allocations in the All of Memory table under Native > Sub Systems > Unknown > Unknowns are bugs in Unity's C++ code.
-            /// To make it easier to analyze and fix these, internal developer nee to be able to see these split out by allocation.
-            /// Together with <see cref="EnableDynamicAllocationBreakdown_2024_10"/> and native callstack recording getting enabled in MemoryProfiler.h, they can be analyzed and fixed.
-            ///
-            /// Non-Source-Code-Users can usually not do too much about these and don't benefit much from these being split out and called out as bugs.
-            /// That said, after we've done wider sweeps to resolve these issues in the code base, we can consider enabling these for everyone to make it easier to catch stray allocations that escape us.
-            /// </summary>
-            public static bool EnableUnknownUnknownAllocationBreakdown_2024_10 { get; set; } = false;
 
             /// <summary>
             /// Displaying the count only makes sense once Managed references to Native allocations are crawled.
@@ -108,21 +111,43 @@ namespace Unity.MemoryProfiler.Editor
             /// <summary>
             /// This struct is only used for the non readonly flags, to allow for burst compiling the crawler functions
             /// </summary>
-            public struct CrawlerFlags
+            [StructLayout(LayoutKind.Sequential)]
+            public readonly struct CrawlerFlags
             {
-                public bool ManagedCrawlerConsidersPotentialPointersToNativeAllocations;
-                public bool ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace;
+                [Flags]
+                enum EnumCrawlerFlags : byte
+                {
+                    None = 0,
+                    ManagedCrawlerConsidersPotentialPointersToNativeAllocations = 1 << 0,
+                    ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = 1 << 1,
+                }
+                readonly EnumCrawlerFlags m_Flags;
+
+                public readonly bool ManagedCrawlerConsidersPotentialPointersToNativeAllocations =>
+                    m_Flags.HasFlag(EnumCrawlerFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocations);
+                public readonly bool ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace =>
+                    m_Flags.HasFlag(EnumCrawlerFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace);
+
+                public CrawlerFlags(
+                    bool managedCrawlerConsidersPotentialPointersToNativeAllocations,
+                    bool managedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace)
+                {
+                    m_Flags = EnumCrawlerFlags.None;
+                    if (managedCrawlerConsidersPotentialPointersToNativeAllocations)
+                        m_Flags |= EnumCrawlerFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocations;
+                    if (managedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace)
+                        m_Flags |= EnumCrawlerFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace;
+                }
             }
 
             public static CrawlerFlags ConfigurableCrawlerOptions
             {
                 get
                 {
-                    return new CrawlerFlags
-                    {
-                        ManagedCrawlerConsidersPotentialPointersToNativeAllocations = ManagedCrawlerConsidersPotentialPointersToNativeAllocations,
-                        ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace
-                    };
+                    return new CrawlerFlags(
+                        managedCrawlerConsidersPotentialPointersToNativeAllocations: ManagedCrawlerConsidersPotentialPointersToNativeAllocations,
+                        managedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace: ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace
+                    );
                 }
             }
         }

@@ -7,10 +7,15 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.9] - 2025-09-05
+
+### Changed
+- Renamed Unknown to Unrooted as that more properly describes these allocations. Further, if a snapshot is taken from a Player or Editor is started with the commandline option `-enable-memoryprofiler-callstacks` (only available for 6000.3 or newer, for older versions Unity's source code would have to have been compiled with the precompiler directive `ENABLE_STACKS_ON_ALL_ALLOCS`) AND when doing so on a Unity version where the bug ([UUM-116049](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-116049)) has been fixed, AND if the Unity Editor opening the snapshot is in `internal mode`, then the Unrooted allocations are split out into the Memory Labels which had been used for their allocation. Note: this is predominantly a debug tool for Unity Engine developers to fix their unrooted allocations.
+
 ## [1.1.8] - 2025-08-13
 
 ### Added
-- Adde an option to the Memory Profiler preferences to consider all pointer sized fields as potential pointers to native allocations. By default such fields are only considered when they are found on types in the `Unity.Entites` namespace, which helps analyse DOTS and Entities usage of unmanaged memory. Turning this option on can improve reference discovery for native memory, but can also produce false positives and slow down snapshot opening times. If you want to make your own usages of memory allocated vie `UnsafeUtility` easier, it is recommended to instead store references to it as actual pointers or `IntPtr`s.
+- Added an option to the Memory Profiler preferences to consider all pointer sized fields as potential pointers to native allocations. By default such fields are only considered when they are found on types in the `Unity.Entites` namespace, which helps analyse DOTS and Entities usage of unmanaged memory. Turning this option on can improve reference discovery for native memory, but can also produce false positives and slow down snapshot opening times. If you want to make your own usages of memory allocated via `UnsafeUtility` easier to analyze, it is recommended to instead store references to it as actual pointers or `IntPtr`s.
 
 ### Fixed
 - Compilation issues on Unity versions between 6000.0.0a1 and 6000.0.52f1.

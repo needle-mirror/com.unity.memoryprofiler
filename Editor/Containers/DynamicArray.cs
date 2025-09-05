@@ -17,6 +17,11 @@ using AllocatorType = Unity.Collections.Allocator;
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
+    enum BurstableBool : byte
+    {
+        FALSE = 0,
+        TRUE = 1,
+    }
     unsafe interface ILongIndexedContainer<T> : IEnumerable<T>
         where T : unmanaged
     {
@@ -48,7 +53,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public readonly long Count => m_Count;
         public readonly long Capacity => Count;
 
-        public readonly bool IsCreated { get; }
+        readonly BurstableBool m_IsCreated;
+        public readonly bool IsCreated => m_IsCreated == BurstableBool.TRUE;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly T* GetUnsafeTypedPtr() => m_Data;
@@ -85,7 +91,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             m_Data = data;
             m_Count = count;
-            IsCreated = isCreated;
+            m_IsCreated = isCreated ? BurstableBool.TRUE : BurstableBool.FALSE;
         }
 
         public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<T>(this);
@@ -124,6 +130,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
     /// Additionally, this data structure can also grow and be used as a stack.
     /// </summary>
     /// <typeparam name="T"></typeparam>
+    [StructLayout(LayoutKind.Sequential)]
     unsafe struct DynamicArray<T> : ILongIndexedContainer<T>, IDisposable where T : unmanaged
     {
         [NativeDisableUnsafePtrRestriction]
@@ -161,8 +168,9 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        public bool IsCreated { readonly get; private set; }
-        public long ElementSize => sizeof(T);
+        BurstableBool m_IsCreated;
+        public readonly bool IsCreated => m_IsCreated == BurstableBool.TRUE;
+        public readonly long ElementSize => sizeof(T);
 
         public DynamicArray(AllocatorType allocator) : this(0, allocator) { }
 
@@ -188,7 +196,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
             else
                 m_Data = null;
-            IsCreated = true;
+            m_IsCreated = BurstableBool.TRUE;
         }
 
 #if UNITY_COLLECTIONS_CHANGED
@@ -222,7 +230,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 m_Data = dataPointer,
                 m_Count = count,
                 m_Capacity = capacity,
-                IsCreated = true,
+                m_IsCreated = BurstableBool.TRUE,
             };
         }
 
@@ -251,7 +259,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return new DynamicArray<U>()
             {
                 m_Data = (U*)m_Data,
-                IsCreated = true,
+                m_IsCreated = BurstableBool.TRUE,
                 m_Count = uCount,
                 m_Capacity = uCap,
                 m_Allocator = m_Allocator
@@ -521,7 +529,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 #else
                 Allocator.Invalid;
 #endif
-            IsCreated = false;
+            m_IsCreated = BurstableBool.FALSE;
         }
 
         public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<T>(this);

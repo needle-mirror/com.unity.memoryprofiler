@@ -94,7 +94,7 @@ namespace Unity.MemoryProfiler.Editor
         public MemorySize NativeAllocationsThatAreUntrackedGraphicsResources => m_NativeAllocationsThatAreUntrackedGraphicsResources;
         MemorySize m_NativeAllocationsThatAreUntrackedGraphicsResources;
 
-        public NativeRootSize UnknownRootMemory => m_UnknownRootMemory;
+        public NativeRootSize UnrootedMemory => m_UnknownRootMemory;
         NativeRootSize m_UnknownRootMemory;
 
         public MemorySize TotalMemoryInSnapshot => m_TotalMemoryInSnapshot;

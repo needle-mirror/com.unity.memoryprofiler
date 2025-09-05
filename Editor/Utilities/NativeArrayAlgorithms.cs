@@ -174,6 +174,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             new ArraySortingData<long, TSortComparer>(indices.GetUnsafeTypedPtr(), indices.Count, comparer);
     }
 
+    [BurstCompile]
     internal static class DynamicArrayAlgorithms
     {
         const bool k_Debug = false;
@@ -294,7 +295,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
         /// </list>
         /// </returns>
         [BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = !k_Debug, Debug = k_Debug)]
-        public static long BinarySearch(CachedSnapshot.ISortedEntriesCache array, ulong value)
+        public static long BinarySearch<T>(T array, ulong value)
+            where T : unmanaged, CachedSnapshot.ISortedEntriesCache
         {
             if (array.Count == 0)
                 return ~0;

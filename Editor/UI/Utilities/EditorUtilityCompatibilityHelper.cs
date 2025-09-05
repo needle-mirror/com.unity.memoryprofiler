@@ -1,4 +1,3 @@
-using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using UnityEngine.Internal;
 
 namespace UnityEditor
@@ -7,23 +6,14 @@ namespace UnityEditor
     {
         public enum DialogOptOutDecisionType
         {
-            ForThisMachine,
-            ForThisSession,
-        }
-
-        public static bool GetDialogOptOutDecision(DialogOptOutDecisionType dialogOptOutDecisionType, string dialogOptOutDecisionStorageKey)
-        {
-            return EditorUtility.GetDialogOptOutDecision((UnityEditor.DialogOptOutDecisionType)dialogOptOutDecisionType, dialogOptOutDecisionStorageKey);
-        }
-
-        public static void SetDialogOptOutDecision(DialogOptOutDecisionType dialogOptOutDecisionType, string dialogOptOutDecisionStorageKey, bool optOutDecision)
-        {
-            EditorUtility.SetDialogOptOutDecision((UnityEditor.DialogOptOutDecisionType)dialogOptOutDecisionType, dialogOptOutDecisionStorageKey, optOutDecision);
+            ForThisSession = 0,
+            ForThisUser = 1,
+            ForThisMachine = 1
         }
 
         public static bool DisplayDecisionDialogWithOptOut(string title, string message, string ok, [DefaultValue("\"\"")] string cancel, DialogOptOutDecisionType dialogOptOutDecisionType, string dialogOptOutDecisionStorageKey)
         {
-#if ENABLE_CORECLR
+#if UNITY_6000_3_OR_NEWER
             return EditorDialog.DisplayDecisionDialogWithOptOut(title, message, ok, cancel, (UnityEditor.DialogOptOutDecisionType)(int)dialogOptOutDecisionType, dialogOptOutDecisionStorageKey);
 #else
             return EditorUtility.DisplayDialog(title, message, ok, cancel, (UnityEditor.DialogOptOutDecisionType)dialogOptOutDecisionType, dialogOptOutDecisionStorageKey);
@@ -32,7 +22,7 @@ namespace UnityEditor
 
         public static bool DisplayDecisionDialog(string title, string message, string okButton, string cancelButton = "")
         {
-#if ENABLE_CORECLR
+#if UNITY_6000_3_OR_NEWER
             return EditorDialog.DisplayDecisionDialog(title, message, okButton, cancelButton);
 #else
             return EditorUtility.DisplayDialog(title, message, okButton, cancelButton);
@@ -41,7 +31,7 @@ namespace UnityEditor
 
         public static void DisplayAlertDialog(string title, string message, string okButton)
         {
-#if ENABLE_CORECLR
+#if UNITY_6000_3_OR_NEWER
             EditorDialog.DisplayAlertDialog(title, message, okButton);
 #else
             EditorUtility.DisplayDialog(title, message, okButton);

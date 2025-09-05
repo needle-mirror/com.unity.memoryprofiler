@@ -106,10 +106,12 @@ namespace Unity.MemoryProfiler.Editor
         public struct SymbolTreeViewItemData
         {
             public StringBuilder CallstackEntry;
+            public string MemLabel;
             public SourceIndex ItemIndex;
             public ulong Size;
             public int AreaId;
             public string AreaName;
+            public bool ExplicitlyMapped;
         }
 
         MultiColumnTreeView m_TreeView;
@@ -134,6 +136,7 @@ namespace Unity.MemoryProfiler.Editor
             "call-stacks-table__item-index__column",
             "call-stacks-table__address-or-field__column",
             "call-stacks-table__size__column",
+            "call-stacks-table__mem-label__column",
             "call-stacks-table__mapping__column"
         };
         Dictionary<string, ColumnId> m_ColumnNameToId;
@@ -144,6 +147,7 @@ namespace Unity.MemoryProfiler.Editor
             ItemIndex,
             AddressOrField,
             Size,
+            MemLabel,
             Mapping,
         }
 
@@ -164,6 +168,7 @@ namespace Unity.MemoryProfiler.Editor
                 new Column() { title = "Item Index", name = m_ColumnNames[(int)ColumnId.ItemIndex],  sortable = true, optional = true, bindCell = BindCellForItemIndexColumn(), minWidth = 50 },
                 new Column() { title = "Address or Field", name = m_ColumnNames[(int)ColumnId.AddressOrField],  sortable = true, optional = true, bindCell = BindCellForItemAddressOrFieldColumn(), minWidth = 50 },
                 new Column() { title = "Size", name = m_ColumnNames[(int)ColumnId.Size], sortable = true, optional = false, bindCell = BindCellForSizeColumn(), minWidth = 65 },
+                new Column() { title = "MemLabel", name = m_ColumnNames[(int)ColumnId.MemLabel], sortable = true, optional = false, bindCell = BindCellForMemLabelColumn(), minWidth = 65, stretchable = true},
                 new Column() { title = "Mapping", name = m_ColumnNames[(int)ColumnId.Mapping], sortable = true, optional = false, makeCell = MakeCellForMappingColumn(), bindCell = BindCellForMappingColumn(), unbindCell = UnbindCellForMappingColumn (), minWidth = 100, stretchable = true }
             });
             m_TreeView.columnSortingChanged += ColumnSortingChanged;
@@ -263,6 +268,7 @@ namespace Unity.MemoryProfiler.Editor
                 ColumnId.ItemIndex => (SymbolTreeViewItemData a, SymbolTreeViewItemData b) => ((IComparable<SourceIndex>)a.ItemIndex).CompareTo(b.ItemIndex) * sign,
                 ColumnId.AddressOrField => (SymbolTreeViewItemData a, SymbolTreeViewItemData b) => ProduceAddressOrFieldName(a.ItemIndex, snapshot).CompareTo(ProduceAddressOrFieldName(b.ItemIndex, snapshot)) * sign,
                 ColumnId.Size => (SymbolTreeViewItemData a, SymbolTreeViewItemData b) => a.Size.CompareTo(b.Size) * sign,
+                ColumnId.MemLabel => (SymbolTreeViewItemData a, SymbolTreeViewItemData b) => string.CompareOrdinal(a.MemLabel, b.MemLabel) * sign,
                 ColumnId.Mapping => (SymbolTreeViewItemData a, SymbolTreeViewItemData b) => a.AreaId.CompareTo(b.AreaId) * sign,
                 _ => (SymbolTreeViewItemData a, SymbolTreeViewItemData b) => 0
             };
@@ -330,6 +336,7 @@ namespace Unity.MemoryProfiler.Editor
                 ((Label)element).text = displayText;
             };
         }
+
         Action<VisualElement, int> BindCellForItemIndexColumn()
         {
             const string k_NoValue = "";
@@ -370,6 +377,18 @@ namespace Unity.MemoryProfiler.Editor
                 var label = ((Label)element);
                 label.text = displayText;
                 label.tooltip = itemData.Size.ToString();
+            };
+        }
+
+        Action<VisualElement, int> BindCellForMemLabelColumn()
+        {
+            return (element, rowIndex) =>
+            {
+                var itemData = m_TreeView.GetItemDataForIndex<CallstacksTreeWindow.SymbolTreeViewItemData>(rowIndex);
+
+                var displayText = itemData.MemLabel;
+                var label = ((Label)element);
+                label.text = displayText;
             };
         }
 
@@ -447,7 +466,7 @@ namespace Unity.MemoryProfiler.Editor
 
             var itemData = m_TreeView.GetItemDataForIndex<CallstacksTreeWindow.SymbolTreeViewItemData>(rowIndex);
 
-            if (m_MappingInfo?.UpdateMapping(itemData.CallstackEntry.ToString(), areaId) ?? true)
+            if (m_MappingInfo?.UpdateMapping(itemData.CallstackEntry?.ToString(), itemData.MemLabel, areaId) ?? true)
             {
                 var updatedModel = ModifiableTreeViewItemData<CallstacksTreeWindow.SymbolTreeViewItemData>.RebuildModifiableTree(m_Model);
                 var id = m_TreeView.GetIdForIndex(rowIndex);
@@ -495,7 +514,7 @@ namespace Unity.MemoryProfiler.Editor
                 ProgressBarDisplay.UpdateProgress(m_CurrentProgressStep++ / m_CurrentProgressTotalStepCount, "Generate TreeView Model");
                 m_Model = GenerateTreeViewModel(snapshot, root, mappingInfo, mergeSingleEntryBranches, comparisonOperation);
                 ProgressBarDisplay.UpdateProgress(m_CurrentProgressStep++ / m_CurrentProgressTotalStepCount, "Splitting Model by Area ID");
-                var splitModel = SplitModelByAreaId(m_Model, mappingInfo, !usesInvertedCallstacks);
+                var splitModel = SplitModelByAreaId(m_Model, mappingInfo, usesInvertedCallstacks ? TreeSplittingLogic.TakeLastAreaIdFound : TreeSplittingLogic.TakeFirstAreaIdFound);
                 SetRoot(snapshot, mappingInfo, usesInvertedCallstacks, m_Model, splitModel, mergeSingleEntryBranches: mergeSingleEntryBranches, callstackWindowOwnsSnapshot: callstackWindowOwnsSnapshot);
             }
             else
@@ -552,7 +571,7 @@ namespace Unity.MemoryProfiler.Editor
 
         const int k_RootIndex = -1;
 
-        public static TreeViewItemData<SymbolTreeViewItemData> GenerateTreeViewModel(CachedSnapshot snapshot, CallstackSymbolNode root, ICallstackMapping callstackMapping, bool mergeSingleEntryBranches = false, Comparison<TreeViewItemData<SymbolTreeViewItemData>> sortComparison = null)
+        public static TreeViewItemData<SymbolTreeViewItemData> GenerateTreeViewModel(CachedSnapshot snapshot, CallstackSymbolNode root, ICallstackMapping callstackMapping = null, bool mergeSingleEntryBranches = false, Comparison<TreeViewItemData<SymbolTreeViewItemData>> sortComparison = null)
         {
             var accumulatedBranches = new Dictionary<PartialCallstackSymbolsRef<ulong>, BranchLevelData>();
             BranchLevelData currentBranch = new()
@@ -564,6 +583,9 @@ namespace Unity.MemoryProfiler.Editor
             };
             foreach (var item in CallstacksUtility.WalkCallstackNodes(snapshot, root, yieldCombinedCallstack: false, yieldPerCallstackLine: true, yieldCallstackLinesAfterItems: true))
             {
+                var areaId = ExportUtility.InvalidMappedAreaId;
+                var areaName = ExportUtility.InvalidMappedAreaName;
+                var explicitlySet = false;
                 switch (item.ItemIndex.Id)
                 {
                     case SourceIndex.SourceId.None:
@@ -575,11 +597,9 @@ namespace Unity.MemoryProfiler.Editor
                         // when mergeSingleEntryBranches is true, avoid tree steps with 1 child only and merge them instead
                         var mergeWithPreviousLevel = mergeSingleEntryBranches && (currentBranch.CurrentLevel.Count == 1 && currentBranch.CurrentLevel[0].data.CallstackEntry != null);
 
-                        var areaId = ExportUtility.InvalidMappedAreaId;
-                        var areaName = ExportUtility.InvalidMappedAreaName;
                         if (callstackMapping != null)
                         {
-                            areaId = GetCallstackArea(out areaName, callstackMapping, item.Callstack);
+                            explicitlySet = GetCallstackArea(out areaName, out areaId, callstackMapping, item.Callstack, item.MemLabel);
                         }
 
                         var childList = mergeWithPreviousLevel ? currentBranch.CurrentLevel[0].children as List<TreeViewItemData<SymbolTreeViewItemData>> : currentBranch.CurrentLevel;
@@ -592,6 +612,8 @@ namespace Unity.MemoryProfiler.Editor
                             CallstackEntry = mergeWithPreviousLevel ? new StringBuilder(item.Callstack.ToString() + currentBranch.CurrentLevel[0].data.CallstackEntry) : item.Callstack,
                             AreaId = areaId,
                             AreaName = areaName,
+                            MemLabel = item.MemLabel,
+                            ExplicitlyMapped = explicitlySet,
                         }, childList);
 
 
@@ -611,13 +633,21 @@ namespace Unity.MemoryProfiler.Editor
                         }
                         var size = snapshot.NativeAllocations.Size[item.ItemIndex.Index];
                         currentBranch.CurrentBranchSize += size;
+
+                        if (callstackMapping != null)
+                        {
+                            // The allocation can only be mapped based on the MemLabel
+                            explicitlySet = GetCallstackArea(out areaName, out areaId, callstackMapping, null, item.MemLabel);
+                        }
                         currentBranch.CurrentLevel.Add(new TreeViewItemData<SymbolTreeViewItemData>(HashCode.Combine(item.ItemIndex, item.Symbol, item.ParentSymbolsChain), new SymbolTreeViewItemData
                         {
                             ItemIndex = item.ItemIndex,
                             Size = size,
                             CallstackEntry = item.Callstack,
-                            AreaId = ExportUtility.InvalidMappedAreaId,
-                            AreaName = ExportUtility.InvalidMappedAreaName,
+                            AreaId = areaId,
+                            AreaName = areaName,
+                            MemLabel = item.MemLabel,
+                            ExplicitlyMapped = explicitlySet,
                         }, null));
                         break;
                     case SourceIndex.SourceId.ManagedHeapSection:
@@ -661,14 +691,22 @@ namespace Unity.MemoryProfiler.Editor
                 children: currentBranch.CurrentLevel);
         }
 
+
+        public enum TreeSplittingLogic
+        {
+            TakeFirstAreaIdFound,
+            TakeLastAreaIdFound,
+            OnlyTakeLeafAreaId
+        }
+
         /// <summary>
         ///
         /// </summary>
         /// <param name="model"></param>
         /// <param name="callstackAreaMapping"></param>
-        /// <param name="takeFirstId">true if the most specific ID should be used and the tree was not generated in reverse.</param>
+        /// <param name="mode">true if the most specific ID should be used and the tree was not generated in reverse.</param>
         /// <returns></returns>
-        public static TreeViewItemData<SymbolTreeViewItemData> SplitModelByAreaId(TreeViewItemData<SymbolTreeViewItemData> model, ICallstackMapping callstackAreaMapping, bool takeFirstId = true)
+        public static TreeViewItemData<SymbolTreeViewItemData> SplitModelByAreaId(TreeViewItemData<SymbolTreeViewItemData> model, ICallstackMapping callstackAreaMapping, TreeSplittingLogic mode = TreeSplittingLogic.TakeFirstAreaIdFound)
         {
             var mappedAreas = callstackAreaMapping?.GetMappedAreas();
             var mappedAreaCount = (mappedAreas?.Count ?? 0) + 1;
@@ -690,96 +728,71 @@ namespace Unity.MemoryProfiler.Editor
             allAreasRoot.Children.Add(new ModifiableTreeViewItemData<SymbolTreeViewItemData>(id: currentId--,
                 data: new SymbolTreeViewItemData() { AreaId = ExportUtility.InvalidMappedAreaId, AreaName = "Unknown Area", CallstackEntry = new StringBuilder("Unknown Area") },
                 parent: allAreasRoot));
-            //var allAreasRoot = new TreeViewItemData<SymbolTreeViewItemData>(model.id - 1, new SymbolTreeViewItemData() { Size = model.data.Size, CallstackEntry = new StringBuilder("AllAreasRoot")}, ;
             allAreasRoot.Children[unknownAreaIndex].Children = new List<ModifiableTreeViewItemData<SymbolTreeViewItemData>> { ModifiableTreeViewItemData<SymbolTreeViewItemData>.RebuildModifiableTree(model) };
             var unkownAreaRoot = allAreasRoot.Children[unknownAreaIndex].Children[0];
 
             var cachedListForMoving = new List<ModifiableTreeViewItemData<SymbolTreeViewItemData>>();
-            var stackOfNodes = new Stack<(int, int, bool, ModifiableTreeViewItemData<SymbolTreeViewItemData>)>();
-            stackOfNodes.Push((0, ExportUtility.InvalidMappedAreaId, false, unkownAreaRoot));
-            while (stackOfNodes.Count > 0)
+            var stackOfNodes = new Stack<TreeIteratorNode>();
+            stackOfNodes.Push(new TreeIteratorNode(0, ExportUtility.InvalidMappedAreaId, false, unkownAreaRoot));
+
+            // First pass, split by area
+            IterateAndMoveBranches(stackOfNodes, cachedListForMoving,
+                (areaId, memLabel) => callstackAreaMapping.IsAreaIgnored(areaId),
+                mode, allAreasRoot,
+                // if we only rely on MemLabels, also use them as fallbacks
+                useInexplicitLeafNodeAreaAsFallback: mode is TreeSplittingLogic.OnlyTakeLeafAreaId,
+                out var totalMovedSize);
+
+            if (mode is TreeSplittingLogic.TakeFirstAreaIdFound)
             {
-                var currentNode = stackOfNodes.Pop();
-                if (currentNode.Item4.Children?.Count > currentNode.Item1)
+                // When the first id is taken, leaf nodes with explicit MemLabel to Area mapping won't be mapped correctly, so do another pass for those.
+                // Explicitly ALSO go over the Unknown area, where also non explicit MemLabel to Area mapping will be used
+                for (int i = 0; i <= unknownAreaIndex; i++)
                 {
-                    var currentChild = currentNode.Item4.Children[currentNode.Item1];
+                    var currentAreaRoot = allAreasRoot.Children[i];
+                    if ((currentAreaRoot.Children?.Count ?? 0) <= 0)
+                        continue; // ignore empty branches
 
-                    var childHasParentWithArea = false;
-                    var childWasMoved = false;
-                    if (currentChild.Data.AreaId != ExportUtility.InvalidMappedAreaId
-                        // Some Areas should be ignored
-                        && !callstackAreaMapping.IsAreaIgnored(currentChild.Data.AreaId))
+                    stackOfNodes.Clear();
+                    var isUnknownArea = i == unknownAreaIndex;
+                    bool AreaShouldBeIgnored(int areaId, string memLabel)
                     {
-                        if (takeFirstId)
-                        {
-                            MoveBranch(currentNode.Item4, currentNode.Item1, allAreasRoot.Children[currentChild.Data.AreaId], cachedListForMoving);
-                            // subtract here so that the later increment doesn't lead to skipped siblings
-                            --currentNode.Item1;
-                            childWasMoved = true;
-                        }
-                    }
-                    else if (currentNode.Item2 != ExportUtility.InvalidMappedAreaId
-                        // Some Areas should be ignored
-                        && !callstackAreaMapping.IsAreaIgnored(currentNode.Item2))
-                    {
-                        if (!takeFirstId)
-                        {
-                            childHasParentWithArea = true;
-                        }
-                    }
-                    else if (!takeFirstId)
-                    {
-                        childHasParentWithArea = currentNode.Item3;
+                        // no moving within the current area but if there is a differing explicitly mapped memLabel, move it.
+                        return (areaId != i && AllocationHasDifferingExplicitlyMappedMemLabel(callstackAreaMapping, areaId, i, memLabel, isUnknownArea))
+                        || areaId == i || callstackAreaMapping.IsAreaIgnored(areaId);
                     }
 
-                    ++currentNode.Item1;
-                    stackOfNodes.Push(currentNode);
-                    if (!childWasMoved)
+                    // The first (and only) element under the area root, should be the "Root" node.
+                    // Since all areas with elements under them have it,
+                    // it can be used as part of the mirroring process when moving branches over.
+                    Checks.CheckIndexInRangeAndThrow(currentAreaRoot.Children.Count - 1, 1);
+                    for (int j = currentAreaRoot.Children.Count - 1; j >= 0; j--)
                     {
-                        var grandChildCount = currentChild.Children?.Count ?? 0;
-                        if (grandChildCount > 0
-                            // when not taking the first id, leaves have to be processed as well
-                            || !takeFirstId)
-                        {
-                            stackOfNodes.Push((0, childHasParentWithArea ? currentNode.Item2 : currentChild.Data.AreaId, childHasParentWithArea, currentChild));
-                        }
-                    }
-                }
-                else if (!takeFirstId && currentNode.Item4.Data.ItemIndex.Valid)
-                {
-                    // We reached a leaf and are supposed to move based on the last Area ID found.
-                    // Check if an id was found in a parent or if the leaf has one
-                    if (currentNode.Item3 || (currentNode.Item4.Data.AreaId != ExportUtility.InvalidMappedAreaId
-                        // Some Areas should be ignored
-                        && !callstackAreaMapping.IsAreaIgnored(currentNode.Item4.Data.AreaId)))
-                    {
-                        // iterate up the stack to the last item with an id
-                        var branchToMove = currentNode;
-                        var movedAtLeastOneBranch = false;
-                        while (branchToMove.Item4.Data.AreaId == ExportUtility.InvalidMappedAreaId
-                            // Some Areas should be ignored
-                            || callstackAreaMapping.IsAreaIgnored(branchToMove.Item4.Data.AreaId))
-                        {
-                            var parentBranch = stackOfNodes.Pop();
-                            // if the branch has unprocessed siblings, cut here and process the siblings later
-                            if (parentBranch.Item4.Children?.Count > parentBranch.Item1)
-                            {
-                                MoveBranch(parentBranch.Item4, --parentBranch.Item1, allAreasRoot.Children[branchToMove.Item2], cachedListForMoving);
-                                stackOfNodes.Push(parentBranch);
-                                movedAtLeastOneBranch = true;
-                                break;
-                            }
-                            branchToMove = parentBranch;
-                        }
-                        if (!movedAtLeastOneBranch)
-                        {
-                            var parentBranch = stackOfNodes.Pop();
-                            MoveBranch(parentBranch.Item4, --parentBranch.Item1, allAreasRoot.Children[branchToMove.Item2], cachedListForMoving);
-                            stackOfNodes.Push(parentBranch);
-                        }
+                        var currentBranch = currentAreaRoot.Children[j];
+                        // unparent for processing, so that there is a natural limit to going up the parent chain
+                        currentBranch.Parent = null;
+                        Checks.CheckEquals(0, stackOfNodes.Count); // Check that processing stack was empty
+                        stackOfNodes.Clear(); // but clear it anyways, just for good measure
+                        stackOfNodes.Push(new TreeIteratorNode(0, ExportUtility.InvalidMappedAreaId, false, currentBranch));
+                        IterateAndMoveBranches(
+                            stackOfNodes, cachedListForMoving, AreaShouldBeIgnored,
+                            // go all the way to the leaves as only they have the MemLabel info for each allocation
+                            mode: TreeSplittingLogic.OnlyTakeLeafAreaId, allAreasRoot: allAreasRoot,
+                            // for the Unknown area, fall back onto the memlabel
+                            useInexplicitLeafNodeAreaAsFallback: isUnknownArea,
+                            out var totalMovedSizeForAreaChild);
+                        // restore the parenting
+                        currentBranch.Parent = currentAreaRoot;
+                        // move the size over from the old parent
+                        currentAreaRoot.Data.Size -= totalMovedSizeForAreaChild;
+                        if (isUnknownArea)
+                            totalMovedSize += totalMovedSizeForAreaChild;
                     }
                 }
             }
+            var sizeDiff = allAreasRoot.Children[unknownAreaIndex].Data.Size - unkownAreaRoot.Data.Size;
+            if (sizeDiff != totalMovedSize)
+                Debug.Log($"expected Unknown to have reduced by {totalMovedSize} but was {sizeDiff}");
             // Update Unkown Area root size
             allAreasRoot.Children[unknownAreaIndex].Data.Size = unkownAreaRoot.Data.Size;
             CleanupZeroSizedBranchesOfTree(unkownAreaRoot);
@@ -787,8 +800,233 @@ namespace Unity.MemoryProfiler.Editor
             return ModifiableTreeViewItemData<SymbolTreeViewItemData>.BuildReadonlyTree(allAreasRoot, ref regeneratedId, generateUniqueIds: true);
         }
 
+        static bool AllocationHasDifferingExplicitlyMappedMemLabel(ICallstackMapping callstackAreaMapping, int areaIdOfNode, int currentlyGroupedIntoAreaId, string memLabel, bool alsoAcceptFallbackMapping)
+        {
+            return !string.IsNullOrEmpty(memLabel)
+                && (GetCallstackArea(out var _, out var memLabelBasedAreaId, callstackAreaMapping, null, memLabel)
+                // If fallback mappings are accepted, ensure that this isn't an ingored area
+                || (alsoAcceptFallbackMapping && callstackAreaMapping.IsAreaIgnored(memLabelBasedAreaId)))
+                && memLabelBasedAreaId != currentlyGroupedIntoAreaId
+                // just doublecheck again that the memlabel based area ID is the one to be used
+                && memLabelBasedAreaId == areaIdOfNode;
+        }
+
+        struct TreeIteratorNode
+        {
+            /// <summary>
+            /// The index of the next child node to examine (if not bigger than <see cref="TreeDataOfCurrentNode"/>'s child count, obviously).
+            /// </summary>
+            public int ChildIndexInCurrentNode;
+            /// <summary>
+            /// The last time a valid area was encountere, either in a parent or on this node, this was its Area Id.
+            /// </summary>
+            public readonly int LastValidAreaIDFound;
+            /// <summary>
+            /// If this node doesn't have a valid area in it's own right (i.e. this is false and <see cref="LastValidAreaIDFound"/> is valid)
+            /// it's parent still might have a valid area that could be used as a fallback, depending on the <see cref="TreeSplittingLogic"/> mode.
+            /// </summary>
+            public readonly bool ChildHasParentWithArea;
+            /// <summary>
+            /// Only readonly on the reference getting changed, the tree obviously remains modifiable.
+            /// </summary>
+            public readonly ModifiableTreeViewItemData<SymbolTreeViewItemData> TreeDataOfCurrentNode;
+
+            public TreeIteratorNode(int childIndexInCurrentNode, int lastValidAreaIDOfAParentNode, bool childHasParentWithArea, ModifiableTreeViewItemData<SymbolTreeViewItemData> treeDataOfCurrentNode)
+            {
+                ChildIndexInCurrentNode = childIndexInCurrentNode;
+                LastValidAreaIDFound = lastValidAreaIDOfAParentNode;
+                ChildHasParentWithArea = childHasParentWithArea;
+                TreeDataOfCurrentNode = treeDataOfCurrentNode;
+            }
+        }
+
+        /// <summary>
+        /// This function iterates through the tree depth first, looking for branches with valid area ids,
+        /// and move the ones it finds over to that area's specific root.
+        /// Depending on the mode, it will
+        /// 1. <see cref="TreeSplittingLogic.TakeFirstAreaIdFound"/> either move a branch over as soon as its area is valid
+        /// 2. <see cref="TreeSplittingLogic.TakeLastAreaIdFound"/> register its area to mark the branch as belonging to it but
+        ///    keeps going, looking to see if there is a different id deeper down the tree. Then, once it reached a leaf node
+        ///    it will use the last area it found and move that over (to avoid being too granular, it will iterate up the branch
+        ///    and see how much of the branch is exclusively a part of this area and cut at a higher node if possible.
+        /// 3. <see cref="TreeSplittingLogic.OnlyTakeLeafAreaId"/> Only consider the leaf nodes with a valid
+        ///    <seealso cref="SourceIndex"/>, which means it can really only consider the MemLabel.
+        /// </summary>
+        /// <param name="stackOfNodes">The stack of nodes to operate on with the first one already added.</param>
+        /// <param name="cachedListForMoving">Can be empty, is just getting cleared and then reused.</param>
+        /// <param name="areaShouldBeIgnored">Delegate that returns true if an area or memlabel should be ignored.
+        /// Takes AreaId and MemLabel name. Returns true if it should be ignored.</param>
+        /// <param name="mode"></param>
+        /// <param name="allAreasRoot"></param>
+        static void IterateAndMoveBranches(
+            Stack<TreeIteratorNode> stackOfNodes,
+            List<ModifiableTreeViewItemData<SymbolTreeViewItemData>> cachedListForMoving,
+            Func<int, string, bool> areaShouldBeIgnored,
+            TreeSplittingLogic mode,
+            ModifiableTreeViewItemData<SymbolTreeViewItemData> allAreasRoot,
+            bool useInexplicitLeafNodeAreaAsFallback,
+            out ulong totalMovedSize
+            )
+        {
+            totalMovedSize = 0;
+            while (stackOfNodes.Count > 0)
+            {
+                var currentNode = stackOfNodes.Pop();
+                if (currentNode.TreeDataOfCurrentNode.Children?.Count > currentNode.ChildIndexInCurrentNode)
+                {
+                    var currentChild = currentNode.TreeDataOfCurrentNode.Children[currentNode.ChildIndexInCurrentNode];
+
+                    var childHasParentWithArea = false;
+                    var childWasMoved = false;
+                    // If the child is mapped to a valid area, its parent areas are no longer important
+                    if (currentChild.Data.AreaId != ExportUtility.InvalidMappedAreaId
+                        // Some areas should be ignored
+                        && !areaShouldBeIgnored(currentChild.Data.AreaId, currentChild.Data.MemLabel))
+                    {
+                        // But only if the tree should be split at the first valid area do we actually do anything
+                        if (mode is TreeSplittingLogic.TakeFirstAreaIdFound)
+                        {
+                            MoveBranch(currentNode.TreeDataOfCurrentNode, currentNode.ChildIndexInCurrentNode, allAreasRoot.Children[currentChild.Data.AreaId], cachedListForMoving, ref totalMovedSize);
+                            // subtract here so that the later increment doesn't lead to skipped siblings
+                            --currentNode.ChildIndexInCurrentNode;
+                            childWasMoved = true;
+                        }
+                    }
+                    // When taking the last area id that was found, check if one was already found or the current node
+                    // (aka the childs parent) has a valid area Id
+                    else if (mode is TreeSplittingLogic.TakeLastAreaIdFound &&
+                            (currentNode.ChildHasParentWithArea
+                            || (currentNode.LastValidAreaIDFound != ExportUtility.InvalidMappedAreaId
+                            // Some areas should be ignored
+                            && !areaShouldBeIgnored(currentNode.LastValidAreaIDFound, default))))
+                    {
+                        childHasParentWithArea = true;
+                    }
+                    // push the current node back onto the stack after iterating the child index so sibling gets checked next.
+                    ++currentNode.ChildIndexInCurrentNode;
+                    stackOfNodes.Push(currentNode);
+
+                    // Unless the child is gone, add it on the stack to get processed next, as we iterate depth first.
+                    if (!childWasMoved)
+                    {
+                        // When not taking the first id, leaves have to be processed as well
+                        if (mode is not TreeSplittingLogic.TakeFirstAreaIdFound
+                            // otherwise only add it for processing as it has grandchildren,
+                            // as this child was already fully processed for the TakeFirstAreaIdFound mode
+                            || currentChild.Children?.Count > 0)
+                        {
+                            stackOfNodes.Push(new TreeIteratorNode(0, childHasParentWithArea ? currentNode.LastValidAreaIDFound : currentChild.Data.AreaId, childHasParentWithArea, currentChild));
+                        }
+                    }
+                }
+                else if (mode is not TreeSplittingLogic.TakeFirstAreaIdFound && currentNode.TreeDataOfCurrentNode.Data.ItemIndex.Valid)
+                {
+                    var leafNodeHasValidArea =
+                        // only use the leaf node area if it is explicitly, used as a fallback or the only mapping we have
+                        (useInexplicitLeafNodeAreaAsFallback || currentNode.TreeDataOfCurrentNode.Data.ExplicitlyMapped || !currentNode.ChildHasParentWithArea)
+                        && currentNode.TreeDataOfCurrentNode.Data.AreaId != ExportUtility.InvalidMappedAreaId
+                        && !areaShouldBeIgnored(currentNode.TreeDataOfCurrentNode.Data.AreaId, currentNode.TreeDataOfCurrentNode.Data.MemLabel);
+                    // We reached a leaf and are supposed to move based on the last Area ID found.
+                    // Check if the leaf has area id that isn't being ignored ...
+                    if (leafNodeHasValidArea
+                        // ... or an id was found in a parent (though only if we care)
+                        || (currentNode.ChildHasParentWithArea && mode is TreeSplittingLogic.TakeLastAreaIdFound))
+                    {
+                        // either the leaf has a valid area, or we're splitting by last valid area found
+                        var areaIdOfBranchToMove = leafNodeHasValidArea ? currentNode.TreeDataOfCurrentNode.Data.AreaId : currentNode.LastValidAreaIDFound;
+                        var allSiblingsAreLeavesWithTheSameValidAreaId = false;
+
+                        // pop the parent off the stack. If not all siblings of the current leaf node get moved, it gets readded.
+                        var parentBranch = stackOfNodes.Pop();
+                        if (leafNodeHasValidArea)
+                        {
+                            // Leaf nodes are individial allocations all coming from the same allocation site
+                            // They basically all OUGHT to belong to the same area.
+                            // But we make sure that they do here, just in case.
+
+                            // This is an optimization. Moving each individual allocation and its parent stack over would be too costly to do.
+
+                            // Check the index of the next sibling to be processed.
+                            // If that is not the second child, there are already processed but non-moved siblings, so we can't just move the parent
+                            allSiblingsAreLeavesWithTheSameValidAreaId = parentBranch.ChildIndexInCurrentNode == 1;
+                            if (allSiblingsAreLeavesWithTheSameValidAreaId &&
+                                // check if there are any siblings to evaluate
+                                parentBranch.TreeDataOfCurrentNode.Children?.Count > parentBranch.ChildIndexInCurrentNode)
+                            {
+                                for (int i = 1; i < parentBranch.TreeDataOfCurrentNode.Children.Count; i++)
+                                {
+                                    // all siblings ought to be leaves of the same area id if we are to move the parent
+                                    if (parentBranch.TreeDataOfCurrentNode.Children[i].Data.AreaId != areaIdOfBranchToMove ||
+                                        !parentBranch.TreeDataOfCurrentNode.Children[i].Data.ItemIndex.Valid)
+                                    {
+                                        allSiblingsAreLeavesWithTheSameValidAreaId = false;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        // A valid area was found, now determine if we can just move the parent, have to cut the current node
+                        // or can cut even higher, but do ensure we cut in the end.
+                        var movedAtLeastOneBranch = false;
+                        if (allSiblingsAreLeavesWithTheSameValidAreaId)
+                        {
+                            // Jump up a layer and move all siblings as part of the parent branch as they all had a valid area
+                            // and that is by definition the last one in the branch.
+                            parentBranch = stackOfNodes.Pop();
+                        }
+                        else
+                        {
+                            // ... otherwise, we need to take siblings into account.
+                            switch (mode)
+                            {
+                                case TreeSplittingLogic.TakeLastAreaIdFound:
+                                {
+                                    var branchToMove = currentNode;
+                                    // When taking the last found item, iterate up the stack to the last item with an id
+                                    // as anything under it will get moved, unless it might be a side-branch with a different area down the line.
+                                    while (branchToMove.TreeDataOfCurrentNode.Data.AreaId == ExportUtility.InvalidMappedAreaId
+                                        || areaShouldBeIgnored(branchToMove.TreeDataOfCurrentNode.Data.AreaId, branchToMove.TreeDataOfCurrentNode.Data.MemLabel))
+                                    {
+                                        // if the branch has unprocessed siblings, cut here and process the siblings later
+                                        if (parentBranch.TreeDataOfCurrentNode.Children?.Count > parentBranch.ChildIndexInCurrentNode)
+                                        {
+                                            MoveBranch(parentBranch.TreeDataOfCurrentNode, --parentBranch.ChildIndexInCurrentNode, allAreasRoot.Children[areaIdOfBranchToMove], cachedListForMoving, ref totalMovedSize);
+                                            stackOfNodes.Push(parentBranch);
+                                            movedAtLeastOneBranch = true;
+                                            break;
+                                        }
+                                        branchToMove = parentBranch;
+                                        parentBranch = stackOfNodes.Pop();
+                                    }
+                                    break;
+                                }
+                                case TreeSplittingLogic.OnlyTakeLeafAreaId:
+                                {
+                                    // if the branch has siblings of a different area ID, cut here and process any remaining siblings later
+                                    MoveBranch(parentBranch.TreeDataOfCurrentNode, --parentBranch.ChildIndexInCurrentNode, allAreasRoot.Children[areaIdOfBranchToMove], cachedListForMoving, ref totalMovedSize);
+                                    stackOfNodes.Push(parentBranch);
+                                    movedAtLeastOneBranch = true;
+                                    break;
+                                }
+                                case TreeSplittingLogic.TakeFirstAreaIdFound:
+                                default:
+                                    throw new NotImplementedException();
+                            }
+                        }
+                        if (!movedAtLeastOneBranch)
+                        {
+                            MoveBranch(parentBranch.TreeDataOfCurrentNode, --parentBranch.ChildIndexInCurrentNode, allAreasRoot.Children[areaIdOfBranchToMove], cachedListForMoving, ref totalMovedSize);
+                            stackOfNodes.Push(parentBranch);
+                        }
+                    }
+                }
+            }
+        }
+
         static void MoveBranch(ModifiableTreeViewItemData<SymbolTreeViewItemData> sourceParent, int sourceChildIndex,
-            ModifiableTreeViewItemData<SymbolTreeViewItemData> destinationRoot, List<ModifiableTreeViewItemData<SymbolTreeViewItemData>> cachedParentChainContainer)
+            ModifiableTreeViewItemData<SymbolTreeViewItemData> destinationRoot,
+            List<ModifiableTreeViewItemData<SymbolTreeViewItemData>> cachedParentChainContainer,
+            ref ulong totalMovedSize)
         {
             var childNodeToMove = sourceParent.Children[sourceChildIndex];
             sourceParent.Children.RemoveAt(sourceChildIndex);
@@ -796,6 +1034,11 @@ namespace Unity.MemoryProfiler.Editor
             // add the size to the new root
             destinationRoot.Data.Size += movedBranchSze;
 
+            // Build up the chain of parent items.
+            // This will be used to mirror the parent chain over to the new area root, using either existing
+            // or newly mirrored copies.
+            // Note: Don't worry about tree node id uniqueness here, that's taken care off after processing.
+            // Here it actually helps in identifying already mirrored copies.
             cachedParentChainContainer.Clear();
             var currentParent = sourceParent;
             while (currentParent != null)
@@ -803,7 +1046,8 @@ namespace Unity.MemoryProfiler.Editor
                 cachedParentChainContainer.Add(currentParent);
                 currentParent = currentParent.Parent;
             }
-
+            // now, in reverse order, from the root up, make sure the tree nodes leading up to the place
+            // where the moved branch gets grafted to exists and has the size of the new sub-branch added along the way.
             for (int i = cachedParentChainContainer.Count - 1; i >= 0; i--)
             {
                 var currentParentToTransfer = cachedParentChainContainer[i];
@@ -814,12 +1058,16 @@ namespace Unity.MemoryProfiler.Editor
                 var destinationChildIndex = 0;
                 for (destinationChildIndex = 0; destinationChildIndex < destinationRoot.Children.Count; destinationChildIndex++)
                 {
+                    // Use the tree node id to check if this node has already been copied over
                     if (destinationRoot.Children[destinationChildIndex].Id == currentParentToTransfer.Id)
                         break;
                 }
+                // if no child was found matching the tree node id of the node to be copied, create it ...
                 if (destinationChildIndex >= destinationRoot.Children.Count)
                 {
+                    // use the shallow copy copy-constructor to mirror the id
                     var newChild = new ModifiableTreeViewItemData<SymbolTreeViewItemData>(currentParentToTransfer, destinationRoot, copyChildren: false);
+                    // but make sure the size is not the full size being copied but only that of the currently moved sub-branch
                     newChild.Data.Size = movedBranchSze;
                     destinationRoot.Children.Add(newChild);
                     destinationRoot = newChild;
@@ -836,18 +1084,19 @@ namespace Unity.MemoryProfiler.Editor
             destinationRoot.Children ??= new List<ModifiableTreeViewItemData<SymbolTreeViewItemData>>();
 
             destinationRoot.Children.Add(childNodeToMove);
+            destinationRoot.Data.Size += movedBranchSze;
+            totalMovedSize += totalMovedSize;
         }
 
-        public static int GetCallstackArea(out string areaName, ICallstackMapping callstackAreaMapping, StringBuilder callstack)
+        public static bool GetCallstackArea(out string areaName, out int areaId, ICallstackMapping callstackAreaMapping, StringBuilder callstack, string memLabel)
         {
             areaName = ExportUtility.InvalidMappedAreaName;
-            if (callstackAreaMapping == null)
-                return ExportUtility.InvalidMappedAreaId;
-            if (callstack?.Length > 0)
+            areaId = ExportUtility.InvalidMappedAreaId;
+            if (callstackAreaMapping != null && (callstack?.Length > 0 || !string.IsNullOrEmpty(memLabel)))
             {
-                return callstackAreaMapping.TryMap(callstack.ToString(), out areaName);
+                return callstackAreaMapping.TryMap(callstack?.ToString() ?? string.Empty, memLabel, out areaName, out areaId);
             }
-            return ExportUtility.InvalidMappedAreaId;
+            return false;
         }
 
         static void CleanupZeroSizedBranchesOfTree(ModifiableTreeViewItemData<SymbolTreeViewItemData> tree)

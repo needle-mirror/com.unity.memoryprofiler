@@ -43,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor
             EditorGUI.hyperLinkClicked += OnHyperLinkClicked;
         }
 
-        [RuntimeInitializeOnLoadMethod]
+        [InitializeOnLoadMethod, RuntimeInitializeOnLoadMethod]
         static void RuntimeInitialize()
         {
             EditorGUI.hyperLinkClicked -= OnHyperLinkClicked;
