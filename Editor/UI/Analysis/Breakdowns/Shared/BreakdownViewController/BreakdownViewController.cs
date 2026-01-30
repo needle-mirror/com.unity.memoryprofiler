@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,9 +23,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Breakdown mode names for dropdown control and table context menu.
         static readonly List<(string title, AllTrackedMemoryTableMode mode, Func<CachedSnapshot, bool> available)> k_BreakdownModes = new()
         {
-            ( "Allocated Memory", AllTrackedMemoryTableMode.OnlyCommitted, (x) => true ),
-            ( "Resident Memory on Device", AllTrackedMemoryTableMode.OnlyResident, HasResidentMemoryInfo ),
-            ( "Allocated and Resident Memory on Device", AllTrackedMemoryTableMode.CommittedAndResident, HasResidentMemoryInfo ),
+            ("Allocated Memory", AllTrackedMemoryTableMode.OnlyCommitted, (x) => true),
+            ("Resident Memory on Device", AllTrackedMemoryTableMode.OnlyResident, HasResidentMemoryInfo),
+            ("Allocated and Resident Memory on Device", AllTrackedMemoryTableMode.CommittedAndResident, HasResidentMemoryInfo),
         };
 
         // Model.
@@ -34,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // View.
         DetailedSizeBar m_TableSizeBar;
-        AllTrackedMemoryTableMode m_TableColumnsMode;
+        AllTrackedMemoryTableMode m_TableMode;
 
         public BreakdownViewController(CachedSnapshot snapshot, string description, ISelectionDetails selectionDetails)
         {
@@ -42,20 +41,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Description = description;
             SelectionDetails = selectionDetails;
 
-            m_TableColumnsMode = AllTrackedMemoryTableMode.OnlyCommitted;
+            m_TableMode = AllTrackedMemoryTableMode.OnlyCommitted;
         }
 
         public AllTrackedMemoryTableMode TableColumnsMode
         {
-            get => m_TableColumnsMode;
+            get => m_TableMode;
             set
             {
-                if (m_TableColumnsMode == value)
+                if (m_TableMode == value)
                     return;
 
-                m_TableColumnsMode = value;
+                m_TableMode = value;
                 RefreshTableColumnsDropdown();
-                TableColumnsModeChanged?.Invoke(m_TableColumnsMode);
+                TableColumnsModeChanged?.Invoke(m_TableMode);
             }
         }
         public event Action<AllTrackedMemoryTableMode> TableColumnsModeChanged;
@@ -118,7 +117,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             ulong total, memoryInTable;
             string sizeText, totalSizeText, sizeTooltip = null, totalSizeTooltip = null;
             MemoryBarElement.VisibilityMode mode;
-            if ((m_TableColumnsMode == AllTrackedMemoryTableMode.OnlyCommitted) || (m_TableColumnsMode == AllTrackedMemoryTableMode.CommittedAndResident))
+            if ((m_TableMode == AllTrackedMemoryTableMode.OnlyCommitted) || (m_TableMode == AllTrackedMemoryTableMode.CommittedAndResident))
             {
                 mode = MemoryBarElement.VisibilityMode.CommittedOnly;
                 total = totalSnapshotMemorySize.Committed;
@@ -180,7 +179,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void RefreshTableColumnsDropdown()
         {
-            var pair = k_BreakdownModes.First(x => x.mode == m_TableColumnsMode);
+            var pair = k_BreakdownModes.First(x => x.mode == m_TableMode);
             TableColumnsDropdown.value = pair.title;
         }
 
@@ -224,4 +223,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

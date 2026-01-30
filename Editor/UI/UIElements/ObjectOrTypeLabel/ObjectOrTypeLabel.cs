@@ -241,7 +241,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return text;
         }
 
-        public void SetLabelData(CachedSnapshot cs, UnifiedType typeInfo)
+        public void SetLabelData(CachedSnapshot cs, UnifiedTypeAndName typeInfo)
         {
             InitializeIfNeeded();
             GUIContent typeIcon;
@@ -300,7 +300,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
 
-        public void SetLabelData(CachedSnapshot cs, ObjectData pureCSharpObject, UnifiedType typeInfo)
+        public void SetLabelData(CachedSnapshot cs, ObjectData pureCSharpObject, UnifiedTypeAndName typeInfo)
         {
             InitializeIfNeeded();
             var typeIcon = PathsToRoot.PathsToRootDetailTreeViewItem.GetIcon(pureCSharpObject, typeInfo.ManagedTypeName, cs);
@@ -360,12 +360,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     var od = ObjectData.FromManagedType(cs, (int)source.Index);
                     ShowIcons(true);
-                    SetLabelData(cs, new UnifiedType(cs, od));
+                    SetLabelData(cs, UnifiedTypeAndName.GetTypeInfoForObjectData(cs, od));
                     break;
                 }
                 case CachedSnapshot.SourceIndex.SourceId.NativeType:
                 {
-                    var typeInfo = new UnifiedType(cs, (int)source.Index);
+                    var typeInfo = new UnifiedTypeAndName(cs, (int)source.Index);
                     ShowIcons(true);
                     SetLabelData(cs, typeInfo);
                     break;

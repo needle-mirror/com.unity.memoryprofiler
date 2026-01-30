@@ -18,7 +18,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
 
-        public IScopedFilter< TType>.IFilterScope<TType> OpenScope(TType scopeFilterValue, CachedSnapshot cachedSnapshot = null)
+        public IScopedFilter<TType>.IFilterScope<TType> OpenScope(TType scopeFilterValue, CachedSnapshot cachedSnapshot = null)
         {
             return new FilterScope(this, scopeFilterValue, cachedSnapshot);
         }

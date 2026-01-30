@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -6,11 +5,15 @@ using UnityEngine.UIElements;
 namespace Unity.MemoryProfiler.Editor.UI
 {
     // Data model representing the 'Unity Objects' comparison breakdown.
-    class UnityObjectsComparisonModel : TreeModel<UnityObjectsComparisonModel.ItemData>
+    class UnityObjectsComparisonModel
+        : TreeModel<UnityObjectsComparisonModel.ItemData>,
+        IComparisonTreeModel<UnityObjectsComparisonModel.ItemData, UnityObjectsModel>
     {
         public const string AssemblyNameDisambiguationSeparator = " (";
 
         public UnityObjectsComparisonModel(
+            UnityObjectsModel baseModel,
+            UnityObjectsModel comparedModel,
             List<TreeViewItemData<ItemData>> treeRootNodes,
             MemorySize totalSnapshotAMemorySize,
             MemorySize totalSnapshotBMemorySize)
@@ -28,29 +31,34 @@ namespace Unity.MemoryProfiler.Editor.UI
                 largestAbsoluteSizeDelta = Math.Max(absoluteSizeDelta, largestAbsoluteSizeDelta);
             }
 
-            TotalMemorySizeA = totalMemorySizeA;
-            TotalMemorySizeB = totalMemorySizeB;
+            TotalSizeA = totalMemorySizeA;
+            TotalSizeB = totalMemorySizeB;
             LargestAbsoluteSizeDelta = largestAbsoluteSizeDelta;
 
             // Workaround for inflated resident due to fake gfx resources
-            TotalSnapshotAMemorySize = MemorySize.Max(totalSnapshotAMemorySize, totalMemorySizeA);
-            TotalSnapshotBMemorySize = MemorySize.Max(totalSnapshotBMemorySize, totalMemorySizeB);
+            TotalSnapshotSizeA = MemorySize.Max(totalSnapshotAMemorySize, totalMemorySizeA);
+            TotalSnapshotSizeB = MemorySize.Max(totalSnapshotBMemorySize, totalMemorySizeB);
+            BaseModel = baseModel;
+            ComparedModel = comparedModel;
         }
 
         // The total size, in bytes, of memory accounted for in snapshot A.
-        public MemorySize TotalMemorySizeA { get; }
+        public MemorySize TotalSizeA { get; }
 
         // The total size, in bytes, of memory accounted for in snapshot B.
-        public MemorySize TotalMemorySizeB { get; }
+        public MemorySize TotalSizeB { get; }
 
         // The total size, in bytes, of all memory in snapshot A.
-        public MemorySize TotalSnapshotAMemorySize { get; }
+        public MemorySize TotalSnapshotSizeA { get; }
 
         // The total size, in bytes, of all memory in snapshot B.
-        public MemorySize TotalSnapshotBMemorySize { get; }
+        public MemorySize TotalSnapshotSizeB { get; }
 
         // The largest absolute size delta (difference), in bytes, between the two snapshots of any single item.
         public long LargestAbsoluteSizeDelta { get; }
+
+        public UnityObjectsModel BaseModel { get; }
+        public UnityObjectsModel ComparedModel { get; }
 
         // The data associated with each item in the tree. Represents a single difference between two snapshots.
         public readonly struct ItemData : INamedTreeItemData
@@ -112,4 +120,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

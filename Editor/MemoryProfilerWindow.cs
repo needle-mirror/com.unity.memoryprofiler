@@ -1,7 +1,8 @@
 using System.Runtime.CompilerServices;
-using UnityEngine;
-using UnityEditor;
 using Unity.MemoryProfiler.Editor.UI;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.Tests")]
 namespace Unity.MemoryProfiler.Editor
@@ -15,6 +16,7 @@ namespace Unity.MemoryProfiler.Editor
 
         MemoryProfilerViewController m_ProfilerViewController;
 
+        IMGUIContainer m_InitContainer;
         // Api exposed for testing purposes
         internal PlayerConnectionService PlayerConnectionService => m_PlayerConnectionService;
         internal SnapshotDataService SnapshotDataService => m_SnapshotDataService;
@@ -36,6 +38,31 @@ namespace Unity.MemoryProfiler.Editor
 
             // initialize quick search in the background so that it is ready for finding assets once a snapshot is openes
             QuickSearchUtility.InitializeQuickSearch(async: true);
+
+            m_InitContainer = new IMGUIContainer(OnInitContainerGUI)
+            {
+                style =
+                {
+                    flexGrow = 0,
+                    flexShrink = 1,
+                    position = Position.Absolute,
+                }
+            };
+            rootVisualElement.Add(m_InitContainer);
+        }
+
+        void OnInitContainerGUI()
+        {
+            if (m_InitContainer == null)
+                return;
+            if (Event.current.type == EventType.Repaint)
+            {
+                // Initialize the PlayerConnectionCompatibilityHelper parts that need to happen during OnGUI
+                PlayerConnectionCompatibilityHelper.InitGUI();
+                // Then remove the container again, its job is done
+                rootVisualElement.Remove(m_InitContainer);
+                m_InitContainer = null;
+            }
         }
 
         void Init()
@@ -52,11 +79,7 @@ namespace Unity.MemoryProfiler.Editor
             this.rootVisualElement.Add(m_ProfilerViewController.View);
         }
 
-        // TODO: Move entirely away from IMGUI
-#if ENABLE_CORECLR
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeMigration", "UA1002")]
-#endif
-        void OnGUI()
+        void CreateGUI()
         {
             if (m_WindowInitialized)
                 return;

@@ -378,7 +378,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             info.Root.AddChild(childItem);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         bool TryReadFieldAsPointerAtGCHandleHeldObject(CachedSnapshot cs, ObjectData fieldByIndex)
         {
             return MemoryProfilerSettings.FeatureFlags.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects &&
@@ -551,7 +551,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static ulong GetIdentifyingPointer(ObjectData obj, CachedSnapshot cs)
         {
             var address = obj.GetObjectPointer(cs);
@@ -562,7 +562,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return address;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static bool ValidateManagedObject(ref ObjectData obj, CachedSnapshot cs)
         {
             if (!obj.IsValid)
@@ -577,7 +577,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return true;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         bool CheckRecursion(ManagedObjectInspectorItem root, ulong identifyingPointer)
         {
             if (identifyingPointer != 0)
@@ -637,7 +637,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // for array elements, field.IsField() is false
             if (field.IsField() && field.fieldIndex == cs.TypeDescriptions.IFieldUnityObjectMCachedPtr
                 // The field index alone doesn't make this field the m_CachedPtr field, the parent also needs inherit from UnityEngine.Object.
-                && cs.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.ContainsKey(field.Parent.Obj.managedTypeIndex))
+                && cs.TypeDescriptions.UnifiedTypeInfoManaged[field.Parent.Obj.managedTypeIndex].IsUnityObjectType)
             {
                 if (field.managedObjectData.TryReadPointer(out var nativeObjectPointer) == BytesAndOffset.PtrReadError.Success)
                 {
@@ -696,7 +696,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <param name="fieldRootManagedTypeIndex"></param>
         /// <param name="firstField"></param>
         /// <returns></returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         bool GetFirstInstanceFieldIfValueType(CachedSnapshot cs, ObjectData field, int fieldRootManagedTypeIndex, out ObjectData firstField)
         {
             firstField = field.GetFieldByFieldDescriptionsIndex(cs, cs.TypeDescriptions.FieldIndicesInstance[fieldRootManagedTypeIndex][0], false);
@@ -754,7 +754,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
 
             // Only get native references and no field info.
-            nativeObjectData.GetAllReferencedObjects(cs, ref m_CachedReferencedObjectsList, treatUnityObjectsAsOneObject: false, addManagedObjectsWithFieldInfo: false);
+            nativeObjectData.GetAllReferencedObjects(cs, m_CachedReferencedObjectsList, treatUnityObjectsAsOneObject: false, addManagedObjectsWithFieldInfo: false);
 
             int referencedObjectCount = m_CachedReferencedObjectsList.Count;
 
@@ -768,9 +768,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                     //    m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing { objectData = referencedObject, root = root });
                     continue;
                 }
-                if (referencedObject.dataType == ObjectDataType.NativeAllocation)
-                    // Ignore Native Allocations referenced to from Native Objects. That shouldn't happen either way as we're not requesting managed references, but just to be sure.
-                    // Because ReferencePendingProcessing does not handle Native Allocations yet, skip them if they slip past anyways.
+                // Ignore Native Allocations referenced to from Native Objects. That shouldn't happen either way as we're not requesting managed references, but just to be sure.
+                // Because ReferencePendingProcessing does not handle Native Allocations yet, skip them if they slip past anyways.
+                if (referencedObject.dataType is ObjectDataType.NativeAllocation
+                    // And also ignore Prefabs (and Scenes, though they shouldn't be registered as connections) here, as there is no handling for Prefabs.
+                    or ObjectDataType.Prefab or ObjectDataType.Scene)
                     continue;
                 var v = GetValue(referencedObject, root);
                 var name = "Native Reference";
@@ -864,7 +866,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case ObjectDataType.Type:
                     //take all static field
-                    return snapshot.TypeDescriptions.fieldIndicesStatic[obj.managedTypeIndex]; ;
+                    return snapshot.TypeDescriptions.fieldIndicesStatic[obj.managedTypeIndex];
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Object:
                 case ObjectDataType.Value:

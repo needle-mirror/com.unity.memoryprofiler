@@ -729,11 +729,11 @@ namespace Unity.MemoryProfiler.Editor
                 data: new SymbolTreeViewItemData() { AreaId = ExportUtility.InvalidMappedAreaId, AreaName = "Unknown Area", CallstackEntry = new StringBuilder("Unknown Area") },
                 parent: allAreasRoot));
             allAreasRoot.Children[unknownAreaIndex].Children = new List<ModifiableTreeViewItemData<SymbolTreeViewItemData>> { ModifiableTreeViewItemData<SymbolTreeViewItemData>.RebuildModifiableTree(model) };
-            var unkownAreaRoot = allAreasRoot.Children[unknownAreaIndex].Children[0];
+            var unknownAreaRoot = allAreasRoot.Children[unknownAreaIndex].Children[0];
 
             var cachedListForMoving = new List<ModifiableTreeViewItemData<SymbolTreeViewItemData>>();
             var stackOfNodes = new Stack<TreeIteratorNode>();
-            stackOfNodes.Push(new TreeIteratorNode(0, ExportUtility.InvalidMappedAreaId, false, unkownAreaRoot));
+            stackOfNodes.Push(new TreeIteratorNode(0, ExportUtility.InvalidMappedAreaId, false, unknownAreaRoot));
 
             // First pass, split by area
             IterateAndMoveBranches(stackOfNodes, cachedListForMoving,
@@ -790,12 +790,17 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
             }
-            var sizeDiff = allAreasRoot.Children[unknownAreaIndex].Data.Size - unkownAreaRoot.Data.Size;
+            // Update Unknown Area root size
+            CleanupZeroSizedBranchesOfTree(unknownAreaRoot);
+
+            var sizeDiff = allAreasRoot.Children[unknownAreaIndex].Data.Size - unknownAreaRoot.Data.Size;
             if (sizeDiff != totalMovedSize)
                 Debug.Log($"expected Unknown to have reduced by {totalMovedSize} but was {sizeDiff}");
-            // Update Unkown Area root size
-            allAreasRoot.Children[unknownAreaIndex].Data.Size = unkownAreaRoot.Data.Size;
-            CleanupZeroSizedBranchesOfTree(unkownAreaRoot);
+
+            allAreasRoot.Children[unknownAreaIndex].Data.Size = unknownAreaRoot.Data.Size;
+            if (unknownAreaRoot.Data.Size <= 0)
+                allAreasRoot.Children[unknownAreaIndex].Children.Clear();
+
             int regeneratedId = allAreasRoot.Id;
             return ModifiableTreeViewItemData<SymbolTreeViewItemData>.BuildReadonlyTree(allAreasRoot, ref regeneratedId, generateUniqueIds: true);
         }
@@ -1102,11 +1107,19 @@ namespace Unity.MemoryProfiler.Editor
         static void CleanupZeroSizedBranchesOfTree(ModifiableTreeViewItemData<SymbolTreeViewItemData> tree)
         {
             var stackOfNodes = new Stack<(int, ModifiableTreeViewItemData<SymbolTreeViewItemData>)>();
+            void RemoveLastProcessedNodeFromParentNode(Stack<(int, ModifiableTreeViewItemData<SymbolTreeViewItemData>)> stackOfNodes)
+            {
+                var currentNode = stackOfNodes.Pop();
+                currentNode.Item2.Children.RemoveAt(--currentNode.Item1);
+                stackOfNodes.Push(currentNode);
+            }
+
             stackOfNodes.Push((0, tree));
             while (stackOfNodes.Count > 0)
             {
                 var currentNode = stackOfNodes.Pop();
-                if (currentNode.Item2.Children?.Count > currentNode.Item1)
+                var siblingCount = currentNode.Item2.Children?.Count ?? 0;
+                if (siblingCount > currentNode.Item1)
                 {
                     var currentChild = currentNode.Item2.Children[currentNode.Item1];
 
@@ -1124,10 +1137,38 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             stackOfNodes.Push((0, currentChild));
                         }
+                        else if (!currentChild.Data.ItemIndex.Valid)
+                        {
+                            // remove the child. If there are no children, it has no size (unless it's an actual allocation index)
+                            RemoveLastProcessedNodeFromParentNode(stackOfNodes);
+                        }
+                    }
+                }
+                else if (!currentNode.Item2.Data.ItemIndex.Valid)
+                {
+                    // fix up sizes. If there are no children (unless it's an actual allocation index), the size resets to zero, propagating up as the stack unwinds
+                    var size = 0ul;
+                    for (int i = 0; i < siblingCount; i++)
+                    {
+                        size += currentNode.Item2.Children[i].Data.Size;
+                    }
+
+                    if (size > 0 || stackOfNodes.Count <= 0)
+                    {
+                        // if there is a size of alloctions left, adjust the size here so it can propagate upd
+                        var data = currentNode.Item2.Data;
+                        data.Size = size;
+                        currentNode.Item2.Data = data;
+                    }
+                    else
+                    {
+                        // remove the node from the parent
+                        RemoveLastProcessedNodeFromParentNode(stackOfNodes);
                     }
                 }
             }
         }
+
 
         static void ParkBranchForLaterAndRetrievePreviouslyParkedBranch(ref BranchLevelData branchToBeParkedAndRetrieved, Dictionary<PartialCallstackSymbolsRef<ulong>, BranchLevelData> accumulatedBranches, PartialCallstackSymbolsRef<ulong> symbolChainOfBranchToBeRetrieved, ulong symbolToBeRetrieved)
         {

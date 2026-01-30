@@ -24,7 +24,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string kSystemAllocatorWarningDetailsDiffBoth = "System Allocator is used in both snapshots.";
         const string kSystemAllocatorWarningDetails = "Dynamic Heap Allocator is generally more efficient than the System Allocator. Additionally, Native Objects can be allocated outside of Native Regions when using the System Allocator.";
 
-        bool IsOutdated2022Version(CachedSnapshot snapshot) => snapshot.HasGfxResourceReferencesAndAllocators && snapshot.MetaData.UnityVersionMajor == 2022 && (snapshot.MetaData.UnityVersionMinor < 3 || snapshot.MetaData.UnityVersionPatch < 7);
+        bool IsOutdated2022Version(CachedSnapshot snapshot) => snapshot.HasGfxResourceReferencesAndAllocators && snapshot.MetaData.UnityVersionEqualOrOlder(2022, 3, 6);
         const string kBuggyGfxSizeReportingWarning = "Outdated 2022.2/3 version. Graphics sizes might be off.";
         const string kBuggyGfxSizeReportingWarningDetails = "You are looking at data from a Unity 2022 version which we know had bugs in the sizes reported for Graphics memory. Some types such as RenderTextures, Cubemap Arrays, Texture2DArray/Texture3D, might have vastly under reported graphics sizes. Please update to at least 2022.3.7f1, but ideally 2022.3.43f1 to get the most accurate picture of graphics memory usage.";
         const string kBuggyGfxSizeReportingWarningDetailsDifferentVersions = "\nYou are comparing snapshot A from version {0} and snapshot B from version {1}. " +

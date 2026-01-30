@@ -35,6 +35,8 @@ namespace Unity.MemoryProfiler.Editor
         NativeObject,
         NativeAllocation,
         GCHandle,
+        Scene,
+        Prefab,
     }
 
     internal enum CodeType
@@ -158,6 +160,17 @@ namespace Unity.MemoryProfiler.Editor
                 return -1;
             }
         }
+        public long nonObjectIndex
+        {
+            get
+            {
+                if (m_dataType is ObjectDataType.GCHandle or ObjectDataType.Scene or ObjectDataType.Prefab or ObjectDataType.NativeAllocation)
+                {
+                    return m_data.native.index;
+                }
+                return -1;
+            }
+        }
         public ulong hostManagedObjectPtr
         {
             get
@@ -254,7 +267,7 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             cs.ManagedHeapSections.Find(ptr, cs.VirtualMachineInformation, out managedObjectData);
 #if DEBUG_VALIDATION
-                            if(!managedObjectData.IsValid)
+                            if (!managedObjectData.IsValid)
                                 Debug.LogError("Invalid object data");
 #endif
                         }
@@ -789,6 +802,10 @@ namespace Unity.MemoryProfiler.Editor
                         return new SourceIndex();
                 case ObjectDataType.GCHandle:
                     return new SourceIndex(SourceIndex.SourceId.GCHandleIndex, m_data.native.index);
+                case ObjectDataType.Scene:
+                    return new SourceIndex(SourceIndex.SourceId.Scene, m_data.native.index);
+                case ObjectDataType.Prefab:
+                    return new SourceIndex(SourceIndex.SourceId.Prefab, m_data.native.index);
             }
 
             return new SourceIndex();
@@ -1074,9 +1091,13 @@ namespace Unity.MemoryProfiler.Editor
                     return cachedSnapshot.NativeTypes.TypeName[iType];
                 }
                 case ObjectDataType.NativeAllocation:
-                    return "Native Allocation";
+                    return "Native Allocation:";
                 case ObjectDataType.GCHandle:
-                    return "GCHandle";
+                    return "GCHandle:";
+                case ObjectDataType.Scene:
+                    return "Scene:";
+                case ObjectDataType.Prefab:
+                    return "Prefab:";
                 case ObjectDataType.Unknown:
                 default:
                     return "<unintialized type>";
@@ -1099,9 +1120,33 @@ namespace Unity.MemoryProfiler.Editor
                     return FromNativeAllocationIndex(snapshot, (int)source.Index);
                 case SourceIndex.SourceId.GCHandleIndex:
                     return FromGCHandleIndex(snapshot, (int)source.Index);
+                case SourceIndex.SourceId.Scene:
+                    return FromSceneIndex(snapshot, (int)source.Index);
+                case SourceIndex.SourceId.Prefab:
+                    return FromPrefabIndex(snapshot, (int)source.Index);
                 default:
                     return ObjectData.Invalid;
             }
+        }
+
+        private static ObjectData FromSceneIndex(CachedSnapshot snapshot, int index)
+        {
+            if (index < 0 || index >= snapshot.SceneRoots.SceneCount)
+                return ObjectData.Invalid;
+            ObjectData o = new ObjectData();
+            o.m_dataType = ObjectDataType.Scene;
+            o.m_data.native.index = index;
+            return o;
+        }
+
+        private static ObjectData FromPrefabIndex(CachedSnapshot snapshot, int index)
+        {
+            if (index < 0 || index >= snapshot.SceneRoots.PrefabRootCount)
+                return ObjectData.Invalid;
+            ObjectData o = new ObjectData();
+            o.m_dataType = ObjectDataType.Prefab;
+            o.m_data.native.index = index;
+            return o;
         }
 
         public static ObjectData FromManagedType(CachedSnapshot snapshot, int iType)
@@ -1111,7 +1156,7 @@ namespace Unity.MemoryProfiler.Editor
             o.m_dataType = ObjectDataType.Type;
             o.managedObjectData = new BytesAndOffset(snapshot.TypeDescriptions.StaticFieldBytes[iType], snapshot.VirtualMachineInformation.PointerSize);
 #if DEBUG_VALIDATION
-            if(!o.managedObjectData.IsValid)
+            if (!o.managedObjectData.IsValid)
                 Debug.LogError("Invalid object data");
 #endif
             return o;
@@ -1188,7 +1233,7 @@ namespace Unity.MemoryProfiler.Editor
             o.SetManagedType(snapshot, moi.ITypeDescription);
             o.managedObjectData = moi.data;
 #if DEBUG_VALIDATION
-            if(!o.managedObjectData.IsValid)
+            if (!o.managedObjectData.IsValid)
                 Debug.LogError("Invalid object data");
 #endif
             return o;
@@ -1314,45 +1359,67 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool IsGameObject(CachedSnapshot cs)
         {
-            return cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex] == cs.NativeTypes.GameObjectIdx;
+            return dataType is ObjectDataType.NativeObject && cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex] == cs.NativeTypes.GameObjectIdx;
         }
 
         public bool IsTransform(CachedSnapshot cs)
         {
-            return cs.NativeTypes.IsTransformOrRectTransform(cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex]);
+            return dataType is ObjectDataType.NativeObject && cs.TypeDescriptions.UnifiedTypeInfoNative[cs.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex]].IsTransformType;
         }
 
         public bool IsRootTransform(CachedSnapshot cs)
         {
-            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootTransformInstanceIdHashSet.Contains(GetEntityId(cs));
+            return cs != null && cs.HasSceneRootsAndAssetbundles && IsTransform(cs)
+                && cs.NativeObjects.Flags[nativeObjectIndex].HasFlag(ObjectFlags.IsRoot);
         }
+
+        public bool IsSceneRootTransform(CachedSnapshot cs)
+            => IsRootTransform(cs) && !cs.SceneRoots.NativeObjectIndexToPrefabRootIndex.ContainsKey(nativeObjectIndex);
 
         public bool IsRootGameObject(CachedSnapshot cs)
         {
-            return cs != null && cs.HasSceneRootsAndAssetbundles && cs.SceneRoots.RootGameObjectInstanceIdHashSet.Contains(GetEntityId(cs));
+            return cs != null && cs.HasSceneRootsAndAssetbundles && IsGameObject(cs)
+                && cs.NativeObjects.Flags[nativeObjectIndex].HasFlag(ObjectFlags.IsRoot);
         }
+
+        public bool IsSceneRootGameObject(CachedSnapshot cs)
+            => IsRootGameObject(cs) && !cs.SceneRoots.NativeObjectIndexToPrefabRootIndex.ContainsKey(nativeObjectIndex);
 
         public string GetAssetPath(CachedSnapshot cs)
         {
-            for (int i = 0; i < cs.SceneRoots.SceneIndexedRootTransformInstanceIds.Length; i++)
+            var sourceIndex = GetSourceLink(cs);
+            if (cs.RootAndImpactInfo.SuccessfullyBuilt)
             {
-                for (int ii = 0; ii < cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i].Length; ii++)
+                if (dataType is ObjectDataType.NativeObject && IsSceneRootTransform(cs))
                 {
-                    if (cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i][ii].Equals(GetEntityId(cs)))
+                    ref readonly var pathToRootStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in cs.RootAndImpactInfo.ShortestPathInfo, sourceIndex);
+                    if (pathToRootStep.Root.Id is SourceIndex.SourceId.Scene)
+                    {
+                        return cs.SceneRoots.Path[pathToRootStep.Root.Index];
+                    }
+                }
+                else if (dataType is ObjectDataType.Scene)
+                    return cs.SceneRoots.Path[nonObjectIndex];
+            }
+            for (int i = 0; i < cs.SceneRoots.SceneIndexedRootTransformInstanceIds.SectionCount; i++)
+            {
+                for (int ii = 0; ii < cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i].Count; ii++)
+                {
+                    if (cs.SceneRoots.SceneIndexedRootTransformInstanceIds[i][ii].Equals(sourceIndex))
                         return cs.SceneRoots.Path[i];
                 }
             }
             return String.Empty;
         }
 
-        public void GetAllReferencingObjects(CachedSnapshot cs, ref List<ObjectData> allReferencingObjects, HashSet<SourceIndex> foundSourceIndices = null, ObjectConnection.UnityObjectReferencesSearchMode searchMode = ObjectConnection.UnityObjectReferencesSearchMode.TreatAsOneObject)
+        public void GetAllReferencingObjects(CachedSnapshot cs, List<ObjectData> allReferencingObjects, HashSet<SourceIndex> foundSourceIndices = null, ObjectConnection.UnityObjectReferencesSearchMode searchMode = ObjectConnection.UnityObjectReferencesSearchMode.TreatAsOneObject)
         {
-            ObjectConnection.GetAllReferencingObjects(cs, displayObject.GetSourceLink(cs), ref allReferencingObjects, foundSourceIndices, searchMode: searchMode);
+            ObjectConnection.GetAllReferencingObjects(cs, displayObject.GetSourceLink(cs), allReferencingObjects, foundSourceIndices, searchMode: searchMode);
         }
 
-        public void GetAllReferencedObjects(CachedSnapshot cs, ref List<ObjectData> allReferencedObjects, bool treatUnityObjectsAsOneObject = true, bool addManagedObjectsWithFieldInfo = true, HashSet<SourceIndex> foundSourceIndices = null)
+        public void GetAllReferencedObjects(CachedSnapshot cs, List<ObjectData> allReferencedObjects, bool treatUnityObjectsAsOneObject = true, bool addManagedObjectsWithFieldInfo = true, HashSet<SourceIndex> foundSourceIndices = null)
         {
-            ObjectConnection.GetAllReferencedObjects(cs, displayObject.GetSourceLink(cs), ref allReferencedObjects, treatUnityObjectsAsOneObject, addManagedObjectsWithFieldInfo, foundSourceIndices);
+            ObjectConnection.GetAllReferencedObjects(cs, displayObject.GetSourceLink(cs), allReferencedObjects, treatUnityObjectsAsOneObject, addManagedObjectsWithFieldInfo, foundSourceIndices);
         }
 
         public bool InvalidType()

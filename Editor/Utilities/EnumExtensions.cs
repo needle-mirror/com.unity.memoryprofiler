@@ -10,7 +10,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
     internal static class EnumExtensions
     {
 #if CSHARP_7_3_OR_NEWER
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
 #else
         [MethodImpl((MethodImplOptions)256)]
 #endif
@@ -74,7 +74,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
 #if CSHARP_7_3_OR_NEWER
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
 #else
         [MethodImpl((MethodImplOptions)256)]
 #endif
@@ -138,7 +138,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
 #if CSHARP_7_3_OR_NEWER
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
 #else
         [MethodImpl((MethodImplOptions)256)]
 #endif
@@ -168,7 +168,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
 #if CSHARP_7_3_OR_NEWER
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
 #else
         [MethodImpl((MethodImplOptions)256)]
 #endif
@@ -198,7 +198,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
 #if CSHARP_7_3_OR_NEWER
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
 #else
         [MethodImpl((MethodImplOptions)256)]
 #endif
@@ -228,7 +228,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         }
 
 #if CSHARP_7_3_OR_NEWER
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
 #else
         [MethodImpl((MethodImplOptions)256)]
 #endif

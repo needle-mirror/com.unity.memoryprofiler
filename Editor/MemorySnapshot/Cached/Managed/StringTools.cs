@@ -38,6 +38,14 @@ namespace Unity.MemoryProfiler.Editor
         static string ReadStringInternal(this BytesAndOffset bo, ref int fullLength, VirtualMachineInformation virtualMachineInformation, int maxLengthToRead = MaxStringLengthToRead)
         {
             BytesAndOffset firstChar = bo;
+
+            if (bo.IsValid && !bo.CouldFitAllocation(virtualMachineInformation.ObjectHeaderSize + sizeof(Int32)))
+            {
+                const string k_Error = "Error: Invalid String Object";
+                fullLength = k_Error.Length;
+                return k_Error;
+            }
+
             if (fullLength < 0)
             {
                 // parsing a string with an object header
@@ -122,6 +130,11 @@ namespace Unity.MemoryProfiler.Editor
 
         public static int ReadStringObjectSizeInBytes(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, out bool valid, bool logError = true)
         {
+            if (!bo.CouldFitAllocation(virtualMachineInformation.ObjectHeaderSize + sizeof(Int32)))
+            {
+                valid = false;
+                return 0;
+            }
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
 

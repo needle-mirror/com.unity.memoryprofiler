@@ -12,6 +12,7 @@ using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.MemoryProfiler.Editor.UI;
 using Unity.Profiling;
 #if CRAWLER_PERFORMANCE_ANALYSIS
 using UnityEditor;
@@ -210,7 +211,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
             public CachedSnapshot CachedMemorySnapshot { get; }
             public ref DynamicArray<int> DuplicatedGCHandleTargetsStack => ref m_DuplicatedGCHandleTargetsStack;
             DynamicArray<int> m_DuplicatedGCHandleTargetsStack;
-            public HashSet<int> TypesWithObjectsThatMayStillNeedNativeTypeConnection { get; }
+            NativeHashSet<int> m_TypesWithObjectsThatMayStillNeedNativeTypeConnection;
+            public ref NativeHashSet<int> TypesWithObjectsThatMayStillNeedNativeTypeConnection => ref m_TypesWithObjectsThatMayStillNeedNativeTypeConnection;
             public ref FieldLayouts StaticFieldLayoutInfo => ref m_StaticFieldLayoutInfo;
             FieldLayouts m_StaticFieldLayoutInfo;
             bool m_DisposedStaticInfo = false;
@@ -228,7 +230,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 m_DuplicatedGCHandleTargetsStack = new DynamicArray<int>(0, k_InitialStackSize, Allocator.Persistent);
                 CachedMemorySnapshot = snapshot;
                 m_CrawlDataStack = new DynamicArray<StackCrawlData>(0, k_InitialStackSize, Allocator.Persistent, memClear: k_MemClearCrawlDataStack);
-                TypesWithObjectsThatMayStillNeedNativeTypeConnection = new HashSet<int>();
+                m_TypesWithObjectsThatMayStillNeedNativeTypeConnection = new NativeHashSet<int>(100, Allocator.Persistent);
 
                 TypesWithStaticFields = new List<int>();
                 for (int i = 0; i != snapshot.TypeDescriptions.Count; ++i)
@@ -241,12 +243,6 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
                 m_StaticFieldLayoutInfo = new FieldLayouts(snapshot.TypeDescriptions.Count, 3);
                 m_FieldLayouts = new FieldLayouts(snapshot.TypeDescriptions.Count, 4);
-
-                foreach (var managedToNativeType in snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex)
-                {
-                    if (managedToNativeType.Value >= 0 && managedToNativeType.Key >= 0)
-                        snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryAdd(managedToNativeType.Value, managedToNativeType.Key);
-                }
 
                 var nativeSortedAllocationAddress = new DynamicArray<ulong>(snapshot.NativeAllocations.Count, Allocator.Persistent);
                 var nativeSortedAllocationSize = new DynamicArray<ulong>(snapshot.NativeAllocations.Count, Allocator.Persistent);
@@ -305,6 +301,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
                 m_CrawlDataStack.Dispose();
                 m_NativeObjectOrAllocationFinder.Dispose();
+                m_TypesWithObjectsThatMayStillNeedNativeTypeConnection.Dispose();
             }
         }
 
@@ -327,7 +324,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 BytesAndOffset* uniqueHandlesHeapBytesBegin = uniqueHandlesHeapBytesPtr;
                 var writtenRange = 0L;
 
-                var managedHeapSections = snapshot.ManagedHeapSections;
+                ref var managedHeapSections = ref snapshot.ManagedHeapSections;
                 var vmInfo = snapshot.VirtualMachineInformation;
 
                 // Parse all handles
@@ -397,27 +394,14 @@ namespace Unity.MemoryProfiler.Editor.Managed
             // Gather handles and duplicates and enqueue them first to reserve their Managed Object indices
             // Just hold of on actually parsing them until after static field parsing is done.
             yield return status.IncrementStep(stepStatus: "Enqueueing GC Handles for crawling.");
+
+            // ensure that the managed heap data is ready for use to avoid calling Complete on the reader's job handle from within the static field crawler jobs, or within GatherIntermediateCrawlData
+            crawlData.CachedMemorySnapshot.ManagedHeapSections.CompleteHeapBytesRead();
+
             var gcHandleHeldObjectsToCrawl = new DynamicArray<StackCrawlData>(0, snapshot.GcHandles.Count, Allocator.Persistent, memClear: k_MemClearCrawlDataStack);
             GatherIntermediateCrawlData(snapshot, crawlData, ref gcHandleHeldObjectsToCrawl);
 
-            // these key Unity Types will never show up as objects of their managed base type as they are only ever used via derived types
-            if (snapshot.TypeDescriptions.ITypeUnityMonoBehaviour >= 0)
-            {
-                AddBaseUnityObjectTypesToNativeUnityObjectTypeIndexToManagedBaseTypeIndex(snapshot, snapshot.NativeTypes.MonoBehaviourIdx, snapshot.TypeDescriptions.ITypeUnityMonoBehaviour);
-            }
-            if (snapshot.TypeDescriptions.ITypeUnityScriptableObject >= 0)
-            {
-                AddBaseUnityObjectTypesToNativeUnityObjectTypeIndexToManagedBaseTypeIndex(snapshot, snapshot.NativeTypes.ScriptableObjectIdx, snapshot.TypeDescriptions.ITypeUnityScriptableObject);
-                AddBaseUnityObjectTypesToNativeUnityObjectTypeIndexToManagedBaseTypeIndex(snapshot, snapshot.NativeTypes.EditorScriptableObjectIdx, snapshot.TypeDescriptions.ITypeUnityScriptableObject);
-            }
-            if (snapshot.TypeDescriptions.ITypeUnityComponent >= 0)
-            {
-                AddBaseUnityObjectTypesToNativeUnityObjectTypeIndexToManagedBaseTypeIndex(snapshot, snapshot.NativeTypes.ComponentIdx, snapshot.TypeDescriptions.ITypeUnityComponent);
-            }
-
             yield return status.IncrementStep(stepStatus: "Reading Managed Heap bytes");
-            // ensure that the managed heap data is ready for use to avoid calling Complete on the reader's job handle from within the static field crawler jobs
-            crawlData.CachedMemorySnapshot.ManagedHeapSections.CompleteHeapBytesRead();
 
             // Start with static fields and enqueue any heap objects held by their fields
             // For Memory Profiling purposes, we deem static fields to be the strongest binding roots.
@@ -467,14 +451,6 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #if CRAWLER_PERFORMANCE_ANALYSIS
             Debug.Log($"Finished Crawling in {watch.ElapsedMilliseconds}ms");
 #endif
-        }
-
-        static void AddBaseUnityObjectTypesToNativeUnityObjectTypeIndexToManagedBaseTypeIndex(CachedSnapshot snapshot, int nativeType, int managedType)
-        {
-            var dict = snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex;
-            if (nativeType >= 0 && (!dict.TryGetValue(nativeType, out var alreadyRegisteredManagedTypeIndex)
-                || alreadyRegisteredManagedTypeIndex != managedType))
-                dict[nativeType] = managedType;
         }
 
         static void CrawlStep(IntermediateCrawlData crawlData, ProfilerMarker profilerMarker)
@@ -621,16 +597,17 @@ namespace Unity.MemoryProfiler.Editor.Managed
                         {
                             objRef.NativeObjectIndex = iMissingNativeFrom;
                             var nativeTypeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[iMissingNativeFrom];
-                            if (objRef.ITypeDescription == -1 && snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryGetValue(
-                                nativeTypeIndex, out var managedBaseTypeIndex)
-                                && managedBaseTypeIndex >= 0)
-                                objRef.ITypeDescription = managedBaseTypeIndex;
+                            var typeInfo = nativeTypeIndex is not NativeTypeEntriesCache.InvalidTypeIndex ? snapshot.TypeDescriptions.UnifiedTypeInfoNative[nativeTypeIndex] : UnifiedType.Invalid;
+                            if (objRef.ITypeDescription is TypeDescriptionEntriesCache.ITypeInvalid && typeInfo.ManagedTypeIndex is not TypeDescriptionEntriesCache.ITypeInvalid
+                                // ignore it if the managed type registered for this is just base object.
+                                && typeInfo.ManagedTypeIndex != snapshot.TypeDescriptions.ITypeUnityObject)
+                                objRef.ITypeDescription = typeInfo.ManagedTypeIndex;
 
                             var GCHandleReported = snapshot.CrawledData.InvalidManagedObjectsReportedViaGCHandles.ContainsKey(objRef.ManagedObjectIndex);
                             snapshot.CrawledData.InvalidManagedObjectsReportedViaGCHandles.Remove(objRef.ManagedObjectIndex);
 
-                        // remove the "&& false" bits when analysing Managed Heap data reporting fixes
-                        // ATM this is not expected to work, as there is a possible delay between reporting GCHandles and dumping the heap chunks
+                            // remove the "&& false" bits when analysing Managed Heap data reporting fixes
+                            // ATM this is not expected to work, as there is a possible delay between reporting GCHandles and dumping the heap chunks
 #if DEBUG_VALIDATION && false
                             Debug.LogError($"Found a Managed Object that was reported because a Native Object held {(GCHandleReported ? "a GCHandle" : "some other kind of reference")} to it, " +
                                 $"with a target pointing at {(obj.data.IsValid ? "a valid" : "an invalid")} managed heap section. " +
@@ -665,6 +642,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
         {
             using var marker = k_ConnectNativeToManageObjectProfilerMarker.Auto();
             var snapshot = crawlData.CachedMemorySnapshot;
+            ref readonly var nativeTypeBackedUninstantiatableUnityBaseTypes = ref snapshot.TypeDescriptions.UninstantiatableUnityBaseTypesWithSetNativeType;
+            ref readonly var managedTypeInfos = ref snapshot.TypeDescriptions.UnifiedTypeInfoManaged;
             ref var objectInfos = ref snapshot.CrawledData.ManagedObjects;
 
             if (snapshot.TypeDescriptions.Count == 0)
@@ -691,12 +670,16 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     || (snapshot.NativeObjects.GCHandleIndexToIndex.TryGetValue(i, out var nativeObjectIndexFromGCHandleIndex) && nativeObjectIndexFromGCHandleIndex == 0),
                     "NativeObjectIndex has been left uninitialized.");
 #endif
+                if (objectInfo.ITypeDescription is TypeDescriptionEntriesCache.ITypeInvalid)
+                    continue;
 
                 //Must derive of unity Object
-                var isInUnityObjectTypeIndexToNativeTypeIndex = snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.GetOrInitializeValue(objectInfo.ITypeDescription, out var nativeTypeIndex, -1);
-                var isOrCouldBeAUnityObject = isInUnityObjectTypeIndexToNativeTypeIndex || objectInfo.NativeObjectIndex >= 0;
+                ref readonly var typeInfo = ref managedTypeInfos[objectInfo.ITypeDescription];
 
-                if (!isInUnityObjectTypeIndexToNativeTypeIndex && objectInfo.ITypeDescription >= 0)
+                var isUnityType = typeInfo.IsUnityObjectType;
+                var isOrCouldBeAUnityObject = isUnityType || objectInfo.NativeObjectIndex >= 0;
+
+                if (!isUnityType && objectInfo.ITypeDescription >= 0)
                 {
                     // A non Unity Object type object that is held by a GCHandle (i.e. has an index lower than GcHandles.UniqueCount could be an array of a type
                     // attributed with [UsedByNativeCode] or [RequiredByNativeCode]
@@ -776,7 +759,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                         if (!heapSection.IsValid)
                         {
                             // Don't warn if this was an attempt to fix broken data
-                            if (isInUnityObjectTypeIndexToNativeTypeIndex)
+                            if (isUnityType)
                                 Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
                         }
                         else
@@ -797,11 +780,12 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     }
                     if (objectInfo.NativeObjectIndex >= 0)
                     {
-                        if (nativeTypeIndex == -1)
+                        if (typeInfo.NativeTypeIndex is NativeTypeEntriesCache.InvalidTypeIndex
+                            || (typeInfo.ManagedTypeIsBaseTypeFallback && nativeTypeBackedUninstantiatableUnityBaseTypes.Contains(typeInfo.ManagedBaseTypeIndexForNativeType)))
                         {
-                            nativeTypeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[objectInfo.NativeObjectIndex];
+                            var nativeTypeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[objectInfo.NativeObjectIndex];
 
-                            if (!isInUnityObjectTypeIndexToNativeTypeIndex)
+                            if (!isUnityType)
                             {
                                 if (nativeTypeIndex == snapshot.NativeTypes.MonoBehaviourIdx
                                     || nativeTypeIndex == snapshot.NativeTypes.ScriptableObjectIdx
@@ -809,8 +793,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
                                 {
                                     // This actually WAS a Unity Object with faulty type data reporting, fix up UnityObjectTypeIndexToNativeTypeIndex,
                                     // but set native type to -1 so that ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes can fix up all managed base types that ARE reported
-                                    snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.Add(objectInfo.ITypeDescription, -1);
-                                    isInUnityObjectTypeIndexToNativeTypeIndex = true;
+                                    snapshot.TypeDescriptions.UpdateManagedToNativeTypeMapping(snapshot.NativeTypes, objectInfo.ITypeDescription, -1);
+                                    isUnityType = true;
                                 }
                                 else
                                 {
@@ -827,7 +811,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
                                     continue;
                                 }
                             }
-
+                            // This will also update the "ref readonly var" typeInfo.NativeTypeIndex for usage later down this function,
+                            // thereby avoiding adding it to TypesWithObjectsThatMayStillNeedNativeTypeConnection for later type stitching.
                             ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes(snapshot, nativeTypeIndex, objectInfo.ITypeDescription);
                         }
                         if (snapshot.HasConnectionOverhaul)
@@ -848,9 +833,12 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     }
                     else
                     {
-                        crawlData.CachedMemorySnapshot.CrawledData.IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle.Add(i);
+                        snapshot.CrawledData.IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle.Add(i);
                     }
-                    if (nativeTypeIndex == -1 && isInUnityObjectTypeIndexToNativeTypeIndex)
+                    if (isUnityType && !crawlData.TypesWithObjectsThatMayStillNeedNativeTypeConnection.Contains(objectInfo.ITypeDescription)
+                        && (typeInfo.NativeTypeIndex is NativeTypeEntriesCache.InvalidTypeIndex
+                        || typeInfo.NativeTypeIndex == snapshot.NativeTypes.BaseObjectIdx
+                        || (typeInfo.ManagedTypeIsBaseTypeFallback && nativeTypeBackedUninstantiatableUnityBaseTypes.Contains(typeInfo.ManagedBaseTypeIndexForNativeType))))
                     {
                         // make a note of the failure to connect this object's type to its native type
                         // after all objects were connected, the types that are still not connected can then
@@ -867,7 +855,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
         /// <summary>
         /// Needs to be called before <see cref="ConnectRemainingManagedTypesToNativeTypes(IntermediateCrawlData)"/>
-        /// as it might add more maanged types that need reattatching to its native type (e.g. because the only instances that exist of them are Leaked Shells)
+        /// as it might add more managed types that need reattatching to their native types (e.g. because the only instances that exist of them are Leaked Shells)
         /// </summary>
         /// <param name="crawlData"></param>
         static void PostProcessNonGCHeldObjects(IntermediateCrawlData crawlData)
@@ -875,6 +863,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
             using var marker = k_PostProcessNonGCHeldObjectsProfilerMarker.Auto();
             var snapshot = crawlData.CachedMemorySnapshot;
             ref var objectInfos = ref snapshot.CrawledData.ManagedObjects;
+            ref readonly var nativeBackedUninstantiatableUnityBaseTypes = ref snapshot.TypeDescriptions.UninstantiatableUnityBaseTypesWithSetNativeType;
+            var baseUnityObjectTypeIndex = snapshot.TypeDescriptions.ITypeUnityObject;
 
             using var cachedListOfSpeculativeManagedObjectIndicesToClear = new DynamicArray<long>(0, 20, Allocator.Temp);
 
@@ -883,9 +873,18 @@ namespace Unity.MemoryProfiler.Editor.Managed
             for (long i = gcHandleHeldManagedObjectCount; i < objectInfos.Count; i++)
             {
                 ref var objectInfo = ref objectInfos[i];
-                var isInUnityObjectTypeIndexToNativeTypeIndex = snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.GetOrInitializeValue(objectInfo.ITypeDescription, out var nativeTypeIndex, -1);
+                if (objectInfo.ITypeDescription is TypeDescriptionEntriesCache.ITypeInvalid)
+                    continue;
 
-                if (isInUnityObjectTypeIndexToNativeTypeIndex && nativeTypeIndex == -1)
+                var typeInfo = snapshot.TypeDescriptions.UnifiedTypeInfoManaged[objectInfo.ITypeDescription];
+
+                if (typeInfo.IsUnityObjectType && !crawlData.TypesWithObjectsThatMayStillNeedNativeTypeConnection.Contains(objectInfo.ITypeDescription)
+                    // the type info should usually always point at a native type but that could be the base Object type
+                    && (typeInfo.NativeTypeIndex is NativeTypeEntriesCache.InvalidTypeIndex
+                    // So also check that the Managed type for this object is actually one that could have objects of its type in memory,
+                    // instead of this just being UnityEngine.Object or a different scripting fallback type.
+                    || typeInfo.ManagedBaseTypeIndexForNativeType == baseUnityObjectTypeIndex
+                    || (typeInfo.ManagedTypeIsBaseTypeFallback && nativeBackedUninstantiatableUnityBaseTypes.Contains(typeInfo.ManagedBaseTypeIndexForNativeType))))
                 {
                     // make a note of the failure to connect this object's type to its native type
                     // after all objects were connected, the types that are still not connected can then
@@ -930,7 +929,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         /// 2. As the snapshot does not report the connection from a Native Type to the Managed Base Type, this function checks if viable Managed types
         ///    that it iterates over could be the managed Base Type
         ///
-        /// Beyond checking that <see cref="CachedSnapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex"/> previously mapped the managed type to -1,
+        /// Beyond checking that <see cref="CachedSnapshot.TypeDescriptions.UnifiedTypeInfoManaged"/> previously mapped the managed type to -1,
         /// no further checks are needed before calling and it stops as soon as it hits the first managed base type that already has an association.
         /// </summary>
         /// <param name="snapshot"></param>
@@ -945,9 +944,18 @@ namespace Unity.MemoryProfiler.Editor.Managed
             // E.g. the Managed Base Type for a user created component is 'UnityEngine.MonoBehaviour'. No Instances of that exact type will ever be in a capture.
             // Though there will be multiple derived Managed Types, we only need to connect the Native Type 'Monobehaviour' to the Managed Base Type 'UnityEngine.MonoBehaviour' once.
             // Whether or not we still need to do that doesn't change during the while loop, and not rechecking if it is needed is an optimization, so only check this once here.
-            bool nativeUnityObjectTypeIndexToManagedBaseTypeIsNotYetReported = !snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.ContainsKey(nativeTypeIndex);
+            var oldManagedBaseTypeIndexForNativeType = snapshot.TypeDescriptions.UnifiedTypeInfoNative[nativeTypeIndex].ManagedBaseTypeIndexForNativeType;
+            ref readonly var uninstantiatableUnityBaseTypesWithSetNativeType = ref snapshot.TypeDescriptions.UninstantiatableUnityBaseTypesWithSetNativeType;
+            var nativeUnityObjectTypeIndexToManagedBaseTypeIsNotYetReported =
+                oldManagedBaseTypeIndexForNativeType is TypeDescriptionEntriesCache.ITypeInvalid
+                || uninstantiatableUnityBaseTypesWithSetNativeType.Contains(oldManagedBaseTypeIndexForNativeType);
 
-            while (managedType >= 0 && snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue(managedType, out var n) && n == -1)
+            var newlyFoundManagedBaseType = TypeDescriptionEntriesCache.ITypeInvalid;
+            var originalManagedTypeToUpdate = managedType;
+
+            while (managedType >= 0 &&
+                (snapshot.TypeDescriptions.UnifiedTypeInfoManaged[managedType].NativeTypeIndex is NativeTypeEntriesCache.InvalidTypeIndex
+                || uninstantiatableUnityBaseTypesWithSetNativeType.Contains(snapshot.TypeDescriptions.UnifiedTypeInfoManaged[managedType].ManagedBaseTypeIndexForNativeType)))
             {
                 // Register the managed type connection to the native base type
                 //
@@ -959,7 +967,14 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 // So just ignore the link between the exact types of UnityEngine.ScriptableObject (managed) and EditorScriptableObject (native) here,
                 // to avoid confusion or unstable type mapping results of the managed UnityEngine.ScriptableObject type.
                 if (!(nativeTypeIndex == snapshot.NativeTypes.EditorScriptableObjectIdx && managedType == snapshot.TypeDescriptions.ITypeUnityScriptableObject))
-                    snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex[managedType] = nativeTypeIndex;
+                {
+                    snapshot.TypeDescriptions.UpdateManagedToNativeTypeMapping(snapshot.NativeTypes, managedType, nativeTypeIndex,
+                        // only update the base type here if it wasn't yet reported
+                        baseFallbackType: nativeUnityObjectTypeIndexToManagedBaseTypeIsNotYetReported
+                        // and if it wasn't updated through this process, as the inhereting managed types should not have a higher level base type set
+                        && newlyFoundManagedBaseType is not TypeDescriptionEntriesCache.ITypeInvalid
+                        ? oldManagedBaseTypeIndexForNativeType : TypeDescriptionEntriesCache.ITypeInvalid);
+                }
 
                 // Check if this could be the still unreported Managed Base Type for this Native Type
                 if (nativeUnityObjectTypeIndexToManagedBaseTypeIsNotYetReported)
@@ -977,12 +992,13 @@ namespace Unity.MemoryProfiler.Editor.Managed
                             {
                                 fixed (char* nativeName = snapshot.NativeTypes.TypeName[nativeTypeIndex], managedName = typeName)
                                 {
-                                    // no need to create a bunch of managed substrings in a hot loop
+                                    // no need to create a bunch of managed substrings in a hot loop, pointer logic to the rescue!
                                     char* managedSubstring = managedName + startOfNamespaceStrippedManagedTypeName;
                                     if (UnsafeUtility.MemCmp(managedSubstring, nativeName, managedTypeNameLength) == 0)
                                     {
-                                        snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.Add(nativeTypeIndex, managedType);
+                                        snapshot.TypeDescriptions.UpdateManagedToNativeTypeMapping(snapshot.NativeTypes, managedType, nativeTypeIndex, baseFallbackType: managedType);
                                         nativeUnityObjectTypeIndexToManagedBaseTypeIsNotYetReported = false;
+                                        newlyFoundManagedBaseType = managedType;
                                     }
                                 }
                             }
@@ -991,6 +1007,23 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 }
                 // continue with the base type of this managed object type
                 managedType = snapshot.TypeDescriptions.BaseOrElementTypeIndex[managedType];
+            }
+
+            // if a new base type was found, update the base types for all inheriting types
+            if (newlyFoundManagedBaseType is not TypeDescriptionEntriesCache.ITypeInvalid)
+            {
+                managedType = originalManagedTypeToUpdate;
+                while (managedType != newlyFoundManagedBaseType)
+                {
+                    if (!(nativeTypeIndex == snapshot.NativeTypes.EditorScriptableObjectIdx && managedType == snapshot.TypeDescriptions.ITypeUnityScriptableObject))
+                    {
+                        snapshot.TypeDescriptions.UpdateManagedToNativeTypeMapping(snapshot.NativeTypes, managedType, nativeTypeIndex,
+                            // update the base type here to the newly found one
+                            baseFallbackType: newlyFoundManagedBaseType);
+                    }
+                    // continue with the base type of this managed object type
+                    managedType = snapshot.TypeDescriptions.BaseOrElementTypeIndex[managedType];
+                }
             }
         }
 
@@ -1008,49 +1041,54 @@ namespace Unity.MemoryProfiler.Editor.Managed
             var managedTypes = snapshot.TypeDescriptions;
             if (managedTypes.Count == 0)
                 return;
-            var unityObjectTypeIndexToNativeTypeIndex = managedTypes.UnityObjectTypeIndexToNativeTypeIndex;
-            var managedToNativeTypeDict = new Dictionary<int, int>();
-            foreach (var item in unityObjectTypeIndexToNativeTypeIndex)
+            ref readonly var uninstantiatableUnityBaseTypesWithSetNativeType = ref snapshot.TypeDescriptions.UninstantiatableUnityBaseTypesWithSetNativeType;
+
+            var unityObjectTypeIndexToNativeTypeIndex = managedTypes.UnifiedTypeInfoManaged;
+            for (long i = 0; i < unityObjectTypeIndexToNativeTypeIndex.Count; i++)
             {
+                ref var type = ref unityObjectTypeIndexToNativeTypeIndex[i];
                 // process all Unity Object Types that are not yet connected to their native types.
-                if (item.Value == -1)
+                if (type.IsUnityObjectType
+                    && (type.NativeTypeIndex is NativeTypeEntriesCache.InvalidTypeIndex
+                    || (type.ManagedTypeIsBaseTypeFallback && uninstantiatableUnityBaseTypesWithSetNativeType.Contains(type.ManagedBaseTypeIndexForNativeType))))
                 {
-                    var managedType = item.Key;
-                    var topLevelManagedType = managedType;
+                    var topLevelManagedType = type.ManagedTypeIndex;
                     // This process of connecting the managed type to a native type is rather costly
                     // Only spend that effort for types that had actual object instances in the snapshot
                     // Other types will not be displayed in any tables and establishing the connection therefore doesn't matter
-                    if (!crawlData.TypesWithObjectsThatMayStillNeedNativeTypeConnection.Contains(managedType))
+                    if (type.ManagedTypeIndex is TypeDescriptionEntriesCache.ITypeInvalid
+                        || !crawlData.TypesWithObjectsThatMayStillNeedNativeTypeConnection.Contains(type.ManagedTypeIndex))
                         continue;
-                    while (managedType >= 0 && unityObjectTypeIndexToNativeTypeIndex.TryGetValue(managedType, out var nativeTypeIndex))
+
+                    while (type.IsUnityObjectType)
                     {
-                        if (nativeTypeIndex == -1)
+                        var nativeTypeIndex = type.NativeTypeIndex;
+                        if (type.NativeTypeIndex is NativeTypeEntriesCache.InvalidTypeIndex
+                            || (type.ManagedTypeIsBaseTypeFallback && uninstantiatableUnityBaseTypesWithSetNativeType.Contains(type.ManagedBaseTypeIndexForNativeType)))
                         {
-                            var typeName = managedTypes.TypeDescriptionName[managedType];
+                            var typeName = managedTypes.TypeDescriptionName[type.ManagedTypeIndex];
                             if (typeName.StartsWith("Unity"))
                             {
                                 typeName = typeName.Substring(typeName.LastIndexOf('.') + 1);
                                 nativeTypeIndex = Array.FindIndex(snapshot.NativeTypes.TypeName, e => e.Equals(typeName));
                             }
                         }
-                        if (nativeTypeIndex >= 0)
+                        if (nativeTypeIndex is not NativeTypeEntriesCache.InvalidTypeIndex)
                         {
-                            // can't modify the collection while we iterate over it, so store the connectio for after this foreach
-                            managedToNativeTypeDict.Add(topLevelManagedType, nativeTypeIndex);
+                            ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes(snapshot, nativeTypeIndex, topLevelManagedType);
                             break;
                         }
                         // continue with the base type of this managed object type
-                        managedType = managedTypes.BaseOrElementTypeIndex[managedType];
+                        var managedType = managedTypes.BaseOrElementTypeIndex[type.ManagedTypeIndex];
+                        if (managedType is TypeDescriptionEntriesCache.ITypeInvalid)
+                            break;
+                        type = ref unityObjectTypeIndexToNativeTypeIndex[managedType];
                     }
                 }
             }
-            foreach (var item in managedToNativeTypeDict)
-            {
-                ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes(snapshot, item.Value, item.Key);
-            }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static void CrawlRawObjectData(
             IntermediateCrawlData crawlData, in BytesAndOffset bytesAndOffsetOfFieldDataWithoutHeader,
             int iTypeDescription, in SourceIndex indexOfFrom, long maxObjectIndexFindableViaPointers,
@@ -1064,7 +1102,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 fromArrayIndex, allowStackExpansion: allowStackExpansion);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         static void CrawlRawObjectData(
             in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap managedObjectIndexByAddress,
             in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, in MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
@@ -1097,7 +1135,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         static void CrawlRawFieldData(ulong arrayDataPtr, FieldReferenceType referenceTypeArrayFieldType, long maxObjectIndexFindableViaPointers,
             in AddressToManagedIndexHashMap mangedObjectIndexByAddress, in ManagedMemorySectionEntriesCache ManagedHeapSections, in VirtualMachineInformation vmInfo,
             ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, in MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
@@ -1157,7 +1195,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static DynamicArrayRef<FieldLayoutInfo> GetFullFieldLayoutForCrawling(IntermediateCrawlData crawlData, int typeDescriptionIndex, bool useStaticFields)
         {
             ref var fieldLayouts = ref (useStaticFields ? ref crawlData.StaticFieldLayoutInfo : ref crawlData.FieldLayouts);
@@ -1327,15 +1365,15 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #if DEBUG_VALIDATION
                     using var a_ = k_CrawlPointerDebugValidationMarker.Auto();
                     // This whole if block is here to make the investigations for PROF-2420 easier.
-                    if(snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(data.Address, out var manageObjectIndex))
+                    if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(data.Address, out var manageObjectIndex))
                     {
                         for (long i = 0; i < snapshot.GcHandles.Target.Count; i++)
                         {
-                            if(snapshot.GcHandles.Target[i] == data.Address)
+                            if (snapshot.GcHandles.Target[i] == data.Address)
                             {
                                 if (snapshot.CrawledData.InvalidManagedObjectsReportedViaGCHandles.ContainsKey(manageObjectIndex))
                                     break;
-                                snapshot.CrawledData.InvalidManagedObjectsReportedViaGCHandles.Add(manageObjectIndex, new ManagedObjectInfo() { PtrObject = data.Address, ManagedObjectIndex = manageObjectIndex, NativeObjectIndex = -1});
+                                snapshot.CrawledData.InvalidManagedObjectsReportedViaGCHandles.Add(manageObjectIndex, new ManagedObjectInfo() { PtrObject = data.Address, ManagedObjectIndex = manageObjectIndex, NativeObjectIndex = -1 });
                                 break;
                             }
                         }
@@ -1437,7 +1475,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             return true;
         }
 
-        [MethodImpl(methodImplOptions: MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(methodImplOptions: MethodImplementationHelper.AggressiveInlining)]
         static int GetReferenceTargetTypeInfo(CachedSnapshot snapshot, StackCrawlData data, int valueTypeFieldOwningITypeDescription, long managedObjectIndex, out long nativeObjectIndex)
         {
             var gcHandleBasedTypeInfo = -1;
@@ -1509,9 +1547,9 @@ namespace Unity.MemoryProfiler.Editor.Managed
             // However, if a native object was reported to hold a GC Handle to a managed object, we can infer the base type of the managed object
             if (snapshot.NativeObjects.GCHandleIndexToIndex.GetOrInitializeValue(managedObjectIndex, out nativeObjectIndex, -1))
             {
-                var nativeType = snapshot.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex];
-                if (snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryGetValue(nativeType, out var managedBaseType))
-                    heldAsType = managedBaseType;
+                var typeInfo = snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex]];
+                if (typeInfo.ManagedTypeIndex != TypeDescriptionEntriesCache.ITypeInvalid)
+                    heldAsType = typeInfo.ManagedTypeIndex;
                 else // at the very least, we can make the type more specific than just ´object´ and upgrade it to UnityEngine.Object
                     heldAsType = snapshot.TypeDescriptions.ITypeUnityObject;
             }
@@ -1760,7 +1798,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             return objectList[idx];
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static bool ObjectTypeCouldBeHeldByField(CachedSnapshot snapshot, int objectType, int fieldType)
         {
             // fieldType must be valid but if there is no actual field, passing in TypeDescriptions.ITypeObject is fair game
@@ -1789,7 +1827,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             return snapshot.TypeDescriptions.DerivesFrom(objectType, fieldType, excludeArrayElementBaseTypes: true);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static bool ValidateObjectHeaderType(CachedSnapshot snapshot, BytesAndOffset boHeader, int objectType, int fieldType, out long sizeIncludingHeader, bool ignoreErrorsBecauseObjectIsSpeculative)
         {
             // we're validating against the bytes starting from the header,

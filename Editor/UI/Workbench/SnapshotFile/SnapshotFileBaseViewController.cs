@@ -24,7 +24,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_TooltipValueNotAvailable = "not available";
 
         // Model & state
-        readonly SnapshotFileModel m_Model;
         readonly ScreenshotsManager m_ScreenshotsManager;
 
         // View
@@ -44,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public SnapshotFileBaseViewController(SnapshotFileModel model, ScreenshotsManager screenshotsManager)
         {
-            m_Model = model;
+            Model = model;
             m_ScreenshotsManager = screenshotsManager;
         }
 
@@ -74,7 +73,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        protected SnapshotFileModel Model => m_Model;
+        public SnapshotFileModel Model { get; protected set; }
 
         protected Image ScreenshotImage => m_Screenshot;
 
@@ -100,14 +99,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected virtual void RefreshView()
         {
-            if (m_Model == null)
+            if (Model == null)
                 return;
 
-            m_Name.text = m_Model.Name;
-            m_PlatformIcon.image = PlatformsHelper.GetPlatformIcon(m_Model.Platform);
-            UIElementsHelper.SetVisibility(m_EditorPlatformIcon, m_Model.EditorPlatform);
+            m_Name.text = Model.Name;
+            m_PlatformIcon.image = PlatformsHelper.GetPlatformIcon(Model.Platform);
+            UIElementsHelper.SetVisibility(m_EditorPlatformIcon, Model.EditorPlatform);
 
-            var dateAsString = m_Model.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            var dateAsString = Model.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
             m_Date.text = dateAsString;
 
             m_Screenshot.scaleMode = ScaleMode.ScaleToFit;
@@ -127,17 +126,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             var totalAllocatedLabel = k_TooltipValueNotAvailable;
             var residentMemoryLabel = k_TooltipValueNotAvailable;
             var totalAvailableMemoryLabel = k_TooltipValueNotAvailable;
-            if (m_Model.MemoryInformationAvailable)
+            if (Model.MemoryInformationAvailable)
             {
-                if (m_Model.TotalResidentMemory > 0)
+                if (Model.TotalResidentMemory > 0)
                 {
                     UIElementsHelper.SetVisibility(m_TotalLabelResident, true);
                     UIElementsHelper.SetVisibility(m_TotalLabelDataNotAvailable, false);
 
-                    var filledInPercent = ((float)m_Model.TotalResidentMemory / (float)m_Model.MaxAvailableMemory * 100f);
+                    var filledInPercent = ((float)Model.TotalResidentMemory / (float)Model.MaxAvailableMemory * 100f);
                     m_TotalBarAllocated.style.SetBarWidthInPercent(filledInPercent);
 
-                    residentMemoryLabel = EditorUtility.FormatBytes((long)m_Model.TotalResidentMemory);
+                    residentMemoryLabel = EditorUtility.FormatBytes((long)Model.TotalResidentMemory);
                     m_TotalLabelResident.text = string.Format(m_TotalResidentFormat, residentMemoryLabel);
                 }
                 else
@@ -147,12 +146,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                     UIElementsHelper.SetVisibility(m_TotalLabelDataNotAvailable, true);
                 }
 
-                if (m_Model.TotalAllocatedMemory > 0)
-                    totalAllocatedLabel = EditorUtility.FormatBytes((long)m_Model.TotalAllocatedMemory);
+                if (Model.TotalAllocatedMemory > 0)
+                    totalAllocatedLabel = EditorUtility.FormatBytes((long)Model.TotalAllocatedMemory);
 
-                if (m_Model.MaxAvailableMemory > 0)
+                if (Model.MaxAvailableMemory > 0)
                 {
-                    totalAvailableMemoryLabel = EditorUtility.FormatBytes((long)m_Model.MaxAvailableMemory);
+                    totalAvailableMemoryLabel = EditorUtility.FormatBytes((long)Model.MaxAvailableMemory);
                     m_TotalLabelAvailable.text = string.Format(m_TotalAvailableFormat, totalAvailableMemoryLabel);
                 }
             }
@@ -167,11 +166,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             View.tooltip = String.Format(k_Tooltip,
-                m_Model.Name,
-                m_Model.Platform,
-                m_Model.ScriptingImplementation,
-                m_Model.UnityVersion,
-                m_Model.MetadataDescription,
+                Model.Name,
+                Model.Platform,
+                Model.ScriptingImplementation,
+                Model.UnityVersion,
+                Model.MetadataDescription,
                 totalAvailableMemoryLabel,
                 residentMemoryLabel,
                 totalAllocatedLabel);

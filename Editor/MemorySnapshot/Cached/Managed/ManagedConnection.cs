@@ -118,6 +118,26 @@ namespace Unity.MemoryProfiler.Editor
                 new SourceIndex(SourceIndex.SourceId.ManagedObject, managedIndex));
         }
 
+        /// <summary>
+        /// Managed shells on prefabs that are referenced by non-prefabs, when referencing their native objects,
+        /// get rerouted to also reference the prefab index that points at the prefab's root transform.
+        /// </summary>
+        /// <param name="fromIndex"></param>
+        /// <param name="prefabIndex"></param>
+        /// <returns></returns>
+        public static ManagedConnection MakePrefabConnection(SourceIndex fromIndex, long prefabIndex)
+        {
+#if DEBUG_VALIDATION
+            if (!fromIndex.Valid)
+                throw new InvalidOperationException("Tried to add a Prefab Connection without a valid source.");
+            if (fromIndex.Id == SourceIndex.SourceId.Prefab)
+                throw new InvalidOperationException("Tried to add a Prefab Connection from a Prefab to a Prefab, which is invalid.");
+#endif
+            return new ManagedConnection(
+                fromIndex,
+                new SourceIndex(SourceIndex.SourceId.Prefab, prefabIndex));
+        }
+
         public static ManagedConnection MakeConnection(
             CachedSnapshot snapshot, SourceIndex fromIndex, SourceIndex toIndex,
             int fromField, int valueTypeFieldOwningITypeDescription, int valueTypeFieldFrom, int offsetFromReferenceOwnerHeaderStartToFieldOnValueType, long arrayIndexFrom)
@@ -134,11 +154,11 @@ namespace Unity.MemoryProfiler.Editor
                         if (snapshot.FieldDescriptions.IsStatic[fromField] == 1)
                         {
                             Debug.LogError($"Can't form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) using a static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
-                                + (valueTypeFieldOwningITypeDescription >= 0?$", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} ":"")
-                                + (arrayIndexFrom >= 0?$" at array index {arrayIndexFrom}": "."));
+                                + (valueTypeFieldOwningITypeDescription >= 0 ? $", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} " : "")
+                                + (arrayIndexFrom >= 0 ? $" at array index {arrayIndexFrom}" : "."));
                         }
                     }
-                    else if(arrayIndexFrom < 0)
+                    else if (arrayIndexFrom < 0)
                         Debug.LogError($"Can't form a connection from a object (managed object index {fromIndex.Index} of type {snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[fromIndex.Index].ITypeDescription]}) that is neither using a field (fromField: {fromField})"
                                 + $" nor an array index (arrayIndexFrom:{arrayIndexFrom})");
                     break;
@@ -149,11 +169,11 @@ namespace Unity.MemoryProfiler.Editor
                         if (snapshot.FieldDescriptions.IsStatic[fromField] == 0)
                         {
                             Debug.LogError($"Cannot form a connection from a type ({snapshot.TypeDescriptions.TypeDescriptionName[fromIndex.Index]}) using a non-static field {snapshot.FieldDescriptions.FieldDescriptionName[fromField]}"
-                                + (valueTypeFieldOwningITypeDescription >= 0?$", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} ":"")
-                                + (arrayIndexFrom >= 0?$" at array index {arrayIndexFrom}": "."));
+                                + (valueTypeFieldOwningITypeDescription >= 0 ? $", held by {snapshot.TypeDescriptions.TypeDescriptionName[valueTypeFieldOwningITypeDescription]}.{snapshot.FieldDescriptions.FieldDescriptionName[valueTypeFieldFrom]} " : "")
+                                + (arrayIndexFrom >= 0 ? $" at array index {arrayIndexFrom}" : "."));
                         }
                     }
-                    else if(arrayIndexFrom < 0)
+                    else if (arrayIndexFrom < 0)
                         Debug.LogError($"Can't form a connection from a Type ({snapshot.TypeDescriptions.TypeDescriptionName[fromIndex.Index]}) that is neither using a field (fromField: {fromField})"
                                 + $" nor an array index (arrayIndexFrom:{arrayIndexFrom})");
                     break;

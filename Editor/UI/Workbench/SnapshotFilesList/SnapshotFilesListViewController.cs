@@ -1,10 +1,10 @@
 using System;
-using System.Linq;
 using System.Collections.Generic;
-using UnityEngine.UIElements;
+using System.Linq;
 using Unity.MemoryProfiler.Editor.UI;
-using TreeView = UnityEngine.UIElements.TreeView;
 using UnityEditor;
+using UnityEngine.UIElements;
+using TreeView = UnityEngine.UIElements.TreeView;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -53,6 +53,20 @@ namespace Unity.MemoryProfiler.Editor
             m_SnapshotDataService.LoadedSnapshotsChanged += RefreshView;
             m_SnapshotDataService.CompareModeChanged += RefreshView;
             m_SnapshotDataService.AllSnapshotsChanged += RefreshView;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                m_SnapshotDataService.LoadedSnapshotsChanged -= RefreshView;
+                m_SnapshotDataService.CompareModeChanged -= RefreshView;
+                m_SnapshotDataService.AllSnapshotsChanged -= RefreshView;
+                foreach (var snapshotItemData in m_TreeViewControllers)
+                    snapshotItemData.Value.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
 
         protected override VisualElement LoadView()
@@ -116,7 +130,7 @@ namespace Unity.MemoryProfiler.Editor
                 usedIds.Add(sessionTreeItemId);
             }
 
-            var oldItemEntries = new HashSet<int>(SessionState.GetIntArray(k_TreePersistencyItemIdsKey, new int[0]));
+            var oldItemEntries = new HashSet<int>(SessionState.GetIntArray(k_TreePersistencyItemIdsKey, Array.Empty<int>()));
             var sessionsToExpand = new HashSet<int>();
             foreach (var sessionId in fullSnapshotList.SortedSessionIds)
             {
@@ -151,6 +165,33 @@ namespace Unity.MemoryProfiler.Editor
 
             SessionState.SetIntArray(k_TreePersistencyItemIdsKey, usedIds.ToArray());
 
+            // Clear up items that have been removed from disk.
+            // Technically UnbindTreeItem should take care of these but better save than leaking memory
+
+            var itemsToClear = new List<int>();
+            foreach (var keyValuePair in m_TreeViewControllers)
+            {
+                var found = false;
+                foreach (var snapshotFileModel in fullSnapshotList.AllSnapshots)
+                {
+                    if (snapshotFileModel.Equals(keyValuePair.Value.Model))
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                    continue;
+
+                keyValuePair.Value.Dispose();
+                itemsToClear.Add(keyValuePair.Key);
+            }
+
+            // Remove items from dictionary now we've finished iterating it
+            foreach (var itemToClear in itemsToClear)
+                m_TreeViewControllers.Remove(itemToClear);
+
             // Add a delayed execution here to avoid Windows scrolling to the wrong place: PROFB-333
             m_SnapshotsCollection.schedule.Execute(() =>
             {
@@ -170,6 +211,7 @@ namespace Unity.MemoryProfiler.Editor
                     });
                 }
             });
+
         }
 
         VisualElement MakeTreeItem()
@@ -190,16 +232,16 @@ namespace Unity.MemoryProfiler.Editor
                 var itemId = m_SnapshotsCollection.GetIdForIndex(index);
                 var viewController = new SnapshotFileItemViewController(itemData.FileData, m_SnapshotDataService, m_ScreenshotsManager);
 
-                var loadedState = SnapshotFileItemViewController.State.None;
+                var loadedState = SnapshotLoadedState.None;
                 if (m_SnapshotDataService.CompareMode)
                 {
                     if (PathHelpers.IsSamePath(m_SnapshotDataService.Base?.FullPath, itemData.FileData.FullPath))
-                        loadedState = SnapshotFileItemViewController.State.LoadedBase;
+                        loadedState = SnapshotLoadedState.LoadedBase;
                     else if (PathHelpers.IsSamePath(m_SnapshotDataService.Compared?.FullPath, itemData.FileData.FullPath))
-                        loadedState = SnapshotFileItemViewController.State.LoadedCompare;
+                        loadedState = SnapshotLoadedState.LoadedCompare;
                 }
                 else if (PathHelpers.IsSamePath(m_SnapshotDataService.Base?.FullPath, itemData.FileData.FullPath))
-                    loadedState = SnapshotFileItemViewController.State.Loaded;
+                    loadedState = SnapshotLoadedState.Loaded;
                 viewController.LoadedState = loadedState;
 
                 fileDataCard.Add(viewController.View);
@@ -220,11 +262,13 @@ namespace Unity.MemoryProfiler.Editor
             fileDataCard.Clear();
 
             var itemId = m_SnapshotsCollection.GetIdForIndex(index);
-            if (m_TreeViewControllers.TryGetValue(itemId, out var viewController))
-            {
-                RemoveChild(viewController);
-                m_TreeViewControllers.Remove(itemId);
-            }
+            if (!m_TreeViewControllers.TryGetValue(itemId, out var viewController))
+                return;
+
+            RemoveChild(viewController);
+            // Cleanup happens in RefreshTreeView so that items that only get unbound due to a view refresh, are retained
+            //m_TreeViewControllers[itemId].Dispose();
+            //m_TreeViewControllers.Remove(itemId);
         }
     }
 }

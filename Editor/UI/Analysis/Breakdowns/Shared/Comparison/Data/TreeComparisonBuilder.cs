@@ -1,44 +1,44 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Extensions;
 using UnityEngine.UIElements;
+using static Unity.MemoryProfiler.Editor.UI.TreeModelHelpers;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     // Builds a comparison tree from two input trees with nodes of type TreeViewItemData<IComparableItemData>.
     class TreeComparisonBuilder
     {
-        public List<TreeViewItemData<ComparisonTableModel.ComparisonData>> Build<T>(
-            List<TreeViewItemData<T>> treeA,
-            List<TreeViewItemData<T>> treeB,
+        public List<TreeViewItemData<ComparisonTableModel<TBaseModel, TBaseModelTreeItemData>.ComparisonData>> Build<TBaseModelTreeItemData, TBaseModel>(
+            List<TreeViewItemData<TBaseModelTreeItemData>> treeA,
+            List<TreeViewItemData<TBaseModelTreeItemData>> treeB,
             BuildArgs args,
             out long largestAbsoluteSizeDelta)
-            where T : IPrivateComparableItemData
+            where TBaseModelTreeItemData : IPrivateComparableItemData
         {
-            var intermediateTree = BuildIntermediateTree(treeA, treeB);
+            var intermediateTree = BuildIntermediateTree<TBaseModelTreeItemData, TBaseModel>(treeA, treeB);
             var comparisonTree = BuildUitkTreeFromIntermediateTree(intermediateTree, args, out largestAbsoluteSizeDelta);
             return comparisonTree;
         }
 
-        static List<Node> BuildIntermediateTree<T>(
-            IEnumerable<TreeViewItemData<T>> treeA,
-            IEnumerable<TreeViewItemData<T>> treeB)
-            where T : IPrivateComparableItemData
+        static List<Node<TBaseModel, TBaseModelTreeItemData>> BuildIntermediateTree<TBaseModelTreeItemData, TBaseModel>(
+            IEnumerable<TreeViewItemData<TBaseModelTreeItemData>> treeA,
+            IEnumerable<TreeViewItemData<TBaseModelTreeItemData>> treeB)
+            where TBaseModelTreeItemData : IPrivateComparableItemData
         {
-            var itemStackA = new Stack<TreeViewItemData<T>>();
-            var rootA = new TreeViewItemData<T>(-1, default, new List<TreeViewItemData<T>>(treeA));
+            var itemStackA = new Stack<TreeViewItemData<TBaseModelTreeItemData>>();
+            var rootA = new TreeViewItemData<TBaseModelTreeItemData>(-1, default, new List<TreeViewItemData<TBaseModelTreeItemData>>(treeA));
             itemStackA.Push(rootA);
 
-            var itemStackB = new Stack<TreeViewItemData<T>>();
-            var rootB = new TreeViewItemData<T>(-1, default, new List<TreeViewItemData<T>>(treeB));
+            var itemStackB = new Stack<TreeViewItemData<TBaseModelTreeItemData>>();
+            var rootB = new TreeViewItemData<TBaseModelTreeItemData>(-1, default, new List<TreeViewItemData<TBaseModelTreeItemData>>(treeB));
             itemStackB.Push(rootB);
 
-            var parentOutputNodeStack = new Stack<Node>();
-            var rootOutputNode = new Node(null, default);
+            var parentOutputNodeStack = new Stack<Node<TBaseModel, TBaseModelTreeItemData>>();
+            var rootOutputNode = new Node<TBaseModel, TBaseModelTreeItemData>(null, default);
             parentOutputNodeStack.Push(rootOutputNode);
 
-            var sortByNameComparison = new Comparison<TreeViewItemData<T>>((x, y) => string.Compare(
+            var sortByNameComparison = new Comparison<TreeViewItemData<TBaseModelTreeItemData>>((x, y) => string.Compare(
                 x.data.Name,
                 y.data.Name,
                 StringComparison.Ordinal));
@@ -49,8 +49,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var itemB = itemStackB.Pop();
                 var parentOutputNode = parentOutputNodeStack.Pop();
 
-                var childrenA = (List<TreeViewItemData<T>>)itemA.children ?? new List<TreeViewItemData<T>>();
-                var childrenB = (List<TreeViewItemData<T>>)itemB.children ?? new List<TreeViewItemData<T>>();
+                var childrenA = (List<TreeViewItemData<TBaseModelTreeItemData>>)itemA.children ?? new List<TreeViewItemData<TBaseModelTreeItemData>>();
+                var childrenB = (List<TreeViewItemData<TBaseModelTreeItemData>>)itemB.children ?? new List<TreeViewItemData<TBaseModelTreeItemData>>();
                 childrenA.Sort(sortByNameComparison);
                 childrenB.Sort(sortByNameComparison);
 
@@ -62,41 +62,51 @@ namespace Unity.MemoryProfiler.Editor.UI
                         // We make an assumption that any items with children (non-leaf items) have an exclusive size/count of zero, i.e only leaf nodes have a non-zero exclusive size/count. This means the sizes/counts of non-leaf items are derived entirely from the sum of their children. This allows us to filter the tree later, calculating inclusive size/count per item for display.
                         var exclusiveSizeInA = new MemorySize();
                         var exclusiveCountInA = 0U;
-                        foreach (var item in itemsA)
+                        var itemCountA = itemsA.Count;
+                        var treeNodeIdsA = itemCountA > 0 ? new int[itemCountA] : null;
+                        for (int i = 0; i < itemCountA; i++)
                         {
+                            var item = itemsA[i];
                             if (!item.hasChildren)
                             {
-                                exclusiveSizeInA += item.data.Size;
+                                exclusiveSizeInA += item.data.TotalSize;
                                 exclusiveCountInA++;
                             }
+                            treeNodeIdsA[i] = item.id;
                         }
 
                         var exclusiveSizeInB = new MemorySize();
                         var exclusiveCountInB = 0U;
-                        foreach (var item in itemsB)
+                        var itemCountB = itemsB.Count;
+                        var treeNodeIdsB = itemCountB > 0 ? new int[itemCountB] : null;
+                        for (int i = 0; i < itemCountB; i++)
                         {
+                            var item = itemsB[i];
                             if (!item.hasChildren)
                             {
-                                exclusiveSizeInB += item.data.Size;
+                                exclusiveSizeInB += item.data.TotalSize;
                                 exclusiveCountInB++;
                             }
+                            treeNodeIdsB[i] = item.id;
                         }
 
-                        var name = (itemsA.Count > 0) ? itemsA[0].data.Name : itemsB[0].data.Name;
+                        var name = (itemCountA > 0) ? itemsA[0].data.Name : itemsB[0].data.Name;
 
                         // Check if item has special id and retain it
-                        var treeId = (itemsA.Count > 0) ? itemsA[0].id : itemsB[0].id;
+                        var treeId = (itemCountA > 0) ? itemsA[0].id : itemsB[0].id;
                         if (!IAnalysisViewSelectable.IsPredefinedCategory(treeId))
                             treeId = (int)IAnalysisViewSelectable.Category.None;
 
                         var data = new NodeData(
                             name,
-                            exclusiveSizeInA.Committed,
-                            exclusiveSizeInB.Committed,
+                            exclusiveSizeInA,
+                            exclusiveSizeInB,
                             exclusiveCountInA,
                             exclusiveCountInB,
+                            treeNodeIdsA,
+                            treeNodeIdsB,
                             treeId);
-                        var outputNode = new Node(parentOutputNode, data);
+                        var outputNode = new Node<TBaseModel, TBaseModelTreeItemData>(parentOutputNode, data);
                         parentOutputNode.Children.Add(outputNode);
 
                         var a = itemsA.FirstOrDefault();
@@ -112,7 +122,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 );
             }
 
-            return new List<Node>(rootOutputNode.Children);
+            return new List<Node<TBaseModel, TBaseModelTreeItemData>>(rootOutputNode.Children);
         }
 
         // Matches the items with the same name in both input lists, A and B. The 'match' action will be invoked for every match discovered, including exclusive items, and passed all matched items from both A and B. The input lists must be sorted by name.
@@ -178,15 +188,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        static List<TreeViewItemData<ComparisonTableModel.ComparisonData>> BuildUitkTreeFromIntermediateTree(
-            List<Node> intermediateTree,
+        static List<TreeViewItemData<ComparisonTableModel<TBaseModel, TBaseModelTreeItemData>.ComparisonData>>
+            BuildUitkTreeFromIntermediateTree<TBaseModel, TBaseModelTreeItemData>(
+            List<Node<TBaseModel, TBaseModelTreeItemData>> intermediateTree,
             BuildArgs args,
             out long largestAbsoluteSizeDelta)
+            where TBaseModelTreeItemData : INamedTreeItemData
         {
             // Because UIToolkit TreeViewItemData has immutable children, we must iterate bottom up, so require post-order depth-first traversal.
             // Pre-order depth-first traversal to build post-order traversal stack.
-            var stack = new Stack<Node>(intermediateTree);
-            var postOrderStack = new Stack<Node>();
+            var stack = new Stack<Node<TBaseModel, TBaseModelTreeItemData>>(intermediateTree);
+            var postOrderStack = new Stack<Node<TBaseModel, TBaseModelTreeItemData>>();
             while (stack.Count > 0)
             {
                 var node = stack.Pop();
@@ -213,7 +225,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var inclusiveCountInA = node.Data.ExclusiveCountInA;
                 var inclusiveCountInB = node.Data.ExclusiveCountInB;
                 var children = node.Children;
-                var childItems = new List<TreeViewItemData<ComparisonTableModel.ComparisonData>>(children.Count);
+                var childItems = new List<TreeViewItemData<ComparisonTableModel<TBaseModel, TBaseModelTreeItemData>.ComparisonData>>(children.Count);
                 if (children.Count > 0)
                 {
                     foreach (var child in children)
@@ -243,20 +255,21 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 // Create UIToolkit node type with children. Store on our node type until full tree is traversed.
-                var comparisonData = new ComparisonTableModel.ComparisonData(
+                var comparisonData = new ComparisonTableModel<TBaseModel, TBaseModelTreeItemData>.ComparisonData(
                     node.Data.Name,
                     inclusiveSizeInA,
                     inclusiveSizeInB,
                     inclusiveCountInA,
                     inclusiveCountInB,
-                    itemPath);
+                    itemPath,
+                    args.TableMode);
 
                 // Only include unchanged items if requested by build args.
                 if (!comparisonData.HasChanged && !args.IncludeUnchanged)
                     continue;
 
                 var nodeItemId = IAnalysisViewSelectable.IsPredefinedCategory(node.Data.TreeNodeId) ? node.Data.TreeNodeId : itemId++;
-                var item = new TreeViewItemData<ComparisonTableModel.ComparisonData>(
+                var item = new TreeViewItemData<ComparisonTableModel<TBaseModel, TBaseModelTreeItemData>.ComparisonData>(
                     nodeItemId,
                     comparisonData,
                     childItems);
@@ -266,7 +279,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 largestAbsoluteSizeDelta = Math.Max(absoluteSizeDelta, largestAbsoluteSizeDelta);
             }
 
-            var finalTree = new List<TreeViewItemData<ComparisonTableModel.ComparisonData>>(intermediateTree.Count);
+            var finalTree = new List<TreeViewItemData<ComparisonTableModel<TBaseModel, TBaseModelTreeItemData>.ComparisonData>>(intermediateTree.Count);
             foreach (var rootNode in intermediateTree)
             {
                 if (rootNode.OutputItem.HasValue)
@@ -282,43 +295,51 @@ namespace Unity.MemoryProfiler.Editor.UI
         public readonly struct BuildArgs
         {
             public BuildArgs(
-                bool includeUnchanged)
+                bool includeUnchanged,
+                AllTrackedMemoryTableMode tableMode
+                )
             {
                 IncludeUnchanged = includeUnchanged;
+                TableMode = tableMode;
             }
 
             // Include unchanged items.
             public bool IncludeUnchanged { get; }
+
+            public AllTrackedMemoryTableMode TableMode { get; }
         }
 
         // A node for the intermediate comparison tree.
-        class Node
+        class Node<TBaseModel, TBaseModelTreeItemData>
+            where TBaseModelTreeItemData : INamedTreeItemData
         {
-            public Node(Node parent, NodeData data)
+            public Node(Node<TBaseModel, TBaseModelTreeItemData> parent, NodeData data)
             {
                 Parent = parent;
-                Children = new List<Node>();
+                Children = new List<Node<TBaseModel, TBaseModelTreeItemData>>();
                 Data = data;
             }
 
-            public Node Parent { get; }
+            public Node<TBaseModel, TBaseModelTreeItemData> Parent { get; }
 
-            public List<Node> Children { get; }
+            public List<Node<TBaseModel, TBaseModelTreeItemData>> Children { get; }
 
             public NodeData Data { get; }
 
             // Built during final traversal when converting to UIToolkit tree.
-            public TreeViewItemData<ComparisonTableModel.ComparisonData>? OutputItem { get; set; }
+            public TreeViewItemData<ComparisonTableModel<TBaseModel, TBaseModelTreeItemData>.ComparisonData>? OutputItem { get; set; }
         }
 
         readonly struct NodeData
         {
             public NodeData(
                 string name,
-                ulong exclusiveSizeInA,
-                ulong exclusiveSizeInB,
+                MemorySize exclusiveSizeInA,
+                MemorySize exclusiveSizeInB,
                 uint exclusiveCountInA,
                 uint exclusiveCountInB,
+                int[] treeNodeIdsA,
+                int[] treeNodeIdsB,
                 int treeNodeId)
             {
                 Name = name;
@@ -326,6 +347,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ExclusiveSizeInB = exclusiveSizeInB;
                 ExclusiveCountInA = exclusiveCountInA;
                 ExclusiveCountInB = exclusiveCountInB;
+                TreeNodeIdsA = treeNodeIdsA;
+                TreeNodeIdsB = treeNodeIdsB;
                 TreeNodeId = treeNodeId;
             }
 
@@ -333,10 +356,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             public string Name { get; }
 
             // The size of this item in A excluding children, in bytes.
-            public ulong ExclusiveSizeInA { get; }
+            public MemorySize ExclusiveSizeInA { get; }
 
             // The size of this item in B excluding children, in bytes.
-            public ulong ExclusiveSizeInB { get; }
+            public MemorySize ExclusiveSizeInB { get; }
 
             // The number of this item in A, excluding children.
             public uint ExclusiveCountInA { get; }
@@ -345,7 +368,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             public uint ExclusiveCountInB { get; }
 
             public int TreeNodeId { get; }
+
+            // The tree node Ids in model A.
+            public int[] TreeNodeIdsA { get; }
+
+            // The tree node Ids in model B.
+            public int[] TreeNodeIdsB { get; }
         }
     }
 }
-#endif

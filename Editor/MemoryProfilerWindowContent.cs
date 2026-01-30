@@ -1,6 +1,6 @@
-using UnityEngine;
-using UnityEditor;
 using Unity.MemoryProfiler.Editor.UI;
+using UnityEditor;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor.UIContentData
 {
@@ -162,6 +162,15 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "\n\nThis Memory could also still be occupied by Objects that have been abandoned after the last GC.Alloc sweep and are waiting for collection in the next one.";
 
 
+        public const string AttributedImpactInfo = "Represents the total memory kept alive by this object, including memory it exclusively references, partial amounts of memory shared with other objects, and its own size.";
+        public const string AttributedImpactInfoNotAvailable = "Impact and Path-To-Root was not generated, try reopening the snapshot if you just turned the setting on, otherwise please report a bug.";
+        public const string AttributedImpactInfoNotAvailableForOldSnapshots = "Impact and Path-To-Root info can't be generated for snapshots taken from Unity versions 2022.1 or older.";
+        public const string AttributedImpactTotalTooltip = "This is how much memory this object is responsible for keeping alive, including memory for which it shares its ownership with other objects (divided up amongst these owners), memory it exlusively references, as well as its own size.";
+        public const string AttributedImpactExclusiveTooltip = "This is how much memory this object is exclusively responsible for keeping alive, which is comprised of memory it exlusively references, as well as its own size. " + AttributedImpactExlusivelyOwnedSharedImpactAddendum;
+        public const string AttributedImpactSharedTooltip = "This is the amount of memory for which this object shares its ownership with other objects. The referenced memory has been divided up amongst these owners. " + AttributedImpactExlusivelyOwnedSharedImpactAddendum;
+
+        const string AttributedImpactExlusivelyOwnedSharedImpactAddendum = "If an object exclusively owns all owners of a shared object, their impact is gathered into its shared impact.";
+
         public const string RepeatReferencesLabel = "Repeat References";
         public const string RepeatReferencesTooltip = "'Repeat References' are references from managed objects already listed in the 'Referenced By' list but e.g. originating from a different field or array index. The 'Referenced By' list does not list each such reference for the sake of brevity.";
         public const string NonUnityObjectGCHandleReferencesLabel = "GCHandles";
@@ -188,13 +197,28 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string GCHandleStatus = "A GCHandle";
         public const string GCHandleHint = GCHandleDescription + " This GCHandle is not associated with the native object behind the managed shell of a Unity Object. Check your code if you call GCHandle.Alloc(), UnsafeUtility.PinGCArrayAndGetDataAddress(), or UnsafeUtility.PinGCObjectAndGetAddress() anywhere.";
 
+        public const string PrefabStatus = "A Prefab";
+        public const string PrefabHint = "The Prefab class does not really exist at runtime so this is more of a virtual Prefab entry used by the Memory Profiler as a root for the Prefab's root transform. If you see something referencing this Prefab where you would expect that reference to be targeting something deeper into the Prefab, this is expected as the Memory Profiler redirects that reference to the root of the Prefab for a cleaner Hierarchy reconstruction of the Prefab.";
+        public const string SceneStatus = "A Loaded Scene";
+        public const string DontDestroyOnLoadSceneStatus = "The Don't Destroy On Load Scene";
+        public const string DontDestroyOnLoadSceneHint = "The Don't Destroy On Load Scene is where Unity moves all GameObjects that were marked via Object.DontDestroyOnLoad(). To unload objects in it, call Destroy() on them or find who marked them as DontDestroyOnLoad and remove that call.";
+
         public const string InvalidObjectErrorBoxMessage = "This is an invalid Managed Object, i.e. the Memory Profiler could not identify it's type and data. To help us in finding and fixing this issue, " + TextContent.InvalidObjectPleaseReportABugMessage;
 
         public const string UnrootedUnrootedAllocationsErrorBoxMessage = "This is a bug in the native code of the engine, please file a bug report. " +
             "Chances are high that every single allocation here is a separate bug to be fixed by a different team and should be treated as such. " +
             "By their very nature, User facing releases lack the information needed to differentiate these allocations in a meaningful way. " +
             "To get an approximation of what constitutes a separate vs a duplicate bug the byte size of each allocation should be used (size in byte is given when hovering the Native Size). " +
-            "\nNote: It is likely that this memory is actually needed, but without it being properly rooted, there is no way to tell." +
+            UnrootedAllocationsNonInternalNote;
+
+        public const string UnrootedUnrootedAllocations_6000_3_ErrorBoxMessage = "These allocations stem from bugs in the native code of the engine. " +
+            "You can get more detail on these by starting your 6.3+ Unity Player with the command-line option '-enable-memoryprofiler-callstacks', " +
+            "which might not result in fully symbolized callstacks for each of these allocations, but will break them down by their Memory Labels. " +
+            "We are working to reduce the amount of these starting with Unity version 6.5 but might not have repro cases for all instances and Memory Labels, " +
+            "so if there are any Memory Labels that stand out or just keep growing over time, please file a bug report with your project and snapshots taken with callstack information. " +
+            UnrootedAllocationsNonInternalNote;
+
+        const string UnrootedAllocationsNonInternalNote = "\nNote: It is likely that this memory is actually needed, but without it being properly rooted, there is no way to tell." +
             "\nUnity's staff is making a best effort attempt to catch these internally, but there are a myriad of ways of using the engine so that it is impossible to catch all possible scenarios.";
 
         public const string UnrootedUnrootedAllocationsErrorBoxMessageInternalMode = UnrootedUnrootedAllocationsErrorBoxMessage +
@@ -207,7 +231,9 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
             "0 'Found References' does not necessarily mean that this allocation is leaked.";
 
         public const string NativeAllocationInternalModeCallStacksInfoBoxMessage =
-            "If you have access to Unity's source code, you can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h to see where this allocation was made. If you are using Unity 6000.3 or newer you can also add '-enable-memoryprofiler-callstacks' as a commandline option to the Player or Editor you want to capture a snapshot from.";
+            "If you are using Unity 6000.3 or newer you can add '-enable-memoryprofiler-callstacks' as a commandline option to the Player or Editor you want to capture a snapshot from " +
+            "to get call-stacks for these native allocations. " +
+            "If you are on an older version and have access to Unity's source code, you can compile the engine with ENABLE_STACKS_ON_ALL_ALLOCS set to 1 in MemoryProfiler.h.";
 
         const string NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipBase = "Clicking this will reload the table and then all allocations under this root will be ";
         public const string NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipReveal = NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipBase + "shown.";

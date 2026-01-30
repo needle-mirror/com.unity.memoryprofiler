@@ -18,6 +18,10 @@ using HideFlags = UnityEngine.HideFlags;
 using GameObject = UnityEngine.GameObject;
 using Vector2 = UnityEngine.Vector2;
 using Debug = UnityEngine.Debug;
+#if UNITY_6000_4_OR_NEWER
+using GUID = UnityEngine.GUID;
+#endif
+
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
 // so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
@@ -603,7 +607,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 return await FindSceneObject(snapshot, unifiedUnityObjectInfo, cancellationToken);
             }
-            if (unifiedUnityObjectInfo.IsRuntimeCreated)
+            if (!snapshot.HasEntityIDAs8ByteStructs && unifiedUnityObjectInfo.IsRuntimeCreated)
             {
                 // no dice, if it was a runtime created asset, and we couldn't find it as part of this session, there are no guarantees, not even close hits
                 return new Findings() { FailReason = SearchFailReason.NotFound };
@@ -830,11 +834,9 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     if (snapshot.TypeDescriptions.TypeDescriptionName[i] == selectedObjectType)
                     {
-                        int nativeTypeIndex;
-                        if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue(i, out nativeTypeIndex)
-                            && nativeTypeIndex >= 0)
+                        if (snapshot.TypeDescriptions.UnifiedTypeInfoManaged[i].IsUnityObjectType)
                         {
-                            typeMismatch = nativeTypeIndex != unifiedUnityObjectInfo.NativeTypeIndex;
+                            typeMismatch = snapshot.TypeDescriptions.UnifiedTypeInfoManaged[i].NativeTypeIndex != unifiedUnityObjectInfo.NativeTypeIndex;
                         }
                         break;
                     }

@@ -162,6 +162,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
         public const string GroupNameBasic = "Basic";
+        public const string GroupNameImpact = "Memory Impact";
         public const string GroupNameMetaData = "MetaData";
         public const string GroupNameHelp = "Help";
         public const string GroupNameAdvanced = "Advanced";
@@ -245,6 +246,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_GroupedElements = detailsPanelRoot.Q("selected-item-details__grouped-elements");
             m_SelectedItemDetailsGroupUxmlPathViewTree = UIElementsHelper.LoadAssetByGUID(k_UxmlAssetGuidSelectedItemDetailsGroup);
             CreateDetailsGroup(GroupNameBasic);
+            CreateDetailsGroup(GroupNameImpact);
             CreateDetailsGroup(GroupNameMetaData);
             CreateDetailsGroup(GroupNameHelp);
             CreateDetailsGroup(GroupNameAdvanced, false);
@@ -357,7 +359,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         static string GetFoldoutSessionStateKey(string foldoutName) => $"com.unity.memoryprofiler.{nameof(SelectedItemDetailsPanel)}.foldout.{foldoutName}";
 
-        DetailsGroup CreateDetailsGroup(string name, bool expansionDefaultState = true)
+        DetailsGroup CreateDetailsGroup(string name, bool expansionDefaultState = true, string parentGroup = null)
         {
             var item = m_SelectedItemDetailsGroupUxmlPathViewTree.Clone();
             item.style.flexGrow = 1;
@@ -375,7 +377,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             groupData.Foldout.text = name;
             m_DetailsGroups.Add(groupData);
             m_DetailsGroupsByGroupName.Add(name, groupData);
-            m_GroupedElements.Add(groupData.Root);
+            if (string.IsNullOrEmpty(parentGroup))
+                m_GroupedElements.Add(groupData.Root);
+            else
+                AddGroupItem(parentGroup).Content.Add(groupData.Root);
             UIElementsHelper.SetVisibility(groupData.Root, false);
             return groupData;
         }
@@ -461,6 +466,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_ActiveDetailsGroupsByGroupName.Add(groupName, groupItem);
             }
             return groupItem;
+        }
+
+        public void AddSubGroup(string parentGroupName, string subGroupName)
+        {
+            if (m_DetailsGroupsByGroupName.TryGetValue(subGroupName, out var subGroupItem))
+            {
+                // ensure it is added as a child and didn't get cleared out inbetween
+                var parentGroup = AddGroupItem(parentGroupName);
+                if (!parentGroup.Content.Contains(subGroupItem.Root))
+                    parentGroup.Content.Add(subGroupItem.Root);
+                return;
+            }
+            CreateDetailsGroup(subGroupName, parentGroup: parentGroupName);
         }
 
         public void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel, Action onInteraction = null)
@@ -651,14 +669,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Title.text = name;
         }
 
-        public void SetItemName(ObjectData pureCSharpObject, UnifiedType typeInfo)
+        public void SetItemName(ObjectData pureCSharpObject, UnifiedTypeAndName typeInfo)
         {
             UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
             NonObjectTitleShown = false;
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, pureCSharpObject, typeInfo);
         }
 
-        public void SetItemName(UnifiedType typeInfo)
+        public void SetItemName(UnifiedTypeAndName typeInfo)
         {
             UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
             NonObjectTitleShown = false;

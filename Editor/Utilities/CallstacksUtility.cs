@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Unity.Burst;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using UnityEditor;
-using Unity.Burst;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using static Unity.MemoryProfiler.Editor.ExportUtility;
 
@@ -22,7 +22,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public readonly T this[long idx]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get
             {
                 Checks.CheckIndexInRangeAndThrow(idx, Depth);
@@ -73,24 +73,24 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public override int GetHashCode() => m_HashCode;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public int GetHashCode(PartialCallstackSymbolsRef<T> partialCallstackSymbolsRef) => partialCallstackSymbolsRef.m_HashCode;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public bool Equals(PartialCallstackSymbolsRef<T> other) => m_HashCode == other.m_HashCode;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public override bool Equals(object obj) => obj is PartialCallstackSymbolsRef<T> other && Equals(other);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public bool Equals(PartialCallstackSymbolsRef<T> x, PartialCallstackSymbolsRef<T> y) => x.Equals(y);
 
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static bool operator ==(PartialCallstackSymbolsRef<T> x, PartialCallstackSymbolsRef<T> y) => x.m_HashCode == y.m_HashCode;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static bool operator !=(PartialCallstackSymbolsRef<T> x, PartialCallstackSymbolsRef<T> y) => x.m_HashCode != y.m_HashCode;
 
         public override string ToString()
@@ -302,7 +302,7 @@ namespace Unity.MemoryProfiler.Editor
             Dictionary<TKey, TNode> ChildNodes { get; set; }
         }
 
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //[MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         //public static void GetOrAddToNodeList<TKey, TValue, TNode>(this INode<TKey, TValue, TNode> parentNode, TKey key, TValue valueToAdd)
         //    where TNode : INode<TKey, TValue, TNode>, new()
         //    where TKey : unmanaged
@@ -327,7 +327,7 @@ namespace Unity.MemoryProfiler.Editor
         //    }
         //}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static void GetOrAddToNodeList<TKey, TValue, TNode>(this INode<TKey, TValue, TNode> parentNode, in DynamicArrayRef<TKey> parentKeyChain, long index, bool inverted, TValue valueToAdd)
             where TNode : INode<TKey, TValue, TNode>, new()
             where TKey : unmanaged
@@ -354,7 +354,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //[MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         //static void GetOrAddNode<TKey, TValue, TNode>(this INode<TKey, TValue, TNode> parentNode, TKey key, out TNode childNode)
         //    where TNode : INode<TKey, TValue, TNode>, new()
         //    where TKey : unmanaged
@@ -368,7 +368,7 @@ namespace Unity.MemoryProfiler.Editor
         //    }
         //}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static void GetOrAddNode<TKey, TValue, TNode>(this INode<TKey, TValue, TNode> parentNode, in DynamicArrayRef<TKey> parentKeyChain, long index, bool inverted, out TNode childNode)
             where TNode : INode<TKey, TValue, TNode>, new()
             where TKey : unmanaged

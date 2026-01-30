@@ -30,6 +30,7 @@ namespace Unity.MemoryProfiler.Editor
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
         const string k_ShowReservedMemoryBreakdown = "Unity.MemoryProfiler.Editor.ShowReservedMemoryBreakdown";
         const string k_ShowMemoryMapView = "Unity.MemoryProfiler.Editor.ShowMemoryMapView";
+        const string k_EnableRootsAndImpact = "Unity.MemoryProfiler.Editor.EnableRootsAndImpact";
         const string k_ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocationsKey = "Unity.MemoryProfiler.Editor.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations";
         const string k_SnapshotCaptureFlagsKey = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureFlags.v2"; // upgraded to v2 because the default changed
         const string k_SnapshotCaptureCaptureWithScreenshot = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureWithScreenshot";
@@ -52,15 +53,13 @@ namespace Unity.MemoryProfiler.Editor
         /// Allocations in the All of Memory table under Native > Sub Systems > Unrooted > Unrooted are bugs in Unity's C++ code.
         /// To make it easier to analyze and fix these, internal developer nee to be able to see these split out by allocation.
         /// Together with native callstack recording getting enabled in MemoryProfiler.h via the define ENABLE_STACKS_ON_ALL_ALLOCS
-        /// (or for 600.3 or newer and using the commandline option `-enable-memoryprofiler-callstacks`), they can be analyzed and fixed.
+        /// (or for 6000.3 or newer and using the commandline option `-enable-memoryprofiler-callstacks`), they can be analyzed and fixed.
         ///
         /// Non-Source-Code-Users pre Unity 6000.3 can usually not do too much about these and don't benefit much from these being split out and called out as bugs.
         /// That said, after we've done wider sweeps to resolve these issues in the code base, we can consider enabling these for everyone to make it easier to catch stray allocations that escape us.
         /// </summary>
         public static bool EnableUnrootedAllocationBreakdown(CachedSnapshot cachedSnapshot) => InternalMode || cachedSnapshot.NativeAllocationSites.Count > 0
-            // uncomment to make Unrooted allocations get broken down by MemLabel for all users of 6.3 without hiding it under internal mode
-            //|| (cachedSnapshot.NativeAllocationSites.Count > 0 && cachedSnapshot.MetaData?.UnityVersionMajor >= 6000 && cachedSnapshot.MetaData?.UnityVersionMinor >= 3)
-            ;
+            || (cachedSnapshot.MetaData?.UnityVersionEqualOrNewer(6000, 3) ?? false);
 
         [InitializeOnLoadMethod, RuntimeInitializeOnLoadMethod]
         static void RuntimeInitialize()
@@ -73,10 +72,8 @@ namespace Unity.MemoryProfiler.Editor
 
         internal static class FeatureFlags
         {
-
-
             // For By Status and Path From Roots
-            public static bool GenerateTransformTreesForByStatusTable_2022_09 { get; set; } = false;
+            public static bool GenerateDataForRootsAndImpact_2025_11 { get; set; } = true;
             // Mostly for internal debugging purposes as native allocation callstacks are not yet supported without source access and this feature is mostly useless without them.
             public static bool EnableDynamicAllocationBreakdown_2024_10 { get; set; } = false;
 
@@ -319,6 +316,20 @@ namespace Unity.MemoryProfiler.Editor
                 if (value == ShowMemoryMapView)
                     return;
                 EditorPrefs.SetBool(k_ShowMemoryMapView, value);
+            }
+        }
+
+        public static bool EnableRootsAndImpact
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_EnableRootsAndImpact, FeatureFlags.GenerateDataForRootsAndImpact_2025_11);
+            }
+            set
+            {
+                if (value == EnableRootsAndImpact)
+                    return;
+                EditorPrefs.SetBool(k_EnableRootsAndImpact, value);
             }
         }
 

@@ -47,7 +47,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
 #if !UNITY_6000_0_OR_NEWER
-        public new class UxmlFactory : UxmlFactory<AllTrackedMemoryDescriptionCell> {}
+        public new class UxmlFactory : UxmlFactory<AllTrackedMemoryDescriptionCell> { }
 #endif
     }
 }

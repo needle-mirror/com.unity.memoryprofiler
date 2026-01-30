@@ -22,6 +22,7 @@ namespace Unity.MemoryProfiler.Editor
             public static readonly string MemoryProfilerPackageOverridesMemoryModuleUI = L10n.Tr("Replace Memory UI in Profiler Window", "If set to true, the Memory Profiler Module UI in the Profiler Window will be replaced with UI from the Memory Profiler package.");
             public static readonly string ShowReservedMemoryBreakdown = L10n.Tr("Show reserved native memory breakdown", "If set to true, the Memory Profiler will show reserved native memory broken down to individual allocator in `All Of Memory` view.");
             public static readonly string ShowAllSystemMemoryView = L10n.Tr("Show Memory Map view", "If set to true, the Memory Profiler will show additional `Memory Map` view with low-level OS system memory map with breakdown.");
+            public static readonly string EnableRootsAndImpact = L10n.Tr("Enable Shortest Path to Root", "If set to true, upon opening a snapshot, the Memory Profiler maps out the root paths to all objects in the snapshot. While this increases the time it takes to open the snapshot, it allows for the References section to show the Shortest Path To Root for the strongest root of each object held in memory. It also allows for the Selected Item Details panel to show the total memory impact of any object and the objects it references.");
             public static readonly string AssetSearchSettings = L10n.Tr("Asset Search Provider Settings", "The Memory Profiler uses search features to search for assets listed in the capture within the currently open project. When it finds them, it allows selecting the asset and, if one exists, shows a preview of the asset in the Memory Profiler UI. There have been isolated reports of issues with opening the Memory Profiler based on the indexing of the used search providers. If you are experiencing problems with opening the Memory Profiler Window or extreme delays when selecting assets in it, you could try changing this setting. This setting also affects which providers will be used by the Open in Search button.");
 
             public static readonly GUIContent TitleSettingsIcon = EditorGUIUtility.TrIconContent("_Popup", "Settings");
@@ -133,6 +134,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 MemoryProfilerSettings.ShowReservedMemoryBreakdown = EditorGUILayout.Toggle(Content.ShowReservedMemoryBreakdown, MemoryProfilerSettings.ShowReservedMemoryBreakdown);
                 MemoryProfilerSettings.ShowMemoryMapView = EditorGUILayout.Toggle(Content.ShowAllSystemMemoryView, MemoryProfilerSettings.ShowMemoryMapView);
+                MemoryProfilerSettings.EnableRootsAndImpact = EditorGUILayout.Toggle(Content.EnableRootsAndImpact, MemoryProfilerSettings.EnableRootsAndImpact);
                 MemoryProfilerSettings.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations = EditorGUILayout.Toggle(Content.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations, MemoryProfilerSettings.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations);
 
                 if (MemoryProfilerSettings.InternalMode)

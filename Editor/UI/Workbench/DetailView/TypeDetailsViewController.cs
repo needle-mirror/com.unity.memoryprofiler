@@ -67,13 +67,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case CachedSnapshot.SourceIndex.SourceId.NativeType:
                 {
                     SetNativeTypeInfo(true, m_DataSource.Index);
-                    SetManagedTypeInfo(m_Snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryGetValue((int)m_DataSource.Index, out var managedTypeIndex), managedTypeIndex);
+                    var typeInfo = m_Snapshot.TypeDescriptions.UnifiedTypeInfoNative[m_DataSource.Index];
+                    SetManagedTypeInfo(typeInfo.ManagedTypeIndex is not CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid, typeInfo.ManagedTypeIndex);
                     break;
                 }
                 case CachedSnapshot.SourceIndex.SourceId.ManagedType:
                 {
                     SetManagedTypeInfo(true, m_DataSource.Index);
-                    SetNativeTypeInfo(m_Snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.TryGetValue((int)m_DataSource.Index, out var nativeTypeIndex) && nativeTypeIndex >= 0, nativeTypeIndex);
+                    var typeInfo = m_Snapshot.TypeDescriptions.UnifiedTypeInfoManaged[m_DataSource.Index];
+                    SetNativeTypeInfo(typeInfo.IsUnityObjectType, typeInfo.NativeTypeIndex);
                     break;
                 }
                 case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:

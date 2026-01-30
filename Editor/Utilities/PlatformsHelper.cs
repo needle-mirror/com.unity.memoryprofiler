@@ -15,9 +15,7 @@ namespace Unity.MemoryProfiler.Editor
         public const RuntimePlatform WindowsServer = (RuntimePlatform)44 /*RuntimePlatform.WindowsServer*/;
         public const RuntimePlatform OSXServer = (RuntimePlatform)45 /*RuntimePlatform.OSXServer*/;
         public const RuntimePlatform EmbeddedLinuxArm64 = (RuntimePlatform)39 /*RuntimePlatform.EmbeddedLinuxArm64*/;
-        public const RuntimePlatform EmbeddedLinuxArm32 = (RuntimePlatform)40 /*RuntimePlatform.EmbeddedLinuxArm32*/;
         public const RuntimePlatform EmbeddedLinuxX64 = (RuntimePlatform)41 /*RuntimePlatform.EmbeddedLinuxX64*/;
-        public const RuntimePlatform EmbeddedLinuxX86 = (RuntimePlatform)42 /*RuntimePlatform.EmbeddedLinuxX86*/;
 
         static readonly RuntimePlatform[] k_PlatformsHideResidentMemory =
             new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch,
@@ -56,10 +54,9 @@ namespace Unity.MemoryProfiler.Editor
                     buildTarget = BuildTarget.StandaloneLinux64;
                     break;
 #if UNITY_2021_2_OR_NEWER
-                case RuntimePlatform.EmbeddedLinuxArm32:
                 case RuntimePlatform.EmbeddedLinuxArm64:
                 case RuntimePlatform.EmbeddedLinuxX64:
-                case RuntimePlatform.EmbeddedLinuxX86:
+                    // 32 bit variants are unused
                     buildTarget = BuildTarget.EmbeddedLinux;
                     break;
 #endif
@@ -105,10 +102,9 @@ namespace Unity.MemoryProfiler.Editor
                     break;
 #endif
 #if UNITY_2022_2_OR_NEWER
-                case RuntimePlatform.QNXArm32:
                 case RuntimePlatform.QNXArm64:
                 case RuntimePlatform.QNXX64:
-                case RuntimePlatform.QNXX86:
+                    // 32 bit variants are unused
                     buildTarget = BuildTarget.QNX;
                     break;
 #endif
@@ -161,9 +157,7 @@ namespace Unity.MemoryProfiler.Editor
                 case RuntimePlatform.LinuxPlayer:
                 case RuntimePlatform.LinuxEditor:
                 case EmbeddedLinuxArm64:
-                case EmbeddedLinuxArm32:
                 case EmbeddedLinuxX64:
-                case EmbeddedLinuxX86:
                 case LinuxServer:
                     return Application.platform == RuntimePlatform.LinuxEditor;
                 default:

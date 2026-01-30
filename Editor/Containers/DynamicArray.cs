@@ -56,15 +56,15 @@ namespace Unity.MemoryProfiler.Editor.Containers
         readonly BurstableBool m_IsCreated;
         public readonly bool IsCreated => m_IsCreated == BurstableBool.TRUE;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly T* GetUnsafeTypedPtr() => m_Data;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly void* GetUnsafePtr() => m_Data;
 
         public readonly ref T this[long idx]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get
             {
                 Checks.CheckIndexInRangeAndThrow(idx, Count);
@@ -94,7 +94,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_IsCreated = isCreated ? BurstableBool.TRUE : BurstableBool.FALSE;
         }
 
-        public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<T>(this);
+        public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<DynamicArrayRef<T>, T>(this);
 
         readonly IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
@@ -200,7 +200,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         }
 
 #if UNITY_COLLECTIONS_CHANGED
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static void CalculateAllocationSize(ref long capacity, out int sizeOf)
         {
             // Allocate doesn't take long, so if the allocation is bigger than int.MaxValue, split it up
@@ -217,7 +217,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         }
 #endif
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, AllocatorType allocator)
             => ConvertExistingDataToDynamicArray(dataPointer, count, allocator, count);
 
@@ -279,7 +279,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public readonly ref T this[long idx]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get
             {
                 Checks.CheckEquals(true, IsCreated);
@@ -288,13 +288,13 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly void* GetUnsafePtr() { return m_Data; }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly T* GetUnsafeTypedPtr() { return m_Data; }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public ref readonly T Back()
         {
             Checks.CheckEquals(true, IsCreated);
@@ -372,7 +372,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_Count = newSize;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         void ResizeInternalBuffer(long newCapacity, bool forceResize, ResizePolicy resizePolicy = k_DefaultResizePolicy)
         {
             if (newCapacity > m_Capacity || (forceResize && newCapacity != m_Capacity))
@@ -432,7 +432,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
         /// <param name="values"></param>
         /// <param name="memClearForExcessExpansion"></param>
         /// <param name="resizePolicy"></param>
-        public void PushRange(DynamicArray<T> values, bool memClearForExcessExpansion = false, ResizePolicy resizePolicy = ResizePolicy.Exact)
+        public void PushRange<TContainer>(TContainer values, bool memClearForExcessExpansion = false, ResizePolicy resizePolicy = ResizePolicy.Exact)
+            where TContainer : unmanaged, ILongIndexedContainer<T>
         {
             Checks.CheckEquals(true, IsCreated);
             if (values.Count == 0)
@@ -449,7 +450,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_Count = newCount;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly ref T Peek()
         {
             Checks.CheckEquals(true, IsCreated);
@@ -458,7 +459,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return ref this[m_Count - 1];
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public T Pop()
         {
             Checks.CheckEquals(true, IsCreated);
@@ -532,25 +533,26 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_IsCreated = BurstableBool.FALSE;
         }
 
-        public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<T>(this);
+        public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<DynamicArray<T>, T>(this);
 
         readonly IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    unsafe struct DynamicArrayEnumerator<T> : IEnumerator<T>
+    struct DynamicArrayEnumerator<TContainer, T> : IEnumerator<T>
+        where TContainer : unmanaged, ILongIndexedContainer<T>
         where T : unmanaged
     {
-        public readonly T Current => nextIndex == 0 ? default : m_Array[nextIndex - 1];
+        public readonly T Current => currentIndex == -1 ? default : m_Array[currentIndex];
 
         readonly object IEnumerator.Current => Current;
 
-        ILongIndexedContainer<T> m_Array;
-        long nextIndex;
+        TContainer m_Array;
+        long currentIndex;
 
-        public DynamicArrayEnumerator(ILongIndexedContainer<T> array)
+        public DynamicArrayEnumerator(TContainer array)
         {
             m_Array = array;
-            nextIndex = 0;
+            currentIndex = -1;
         }
 
         public void Dispose()
@@ -558,15 +560,15 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_Array = default;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public bool MoveNext()
         {
-            return ++nextIndex < m_Array.Count;
+            return ++currentIndex < m_Array.Count;
         }
 
         public void Reset()
         {
-            nextIndex = 0;
+            currentIndex = -1;
         }
     }
 }

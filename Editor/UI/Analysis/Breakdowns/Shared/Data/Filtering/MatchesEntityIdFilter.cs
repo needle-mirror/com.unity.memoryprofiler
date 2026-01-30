@@ -35,7 +35,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
 #if DEBUG_VALIDATION
             // Cannot create a text filter without passing a snapshot for disambiguation in comparisons
-            if(sourceSnapshot == null && entityId != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone)
+            if (sourceSnapshot == null && entityId != CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone)
             {
                 Debug.LogWarning("Creating a Source Filter without providing a snapshot is not allowed unless it is a User initiated search");
                 return null;

@@ -1,6 +1,6 @@
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -8,6 +8,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     static class IconUtility
     {
+
         // Loads the icon at the specified iconPath. If the Pro Skin is being used, the 'd_' prefix naming convention is observed. If autoScale is true, the '@2x'/'@3x' postfix naming convention is observed.
         public static Texture2D LoadIconAtPath(string iconPath, bool autoScale = true)
         {

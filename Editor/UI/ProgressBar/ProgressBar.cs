@@ -2,6 +2,17 @@ using System;
 using UnityEditor;
 using UnityEngine;
 
+#if LIVECYCLE_APIS_AVAILABLE
+// Once CoreCLR-compatible lifecycle APIs are made public (https://jira.unity3d.com/browse/SCP-1543),
+// DomainUnload should be replaced with [BeforeAssemblyUnloadingAttribute] for proper handling
+// So Update the conditional Define for LIVECYCLE_APIS_AVAILABLE in
+// - Editor\Unity.MemoryProfiler.Editor.asmdef
+// - Editor\Unity.MemoryProfiler.Editor.csproj
+// - Tests\Editor\Unity.MemoryProfiler.Editor.Tests.asmdef
+// - Tests\Editor\Unity.MemoryProfiler.Editor.Tests.csproj
+using Unity.Scripting.LifecycleManagement;
+#endif
+
 namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class ProgressBarDisplay
@@ -31,13 +42,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Progress = 0.0f;
             m_IsComplete = 1;
 
-#if !ENABLE_CORECLR
+#if !LIVECYCLE_APIS_AVAILABLE // See comment in usings
             AppDomain.CurrentDomain.DomainUnload += OnDomainUnload;
 #endif
         }
 
-#if ENABLE_CORECLR
-        [Unity.Scripting.LifecycleManagement.BeforeAssemblyUnloading]
+#if LIVECYCLE_APIS_AVAILABLE
+        [BeforeAssemblyUnloading]
         static void BeforeAssemblyUnloading()
         {
             ClearOnDomainUnload();
@@ -47,7 +58,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         static void OnDomainUnload(object sender, EventArgs args)
         {
             ClearOnDomainUnload();
+#pragma warning disable UAC0006 // See comment in usings
             AppDomain.CurrentDomain.DomainUnload -= OnDomainUnload;
+#pragma warning restore UAC0006
         }
 #endif
 

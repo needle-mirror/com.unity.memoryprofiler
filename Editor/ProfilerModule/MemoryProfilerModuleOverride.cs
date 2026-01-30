@@ -6,7 +6,7 @@ using Unity.MemoryProfiler.Editor;
 #if !MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE
 using Unity.MemoryProfiler.Editor.MemoryProfilerModule;
 #endif
-#if ENABLE_CORECLR
+#if LIVECYCLE_APIS_AVAILABLE
 using Unity.Scripting.LifecycleManagement;
 #endif
 
@@ -33,7 +33,7 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
         [SerializeField]
         public bool Normalized = false;
 
-#if ENABLE_CORECLR
+#if LIVECYCLE_APIS_AVAILABLE
         [AfterAssemblyLoaded]
 #else
         [InitializeOnLoadMethod]
@@ -50,7 +50,7 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 #pragma warning restore UDR0001 // Domain Reload Analyzer
         }
 
-#if ENABLE_CORECLR
+#if LIVECYCLE_APIS_AVAILABLE
         [BeforeCodeUnloading]
 #endif
         static void UnloadOverride()

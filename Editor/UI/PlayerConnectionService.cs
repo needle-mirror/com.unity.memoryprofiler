@@ -1,20 +1,20 @@
 using System;
-using System.IO;
 using System.Collections;
+using System.IO;
 using System.Text;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.EditorCoroutines.Editor;
+using Unity.MemoryProfiler.Editor.UI;
+using Unity.MemoryProfiler.Editor.UIContentData;
+using Unity.Profiling;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEditor.Networking.PlayerConnection;
 using UnityEngine;
 using UnityEngine.Networking.PlayerConnection;
-using Unity.Profiling;
-using Unity.MemoryProfiler.Editor.UI;
-using Unity.MemoryProfiler.Editor.UIContentData;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using Unity.EditorCoroutines.Editor;
-using QueryMemoryProfiler = Unity.Profiling.Memory.MemoryProfiler;
 using UnityEngine.Profiling;
+using QueryMemoryProfiler = Unity.Profiling.Memory.MemoryProfiler;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -91,7 +91,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             while (m_Window && m_PlayerConnectionState != null)
             {
-                if (m_ConnectionName != m_PlayerConnectionState.connectionName)
+                if (PlayerConnectionCompatibilityHelper.Initialized && m_ConnectionName != m_PlayerConnectionState.connectionName)
                 {
                     m_ConnectionDisplayName = PlayerConnectionCompatibilityHelper.GetPlayerDisplayName(m_PlayerConnectionState.connectionName);
                     m_ConnectionName = m_PlayerConnectionState.connectionName;
@@ -257,16 +257,14 @@ namespace Unity.MemoryProfiler.Editor
 
                 // Santise the product name
                 var invalidChars = Path.GetInvalidFileNameChars();
-                StringBuilder prodNameSanitised = new StringBuilder(snapshotFileModel.ProductName);
-                for (int i = 0; i < invalidChars.Length; i++)
-                {
-                    prodNameSanitised.Replace(invalidChars[i], '_');
-                }
+                var prodNameSanitised = new StringBuilder(snapshotFileModel.ProductName);
+                foreach (var t in invalidChars)
+                    prodNameSanitised.Replace(t, '_');
 
                 var finalFileName = $"{prodNameSanitised}_{dateString}{FileExtensionContent.SnapshotFileExtension}";
 
                 // Move file to the final location
-                string snapshotPath = Path.Combine(snapshotFolderPath, finalFileName);
+                var snapshotPath = Path.Combine(snapshotFolderPath, finalFileName);
                 try
                 {
                     File.Move(capturePath, snapshotPath);
@@ -295,8 +293,8 @@ namespace Unity.MemoryProfiler.Editor
         {
             unsafe
             {
-                void* srcPtr = NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(byteArray);
-                void* dstPtr = tex.GetRawTextureData<byte>().GetUnsafeReadOnlyPtr();
+                var srcPtr = NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(byteArray);
+                var dstPtr = tex.GetRawTextureData<byte>().GetUnsafeReadOnlyPtr();
                 UnsafeUtility.MemCpy(dstPtr, srcPtr, byteArray.Length * sizeof(byte));
             }
         }

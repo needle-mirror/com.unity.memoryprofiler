@@ -9,6 +9,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         internal const string ObjectFlagsInfoHeader = "ObjectFlags: \n";
         internal const string IsDontDestroyOnLoadInfo = "IsDontDestroyOnLoad - Specifies that the object is marked as DontDestroyOnLoad.\n\n";
         internal const string IsPersistentInfo = "IsPersistent - Specifies that the object is set as persistent.\nThis is e.g. the case for any object connected to a file (also referred to as Asset), and Unity's subsystems (also referred to as Managers).\n\n";
+        internal const string IsRootInfo = "IsRoot - Specifies that the object is a Scene Object without parents.\n\n";
         internal const string IsManagerInfo = "IsManager - Specifies that the object is marked as a Manager, i.e. an entity that manages one of Unity's engine subsystems.\n\n";
         internal const string HideFlagsInfoHeader = "HideFlags: \n";
         internal const string HideInHierarchyInfo = "HideInHierarchy - The object will not appear in the hiearachy.\n\n";

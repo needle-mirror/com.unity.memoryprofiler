@@ -19,6 +19,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifierSnapshotFilesListSplitter = "memory-profiler-view__snapshot-view__splitter";
         const string k_UxmlIdentifierDetailsSplitter = "memory-profiler-view__details-view__splitter";
 
+        const string k_SnapshotListSplitViewFixedPaneSizePreferenceKey = "MemoryProfilerWindow.SnapshotListSplitView.FixedPaneSize";
+
+        const string k_DetailsPaneSplitViewFixedPaneSizePreferenceKey = "MemoryProfilerWindow.DetailsPaneSplitView.FixedPaneSize";
+
         // State
         PlayerConnectionService m_PlayerConnectionService;
         SnapshotDataService m_SnapshotDataService;
@@ -105,14 +109,31 @@ namespace Unity.MemoryProfiler.Editor.UI
             RefreshAnalysisView();
             m_SnapshotDataService.LoadedSnapshotsChanged += RefreshAnalysisView;
             m_SnapshotDataService.CompareModeChanged += CompareViewChanged;
+            m_SnapshotDataService.AboutToUnloadSnapshot += RefreshAnalysisView;
+
+            // TwoPaneSplitView.viewDataKey is not currently supported so we need to manually persist its state.
+            var snapshotListPaneSize = EditorPrefs.GetFloat(k_SnapshotListSplitViewFixedPaneSizePreferenceKey, 300);
+            m_SnapshotFilesListSplitter.fixedPaneInitialDimension = snapshotListPaneSize;
+            if (!CaptureToolbarViewController.SavedSnapshotListSplitViewToggleIsVisibleState)
+                ToggleSnapshotsPanel(ChangeEvent<bool>.GetPooled(true, false));
+
+            var detailsPaneSize = EditorPrefs.GetFloat(k_DetailsPaneSplitViewFixedPaneSizePreferenceKey, 300);
+            m_DetailsSplitter.fixedPaneInitialDimension = detailsPaneSize;
+            if (!CaptureToolbarViewController.SavedDetailsPaneSplitViewToggleIsVisibleState)
+                ToggleDetailsPanel(ChangeEvent<bool>.GetPooled(true, false));
 
             // When we load a new screenshot, UI needs to be forced refreshed
             // to repaint with the newly loaded textures
-            m_ScreenshotsManager.ScreenshotLoaded += (_) =>
-            {
-                m_LoadedSnapshotsViewContainer.MarkDirtyRepaint();
-                m_SnapshotFilesListViewContainer.MarkDirtyRepaint();
-            };
+            m_ScreenshotsManager.ScreenshotLoaded += ScreenshotsLoaded;
+
+            // Register Analysis view controller as child controller, so that it'll get cleaned up with this one
+            AddChild(m_AnalysisViewController);
+        }
+
+        void ScreenshotsLoaded(string _) // we don't care about the path of the loaded screenshot here. We just needed to know that we need to repaint
+        {
+            m_LoadedSnapshotsViewContainer.MarkDirtyRepaint();
+            m_SnapshotFilesListViewContainer.MarkDirtyRepaint();
         }
 
         void RefreshAnalysisView()
@@ -164,7 +185,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (e.newValue)
                 m_SnapshotFilesListSplitter.UnCollapse();
             else
+            {
+                if (m_SnapshotFilesListSplitter.fixedPane is { resolvedStyle: not null } && !float.IsNaN(m_SnapshotFilesListSplitter.fixedPane.resolvedStyle.width))
+                    EditorPrefs.SetFloat(k_SnapshotListSplitViewFixedPaneSizePreferenceKey, m_SnapshotFilesListSplitter.fixedPane.resolvedStyle.width);
                 m_SnapshotFilesListSplitter.CollapseChild(0);
+            }
         }
 
         void ToggleDetailsPanel(ChangeEvent<bool> e)
@@ -176,6 +201,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else
             {
+                if (m_DetailsSplitter.fixedPane is { resolvedStyle: not null } && !float.IsNaN(m_DetailsSplitter.fixedPane.resolvedStyle.width))
+                    EditorPrefs.SetFloat(k_DetailsPaneSplitViewFixedPaneSizePreferenceKey, m_SnapshotFilesListSplitter.fixedPane.resolvedStyle.width);
                 m_DetailsViewController.SetCollapsed(true);
                 m_DetailsSplitter.CollapseChild(1);
             }
@@ -183,10 +210,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void Dispose(bool disposing)
         {
+            m_SnapshotDataService.LoadedSnapshotsChanged -= RefreshAnalysisView;
+            m_SnapshotDataService.CompareModeChanged -= CompareViewChanged;
+            m_ScreenshotsManager.ScreenshotLoaded -= ScreenshotsLoaded;
+            m_SnapshotDataService.AboutToUnloadSnapshot -= RefreshAnalysisView;
+
             base.Dispose(disposing);
 
             m_ScreenshotsManager?.Dispose();
             m_ScreenshotsManager = null;
+
+            // only save these if the panels are visible and have an initialized size
+            if (CaptureToolbarViewController.SavedSnapshotListSplitViewToggleIsVisibleState && m_SnapshotFilesListSplitter.fixedPane is { resolvedStyle: not null } && !float.IsNaN(m_SnapshotFilesListSplitter.fixedPane.resolvedStyle.width))
+                EditorPrefs.SetFloat(k_SnapshotListSplitViewFixedPaneSizePreferenceKey, m_SnapshotFilesListSplitter.fixedPane.resolvedStyle.width);
+
+            if (CaptureToolbarViewController.SavedDetailsPaneSplitViewToggleIsVisibleState && m_DetailsSplitter.fixedPane is { resolvedStyle: not null } && !float.IsNaN(m_DetailsSplitter.fixedPane.resolvedStyle.width))
+                EditorPrefs.SetFloat(k_DetailsPaneSplitViewFixedPaneSizePreferenceKey, m_DetailsSplitter.fixedPane.resolvedStyle.width);
         }
     }
 }

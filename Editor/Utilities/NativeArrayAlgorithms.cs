@@ -3,8 +3,8 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Containers.Unsafe;
+using Unity.MemoryProfiler.Editor.Diagnostics;
 
 namespace Unity.MemoryProfiler
 {
@@ -40,7 +40,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 m_IndexedArrayPtr = indexedArray.GetUnsafeTypedPtr();
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public int Compare(ref long arrayIndexA, ref long arrayIndexB)
             {
                 return m_IndexedArrayPtr[arrayIndexA].CompareTo(m_IndexedArrayPtr[arrayIndexB]);
@@ -80,7 +80,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 m_AllowOverlappingRegions = allowExactlyOverlappingRegions;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public int Compare(ref long arrayIndexA, ref long arrayIndexB)
             {
                 var res = m_RangeStartValuesArrayPtr[arrayIndexA].CompareTo(m_RangeStartValuesArrayPtr[arrayIndexB]);
@@ -88,7 +88,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                     return res;
 
 #if ENABLE_MEMORY_PROFILER_DEBUG
-                if(!m_AllowOverlappingRegions && arrayIndexA != arrayIndexB && (m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0 && m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0))
+                if (!m_AllowOverlappingRegions && arrayIndexA != arrayIndexB && (m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0 && m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(default) != 0))
                 {
                     // Range Items can't have the same start and end values, unless one of them is of length 0.
                     Checks.CheckNotEquals(m_RangeLengthValuesArrayPtr[arrayIndexA].CompareTo(m_RangeLengthValuesArrayPtr[arrayIndexB]), 0);
@@ -150,7 +150,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             /// <param name="valueA"></param>
             /// <param name="valueB"></param>
             /// <returns></returns>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public readonly int Compare(ref TValueToSort valueA, ref TValueToSort valueB)
             {
                 return m_Comparer.Compare(ref valueA, ref valueB);
@@ -428,7 +428,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         /// <typeparam name="T"></typeparam>
         readonly struct DirectValueComparer<T> : IRefComparer<T> where T : unmanaged, IComparable<T>
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public readonly int Compare(ref T x, ref T y)
             {
                 return x.CompareTo(y);
@@ -472,7 +472,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static void Heapsort<T, TComparer>(ref ArraySortingData<T, TComparer> data, long low, long high)
             where T : unmanaged
             where TComparer : unmanaged, IRefComparer<T>
@@ -619,7 +619,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static void SwapIfGreater<T, TComparer>(ref ArraySortingData<T, TComparer> data, long lhs, long rhs)
             where T : unmanaged
             where TComparer : unmanaged, IRefComparer<T>
@@ -636,7 +636,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static void Swap<T, TComparer>(ref ArraySortingData<T, TComparer> data, long lhs, long rhs)
             where T : unmanaged
             where TComparer : unmanaged, IRefComparer<T>

@@ -1,15 +1,15 @@
-using Unity.MemoryProfiler.Editor.UI;
-using Unity.Profiling.Editor;
-using UnityEditor;
-using UnityEditorInternal;
-using UnityEngine.Networking.PlayerConnection;
-using UnityEditor.Networking.PlayerConnection;
-using UnityEngine.UIElements;
-using UnityEngine;
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor;
+using Unity.MemoryProfiler.Editor.UI;
+using Unity.Profiling.Editor;
+using UnityEditor;
+using UnityEditor.Networking.PlayerConnection;
 using UnityEditor.UIElements;
+using UnityEditorInternal;
+using UnityEngine;
+using UnityEngine.Networking.PlayerConnection;
+using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 {

@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 namespace Unity.MemoryProfiler.Editor.UI
 {
     /// <summary>
@@ -14,13 +13,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         ulong Size { get; }
     }
 
-    interface IPrivateComparableItemData
+    interface IPrivateComparableItemData : INamedTreeItemData
     {
-        // The name of this item.
-        string Name { get; }
-
         // The total size of this item, in bytes.
-        MemorySize Size { get; }
+        MemorySize TotalSize { get; }
     }
 }
-#endif

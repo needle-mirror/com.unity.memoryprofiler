@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Unity.Collections;
+using Unity.MemoryProfiler.Editor.Extensions;
+using Unity.MemoryProfiler.Editor.Format;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Debug = UnityEngine.Debug;
 
@@ -52,10 +56,10 @@ namespace Unity.MemoryProfiler.Editor
         /// <param name="foundSourceIndices">All found objects as <seealso cref="SourceIndex"/>.</param>
         /// <param name="searchMode"></param>
         /// <param name="ignoreRepeatedManagedReferences">If this object is repeatedly referenced by the same other managed object, ignore it</param>
-        public static void GetAllReferencingObjects(CachedSnapshot snapshot, SourceIndex objIndex, ref List<ObjectData> allReferencingObjects, HashSet<SourceIndex> foundSourceIndices = null,
+        public static void GetAllReferencingObjects(CachedSnapshot snapshot, SourceIndex objIndex, List<ObjectData> allReferencingObjects, HashSet<SourceIndex> foundSourceIndices = null,
             UnityObjectReferencesSearchMode searchMode = UnityObjectReferencesSearchMode.TreatAsOneObject, bool ignoreRepeatedManagedReferences = true)
         {
-            allReferencingObjects.Clear();
+            allReferencingObjects?.Clear();
             foundSourceIndices?.Clear();
             if (!objIndex.Valid)
                 return;
@@ -68,6 +72,10 @@ namespace Unity.MemoryProfiler.Editor
             {
                 case SourceIndex.SourceId.None:
                     // ignore invalid indices
+                    break;
+                case SourceIndex.SourceId.Prefab:
+                    // find all references to the prefab object
+                    AddManagedReferences(snapshot, objIndex, allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
                     break;
                 case SourceIndex.SourceId.NativeObject:
                     // if this is a Native object with a managed wrapper, get references to the wrapper too
@@ -83,12 +91,12 @@ namespace Unity.MemoryProfiler.Editor
 
                             if (searchMode == UnityObjectReferencesSearchMode.TreatAsOneObject)
                                 // find all references to the shell first
-                                AddManagedReferences(snapshot, managedShell, ref allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
+                                AddManagedReferences(snapshot, managedShell, allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
                         }
                     }
 
                     // find all managed references to the native object afterwards
-                    AddManagedReferences(snapshot, objIndex, ref allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
+                    AddManagedReferences(snapshot, objIndex, allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
                     break;
                 case SourceIndex.SourceId.ManagedObject:
                     var managedObject = objIndex;
@@ -122,29 +130,29 @@ namespace Unity.MemoryProfiler.Editor
                     }
 
                     // find all references to the managed object (/shell) first
-                    AddManagedReferences(snapshot, managedObject, ref allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
+                    AddManagedReferences(snapshot, managedObject, allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
 
                     if (nativeObject.Valid && searchMode == UnityObjectReferencesSearchMode.TreatAsOneObject)
                     {
                         // find all managed references to the native object afterwards
-                        AddManagedReferences(snapshot, nativeObject, ref allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
+                        AddManagedReferences(snapshot, nativeObject, allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
                     }
                     break;
                 default:
-                    AddManagedReferences(snapshot, objIndex, ref allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
+                    AddManagedReferences(snapshot, objIndex, allReferencingObjects, ref foundUnityObjectIndices, ignoreRepeatedManagedReferences);
                     break;
             }
 
             // Add connections from the raw snapshot
             // ReferencedBy for native Objects finds all other native objects referencing that native object, but not the managed shell referencing the native object
             // ReferencedBy for managed shell objects finds the native object holding the GCHandle to the managed shell object
-            if (objIndex.Valid && objIndex.Index >= 0 && snapshot.Connections.ReferencedBy.ContainsKey(objIndex))
+            if (objIndex.Valid && objIndex.Index >= 0 && snapshot.Connections.ReferencedBy.TryGetValue(objIndex, out var connections))
             {
-                foreach (var i in snapshot.Connections.ReferencedBy[objIndex])
+                foreach (var i in connections)
                 {
                     if (foundUnityObjectIndices.Add(i))
                     {
-                        allReferencingObjects.Add(ObjectData.FromSourceLink(snapshot, i));
+                        allReferencingObjects?.Add(ObjectData.FromSourceLink(snapshot, i));
                     }
                 }
             }
@@ -158,7 +166,7 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        static void AddManagedReferences(CachedSnapshot snapshot, SourceIndex objectIndex, ref List<ObjectData> results, ref HashSet<SourceIndex> foundUnityObjectIndices, bool ignoreRepeatedManagedReferences)
+        static void AddManagedReferences(CachedSnapshot snapshot, SourceIndex objectIndex, List<ObjectData> results, ref HashSet<SourceIndex> foundUnityObjectIndices, bool ignoreRepeatedManagedReferences)
         {
             if (!snapshot.CrawledData.ConnectionsToMappedToSourceIndex.TryGetValue(objectIndex, out var connectionIndicies))
                 return;
@@ -177,8 +185,8 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             case SourceIndex.SourceId.ManagedObject:
                             case SourceIndex.SourceId.ManagedType:
-                            // Currently intentional possible connections:
-                            // Managed Object / Managed Type -> Native Allocation / Native Object
+                                // Currently intentional possible connections:
+                                // Managed Object / Managed Type -> Native Allocation / Native Object
                                 break;
                             default:
                                 throw new NotImplementedException();
@@ -191,8 +199,8 @@ namespace Unity.MemoryProfiler.Editor
                             case SourceIndex.SourceId.ManagedType:
                             case SourceIndex.SourceId.NativeObject:
                             case SourceIndex.SourceId.GCHandleIndex:
-                            // Currently intentional possible connections:
-                            // Managed Object / Managed Type / Native Object / GCHandleIndex -> Managed Object
+                                // Currently intentional possible connections:
+                                // Managed Object / Managed Type / Native Object / GCHandleIndex -> Managed Object
                                 break;
                             default:
                                 throw new NotImplementedException();
@@ -203,7 +211,19 @@ namespace Unity.MemoryProfiler.Editor
                         //    // Tried using a hash set to prevent duplicates but the lookup during add locks up the window
                         //    // if there are more than about 50k references
                         //    continue;
-
+                        break;
+                    case SourceIndex.SourceId.Prefab:
+                        switch (c.IndexFrom.Id)
+                        {
+                            case SourceIndex.SourceId.ManagedObject:
+                            case SourceIndex.SourceId.ManagedType:
+                            case SourceIndex.SourceId.NativeObject:
+                                // Currently intentional possible connections:
+                                // Managed Object / Managed Type / Native Object -> Prefab
+                                break;
+                            default:
+                                throw new NotImplementedException();
+                        }
                         break;
                     default:
                         throw new NotImplementedException();
@@ -219,7 +239,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (foundUnityObjectIndices.Add(c.IndexFrom) || (c.IndexFrom.Id != SourceIndex.SourceId.NativeObject && !ignoreRepeatedManagedReferences))
                 {
                     // the connected object was not listed yet
-                    results.Add(GetManagedReferenceSource(snapshot, c));
+                    results?.Add(GetManagedReferenceSource(snapshot, c));
                 }
             }
         }
@@ -316,7 +336,7 @@ namespace Unity.MemoryProfiler.Editor
                             case SourceIndex.SourceId.ManagedType:
                             case SourceIndex.SourceId.ManagedObject:
                                 // Managed to Managed connections are always added and never ignored, even if they are already in foundUnityObjectIndices
-                                referencedObjects.Add(GetManagedReferenceTarget(snapshot, c, addManagedObjectsWithFieldInfo));
+                                referencedObjects?.Add(GetManagedReferenceTarget(snapshot, c, addManagedObjectsWithFieldInfo));
                                 foundUnityObjectIndices.Add(c.IndexTo);
                                 break;
                             case SourceIndex.SourceId.NativeObject:
@@ -329,18 +349,19 @@ namespace Unity.MemoryProfiler.Editor
                                     break;
                                 if (foundUnityObjectIndices.Add(c.IndexTo))
                                 {
-                                    referencedObjects.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
+                                    referencedObjects?.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
                                 }
                                 break;
                             case SourceIndex.SourceId.GCHandleIndex:
                                 // GCHandles just hold a plain reference to the object, no field info present
-                                referencedObjects.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
+                                referencedObjects?.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
                                 break;
                             default:
                                 // Not just not implemented but also technically dubious if something else where to have a connection to a Managed Object
                                 throw new NotImplementedException();
                         }
                         break;
+                    case SourceIndex.SourceId.Prefab:
                     case SourceIndex.SourceId.NativeObject:
                     case SourceIndex.SourceId.NativeAllocation:
                         switch (c.IndexFrom.Id)
@@ -360,7 +381,18 @@ namespace Unity.MemoryProfiler.Editor
 
                                 if (foundUnityObjectIndices.Add(c.IndexTo))
                                 {
-                                    referencedObjects.Add(GetManagedReferenceTarget(snapshot, c, addManagedObjectsWithFieldInfo));
+                                    referencedObjects?.Add(GetManagedReferenceTarget(snapshot, c, addManagedObjectsWithFieldInfo));
+                                }
+                                break;
+                            case SourceIndex.SourceId.NativeObject:
+                                if (c.IndexTo.Id is SourceIndex.SourceId.Prefab)
+                                {
+                                    referencedObjects?.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
+                                }
+                                else
+                                {
+                                    // other connections to Native not implemented via ManagedConnection
+                                    throw new NotImplementedException();
                                 }
                                 break;
                             default:
@@ -375,53 +407,120 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         /// <summary>
-        /// Tries to get all instance IDs of Transform Components connected to the passed in Transform Component's instance ID,
+        /// Tries to get all source indices of Transform Components connected to the passed in Transform Component's source index,
         /// except those that bridge connections between prefabs and instances (and Editor behavioural artefact unrelated to a GameObject's Transform Hierarchy).
         /// </summary>
         /// <param name="snapshot"></param>
-        /// <param name="transformInstanceID">The instance ID of the Transform to check</param>
-        /// <param name="parentTransformInstanceIdToIgnore">If you are only looking for child transforms, pass in the parent ID so it will be ignored. -1 if no parent should be ignored.</param>
-        /// <param name="outInstanceIds">The connected instanceIDs if any where found, otherwise it is empty.</param>
+        /// <param name="transformIndex">The source index of the Transform to check</param>
+        /// <param name="parentTransformIndexToIgnore">If you are only looking for child transforms, pass in the parent source index so it will be ignored. Pass an invalid index if no parent should be ignored.</param>
+        /// <param name="outSourceIndices">The connected objects as SourceIndices if any where found, otherwise it is empty.</param>
         /// <returns>Returns True if connected Transform IDs were found, False if not.</returns>
-        public static bool TryGetConnectedTransformInstanceIdsFromTransformInstanceId(CachedSnapshot snapshot, EntityId transformInstanceID, EntityId parentTransformInstanceIdToIgnore, ref HashSet<EntityId> outInstanceIds)
+        public static bool TryGetConnectedTransformIndicesFromTransformIndex(CachedSnapshot snapshot, SourceIndex transformIndex, SourceIndex parentTransformIndexToIgnore, ref NativeHashSet<SourceIndex> outSourceIndices)
         {
-            var found = outInstanceIds;
-            found.Clear();
-            var transformToSearchConnectionsFor = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.InstanceId2Index[transformInstanceID]);
-            if (snapshot.Connections.ReferenceTo.TryGetValue(transformToSearchConnectionsFor.GetSourceLink(snapshot), out var list))
+            outSourceIndices.Clear();
+            var isPersistent = snapshot.NativeObjects.Flags[transformIndex.Index].HasFlag(ObjectFlags.IsPersistent);
+            if (snapshot.Connections.ReferenceTo.TryGetValue(transformIndex, out var list))
             {
                 foreach (var connection in list)
                 {
-                    var possiblyConnectedTransform = ObjectData.FromSourceLink(snapshot, connection);
-                    var instanceIdOfPossibleConnection = possiblyConnectedTransform.GetEntityId(snapshot);
-                    if (possiblyConnectedTransform.isNativeObject && snapshot.NativeTypes.IsTransformOrRectTransform(snapshot.NativeObjects.NativeTypeArrayIndex[possiblyConnectedTransform.nativeObjectIndex])
-                        && instanceIdOfPossibleConnection != NativeObjectEntriesCache.InstanceIDNone && instanceIdOfPossibleConnection != parentTransformInstanceIdToIgnore && instanceIdOfPossibleConnection != transformInstanceID
-                        // Skip connections that jump from prefab to instance or vice versa.
-                        // Those connections are Editor artefacts and not relevant to the Transform Hierarchy.
-                        // The most reliable way to detect such connections is to check if the persistent flag status of the connected objects is the not same,
-                        // i.e. the prefab would be persistent, the instance not.
-                        && snapshot.NativeObjects.Flags[transformToSearchConnectionsFor.nativeObjectIndex].HasFlag(Format.ObjectFlags.IsPersistent)
-                        == snapshot.NativeObjects.Flags[possiblyConnectedTransform.nativeObjectIndex].HasFlag(Format.ObjectFlags.IsPersistent))
-                        found.Add(instanceIdOfPossibleConnection);
+                    // Don't rely on ObjectData as the managed data might not have been crawled yet.
+                    // Instead, use the connection's source indexes directly and index into the snapshot data for it's different aspects (NativeType, name etc)
+                    if (connection.Id == SourceIndex.SourceId.NativeObject)
+                    {
+                        if (connection != parentTransformIndexToIgnore
+                            && connection != transformIndex
+                            && snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[connection.Index]].IsTransformType
+                            // Skip connections that jump from prefab to instance or vice versa.
+                            // Those connections are Editor artefacts and not relevant to the Transform Hierarchy.
+                            // The most reliable way to detect such connections is to check if the persistent flag status of the connected objects is the not same,
+                            // i.e. the prefab would be persistent, the instance not.
+                            && isPersistent == snapshot.NativeObjects.Flags[connection.Index].HasFlag(ObjectFlags.IsPersistent))
+                            outSourceIndices.Add(connection);
+                    }
                 }
-                return found.Count > 0;
+                return outSourceIndices.Count() > 0;
             }
             return false;
         }
 
-        public static EntityId GetGameObjectInstanceIdFromTransformInstanceId(CachedSnapshot snapshot, EntityId instanceID)
+        /// <summary>
+        /// Note: with entities, it's possible to have a transform without a gameobject, so check if the result is valid.
+        /// </summary>
+        /// <param name="snapshot"></param>
+        /// <param name="transformOrComponentIndex"></param>
+        /// <param name="gameObjectNativeTypeIndex"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static SourceIndex GetGameObjectIndexFromTransformOrComponentIndex(CachedSnapshot snapshot, SourceIndex transformOrComponentIndex, int gameObjectNativeTypeIndex)
+            => GetGameObjectIndexFromTransformOrComponentIndex(snapshot, transformOrComponentIndex, gameObjectNativeTypeIndex,
+                isPersistent: snapshot.NativeObjects.Flags[transformOrComponentIndex.Index].HasFlag(ObjectFlags.IsPersistent));
+
+        /// <summary>
+        /// Note: with entities, it's possible to have a transform without a gameobject, so check if the result is valid.
+        /// </summary>
+        /// <param name="snapshot"></param>
+        /// <param name="transformOrComponentIndex"></param>
+        /// <param name="gameObjectNativeTypeIndex"></param>
+        /// <param name="isPersistent"></param>
+        /// <returns></returns>
+        public static SourceIndex GetGameObjectIndexFromTransformOrComponentIndex(CachedSnapshot snapshot, SourceIndex transformOrComponentIndex, int gameObjectNativeTypeIndex, bool isPersistent)
         {
-            var transform = ObjectData.FromNativeObjectIndex(snapshot, snapshot.NativeObjects.InstanceId2Index[instanceID]);
-            if (snapshot.Connections.ReferenceTo.TryGetValue(transform.GetSourceLink(snapshot), out var list))
+            if (snapshot.Connections.ReferenceTo.TryGetValue(transformOrComponentIndex, out var list))
             {
                 foreach (var connection in list)
                 {
-                    var objectData = ObjectData.FromSourceLink(snapshot, connection);
-                    if (objectData.isNativeObject && objectData.IsGameObject(snapshot) && snapshot.NativeObjects.ObjectName[transform.nativeObjectIndex] == snapshot.NativeObjects.ObjectName[ObjectData.FromSourceLink(snapshot, connection).nativeObjectIndex])
-                        return snapshot.NativeObjects.InstanceId[objectData.nativeObjectIndex];
+                    // Don't rely too much on ObjectData as the managed data might not have been crawled yet.
+                    // Instead, use the connection's source indexes directly and index into the snapshot data for it's different aspects (NativeType, name etc).
+                    if (connection.Id == SourceIndex.SourceId.NativeObject
+                        && snapshot.NativeObjects.NativeTypeArrayIndex[connection.Index] == gameObjectNativeTypeIndex
+                        && isPersistent == snapshot.NativeObjects.Flags[connection.Index].HasFlag(ObjectFlags.IsPersistent))
+                    {
+                        return connection;
+                    }
                 }
             }
-            return NativeObjectEntriesCache.InstanceIDNone;
+            return new SourceIndex();
+        }
+
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static SourceIndex GetTransformIndexFromGameObject(CachedSnapshot snapshot, SourceIndex gameObjectIndex)
+            => GetTransformIndexFromGameObject(snapshot, gameObjectIndex,
+                isPersistent: snapshot.NativeObjects.Flags[gameObjectIndex.Index].HasFlag(ObjectFlags.IsPersistent));
+
+        public static SourceIndex GetTransformIndexFromGameObject(CachedSnapshot snapshot, SourceIndex gameObjectIndex, bool isPersistent)
+        {
+            if (snapshot.Connections.ReferenceTo.TryGetValue(gameObjectIndex, out var list))
+            {
+                foreach (var connection in list)
+                {
+                    // Don't rely too much on ObjectData as the managed data might not have been crawled yet.
+                    // Instead, use the connection's source indexes directly and index into the snapshot data for it's different aspects (NativeType, name etc).
+                    if (connection.Id == SourceIndex.SourceId.NativeObject
+                        && snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[connection.Index]].IsTransformType
+                        && isPersistent == snapshot.NativeObjects.Flags[connection.Index].HasFlag(ObjectFlags.IsPersistent))
+                    {
+                        return connection;
+                    }
+                }
+            }
+            return new SourceIndex();
+        }
+
+        public static SourceIndex GetParentTransformOrLastChild(CachedSnapshot snapshot, SourceIndex thisTransform, bool isPersistent)
+        {
+            var connections = snapshot.Connections.ReferenceTo[thisTransform];
+            for (int j = connections.Count - 1; j >= 0; j--)
+            {
+                var referencedObject = connections[j];
+                if (referencedObject.Id is SourceIndex.SourceId.NativeObject
+                    && isPersistent == snapshot.NativeObjects.Flags[referencedObject.Index].HasFlag(ObjectFlags.IsPersistent)
+                    && snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[referencedObject.Index]].IsTransformType)
+                {
+                    return referencedObject;
+                }
+            }
+            return default;
         }
 
         /// <summary>
@@ -435,9 +534,9 @@ namespace Unity.MemoryProfiler.Editor
         /// For Managed Object inspector purposes (listing native references for native references) this should be false.</param>
         /// <param name="addManagedObjectsWithFieldInfo"></param>
         /// <param name="foundSourceIndices">All found objects as <seealso cref="SourceIndex"/>. The Hashset will be cleared by this method.</param>
-        public static void GenerateReferencesTo(CachedSnapshot snapshot, SourceIndex objIndex, ref List<ObjectData> allReferencedObjects, bool treatUnityObjectsAsOneObject = true, bool addManagedObjectsWithFieldInfo = true, HashSet<SourceIndex> foundSourceIndices = null)
+        public static void GenerateReferencesTo(CachedSnapshot snapshot, SourceIndex objIndex, List<ObjectData> allReferencedObjects, bool treatUnityObjectsAsOneObject = true, bool addManagedObjectsWithFieldInfo = true, HashSet<SourceIndex> foundSourceIndices = null)
         {
-            allReferencedObjects.Clear();
+            allReferencedObjects?.Clear();
             foundSourceIndices?.Clear();
             if (!objIndex.Valid)
                 return;
@@ -514,18 +613,18 @@ namespace Unity.MemoryProfiler.Editor
                 foreach (var i in cns)
                 {
                     // Don't count Native <-> Managed Connections again if they have been added
-                    if (!foundUnityObjectIndices.Contains(i))
+                    if (foundUnityObjectIndices.Add(i))
                     {
-                        foundUnityObjectIndices.Add(i);
-                        referencedObjects.Add(ObjectData.FromSourceLink(snapshot, i));
+                        referencedObjects?.Add(ObjectData.FromSourceLink(snapshot, i));
                     }
                 }
             }
         }
 
-        public static void GetAllReferencedObjects(CachedSnapshot snapshot, SourceIndex item, ref List<ObjectData> allReferencedObjects, bool treatUnityObjectsAsOneObject = true, bool addManagedObjectsWithFieldInfo = true, HashSet<SourceIndex> foundSourceIndices = null)
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static void GetAllReferencedObjects(CachedSnapshot snapshot, SourceIndex item, List<ObjectData> allReferencedObjects, bool treatUnityObjectsAsOneObject = true, bool addManagedObjectsWithFieldInfo = true, HashSet<SourceIndex> foundSourceIndices = null)
         {
-            GenerateReferencesTo(snapshot, item, ref allReferencedObjects, treatUnityObjectsAsOneObject, addManagedObjectsWithFieldInfo, foundSourceIndices);
+            GenerateReferencesTo(snapshot, item, allReferencedObjects, treatUnityObjectsAsOneObject, addManagedObjectsWithFieldInfo, foundSourceIndices);
         }
     }
 }

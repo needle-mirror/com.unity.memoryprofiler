@@ -61,6 +61,14 @@
       <Define>PROFILING_CORE_AVAILABLE</Define>
     </UnityVersionDefine>
     <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>S2AVAILABLE</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>LIVECYCLE_APIS_AVAILABLE</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
       <Expression>6000.3.0a1</Expression>
       <Define>UNITY_6000_3_OR_NEWER</Define>
     </UnityVersionDefine>

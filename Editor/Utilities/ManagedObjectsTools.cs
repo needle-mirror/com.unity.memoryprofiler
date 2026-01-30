@@ -29,7 +29,7 @@ namespace Unity.MemoryProfiler.Editor
                 value = managedObjectInfo.ReadFirstStringLine(snapshot.VirtualMachineInformation, true);
             else if (managedObjectInfo.ITypeDescription == snapshot.TypeDescriptions.ITypeCharArray)
                 value = managedObjectInfo.ReadFirstCharArrayLine(snapshot, true);
-            else if (snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex.ContainsKey(managedObjectInfo.ITypeDescription))
+            else if (snapshot.TypeDescriptions.UnifiedTypeInfoManaged[managedObjectInfo.ITypeDescription].IsUnityObjectType)
                 return String.Format(k_PointerFormatString, managedObjectInfo.PtrObject, TextContent.LeakedManagedShellHint);
             return String.Format(k_PointerFormatString, managedObjectInfo.PtrObject, value);
         }

@@ -23,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <exception cref="ArgumentNullException">The ILongIndexedContainer value is not created.</exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex equals the length of value minus 1.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static char ToChar<T>(this T value, ulong startIndex) where T : unmanaged, ILongIndexedContainer<byte>
         {
             return (char)ToInt16(value, startIndex);
@@ -178,7 +178,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <exception cref="ArgumentNullException"></exception>
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex equals the length of value minus 1.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static ushort ToUInt16<T>(this T value, ulong startIndex) where T : unmanaged, ILongIndexedContainer<byte>
         {
             return (ushort)ToInt16(value, startIndex);
@@ -195,7 +195,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 3, and is less
         /// than or equal to the length of value minus 1.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static uint ToUInt32<T>(this T value, ulong startIndex) where T : unmanaged, ILongIndexedContainer<byte>
         {
             return (uint)ToInt32(value, startIndex);
@@ -212,7 +212,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 7, and is less
         /// than or equal to the length of value minus 1.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static ulong ToUInt64<T>(this T value, ulong startIndex) where T : unmanaged, ILongIndexedContainer<byte>
         {
             return (ulong)ToInt64(value, startIndex);
@@ -229,7 +229,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 3, and is less
         /// than or equal to the length of value minus 1. </exception>
-        [SecuritySafeCritical, MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [SecuritySafeCritical, MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public unsafe static float ToSingle<T>(T value, ulong startIndex) where T : unmanaged, ILongIndexedContainer<byte>
         {
             int num = ToInt32(value, startIndex);
@@ -247,7 +247,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <exception cref="ArgumentOutOfRangeException">startIndex is less than zero or greater than the length of value minus 1.</exception>
         /// <exception cref="ArgumentException">startIndex is greater than or equal to the length of value minus 7, and is less
         /// than or equal to the length of value minus 1.</exception>
-        [SecuritySafeCritical, MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [SecuritySafeCritical, MethodImpl(MethodImplementationHelper.AggressiveInlining)]
 
         public unsafe static double ToDouble<T>(this T value, ulong startIndex) where T : unmanaged, ILongIndexedContainer<byte>
         {

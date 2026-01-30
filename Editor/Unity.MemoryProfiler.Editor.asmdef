@@ -73,6 +73,11 @@
             "name": "Unity",
             "expression": "[6000.3.0a1,7000)",
             "define": "S2AVAILABLE"
+        },
+        {
+            "name": "Unity",
+            "expression": "7000.0.0a1",
+            "define": "LIVECYCLE_APIS_AVAILABLE"
         }
     ],
     "noEngineReferences": false

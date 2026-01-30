@@ -1,8 +1,8 @@
 using System;
-using UnityEngine;
-using UnityEngine.UIElements;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor
 {

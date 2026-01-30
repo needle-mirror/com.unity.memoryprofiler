@@ -1,16 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Collections.Generic;
-using UnityEngine;
-using Unity.Profiling;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.MemoryProfiler.Editor.Managed;
 using Unity.MemoryProfiler.Editor.UI;
+using Unity.Profiling;
 using UnityEditor;
-using System.Threading.Tasks;
-using System.Threading;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -21,9 +21,18 @@ namespace Unity.MemoryProfiler.Editor
         string GetSnapshotFolderPath();
     }
 
+    enum SnapshotLoadedState
+    {
+        None,
+        Loaded,
+        LoadedBase,
+        LoadedCompare
+    }
+
     internal class SnapshotDataService : IDisposable, ISnapshotDataService
     {
         const string k_SnapshotFileExtension = ".snap";
+        const int k_MaxFilenameLengthBytes = 255; // Limit on Mac/Linux
 
         static ProfilerMarker s_ProcessSnapshotMarker = new ProfilerMarker("Post Process and Crawl snapshot");
 
@@ -147,10 +156,11 @@ namespace Unity.MemoryProfiler.Editor
         public SnapshotFileListModel FullSnapshotList => m_SnapshotFileListModel;
 
         public event Action CompareModeChanged;
+        public event Action AboutToUnloadSnapshot;
         public event Action LoadedSnapshotsChanged;
         public event Action AllSnapshotsChanged;
 
-        public CachedSnapshot LoadWithoutLoadingToUI(string filePath)
+        public CachedSnapshot LoadWithoutLoadingToUI(string filePath, bool crawlEvenIfNotYetOpened = true)
         {
             if (IsOpen(filePath))
             {
@@ -172,7 +182,7 @@ namespace Unity.MemoryProfiler.Editor
                 reader.Close();
                 throw new IOException($"Failed to open the file at {filePath}. Read Error {err}.");
             }
-            return LoadSnapshot(reader);
+            return LoadSnapshot(reader, crawlEvenIfNotYetOpened);
         }
 
         public void Load(string filePath)
@@ -224,9 +234,9 @@ namespace Unity.MemoryProfiler.Editor
         {
             if (PathHelpers.IsSamePath(m_BaseSnapshot?.FullPath, filePath))
             {
-                UnloadSnapshot(ref m_BaseSnapshot);
                 // Swap snapshots to make compared snapshot as base
                 (m_BaseSnapshot, m_ComparedSnapshot) = (m_ComparedSnapshot, m_BaseSnapshot);
+                UnloadSnapshot(ref m_ComparedSnapshot);
             }
             else if (PathHelpers.IsSamePath(m_ComparedSnapshot?.FullPath, filePath))
                 UnloadSnapshot(ref m_ComparedSnapshot);
@@ -241,8 +251,10 @@ namespace Unity.MemoryProfiler.Editor
             if ((m_BaseSnapshot == null) && (m_ComparedSnapshot == null))
                 return;
 
-            UnloadSnapshot(ref m_BaseSnapshot);
+            // always unload Compared first as some code only checks if there are any snapshots loaded and assumes
+            // that if there are, it'll be the base snapshot
             UnloadSnapshot(ref m_ComparedSnapshot);
+            UnloadSnapshot(ref m_BaseSnapshot);
 
             LoadedSnapshotsChanged?.Invoke();
         }
@@ -252,6 +264,19 @@ namespace Unity.MemoryProfiler.Editor
             (m_BaseSnapshot, m_ComparedSnapshot) = (m_ComparedSnapshot, m_BaseSnapshot);
 
             LoadedSnapshotsChanged?.Invoke();
+        }
+
+        public SnapshotLoadedState GetSnapshotLoadedState(string filePath)
+        {
+            var isLoaded = IsOpen(filePath);
+            if (!isLoaded)
+                return SnapshotLoadedState.None;
+
+            if (CompareMode)
+                return Base.FullPath == filePath ? SnapshotLoadedState.LoadedBase : SnapshotLoadedState.LoadedCompare;
+            else
+                return SnapshotLoadedState.Loaded;
+
         }
 
         public bool IsOpen(string filePath)
@@ -265,13 +290,37 @@ namespace Unity.MemoryProfiler.Editor
             return fileName.IndexOfAny(Path.GetInvalidFileNameChars()) == -1;
         }
 
+        public bool PathLengthIsValid(string sourceFilePath, string targetFileName)
+        {
+            // The .snap suffix is the longest, and if we're renaming, that
+            // will need changing too, so try with that.
+            var filenameWithExtension = targetFileName + k_SnapshotFileExtension;
+
+            // First check the actual filename's length:
+            if (System.Text.Encoding.UTF8.GetByteCount(filenameWithExtension) > k_MaxFilenameLengthBytes)
+                return false;
+
+            // Then test the full path:
+            try
+            {
+                var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), filenameWithExtension);
+                Path.GetFullPath(targetFilePath);
+                return true;
+            }
+            catch (PathTooLongException)
+            {
+                return false;
+            }
+            catch (Exception)
+            {
+                return true; // Different exception, but the path wasn't too long!
+            }
+        }
+
         public bool CanRename(string sourceFilePath, string targetFileName)
         {
             var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + k_SnapshotFileExtension);
-            if (File.Exists(targetFilePath))
-                return false;
-
-            return true;
+            return !File.Exists(targetFilePath);
         }
 
         public bool Rename(string sourceFilePath, string targetFileName)
@@ -279,7 +328,7 @@ namespace Unity.MemoryProfiler.Editor
             var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + k_SnapshotFileExtension);
             if (File.Exists(targetFilePath))
             {
-                Debug.LogError($"Can't rename {sourceFilePath} to {targetFileName}, file with the same name is already exist!");
+                Debug.LogError($"Can't rename {sourceFilePath} to {targetFileName}, file with the same name already exists!");
                 return false;
             }
 
@@ -379,7 +428,7 @@ namespace Unity.MemoryProfiler.Editor
             });
         }
 
-        static CachedSnapshot LoadSnapshot(FileReader file)
+        static CachedSnapshot LoadSnapshot(FileReader file, bool crawlManaged = true)
         {
             if (!file.HasOpenFile)
                 return null;
@@ -393,7 +442,7 @@ namespace Unity.MemoryProfiler.Editor
                 cachedSnapshot = new CachedSnapshot(file);
                 using (s_ProcessSnapshotMarker.Auto())
                 {
-                    var processing = cachedSnapshot.PostProcess();
+                    var processing = cachedSnapshot.PostProcess(crawlManaged);
                     processing.MoveNext(); //start execution
 
                     var status = processing.Current;
@@ -429,13 +478,29 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        static void UnloadSnapshot(ref CachedSnapshot snapshot)
+        void UnloadSnapshot(ref CachedSnapshot snapshot)
         {
             if (snapshot == null)
                 return;
-
-            snapshot.Dispose();
+            // clear the reference
+            var snap = snapshot;
             snapshot = null;
+            try
+            {
+                // warn listeners so they can cancel and await any Tasks that might still use the snapshot
+                AboutToUnloadSnapshot?.Invoke();
+            }
+            catch (Exception e)
+            {
+                // log but don't throw
+                Debug.LogException(e);
+            }
+            finally
+            {
+                // Dispose of the snapshot
+                snap.Dispose();
+            }
+            // TODO: Consider adding an unloading warning event to the snapshot itself when opening up the API
         }
 
         static SnapshotFileListModel BuildSnapshotsInfo(CancellationToken token, DirectoryInfo snapshotsDirectory, IReadOnlyList<SnapshotFileModel> snapshotInfos)

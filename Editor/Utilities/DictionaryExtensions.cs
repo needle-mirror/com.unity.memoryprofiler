@@ -23,7 +23,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         /// <param name="initializeAs"></param>
         /// <param name="addToDictionaryIfMissing">(Optional, defaulting to false) if or if not the key should be added to the dictionary with the initialized value if it was missing.</param>
         /// <returns>If the key existed in the dictionary beforehand or not</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static bool GetOrInitializeValue<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, out TValue value, TValue initializeAs, bool addToDictionaryIfMissing = false)
             where TValue : struct
         {
@@ -52,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         /// <param name="initializeAs">What to initialize the <paramref name="value"/> with if it is missing. NOTE: if this is a reference value, its reference will be stored instead of a vopy of a value.</param>
         /// <param name="addToDictionaryIfMissing">(Optional, defaulting to false) if or if not the key should be added to the dictionary with the initialized value if it was missing.</param>
         /// <returns>If the key existed in the dictionary beforehand or not</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static bool GetOrInitializeValue<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, out TValue value, Func<TValue> initializeAs, bool addToDictionaryIfMissing = false)
             where TValue : class
         {
@@ -66,7 +66,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
             return true;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key) where TValue : class, new()
         {
             if (!dictionary.TryGetValue(key, out var value))
@@ -77,7 +77,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
             return value;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static void GetAndAddToListOrCreateList<TKey, TValue>(this Dictionary<TKey, List<TValue>> dictionary, TKey key, TValue listItemValue)
         {
             if (dictionary.TryGetValue(key, out var list))

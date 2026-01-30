@@ -1,17 +1,19 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.UIElements;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class MemoryMapBreakdownViewController : TreeViewController<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>, IViewControllerWithVisibilityEvents
+    class MemoryMapBreakdownViewController : SingleSnapshotTreeViewController<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>, IViewControllerWithVisibilityEvents
     {
         const string k_UxmlAssetGuid = "bc16108acf3b6484aa65bf05d6048e8f";
 
+        protected override string UxmlIdentifier_TreeViewColumn__Size => k_UxmlIdentifier_TreeViewColumn__Size;
+        protected override string UxmlIdentifier_TreeViewColumn__ResidentSize => k_UxmlIdentifier_TreeViewColumn__ResidentSize;
         const string k_UssClass_Dark = "memory-map-breakdown-view__dark";
         const string k_UssClass_Light = "memory-map-breakdown-view__light";
         const string k_UxmlIdentifier_SearchField = "memory-map-breakdown-view__search-field";
@@ -25,10 +27,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_TreeViewColumn__Description = "memory-map-breakdown-view__tree-view__column__description";
         const string k_UxmlIdentifier_LoadingOverlay = "memory-map-breakdown-view__loading-overlay";
         const string k_UxmlIdentifier_ErrorLabel = "memory-map-breakdown-view__error-label";
-        const string k_ErrorMessage = "Snapshot is from an outdated Unity version that is not fully supported.";
 
         // Model.
         readonly CachedSnapshot m_Snapshot;
+        protected override Dictionary<string, Comparison<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>> SortComparisons { get; }
 
         // State
         ISelectionDetails m_SelectionDetails;
@@ -37,14 +39,22 @@ namespace Unity.MemoryProfiler.Editor.UI
         Label m_TableDescription;
         ToolbarSearchField m_SearchField;
         DetailedSizeBar m_TableSizeBar;
-        ActivityIndicatorOverlay m_LoadingOverlay;
-        Label m_ErrorLabel;
 
         public MemoryMapBreakdownViewController(CachedSnapshot snapshot, ISelectionDetails selectionDetails)
-            : base (idOfDefaultColumnWithPercentageBasedWidth: null)
+            : base(idOfDefaultColumnWithPercentageBasedWidth: null)
         {
             m_Snapshot = snapshot;
             m_SelectionDetails = selectionDetails;
+            TableMode = AllTrackedMemoryTableMode.CommittedAndResident;
+            // Sort comparisons for each column.
+            SortComparisons = new()
+            {
+                { k_UxmlIdentifier_TreeViewColumn__Address, (x, y) => x.data.Address.CompareTo(y.data.Address) },
+                { k_UxmlIdentifier_TreeViewColumn__Size, (x, y) => x.data.TotalSize.Committed.CompareTo(y.data.TotalSize.Committed) },
+                { k_UxmlIdentifier_TreeViewColumn__ResidentSize, (x, y) => x.data.TotalSize.Resident.CompareTo(y.data.TotalSize.Resident) },
+                { k_UxmlIdentifier_TreeViewColumn__Type, (x, y) => string.Compare(x.data.ItemType, y.data.ItemType, StringComparison.OrdinalIgnoreCase) },
+                { k_UxmlIdentifier_TreeViewColumn__Description, (x, y) => string.Compare(x.data.Name, y.data.Name, StringComparison.OrdinalIgnoreCase) },
+            };
         }
 
         protected override ToolbarSearchField SearchField => m_SearchField;
@@ -64,7 +74,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void ViewLoaded()
         {
             GatherViewReferences();
-            ConfigureTreeView();
+            base.ViewLoaded();
 
             // These styles are not supported in Unity 2020 and earlier. They will cause project errors if included in the stylesheet in those Editor versions.
             // Remove when we drop support for <= 2020 and uncomment these styles in the stylesheet.
@@ -73,8 +83,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_LoadingOverlay.style.transitionDuration = transitionDuration;
             m_LoadingOverlay.style.transitionProperty = new StyleList<StylePropertyName>(new List<StylePropertyName>() { new StylePropertyName("opacity") });
             m_LoadingOverlay.style.transitionTimingFunction = transitionTimingFunction;
-
-            BuildModelAsync();
         }
 
         void GatherViewReferences()
@@ -92,77 +100,67 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ConfigureTreeView();
 
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Address, "Address", BindCellForAddressColumn(), width: 180, makeCell: MakeCellForAddressColumn);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Size, "Allocated Size", BindCellForSizeColumn(), width: 100, makeCell: MakeCellForSizeColumn);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__ResidentSize, "Resident Size", BindCellForResidentSizeColumn(), width: 100, visible: m_Snapshot.HasSystemMemoryResidentPages);
+            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Size, "Allocated Size", BindCellForSizeColumn(), width: 100, makeCell: MakeCellForSizeColumn, visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
+            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__ResidentSize, "Resident Size", BindCellForResidentSizeColumn(), width: 100, visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Type, "Type", BindCellForTypeColumn(), width: 180);
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Description, "Name", BindCellForNameColumn());
         }
 
-        protected override void BuildModelAsync()
+        protected MemoryMapBreakdownModelBuilder.BuildArgs GetModelBuilderArgs()
         {
-            // Cancel existing build if necessary.
-            m_BuildModelWorker?.Dispose();
-
-            // Show loading UI.
-            m_LoadingOverlay.Show();
-
-            // Dispatch asynchronous build.
-            var snapshot = m_Snapshot;
             var nameFilter = m_SearchField.value;
-            var args = new MemoryMapBreakdownModelBuilder.BuildArgs(nameFilter);
-            var sortDescriptors = BuildSortDescriptorsFromTreeView();
-            m_BuildModelWorker = new AsyncWorker<MemoryMapBreakdownModel>();
-            m_BuildModelWorker.Execute((token) =>
+            return new MemoryMapBreakdownModelBuilder.BuildArgs(nameFilter);
+        }
+
+        protected override Func<MemoryMapBreakdownModel> GetModelBuilderTask(CancellationToken cancellationToken)
+        {
+            // Capture all variables locally in case they are changed before the task is started
+            var modelTypeName = typeof(MemoryMapBreakdownModel).ToString();
+            var treeNodeIdFilter = m_TreeNodeIdFilter;
+            var baseModel = m_BaseModelForTreeNodeIdFiltering;
+            if (treeNodeIdFilter != null)
             {
-                try
+                return () =>
                 {
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived)                 " + modelTypeName);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived) (not canceled)                 " + modelTypeName);
+
+                    // Build the data model as a derivative of an existing model with only certain tree node ids present
+                    var modelBuilder = new MemoryMapBreakdownModelBuilder();
+                    var model = modelBuilder.Build(baseModel, treeNodeIdFilter);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
+                    return model;
+                };
+            }
+
+            var snapshot = m_Snapshot;
+            var args = GetModelBuilderArgs();
+
+            return () =>
+                {
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building                 " + modelTypeName);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (not canceled)                 " + modelTypeName);
                     // Build the data model.
                     var modelBuilder = new MemoryMapBreakdownModelBuilder();
                     var model = modelBuilder.Build(snapshot, args);
 
-                    token.ThrowIfCancellationRequested();
-                    // Sort it according to the current sort descriptors.
-                    model.Sort(sortDescriptors);
+                    cancellationToken.ThrowIfCancellationRequested();
 
+                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
                     return model;
-                }
-                catch (UnsupportedSnapshotVersionException)
-                {
-                    return null;
-                }
-                catch (OperationCanceledException)
-                {
-                    // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
-                    return null;
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogException(ex);
-                    throw;
-                }
-            }, (model) =>
-            {
-                // Update model.
-                m_Model = model;
+                };
+        }
 
-                if (model != null)
-                {
-                    // Refresh UI with new data model.
-                    RefreshView();
-                }
-                else
-                {
-                    // Display error message.
-                    m_ErrorLabel.text = k_ErrorMessage;
-                    UIElementsHelper.SetElementDisplay(m_ErrorLabel, true);
-                }
+        protected override void OnViewReloaded(bool success)
+        {
+            base.OnViewReloaded(success);
 
-                // Hide loading UI.
-                m_LoadingOverlay.Hide();
-
-                // Update usage counters
-                MemoryProfilerAnalytics.AddMemoryMapUsage(nameFilter != null);
-            });
+            // Update usage counters
+            MemoryProfilerAnalytics.AddMemoryMapUsage(m_SearchField.value != null);
         }
 
         protected override void RefreshView()
@@ -209,7 +207,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return (element, rowIndex) =>
             {
                 var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
-                ((Label)element).text = EditorUtility.FormatBytes((long)itemData.Size.Committed);
+                ((Label)element).text = EditorUtility.FormatBytes((long)itemData.TotalSize.Committed);
             };
         }
 
@@ -220,7 +218,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (m_TreeView.GetParentIdForIndex(rowIndex) == -1)
                 {
                     var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
-                    ((Label)element).text = EditorUtility.FormatBytes((long)itemData.Size.Resident);
+                    ((Label)element).text = EditorUtility.FormatBytes((long)itemData.TotalSize.Resident);
                 }
                 else
                     ((Label)element).text = "";
@@ -252,51 +250,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SelectionDetails.SetSelection(detailsView);
         }
 
-        IEnumerable<MemoryMapBreakdownModel.SortDescriptor> BuildSortDescriptorsFromTreeView()
-        {
-            var sortDescriptors = new List<MemoryMapBreakdownModel.SortDescriptor>();
-
-            var sortedColumns = m_TreeView.sortedColumns;
-            using (var enumerator = sortedColumns.GetEnumerator())
-            {
-                if (enumerator.MoveNext())
-                {
-                    var sortDescription = enumerator.Current;
-                    var sortProperty = ColumnNameToSortbleItemDataProperty(sortDescription.columnName);
-                    var sortDirection = (sortDescription.direction == SortDirection.Ascending) ?
-                        MemoryMapBreakdownModel.SortDirection.Ascending : MemoryMapBreakdownModel.SortDirection.Descending;
-                    var sortDescriptor = new MemoryMapBreakdownModel.SortDescriptor(sortProperty, sortDirection);
-                    sortDescriptors.Add(sortDescriptor);
-                }
-            }
-
-            return sortDescriptors;
-        }
-
-        MemoryMapBreakdownModel.SortableItemDataProperty ColumnNameToSortbleItemDataProperty(string columnName)
-        {
-            switch (columnName)
-            {
-                case k_UxmlIdentifier_TreeViewColumn__Address:
-                    return MemoryMapBreakdownModel.SortableItemDataProperty.Address;
-
-                case k_UxmlIdentifier_TreeViewColumn__Size:
-                    return MemoryMapBreakdownModel.SortableItemDataProperty.Size;
-
-                case k_UxmlIdentifier_TreeViewColumn__ResidentSize:
-                    return MemoryMapBreakdownModel.SortableItemDataProperty.ResidentSize;
-
-                case k_UxmlIdentifier_TreeViewColumn__Description:
-                    return MemoryMapBreakdownModel.SortableItemDataProperty.Name;
-
-                case k_UxmlIdentifier_TreeViewColumn__Type:
-                    return MemoryMapBreakdownModel.SortableItemDataProperty.Type;
-
-                default:
-                    throw new ArgumentException("Unable to sort. Unknown column name.");
-            }
-        }
-
         void IViewControllerWithVisibilityEvents.ViewWillBeDisplayed()
         {
             // Silent deselection on revisiting this view.
@@ -311,4 +264,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

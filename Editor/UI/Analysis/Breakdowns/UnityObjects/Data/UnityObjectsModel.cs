@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -34,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public Action<int, ItemData> SelectionProcessor { get; }
 
         // The data associated with each item in the tree.
-        public readonly struct ItemData : INamedTreeItemData
+        public readonly struct ItemData : IPrivateComparableItemData
         {
             public ItemData(
                 string name,
@@ -76,4 +75,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

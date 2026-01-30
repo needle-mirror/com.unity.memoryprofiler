@@ -68,7 +68,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             children = new List<TreeViewItem>();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         internal ManagedObjectInspectorItem(int managedInspectorId, string name, int managedTypeIndex, string type, string value, bool isStatic, ulong identifyingPointer, ulong size)
             : this(managedInspectorId, name, managedTypeIndex, type, value, isStatic, identifyingPointer,
                   // TODO: Lazy generate byte size when proting this to UI TK Multicolumn Tree Views, as this is ~30% of the cost of using this constructor,

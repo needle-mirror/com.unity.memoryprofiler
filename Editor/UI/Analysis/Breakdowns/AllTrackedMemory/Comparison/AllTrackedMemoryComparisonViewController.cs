@@ -1,13 +1,17 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
 using UnityEngine.UIElements;
-using Unity.MemoryProfiler.Editor.Extensions;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     // Displays comparison between two All Tracked Memory trees.
-    class AllTrackedMemoryComparisonViewController : ComparisonViewController, AllTrackedMemoryTableViewController.IResponder, IAnalysisViewSelectable, IViewControllerWithVisibilityEvents
+    class AllTrackedMemoryComparisonViewController :
+        ComparisonViewController<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs, AllTrackedMemoryModel.ItemData>,
+        AllTrackedMemoryTableViewController.IResponder, IAnalysisViewSelectable, IViewControllerWithVisibilityEvents
     {
         readonly ISelectionDetails m_SelectionDetails;
 
@@ -50,8 +54,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void ViewLoaded()
         {
-            base.ViewLoaded();
-
             m_SameSessionDiff = SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID && SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
 
             // Configure 'Base (A)' table.
@@ -62,10 +64,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 true,
                 m_SameSessionDiff,
                 this);
+            // Set table mode and filtering before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
+            var baseViewColumnVisibilityTask = m_BaseViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            var baseViewFilterTask = m_BaseViewController.SetFiltersAsync(m_Model?.BaseModel, excludeAll: true);
+            // Should not trigger a build and effectively terminate immediately
+            Task.WaitAll(baseViewColumnVisibilityTask, baseViewFilterTask);
+
             BaseViewContainer.Add(m_BaseViewController.View);
             AddChild(m_BaseViewController);
-            m_BaseViewController.SetFilters(excludeAll: true);
-            m_BaseViewController.SetColumnsVisibility(AllTrackedMemoryTableMode.OnlyCommitted);
             m_BaseViewController.HeaderContextMenuPopulateEvent += GenerateEmptyContextMenu;
 
             // Configure 'Compared (B)' table.
@@ -76,11 +82,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                 true,
                 m_SameSessionDiff,
                 this);
+            // Set table mode before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
+            var comparedViewColumnVisibilityTask = m_ComparedViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            var comparedViewFilterTask = m_ComparedViewController.SetFiltersAsync(m_Model?.ComparedModel, excludeAll: true);
+            // Should not trigger a build and effectively terminate immediately
+            Task.WaitAll(comparedViewColumnVisibilityTask, comparedViewFilterTask);
+
             ComparedViewContainer.Add(m_ComparedViewController.View);
             AddChild(m_ComparedViewController);
-            m_ComparedViewController.SetFilters(excludeAll: true);
-            m_ComparedViewController.SetColumnsVisibility(AllTrackedMemoryTableMode.OnlyCommitted);
             m_ComparedViewController.HeaderContextMenuPopulateEvent += GenerateEmptyContextMenu;
+
+            // After seting up base and Compared tables first, finalize the setup for the comparison table via base.ViewLoaded();
+            base.ViewLoaded();
         }
 
         protected override void RefreshView()
@@ -101,16 +114,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ClearSelection();
             m_BaseViewController.ClearSelection();
             m_ComparedViewController.ClearSelection();
-            m_BaseViewController.SetFilters(excludeAll: true);
-            m_ComparedViewController.SetFilters(excludeAll: true);
+            m_BaseViewController.SetFilters(m_Model?.BaseModel, excludeAll: true);
+            m_ComparedViewController.SetFilters(m_Model?.ComparedModel, excludeAll: true);
         }
 
-        protected override void OnTreeItemSelected(int itemId, ComparisonTableModel.ComparisonData itemData)
+        protected override void OnTreeItemSelected(int itemId, AllTrackedComparisonTableModel.ComparisonData itemData)
         {
             m_BaseViewController.ClearSelection();
             m_ComparedViewController.ClearSelection();
 
-            var selectedItem = m_TreeView.GetSelectedItems<ComparisonTableModel.ComparisonData>().First();
+            var selectedItem = m_TreeView.GetSelectedItems<AllTrackedComparisonTableModel.ComparisonData>().First();
 
             m_WaitingForFilteringToBeAppliedToBaseView = true;
             m_WaitingForFilteringToBeAppliedToCompareView = true;
@@ -134,14 +147,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 if (filterDownToChildren)
                     itemPathFilter[itemPathFilter.Length - 1] = MatchesAllTextFilter.Create();
-                m_BaseViewController.SetFilters(searchFilter: searchFilter, itemPathFilter: itemPathFilter);
-                m_ComparedViewController.SetFilters(searchFilter: searchFilter, itemPathFilter: itemPathFilter);
+                m_BaseViewController.SetFilters(m_Model?.BaseModel, searchFilter: searchFilter, itemPathFilter: itemPathFilter);
+                m_ComparedViewController.SetFilters(m_Model?.ComparedModel, searchFilter: searchFilter, itemPathFilter: itemPathFilter);
             }
             else
             {
                 // Show an empty table if a non-leaf (group) node is selected in the comparison table.
-                m_BaseViewController.SetFilters(excludeAll: true);
-                m_ComparedViewController.SetFilters(excludeAll: true);
+                m_BaseViewController.SetFilters(m_Model?.BaseModel, excludeAll: true);
+                m_ComparedViewController.SetFilters(m_Model?.ComparedModel, excludeAll: true);
             }
 
             var snapshot = itemData.CountInA > 0 ? SnapshotA : SnapshotB;
@@ -222,6 +235,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void IViewControllerWithVisibilityEvents.ViewWillBeHidden()
         {
+        }
+
+        protected override AllTrackedMemoryModelBuilder.BuildArgs GetBaseModelBuilderArgs(IScopedFilter<string> itemNameFilter, bool sameSessionComparison)
+        {
+            return new AllTrackedMemoryModelBuilder.BuildArgs(
+                searchFilter: itemNameFilter,
+                breakdownNativeReserved: MemoryProfilerSettings.ShowReservedMemoryBreakdown,
+                disambiguateUnityObjects: sameSessionComparison,
+                allocationRootNamesToSplitIntoSuballocations: MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 ? MemoryProfilerSettings.AllocationRootsToSplit : null);
         }
     }
 }

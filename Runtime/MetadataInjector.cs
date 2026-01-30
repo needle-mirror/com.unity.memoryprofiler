@@ -15,6 +15,9 @@ using UnityEngine.Profiling.Memory.Experimental;
 using UnityMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
 using UnityMetaData = UnityEngine.Profiling.Memory.Experimental.MetaData;
 #endif
+#if LIVECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 [assembly: Preserve, AlwaysLinkAssembly]
 namespace Unity.MemoryProfiler
@@ -22,11 +25,18 @@ namespace Unity.MemoryProfiler
 #if !MEMPROFILER_DISABLE_METADATA_INJECTOR
     internal static class MetadataInjector
     {
+#if LIVECYCLE_APIS_AVAILABLE
+        [AutoStaticsCleanupOnCodeReload] // AutoStaticsCleanup can handle IDisposable objects.
+#endif
         public static DefaultMetadataCollect DefaultCollector;
         public static long CollectorCount = 0;
         public static byte DefaultCollectorInjected = 0;
 #if UNITY_EDITOR
+#if LIVECYCLE_APIS_AVAILABLE
+        [AfterAssemblyLoaded]
+#else
         [InitializeOnLoadMethod]
+#endif
         static void EditorInitMetadata()
         {
             InitializeMetadataCollection();
@@ -38,7 +48,7 @@ namespace Unity.MemoryProfiler
         {
             if (!Application.isEditor)
             {
-                // initialize here to apeas Project Auditor
+                // initialize here to appease Project Auditor
                 DefaultCollector?.Dispose();
                 DefaultCollector = null;
                 DefaultCollectorInjected = 0;
@@ -233,7 +243,7 @@ namespace Unity.MemoryProfiler
                 MetadataInjector.DefaultCollectorInjected = 0;
             }
 #if MEMORY_PROFILER_API_PUBLIC
-            // Suppress Projec Auditor warning. This is handled via MetadataInjector for the DefaultMetadataCollect
+            // Suppress Project Auditor warning. This is handled via MetadataInjector for the DefaultMetadataCollect
             // And user implementations need to solve this by Disposing
 #pragma warning disable UDR0005 // Domain Reload Analyzer
             UnityMemoryProfiler.CreatingMetadata += CollectMetadata;
@@ -257,7 +267,7 @@ namespace Unity.MemoryProfiler
         public abstract void CollectMetadata(UnityMetaData data);
 
         /// <summary>
-        /// CollectMetadata implements an <see cref="IDisposable"/> pattern and therefore an Dispose method.
+        /// CollectMetadata implements an <see cref="IDisposable"/> pattern and therefore a Dispose method.
         /// </summary>
         /// <remarks>
         /// Disposing of a metadata collector unregisters it from <see cref="Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata"/>.
@@ -282,7 +292,7 @@ namespace Unity.MemoryProfiler
                 {
                     MetadataInjector.DefaultCollectorInjected = 1;
 #if MEMORY_PROFILER_API_PUBLIC
-            // Suppress Projec Auditor warning. This is handled via MetadataInjector
+                    // Suppress Project Auditor warning. This is handled via MetadataInjector
 #pragma warning disable UDR0005 // Domain Reload Analyzer
                     UnityMemoryProfiler.CreatingMetadata += MetadataInjector.DefaultCollector.CollectMetadata;
 #pragma warning restore UDR0005 // Domain Reload Analyzer
@@ -316,7 +326,7 @@ namespace Unity.MemoryProfiler
                               + $"EditorApplication.timeSinceStartup: {FormatSecondsToTime(EditorApplication.timeSinceStartup)}\n";
 #endif
 #else
-            data.content = $"Project name: { Application.productName }";
+            data.content = $"Project name: {Application.productName}";
             data.platform = string.Empty;
 #endif
         }

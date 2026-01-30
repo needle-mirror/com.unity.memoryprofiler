@@ -6,12 +6,12 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Unity.Burst;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Jobs.LowLevel.Unsafe;
-using Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLevel.Unsafe;
 using Unity.Mathematics;
+using Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
 {
@@ -237,7 +237,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
         /// <value>True if this hash map has been allocated (and not yet deallocated).</value>
         public readonly bool IsCreated
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get => m_Data != null && m_Data->IsCreated;
         }
 
@@ -247,7 +247,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
         /// <value>True if this hash map is empty or if the map has not been constructed.</value>
         public readonly bool IsEmpty
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get
             {
                 if (!IsCreated)
@@ -266,7 +266,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
         /// <returns>The current number of key-value pairs in this hash map.</returns>
         public readonly int Count
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get
             {
                 CheckRead();
@@ -281,7 +281,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
         /// <param name="value">A new capacity. Must be larger than the current capacity.</param>
         public int Capacity
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             readonly get
             {
                 CheckRead();
@@ -523,7 +523,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
             /// Advances the enumerator to the next key-value pair.
             /// </summary>
             /// <returns>True if <see cref="Current"/> is valid to read after the call.</returns>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool MoveNext()
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -549,7 +549,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
             /// <value>The current key-value pair.</value>
             public KVPair<TKey, TValue> Current
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get => m_Enumerator.GetCurrent<TValue>();
             }
 
@@ -602,7 +602,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
             /// <value>True if this hash map has been allocated (and not yet deallocated).</value>
             public readonly bool IsCreated
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get => m_Data != null && m_Data->IsCreated;
             }
 
@@ -612,7 +612,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
             /// <value>True if this hash map is empty or if the map has not been constructed.</value>
             public readonly bool IsEmpty
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get
                 {
                     if (!IsCreated)
@@ -631,7 +631,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
             /// <returns>The current number of key-value pairs in this hash map.</returns>
             public readonly int Count
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get
                 {
                     CheckRead();
@@ -645,7 +645,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
             /// <value>The number of key-value pairs that fit in the current allocation.</value>
             public readonly int Capacity
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get
                 {
                     CheckRead();
@@ -774,7 +774,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
             }
 
             [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             readonly void CheckRead()
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -790,7 +790,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
         }
 
         [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         readonly void CheckRead()
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -799,7 +799,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility
         }
 
         [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         void CheckWrite()
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -997,7 +997,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
 
         internal const int kMinimumCapacity = 256;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         internal int CalcCapacityCeilPow2(int capacity)
         {
             capacity = math.max(math.max(1, Count), capacity);
@@ -1014,13 +1014,13 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
 
         internal readonly bool IsCreated
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get => Ptr != null;
         }
 
         internal readonly bool IsEmpty
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get => !IsCreated || Count == 0;
         }
 
@@ -1172,7 +1172,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             return math.min(Capacity, AllocatedIndex) - numFree;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         int GetBucket(in TKey key)
         {
             return (int)((uint)key.GetHashCode() & (BucketCapacity - 1));
@@ -1334,7 +1334,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             return false;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         internal bool MoveNext(ref int bucketIndex, ref int nextIndex, out int index)
         {
             if (nextIndex != -1)
@@ -1439,7 +1439,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
                 m_NextIndex = -1;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             internal bool MoveNext()
             {
                 return m_Data->MoveNext(ref m_BucketIndex, ref m_NextIndex, out m_Index);
@@ -1452,14 +1452,14 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
                 m_NextIndex = -1;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             internal Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.KVPair<TKey, TValue> GetCurrent<TValue>()
                 where TValue : unmanaged
             {
                 return new Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.KVPair<TKey, TValue> { m_Data = m_Data, m_Index = m_Index };
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             internal TKey GetCurrentKey()
             {
                 if (m_Index != -1)
@@ -1472,7 +1472,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
         }
 
         [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS"), Conditional("UNITY_DOTS_DEBUG")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         void CheckIndexOutOfBounds(int idx)
         {
             if ((uint)idx >= (uint)Capacity)
@@ -1561,7 +1561,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
         /// <value>True if this hash map has been allocated (and not yet deallocated).</value>
         public readonly bool IsCreated
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get => m_Data.IsCreated;
         }
 
@@ -1571,7 +1571,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
         /// <value>True if this hash map is empty or if the map has not been constructed.</value>
         public readonly bool IsEmpty
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get => m_Data.IsEmpty;
         }
 
@@ -1581,7 +1581,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
         /// <returns>The current number of key-value pairs in this hash map.</returns>
         public readonly int Count
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get => m_Data.Count;
         }
 
@@ -1592,7 +1592,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
         /// <param name="value">A new capacity. Must be larger than the current capacity.</param>
         public int Capacity
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             readonly get => m_Data.Capacity;
             set => m_Data.Resize(value);
         }
@@ -1786,7 +1786,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             /// Advances the enumerator to the next key-value pair.
             /// </summary>
             /// <returns>True if <see cref="Current"/> is valid to read after the call.</returns>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool MoveNext() => m_Enumerator.MoveNext();
 
             /// <summary>
@@ -1800,7 +1800,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             /// <value>The current key-value pair.</value>
             public KVPair<TKey, TValue> Current
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get => m_Enumerator.GetCurrent<TValue>();
             }
 
@@ -1841,7 +1841,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             /// <value>True if this hash map has been allocated (and not yet deallocated).</value>
             public readonly bool IsCreated
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get => m_Data.IsCreated;
             }
 
@@ -1851,7 +1851,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             /// <value>True if this hash map is empty or if the map has not been constructed.</value>
             public readonly bool IsEmpty
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get => m_Data.IsEmpty;
             }
 
@@ -1861,7 +1861,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             /// <returns>The current number of key-value pairs in this hash map.</returns>
             public readonly int Count
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get => m_Data.Count;
             }
 
@@ -1871,7 +1871,7 @@ namespace Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.LowLev
             /// <value>The number of key-value pairs that fit in the current allocation.</value>
             public readonly int Capacity
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 get => m_Data.Capacity;
             }
 

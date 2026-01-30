@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -17,9 +16,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             foreach (var rootItem in treeRootNodes)
             {
                 if (rootItem.data.Name == AllTrackedMemoryModelBuilder.GraphicsGroupName)
-                    TotalGraphicsMemorySize += rootItem.data.Size;
+                    TotalGraphicsMemorySize += rootItem.data.TotalSize;
 
-                totalMemorySize += rootItem.data.Size;
+                totalMemorySize += rootItem.data.TotalSize;
             }
             TotalMemorySize = totalMemorySize;
 
@@ -42,7 +41,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public Action<int, ItemData> SelectionProcessor { get; }
 
         // The data associated with each item in the tree.
-        public readonly struct ItemData : IPrivateComparableItemData, INamedTreeItemData
+        public readonly struct ItemData : IPrivateComparableItemData
         {
             public ItemData(
                 string name,
@@ -51,7 +50,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 int childCount = 0)
             {
                 Name = name;
-                Size = size;
+                TotalSize = size;
                 Source = source;
                 ChildCount = childCount;
                 Unreliable = false;
@@ -61,7 +60,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             public string Name { get; }
 
             // The total size of this item including its children.
-            public MemorySize Size { get; }
+            public MemorySize TotalSize { get; }
 
             // The source of this item in memory snapshot.
             public CachedSnapshot.SourceIndex Source { get; }
@@ -74,4 +73,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

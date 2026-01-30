@@ -35,7 +35,7 @@ namespace Unity.MemoryProfiler.Editor
 #if SELECTION_USES_ENTITY_ID
             Selection.activeEntityId = EntityAndInstanceIdHelper.ConvertToUnityEntityId(selectionToSetAsActive);
 #else
-            Selection.activeInstanceID = EntityAndInstanceIdHelper.ConvertToInt(selectionToSetAsActive);
+            Selection.activeInstanceID = EntityAndInstanceIdHelper.ConvertToIdInt(selectionToSetAsActive);
 #endif
         }
 
@@ -64,7 +64,7 @@ namespace Unity.MemoryProfiler.Editor
             for (int i = 0; i < objectsToSetAsSelection.Count; i++)
             {
 #if !SELECTION_USES_ENTITY_ID && !ENTITY_ID_CHANGED_SIZE
-                selection[i] = EntityAndInstanceIdHelper.ConvertToInt(objectsToSetAsSelection[i]);
+                selection[i] = EntityAndInstanceIdHelper.ConvertToIdInt(objectsToSetAsSelection[i]);
 #elif ENTITY_ID_CHANGED_SIZE
                 selection[i] = objectsToSetAsSelection[i];
 #else

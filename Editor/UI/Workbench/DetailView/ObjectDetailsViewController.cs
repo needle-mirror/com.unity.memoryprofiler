@@ -137,9 +137,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         static bool HasReferencesData(CachedSnapshot snapshot, SourceIndex sourceIndex)
         {
             var references = new List<ObjectData>();
-            ObjectConnection.GetAllReferencingObjects(snapshot, sourceIndex, ref references);
+            ObjectConnection.GetAllReferencingObjects(snapshot, sourceIndex, references);
             var refCount = references.Count;
-            ObjectConnection.GetAllReferencedObjects(snapshot, sourceIndex, ref references);
+            ObjectConnection.GetAllReferencedObjects(snapshot, sourceIndex, references);
             return sourceIndex.Valid && refCount + references.Count > 0;
         }
 

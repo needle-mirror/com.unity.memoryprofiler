@@ -1,15 +1,17 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
 using UnityEditor.UIElements;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class UnityObjectsComparisonViewController : TreeViewController<UnityObjectsComparisonModel, UnityObjectsComparisonModel.ItemData>, UnityObjectsTableViewController.IResponder, IViewControllerWithVisibilityEvents
+    class UnityObjectsComparisonViewController
+        : AbstractComparisonTreeViewController<UnityObjectsComparisonModel, UnityObjectsComparisonModel.ItemData, UnityObjectsModel, UnityObjectsModel.ItemData>
+        , UnityObjectsTableViewController.IResponder, IViewControllerWithVisibilityEvents
     {
         const string k_UxmlAssetGuid = "22b678e6f811eec4782c655ff73c2677";
         const string k_UssClass_Dark = "unity-objects-comparison-view__dark";
@@ -38,9 +40,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_ComparedDescriptionLabel = "unity-objects-comparison-view__secondary__compared-description-label";
         const string k_UxmlIdentifier_ComparedViewContainer = "unity-objects-comparison-view__secondary__compared-table-container";
         const string k_UxmlIdentifier_ErrorLabel = "unity-objects-comparison-view__error-label";
-        const string k_ErrorMessage = "At least one snapshot is from an outdated Unity version that is not fully supported.";
 
         // Sort comparisons for each column.
+        protected override Dictionary<string, Comparison<TreeViewItemData<UnityObjectsComparisonModel.ItemData>>> SortComparisons => k_SortComparisons;
         static readonly Dictionary<string, Comparison<TreeViewItemData<UnityObjectsComparisonModel.ItemData>>> k_SortComparisons = new()
         {
             { k_UxmlIdentifier_TreeViewColumn__Description, (x, y) => string.Compare(x.data.Name, y.data.Name, StringComparison.OrdinalIgnoreCase) },
@@ -68,14 +70,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         DetailedSizeBar m_TotalSizeBarA;
         DetailedSizeBar m_TotalSizeBarB;
         Toggle m_FlattenToggle;
-        ActivityIndicatorOverlay m_LoadingOverlay;
         Label m_BaseTitleLabel;
         Label m_BaseDescriptionLabel;
         VisualElement m_BaseViewContainer;
         Label m_ComparedTitleLabel;
         Label m_ComparedDescriptionLabel;
         VisualElement m_ComparedViewContainer;
-        Label m_ErrorLabel;
         bool m_WaitingForFilteringToBeAppliedToBaseView = false;
         bool m_WaitingForFilteringToBeAppliedToCompareView = false;
 
@@ -111,15 +111,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void ViewLoaded()
         {
-            m_SplitView.RegisterCallback<GeometryChangedEvent>(ConfigureSplitViewLayout);
-            ConfigureTreeView();
-
-            m_DescriptionLabel.text = m_Description;
-            m_FlattenToggle.text = "Flatten Hierarchy";
-            m_FlattenToggle.RegisterValueChangedCallback(SetHierarchyFlattened);
-            m_UnchangedToggle.text = "Show Unchanged";
-            m_UnchangedToggle.RegisterValueChangedCallback(ApplyFilter);
-
             m_SameSessionComparison = m_SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID && m_SnapshotA.MetaData.SessionGUID == m_SnapshotB.MetaData.SessionGUID;
 
             // Configure 'Base (A)' Unity Objects table.
@@ -134,10 +125,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 FlattenHierarchy = true
             };
-            m_BaseTableViewController.SetFilters(unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
+            // Set table mode and filtering before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
+            var baseViewColumnVisibilityTask = m_BaseTableViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            var baseViewFilterTask = m_BaseTableViewController.SetFiltersAsync(m_Model?.BaseModel, unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
+            // Should not trigger a build and effectively terminate immediately
+            Task.WaitAll(baseViewColumnVisibilityTask, baseViewFilterTask);
+
             m_BaseViewContainer.Add(m_BaseTableViewController.View);
             AddChild(m_BaseTableViewController);
-            m_BaseTableViewController.SetColumnsVisibility(AllTrackedMemoryTableMode.OnlyCommitted);
             m_BaseTableViewController.HeaderContextMenuPopulateEvent += GenerateEmptyContextMenu;
 
             // Configure 'Compared (B)' Unity Objects table.
@@ -152,13 +147,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 FlattenHierarchy = true
             };
-            m_ComparedTableViewController.SetFilters(unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
+            // Set table mode and filtering before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
+            var comparedViewColumnVisibilityTask = m_ComparedTableViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            var comparedViewFilterTask = m_ComparedTableViewController.SetFiltersAsync(m_Model?.ComparedModel, unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
+            // Should not trigger a build and effectively terminate immediately
+            Task.WaitAll(comparedViewColumnVisibilityTask, comparedViewFilterTask);
+
             m_ComparedViewContainer.Add(m_ComparedTableViewController.View);
             AddChild(m_ComparedTableViewController);
-            m_ComparedTableViewController.SetColumnsVisibility(AllTrackedMemoryTableMode.OnlyCommitted);
             m_ComparedTableViewController.HeaderContextMenuPopulateEvent += GenerateEmptyContextMenu;
 
-            BuildModelAsync();
+            // After seting up base and Compared tables first, finalize the setup for the comparison table via base.ViewLoaded();
+            base.ViewLoaded();
         }
 
         protected override void Dispose(bool disposing)
@@ -166,7 +166,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (disposing)
             {
                 m_SelectionDetails?.ClearSelection();
-                m_BuildModelWorker?.Dispose();
             }
 
             base.Dispose(disposing);
@@ -203,6 +202,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             base.ConfigureTreeView();
 
+            m_SplitView.RegisterCallback<GeometryChangedEvent>(ConfigureSplitViewLayout);
+
+            m_DescriptionLabel.text = m_Description;
+            m_FlattenToggle.text = "Flatten Hierarchy";
+            m_FlattenToggle.RegisterValueChangedCallback(SetHierarchyFlattened);
+            m_UnchangedToggle.text = "Show Unchanged";
+            m_UnchangedToggle.RegisterValueChangedCallback(ApplyFilter);
+
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Description, "Description", BindCellForDescriptionColumn(), makeCell: UnityObjectsDescriptionCell.Instantiate);
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountDelta, "Count Difference", BindCellForCountDeltaColumn(), makeCell: CountDeltaCell.Instantiate);
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__SizeDeltaBar, "Size Difference Bar", BindCellForSizeDeltaBarColumn(), makeCell: DeltaBarCell.Instantiate);
@@ -213,21 +220,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountInB, "Count In B", BindCellForCountColumn(CountType.CountInB));
         }
 
-        protected override void BuildModelAsync()
+        protected UnityObjectsComparisonModelBuilder.BuildArgs GetComparisonModelBuilderArgs()
         {
-            // Cancel existing build if necessary.
-            m_BuildModelWorker?.Dispose();
-
-            // Show loading UI.
-            m_LoadingOverlay.Show();
-
-            // Dispatch asynchronous build.
-            var snapshotA = m_SnapshotA;
-            var snapshotB = m_SnapshotB;
             var searchStringFilter = ScopedContainsTextFilter.Create(m_SearchField.value);
             var flatten = m_FlattenToggle.value;
             var includeUnchanged = m_UnchangedToggle.value;
-            var args = new UnityObjectsComparisonModelBuilder.BuildArgs(
+            return new UnityObjectsComparisonModelBuilder.BuildArgs(
                 searchStringFilter,
                 null,
                 null,
@@ -236,68 +234,46 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SameSessionComparison && !flatten,
                 OnUnityObjectNameGroupComparisonSelected,
                 OnUnityObjectTypeComparisonSelected);
-            var sortComparison = BuildSortComparisonFromTreeView();
-            m_BuildModelWorker = new AsyncWorker<UnityObjectsComparisonModel>();
-            m_BuildModelWorker.Execute((token) =>
-            {
-                try
+        }
+
+        protected override Func<UnityObjectsComparisonModel> GetModelBuilderTask(CancellationToken cancellationToken)
+        {
+            // Capture all variables locally in case they are changed before the task is started
+            var modelTypeName = typeof(UnityObjectsModel).ToString();
+
+            var snapshotA = m_SnapshotA;
+            var snapshotB = m_SnapshotB;
+            var compareArgs = GetComparisonModelBuilderArgs();
+
+            return () =>
                 {
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building                 " + modelTypeName);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (not canceled)                 " + modelTypeName);
                     // Build the data model.
                     var modelBuilder = new UnityObjectsComparisonModelBuilder();
-                    var model = modelBuilder.Build(snapshotA, snapshotB, args);
-                    token.ThrowIfCancellationRequested();
-                    // Sort it according to the current sort descriptors.
-                    model.Sort(sortComparison);
+                    var model = modelBuilder.Build(snapshotA, snapshotB, compareArgs);
 
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
                     return model;
-                }
-                catch (UnsupportedSnapshotVersionException)
-                {
-                    return null;
-                }
-                catch (OperationCanceledException)
-                {
-                    // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
-                    return null;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogException(e);
-                    return null;
-                }
-            }, (model) =>
-                {
-                    // Update model.
-                    m_Model = model;
+                };
+        }
 
-                    if (model != null)
-                    {
-                        // Refresh UI with new data model.
-                        RefreshView();
-                    }
-                    else
-                    {
-                        // Display error message.
-                        m_ErrorLabel.text = k_ErrorMessage;
-                        UIElementsHelper.SetElementDisplay(m_ErrorLabel, true);
-                    }
+        protected override void OnViewReloaded(bool success)
+        {
+            base.OnViewReloaded(success);
 
-                    // Hide loading UI.
-                    m_LoadingOverlay.Hide();
-
-                    // Dispose asynchronous worker.
-                    m_BuildModelWorker.Dispose();
-
-                    // Update usage counters
-                    MemoryProfilerAnalytics.AddUnityObjectsComparisonUsage(searchStringFilter != null, flatten, includeUnchanged);
-                });
+            // Update usage counters
+            MemoryProfilerAnalytics.AddUnityObjectsComparisonUsage(!string.IsNullOrEmpty(m_SearchField.value), m_FlattenToggle.value, m_UnchangedToggle.value);
         }
 
         protected override void RefreshView()
         {
-            var maxValue = Math.Max(m_Model.TotalSnapshotAMemorySize.Committed, m_Model.TotalSnapshotBMemorySize.Committed);
-            SetDetailedProgressBarValues(m_TotalSizeBarA, m_Model.TotalMemorySizeA.Committed, m_Model.TotalSnapshotAMemorySize.Committed, maxValue);
-            SetDetailedProgressBarValues(m_TotalSizeBarB, m_Model.TotalMemorySizeB.Committed, m_Model.TotalSnapshotBMemorySize.Committed, maxValue);
+            var maxValue = Math.Max(m_Model.TotalSnapshotSizeA.Committed, m_Model.TotalSnapshotSizeB.Committed);
+            SetDetailedProgressBarValues(m_TotalSizeBarA, m_Model.TotalSizeA.Committed, m_Model.TotalSnapshotSizeA.Committed, maxValue);
+            SetDetailedProgressBarValues(m_TotalSizeBarB, m_Model.TotalSizeB.Committed, m_Model.TotalSnapshotSizeB.Committed, maxValue);
 
             base.RefreshView();
         }
@@ -425,12 +401,18 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void ApplyFilter(ChangeEvent<bool> evt)
         {
-            BuildModelAsync();
+            // ApplyFilter is a listener to UI input (Unchanged filter changes) and therefore doesn't expect an awaitable task.
+            // No caller or following code expects any part of the asnyc build to be done.
+            // Therefore: Discard the returned task.
+            _ = BuildModelAsync(false);
         }
 
         void SetHierarchyFlattened(ChangeEvent<bool> evt)
         {
-            BuildModelAsync();
+            // SetHierarchyFlattened is a listener to UI input and therefore doesn't expect an awaitable task.
+            // No caller or following code expects any part of the asnyc build to be done.
+            // Therefore: Discard the returned task.
+            _ = BuildModelAsync(false);
         }
 
         protected override void OnTreeItemSelected(int itemId, UnityObjectsComparisonModel.ItemData itemData)
@@ -459,7 +441,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var objectNameFilter = MatchesTextFilter.Create(objectName);
             IEntityIdFilter sourceIndexFilter = null;
-            if(!string.IsNullOrEmpty(instancId)
+            if (!string.IsNullOrEmpty(instancId)
                 && instancId.Substring(NativeObjectTools.NativeObjectIdFormatStringPrefix.Length).TryConvertToEntityID(out var instanceIdValue))
             {
                 var snapshot = snapshotType switch
@@ -479,14 +461,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Right now it will show objects with the same name, type, and instance ID, but potentially different assemblies.
             var typeNameFilter = MatchesTextFilter.Create(typeName);
             m_BaseTableViewController.SetFilters(
+                m_Model?.BaseModel,
                 unityObjectNameFilter: objectNameFilter,
                 unityObjectTypeNameFilter: typeNameFilter,
                 unityObjectInstanceIdFilter: sourceIndexFilter);
             m_ComparedTableViewController.SetFilters(
+                m_Model?.ComparedModel,
                 unityObjectNameFilter: objectNameFilter,
                 unityObjectTypeNameFilter: typeNameFilter,
                 unityObjectInstanceIdFilter: sourceIndexFilter);
         }
+
 
         void OnUnityObjectTypeComparisonSelected(string nativeTypeName)
         {
@@ -507,8 +492,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             var isBaseTable = tableViewController == m_BaseTableViewController;
             var descriptionLabel = (isBaseTable) ? m_BaseDescriptionLabel : m_ComparedDescriptionLabel;
             var filteringForInstanceID = tableViewController.SourceIndexFilter != null;
-            // This kind of filtering is essentially a hack to keep the Base & Compare tables empty.
-            var tableIsFilteringExplicitlyForNoObjects = filteringForInstanceID && tableViewController.SourceIndexFilter.Passes(CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone);
+
+            var tableIsFilteringExplicitlyForNoObjects = tableViewController.ExcludeAllFilterApplied;
             if (!tableIsFilteringExplicitlyForNoObjects)
             {
                 var model = tableViewController.Model;
@@ -520,7 +505,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetElementDisplay(descriptionLabel, !tableIsFilteringExplicitlyForNoObjects);
 
             var selectFirstItem = false;
-            if(isBaseTable && m_WaitingForFilteringToBeAppliedToBaseView)
+            if (isBaseTable && m_WaitingForFilteringToBeAppliedToBaseView)
             {
                 // select the first item if the Responder was just waiting for Base View to reload
                 selectFirstItem = !m_WaitingForFilteringToBeAppliedToCompareView;
@@ -554,39 +539,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             var snapshot = isBaseView ? m_SnapshotA : m_SnapshotB;
             var view = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source);
             m_SelectionDetails.SetSelection(view);
-        }
-
-        Comparison<TreeViewItemData<UnityObjectsComparisonModel.ItemData>> BuildSortComparisonFromTreeView()
-        {
-            var sortedColumns = m_TreeView.sortedColumns;
-            if (sortedColumns == null)
-                return null;
-
-            var sortComparisons = new List<Comparison<TreeViewItemData<UnityObjectsComparisonModel.ItemData>>>();
-            foreach (var sortedColumnDescription in sortedColumns)
-            {
-                if (sortedColumnDescription == null)
-                    continue;
-
-                var sortComparison = k_SortComparisons[sortedColumnDescription.columnName];
-
-                // Invert the comparison's input arguments depending on the sort direction.
-                var sortComparisonWithDirection = (sortedColumnDescription.direction == SortDirection.Ascending) ? sortComparison : (x, y) => sortComparison(y, x);
-                sortComparisons.Add(sortComparisonWithDirection);
-            }
-
-            return (x, y) =>
-            {
-                var result = 0;
-                foreach (var sortComparison in sortComparisons)
-                {
-                    result = sortComparison.Invoke(x, y);
-                    if (result != 0)
-                        break;
-                }
-
-                return result;
-            };
         }
 
         static string FormatBytes(long bytes)
@@ -629,4 +581,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

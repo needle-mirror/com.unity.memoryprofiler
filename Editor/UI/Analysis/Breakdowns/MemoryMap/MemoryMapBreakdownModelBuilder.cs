@@ -1,8 +1,7 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 using UnityEngine.UIElements;
+using static Unity.MemoryProfiler.Editor.UI.TreeModelHelpers;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -14,6 +13,59 @@ namespace Unity.MemoryProfiler.Editor.UI
         public MemoryMapBreakdownModelBuilder()
         {
             m_ItemId = 0;
+        }
+
+        Dictionary<int, IndexableTreeViewListAndIndex<MemoryMapBreakdownModel.ItemData>> m_IdToIndex;
+
+        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IEnumerable<int> treeNodeIds = null)
+        {
+            var tree = new List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>();
+
+            var totalMemory = new MemorySize();
+
+            if (treeNodeIds != null)
+            {
+                var stack = new Stack<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>();
+                foreach (var id in treeNodeIds)
+                {
+                    // the only place where the base model has to be assumed as non-null.
+                    var item = baseModel.RootNodes.GetItemById(ref m_IdToIndex, id);
+                    stack.Push(item);
+                }
+                while (stack.Count > 0)
+                {
+                    var treeNode = stack.Pop();
+                    // only add leaf nodes, add children to the stack to be processed
+                    if (treeNode.hasChildren)
+                    {
+                        foreach (var child in treeNode.children)
+                        {
+                            stack.Push(child);
+                        }
+                    }
+                    else
+                    {
+                        tree.Add(new TreeViewItemData<MemoryMapBreakdownModel.ItemData>(treeNode.id, treeNode.data));
+                        totalMemory += treeNode.data.TotalSize;
+                    }
+                }
+            }
+            // the base model could be null, but in an empty model, there are no selections to be made anyways.
+            var model = CreateDerivedModel(tree, totalMemory, baseModel);
+            return model;
+        }
+
+        /// <summary>
+        /// Creates a derived model, based on a provided <paramref name="baseModel"/> and some <paramref name="rootNodes"/>.
+        /// The <paramref name="baseModel"/> may be null if <paramref name="rootNodes"/> is an empty list.
+        /// </summary>
+        /// <param name="rootNodes"></param>
+        /// <param name="totalMemory"></param>
+        /// <param name="baseModel"></param>
+        /// <returns></returns>
+        protected MemoryMapBreakdownModel CreateDerivedModel(List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>> rootNodes, MemorySize totalMemory, MemoryMapBreakdownModel baseModel)
+        {
+            return new MemoryMapBreakdownModel(rootNodes, totalMemory);
         }
 
         public MemoryMapBreakdownModel Build(CachedSnapshot snapshot, in BuildArgs args)
@@ -215,4 +267,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

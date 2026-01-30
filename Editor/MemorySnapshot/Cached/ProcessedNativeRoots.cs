@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
@@ -7,6 +8,16 @@ using Unity.MemoryProfiler.Editor.Extensions;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+using RootIndexToAllocationHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, Unity.Collections.LowLevel.Unsafe.UnsafeList<long>>;
+using LongToLongHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, long>;
+using LongToIntHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, int>;
+#else
+using RootIndexToAllocationHashMap = Unity.Collections.NativeHashMap<long, Unity.Collections.LowLevel.Unsafe.UnsafeList<long>>;
+using LongToLongHashMap = Unity.Collections.NativeHashMap<long, long>;
+using LongToIntHashMap = Unity.Collections.NativeHashMap<long, int>;
+#endif
+
 namespace Unity.MemoryProfiler.Editor
 {
     internal struct NativeRootSize
@@ -15,6 +26,25 @@ namespace Unity.MemoryProfiler.Editor
         public MemorySize ManagedSize;
         public MemorySize GfxSize;
         public MemorySize SumUp() => NativeSize + ManagedSize + GfxSize;
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static NativeRootSize operator +(in NativeRootSize l, in NativeRootSize r) => new NativeRootSize
+        {
+            NativeSize = l.NativeSize + r.NativeSize,
+            ManagedSize = l.ManagedSize + r.ManagedSize,
+            GfxSize = l.GfxSize + r.GfxSize,
+        };
+
+        public NativeRootSize Divide(ulong divisor, out NativeRootSize remainder)
+        {
+            remainder = default;
+            return new NativeRootSize
+            {
+                NativeSize = NativeSize.Divide(divisor, out remainder.NativeSize),
+                ManagedSize = ManagedSize.Divide(divisor, out remainder.ManagedSize),
+                GfxSize = GfxSize.Divide(divisor, out remainder.GfxSize),
+            };
+        }
     }
 
     internal struct ProcessedNativeRoot
@@ -44,10 +74,10 @@ namespace Unity.MemoryProfiler.Editor
         /// this holds the <see cref="SourceIndex.SourceId.GfxResource"/> index for the first resource mapping to it.
         /// Any further resources are listed in the <see cref="ProcessedNativeRoots.AdditionalGraphicsResourceIndices"/> without a direct index mapping.
         /// </summary>
-        public SourceIndex AssociatadGraphicsResourceIndex;
+        public SourceIndex AssociatedGraphicsResourceIndex;
     }
 
-    internal class ProcessedNativeRoots
+    internal class ProcessedNativeRoots : IDisposable
     {
         public const int ProcessStepCount = 3;
 
@@ -85,11 +115,13 @@ namespace Unity.MemoryProfiler.Editor
 
         /// <summary>
         /// If a graphics resource is not associated with a Native Root it is added to this array.
-        ///
-        /// To get an index mapping to the <see cref="Data"/> list, get the <see cref="NativeGfxResourceReferenceEntriesCache.RootId"/> entry for
-        /// the <see cref="SourceIndex.SourceId.GfxResource"/> index, and convert the root id to the root index via <see cref="RootIdToMappedIndex"/>
         /// </summary>
         public DynamicArray<SourceIndex> UnrootedGraphicsResourceIndices;
+
+        /// <summary>
+        /// If a native allocation is not associated with a Native Root it is added to this array.
+        /// </summary>
+        public DynamicArray<SourceIndex> UnrootedNativeAllocationIndices;
 
         public MemorySize NativeAllocationsThatAreUntrackedGraphicsResources => m_NativeAllocationsThatAreUntrackedGraphicsResources;
         MemorySize m_NativeAllocationsThatAreUntrackedGraphicsResources;
@@ -100,13 +132,24 @@ namespace Unity.MemoryProfiler.Editor
         public MemorySize TotalMemoryInSnapshot => m_TotalMemoryInSnapshot;
         MemorySize m_TotalMemoryInSnapshot;
 
+        // Mapped out committed and resident sizes for managed objects and individual allocations stored here
+        // as the data is gathered when processing the native roots anyways and useful later.
+        public DynamicArray<MemorySize> ManagedSizes;
+        public DynamicArray<MemorySize> AllocationSizes;
+
+        /// <summary>
+        /// Only listing non object rooted allocations (unless no native object data was collected, in which case it lists all)
+        /// </summary>
+        public RootIndexToAllocationHashMap RootIndexToAllocations => m_RootIndexToAllocations;
+        RootIndexToAllocationHashMap m_RootIndexToAllocations;
+
         bool m_NoRootInfo = false;
         bool m_Processed = false;
 
-        Dictionary<long, long> m_NativeRootIdToNativeRootIndex;
-        Dictionary<long, int> m_NativeRootIdToNativeObjectIndex;
+        LongToLongHashMap m_NativeRootIdToNativeRootIndex;
+        LongToIntHashMap m_NativeRootIdToNativeObjectIndex;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public long RootIdToMappedIndex(long rootId)
         {
             return m_NoRootInfo ? m_NativeRootIdToNativeObjectIndex[rootId] : m_NativeRootIdToNativeRootIndex[rootId];
@@ -136,6 +179,10 @@ namespace Unity.MemoryProfiler.Editor
             AdditionalGraphicsResourceIndices = new DynamicArray<SourceIndex>(0, 20, Allocator.Persistent, memClear: true);
             NonObjectRootedGraphicsResourceIndices = new DynamicArray<SourceIndex>(0, 20, Allocator.Persistent, memClear: true);
             UnrootedGraphicsResourceIndices = new DynamicArray<SourceIndex>(0, 20, Allocator.Persistent, memClear: true);
+            UnrootedNativeAllocationIndices = new DynamicArray<SourceIndex>(0, 20, Allocator.Persistent, memClear: true);
+            ManagedSizes = new DynamicArray<MemorySize>(snapshot.CrawledData.ManagedObjects.Count, Allocator.Persistent, memClear: true);
+            AllocationSizes = new DynamicArray<MemorySize>(snapshot.NativeAllocations.Count, Allocator.Persistent, memClear: true);
+            m_RootIndexToAllocations = new RootIndexToAllocationHashMap(4000, Allocator.Persistent);
 
             // already mark processed in case processing throws. That ensures that the native data gets unloaded in those cases too.
             m_Processed = true;
@@ -179,6 +226,8 @@ namespace Unity.MemoryProfiler.Editor
 
         private void ProcessManagedObject(CachedSnapshot snapshot, SourceIndex source, MemorySize memorySize)
         {
+            ManagedSizes[source.Index] += memorySize;
+
             var nativeObjectIndex = snapshot.CrawledData.ManagedObjects[source.Index].NativeObjectIndex;
             if (nativeObjectIndex < NativeTypeEntriesCache.FirstValidTypeIndex)
                 return;
@@ -196,6 +245,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             var nativeAllocations = snapshot.NativeAllocations;
             var rootReferenceId = nativeAllocations.RootReferenceId[source.Index];
+            AllocationSizes[source.Index] += size;
 
             if (snapshot.UseDeviceMemoryForGraphics && snapshot.EntriesMemoryMap.GetPointType(source) == EntriesMemoryMapCache.PointType.Device)
             {
@@ -203,7 +253,9 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             }
 
-            if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootIndex)
+            // No allocations are ever reported as rooted to the ExecutableAndDlls root.
+            // A Root Id/Index of 0 means it's an unrooted allocation.
+            if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootId)
             {
                 SourceIndex rootSource = new SourceIndex();
                 // Is this allocation associated with a native object?
@@ -216,12 +268,13 @@ namespace Unity.MemoryProfiler.Editor
                     && !rootSource.Valid)
                 {
                     rootSource = new SourceIndex(SourceIndex.SourceId.NativeRootReference, rootIndex);
+                    // only non-native-object rooted allocations need to be tracked in this map
+                    m_RootIndexToAllocations.GetAndAddToListOrCreateList(rootIndex, source.Index, Allocator.Persistent);
                 }
 
                 if (!rootSource.Valid)
                 {
-                    m_UnknownRootMemory.NativeSize += size;
-                    return;
+                    throw new InvalidOperationException($"Could not resolve root reference id: {rootReferenceId}");
                 }
 
                 ref var data = ref Data[rootIndex];
@@ -232,6 +285,7 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
+                UnrootedNativeAllocationIndices.Push(source);
                 m_UnknownRootMemory.NativeSize += size;
                 return;
             }
@@ -291,8 +345,8 @@ namespace Unity.MemoryProfiler.Editor
                 ref var data = ref Data[rootIndex];
 
                 data.AccumulatedRootSizes.GfxSize += memorySize;
-                if (!data.AssociatadGraphicsResourceIndex.Valid)
-                    data.AssociatadGraphicsResourceIndex = source;
+                if (!data.AssociatedGraphicsResourceIndex.Valid)
+                    data.AssociatedGraphicsResourceIndex = source;
                 else
                     AdditionalGraphicsResourceIndices.Push(source);
 
@@ -356,6 +410,10 @@ namespace Unity.MemoryProfiler.Editor
             AdditionalGraphicsResourceIndices.Dispose();
             NonObjectRootedGraphicsResourceIndices.Dispose();
             UnrootedGraphicsResourceIndices.Dispose();
+            UnrootedNativeAllocationIndices.Dispose();
+            ManagedSizes.Dispose();
+            AllocationSizes.Dispose();
+            m_RootIndexToAllocations.DisposeListsAndHashmap();
         }
     }
 }

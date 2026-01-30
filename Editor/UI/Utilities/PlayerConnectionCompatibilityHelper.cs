@@ -35,6 +35,8 @@ namespace Unity.MemoryProfiler.Editor
 #else
             "UnityEditor.Experimental.Networking.PlayerConnection.IConnectionStateInternal";
 #endif
+        static GUIStyle m_ToolbarDropDown;
+        public static bool Initialized => m_ToolbarDropDown != null;
 
         static PlayerConnectionCompatibilityHelper()
         {
@@ -54,6 +56,14 @@ namespace Unity.MemoryProfiler.Editor
 #else
             s_AddItemsToMenu = internalInterface.GetMethod("AddItemsToMenu");
 #endif
+        }
+
+        /// <summary>
+        /// Needs to be called within OnGUI
+        /// </summary>
+        public static void InitGUI()
+        {
+            m_ToolbarDropDown = EditorStyles.toolbarDropDown;
         }
 
         public static void ShowTargetSelectionDropdownMenu(IConnectionState connectionState, Rect rect)
@@ -98,7 +108,7 @@ namespace Unity.MemoryProfiler.Editor
             if (s_Use3ParamsGetToolbarContentCall)
             {
                 s_3Params[0] = playerName;
-                s_3Params[1] = EditorStyles.toolbarDropDown;
+                s_3Params[1] = m_ToolbarDropDown;
                 s_3Params[2] = 150;
                 try
                 {

@@ -24,7 +24,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         readonly DynamicArray<DynamicArray<T>> m_Data;
         public long SectionCount { readonly get; private set; }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly long Count(long idx)
         {
             Checks.CheckEquals(true, IsCreated);
@@ -33,17 +33,124 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public readonly bool IsCreated => m_NestedArrays.IsCreated;
 
-        public NestedDynamicArray(DynamicArray<long> offsets, DynamicArray<DynamicArray<T>> data)
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="offsets">A list of indices (given in bytes, not in <typeparamref name="T"/>)
+        /// for the first byte of every nested array in the <paramref name="data"/>,
+        /// usually starting with 0 for the first nested array.
+        /// The offset to just behind the end of the last array is also needed to know its size.
+        /// The offsets data is only needed during constructin and should get disposed by the caller afterwards.</param>
+        /// <param name="data">The data to use as the basis for the Nested array.
+        /// The nested array "takes ownership" of the data and will dispose it when disposed.</param>
+        /// <exception cref="ArgumentException">Disposes itself before throwing.</exception>
+        public NestedDynamicArray(DynamicArray<long> offsets, DynamicArray<T> data)
         {
             m_Allocator = data.Allocator;
             // Allow creation of NestedDynamicArray data with 0 sections
             SectionCount = Math.Max(offsets.Count - 1, 0);
             m_NestedArrays = new DynamicArray<DynamicArrayRef<T>>(SectionCount, data.Allocator);
 
+            var clearArrayZero = false;
+            if (data.Count == 0)
+            {
+                if (SectionCount > 0 && offsets[offsets.Count - 1] == 0)
+                {
+                    InitializeEmpty(out m_Data, ref clearArrayZero, m_Allocator);
+                }
+                else
+                {
+                    m_Data = new DynamicArray<DynamicArray<T>>(0, data.Allocator);
+                }
+                data.Dispose();
+            }
+            else
+            {
+                m_Data = new DynamicArray<DynamicArray<T>>(1, data.Allocator);
+                m_Data[0] = data;
+            }
+            try
+            {
+                BuildSections(offsets);
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+            if (clearArrayZero)
+                m_Data[0].Clear(false);
+        }
+
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="offsets">A list of indices (given in bytes, not in <typeparamref name="T"/>)
+        /// for the first byte of every nested array in the <paramref name="data"/>,
+        /// usually starting with 0 for the first nested array.
+        /// The offset to just behind the end of the last array is also needed to know its size.
+        /// The offsets data is only needed during constructing and should get disposed by the caller afterward.</param>
+        /// <param name="data">The data to use as the basis for the Nested array. The nested array of
+        /// the data array does not have to have be nested at the same granularity as the resulting nested array.
+        /// Allowing a nested dynamic array as input is more for the benefit of allowing bigger data amounts to be chunked up.
+        /// The nested array "takes ownership" of the data and will dispose it when disposed.</param>
+        /// <exception cref="ArgumentException">Disposes itself before throwing.</exception>
+        public NestedDynamicArray(DynamicArray<long> offsets, DynamicArray<DynamicArray<T>> data)
+        {
+            m_Allocator = data.Allocator;
+            // Allow creation of NestedDynamicArray data with 0 sections
+            SectionCount = Math.Max(offsets.Count - 1, 0);
+            m_NestedArrays = new DynamicArray<DynamicArrayRef<T>>(SectionCount, m_Allocator);
+
             m_Data = data;
+
+            var clearArrayZero = false;
+            if (SectionCount > 0 && offsets[offsets.Count - 1] == 0)
+            {
+                var hasNoData = true;
+                if (data.Count > 0)
+                {
+                    for (long i = 0; i < data.Count; i++)
+                    {
+                        if (data[i].Count > 0)
+                        {
+                            hasNoData = false;
+                            break;
+                        }
+                    }
+                }
+                if (hasNoData)
+                {
+                    InitializeEmpty(out m_Data, ref clearArrayZero, m_Allocator);
+                    data.Dispose();
+                }
+            }
+            try
+            {
+                BuildSections(offsets);
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+            if (clearArrayZero)
+                m_Data[0].Clear(false);
+        }
+
+        static void InitializeEmpty(out DynamicArray<DynamicArray<T>> m_Data, ref bool clearArrayZero, AllocatorType m_Allocator)
+        {
+            // add a fake entry so BuildSections can create a list of 0 sized DynamicRefArrays.
+            m_Data = new DynamicArray<DynamicArray<T>>(1, m_Allocator);
+            m_Data[0] = new DynamicArray<T>(1, m_Allocator, memClear: true);
+            clearArrayZero = true;
+        }
+
+        void BuildSections(DynamicArray<long> offsets)
+        {
             if (SectionCount == 0)
             {
-                if (data.Count != 0)
+                if (m_Data.Count != 0)
                     throw new ArgumentException("Creating a NestedDynamicArray with no sections but with data is not supported, as it hints at faulty inputs.");
                 return;
             }
@@ -62,6 +169,10 @@ namespace Unity.MemoryProfiler.Editor.Containers
                     while (offsets[i] + sizeInByte > endOfCurrentDataBlock)
                     {
                         dataBlockOffset = endOfCurrentDataBlock;
+                        // the start of the current range needs to be within the offset range for the data block,
+                        // otherwise it would indicate that an offset range was spanning across 2 or more data blocks
+                        if (offsets[i] < dataBlockOffset)
+                            throw new ArgumentException($"offsets[{i}] is {offsets[i]} while its data block at index {dataBlockIndex + 1} should have started at an offset of {endOfCurrentDataBlock}. This indicates that a section was split across data blocks which is not allowed.");
                         start = (byte*)m_Data[++dataBlockIndex].GetUnsafePtr();
                         endOfCurrentDataBlock += m_Data[dataBlockIndex].Count * sizeof(T);
                     }
@@ -87,24 +198,24 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        public readonly DynamicArrayRef<T> this[long idx]
+        public ref readonly DynamicArrayRef<T> this[long idx]
         {
             get
             {
                 Checks.CheckEquals(true, IsCreated);
                 Checks.CheckIndexOutOfBoundsAndThrow(idx, SectionCount);
-                return m_NestedArrays[idx];
+                return ref m_NestedArrays[idx];
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly unsafe void* GetUnsafePtr(long idx)
         {
             Checks.CheckEquals(true, IsCreated);
             return m_NestedArrays[idx].GetUnsafePtr();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly unsafe T* GetUnsafeTypedPtr(long idx)
         {
             Checks.CheckEquals(true, IsCreated);

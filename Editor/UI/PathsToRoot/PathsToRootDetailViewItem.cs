@@ -22,14 +22,14 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public GUIContent TypeIcon { get; private set; }
         public GUIContent ObjectFlags { get; private set; }
 
-        public bool IsRoot(CachedSnapshot cs)
+        public bool IsSceneRoot(CachedSnapshot cs)
         {
-            return Data.IsRootGameObject(cs);
+            return Data.IsSceneRootTransform(cs);
         }
 
         public string AssetPath(CachedSnapshot cs)
         {
-            return IsRoot(cs) ? Data.GetAssetPath(cs) : String.Empty;
+            return Data.dataType is ObjectDataType.Scene || IsSceneRoot(cs) ? Data.GetAssetPath(cs) : String.Empty;
         }
 
         public string FlagsInfo = "";
@@ -69,12 +69,12 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             needsIcon = other.needsIcon;
         }
 
-        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, PathsToRootDetailTreeViewItem potentialParent, bool truncateTypeNames, bool referencesToItem = false) : this(data, cachedSnapshot, truncateTypeNames, referencesToItem)
+        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, PathsToRootDetailTreeViewItem potentialParent, bool truncateTypeNames, PathsToRootDetailView.ActiveTree treeType = PathsToRootDetailView.ActiveTree.RawReferences) : this(data, cachedSnapshot, truncateTypeNames, treeType)
         {
             HasCircularReference = CircularReferenceCheck(potentialParent);
         }
 
-        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames, bool referencesToItem = false)
+        public PathsToRootDetailTreeViewItem(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames, PathsToRootDetailView.ActiveTree treeType = PathsToRootDetailView.ActiveTree.RawReferences)
         {
             id = s_IdGenerator++;
             depth = -1;
@@ -89,7 +89,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 // It thereby updates the view immediately on switching the settings
                 // GetDisplayName is a bit more involved and will only in a few cases include the type name
                 // currently, that display name will not get updated immediately as the setting changes
-                displayName = GetDisplayName(data, cachedSnapshot, truncateTypeNames, referencesToItem);
+                displayName = GetDisplayName(data, cachedSnapshot, truncateTypeNames, treeType);
 
                 SetObjectFlagsDataAndToolTip(data, cachedSnapshot);
             }
@@ -102,13 +102,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             }
         }
 
-        string GetDisplayName(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames, bool referencesToItem)
+        string GetDisplayName(ObjectData data, CachedSnapshot cachedSnapshot, bool truncateTypeNames, PathsToRootDetailView.ActiveTree treeType)
         {
             ManagedObjectInfo managedObjectInfo;
             var referencedItemName = "";
             ObjectData displayObject = data.displayObject;
             // for ReferencesTo Items reported as field data, we need to adjust
-            if (referencesToItem && (data.IsField() || data.IsArrayItem()))
+            if (treeType is PathsToRootDetailView.ActiveTree.ReferencesTo && (data.IsField() || data.IsArrayItem()))
             {
                 // The field info comes from the parent
                 displayObject = data.Parent.Obj;
@@ -181,6 +181,12 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 case ObjectDataType.GCHandle:
                     return displayObject.GenerateObjectName(cachedSnapshot);
                 case ObjectDataType.NativeAllocation: // should not be present outside of as a referencesToItem with field information to display
+                    return data.nonObjectIndex.ToString();
+                case ObjectDataType.Prefab:
+                    var prefabRootTransform = cachedSnapshot.SceneRoots.AllPrefabRootTransformSourceIndices[data.nonObjectIndex];
+                    return cachedSnapshot.NativeObjects.ObjectName[prefabRootTransform.Index];
+                case ObjectDataType.Scene:
+                    return cachedSnapshot.SceneRoots.Name[data.nonObjectIndex];
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -242,8 +248,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 }
                 if ((flags & Format.ObjectFlags.IsManager) != 0)
                 {
-                    flagsNames += " 'IsManager'";
+                    flagsNames += " 'IsManager'" + (lineBreak ? " \n" : ",");
                     flagsExplanations += PathsToRootUtils.IsManagerInfo;
+                }
+                if ((flags & Format.ObjectFlags.IsRoot) != 0)
+                {
+                    flagsNames += " 'IsRoot'";
+                    flagsExplanations += PathsToRootUtils.IsRootInfo;
                 }
                 if (!string.IsNullOrEmpty(flagsNames) && flagsNames.LastIndexOf(',') == flagsNames.Length - 1)
                     flagsNames = flagsNames.Substring(0, flagsNames.Length - 1);
@@ -300,6 +311,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         public static GUIContent GetIcon(ObjectData data, string typeName, CachedSnapshot cs)
         {
+            if (data.dataType is ObjectDataType.Scene)
+                return PathsToRootDetailView.Styles.SceneIcon;
             if (typeName == "AssetBundle")
             {
                 return PathsToRootUtils.NoIconContent;

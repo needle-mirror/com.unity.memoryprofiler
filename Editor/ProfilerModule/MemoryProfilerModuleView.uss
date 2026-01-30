@@ -67,6 +67,7 @@
 /** View container **/
 #memory-profiler-module__view {
     flex: 1 1 auto;
+    background-color: var(--unity-colors-window-background);
 }
 
 #memory-profiler-module__container {
@@ -89,7 +90,9 @@
 #memory-profiler-module__simple {
     flex: 1;
     flex-direction: column;
+}
 
+#memory-profiler-module__simple .unity-scroll-view__content-viewport {
     margin-top: 10px;
 }
 

@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Extensions;
@@ -42,6 +41,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 rootNodes = TreeModelUtility.RetrieveLeafNodesOfTree(rootNodes);
 
             var model = new UnityObjectsComparisonModel(
+                // TODO: UnityObjectsComparisonModel currently doesn't actually build base models.
+                // To be able to speed up and make filtering the Base and Compared tables to elements from the build base models, that would be a necessity
+                // To that end the Comparison table would also need to know the Tree Item Ids of the corresponding base model, i.e. get alligned with ComparsionTableModel
+                null, null,
                 rootNodes,
                 totalMemoryInSnapshotA,
                 totalMemoryInSnapshotB);
@@ -60,7 +63,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             in BuildArgs args,
             out MemorySize totalMemoryInSnapshot)
         {
-             BuildUnityObjectTypeIndexToUnityObjectsMapForSnapshot(
+            BuildUnityObjectTypeIndexToUnityObjectsMapForSnapshot(
                 snapshot,
                 new UnityObjectsModelBuilder.BuildArgs(
                     args.SearchStringFilter,
@@ -86,10 +89,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var nativeTypeName = nativeTypeGroup.Key.GetName(snapshot);
                 var managedTypeToObjectMap = new MapOfManagedTypeOrObjectName2Objects();
                 managedTypeToObjectMap.MapOfManagedTypeNames = new Dictionary<string, Dictionary<string, DictionaryOrList>>();
-                var typeNameClashes = new Dictionary<string,string>();
+                var typeNameClashes = new Dictionary<string, string>();
                 foreach (var managedTypeGroup in IterateAndBuildTypeGroups(nativeTypeGroup.Value, snapshot))
                 {
-                    if(!managedTypeToObjectMap.MapOfManagedTypeNames.TryAdd(managedTypeGroup.Item1, managedTypeGroup.Item2))
+                    if (!managedTypeToObjectMap.MapOfManagedTypeNames.TryAdd(managedTypeGroup.Item1, managedTypeGroup.Item2))
                     {
                         if (!typeNameClashes.ContainsKey(managedTypeGroup.Item1))
                         {
@@ -132,7 +135,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return nativeTypeNameToManagedTypeToObjectNameMapOrAndObjectsMap;
         }
 
-        IEnumerator<Tuple<string,Dictionary<string, DictionaryOrList>>> IterateAndBuildTypeGroups(Dictionary<SourceIndex, DictionaryOrList> typeGroups, CachedSnapshot snapshot)
+        IEnumerator<Tuple<string, Dictionary<string, DictionaryOrList>>> IterateAndBuildTypeGroups(Dictionary<SourceIndex, DictionaryOrList> typeGroups, CachedSnapshot snapshot)
         {
             foreach (var typeGroup in typeGroups)
             {
@@ -153,14 +156,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                         mapOfNativeNames.Add(item.Key, GroupById(item.Value, dictOrList.Reason));
                     }
                 }
-                yield return new (typeName, mapOfNativeNames);
+                yield return new(typeName, mapOfNativeNames);
             }
         }
 
         DictionaryOrList
             GroupById(List<TreeViewItemData<UnityObjectsModel.ItemData>> typeObjects, DictionaryOrList.SplitReason splitReason)
         {
-            var map = new DictionaryOrList() {
+            var map = new DictionaryOrList()
+            {
                 MapOfObjects = new Dictionary<string, List<TreeViewItemData<UnityObjectsModel.ItemData>>>(typeObjects.Count),
                 Reason = splitReason
             };
@@ -169,7 +173,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             foreach (var typeObject in typeObjects)
             {
                 var objectName = typeObject.data.Name;
-                map.MapOfObjects.Add(objectName, new List<TreeViewItemData<UnityObjectsModel.ItemData>>(){typeObject });
+                map.MapOfObjects.Add(objectName, new List<TreeViewItemData<UnityObjectsModel.ItemData>>() { typeObject });
             }
 
             return map;
@@ -328,7 +332,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Dictionary<string, DictionaryOrList> dummyNameToTypeObjectsMapA = null;
             Dictionary<string, DictionaryOrList> dummyNameToTypeObjectsMapB = null;
 
-            if(objectNameToTypeObjectsMapA != null)
+            if (objectNameToTypeObjectsMapA != null)
             {
                 foreach (var objectNameToTypeObjectsKvp in objectNameToTypeObjectsMapA)
                 {
@@ -427,7 +431,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     {
                         TreeViewItemData<UnityObjectsComparisonModel.ItemData> comparisonNode;
                         // This object name wasn't found in B for this type, so all this type's Unity Objects with this name are exclusive to A. Create a comparison node for all deleted objects.
-                        if(typeObjectsA.ListOfObjects != null)
+                        if (typeObjectsA.ListOfObjects != null)
                         {
                             comparisonNode = CreateComparisonNodeForDeletedUnityObjects(
                                 typeObjectsA.ListOfObjects,
@@ -436,7 +440,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                                 typeObjectsA.Reason == DictionaryOrList.SplitReason.InstanceIDs ? nativeTypeName : groupName,
                                 args.UnityObjectNameGroupComparisonSelectionProcessor);
                         }
-                        else if(typeObjectsA.MapOfObjects != null)
+                        else if (typeObjectsA.MapOfObjects != null)
                         {
                             if (dummyDictionaryOrListA == null)
                             {
@@ -471,7 +475,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            if(objectNameToTypeObjectsMapB != null)
+            if (objectNameToTypeObjectsMapB != null)
             {
                 // Any Object Names remaining in B's map are exclusive to B. Create comparison nodes for each group of created objects of this type remaining.
                 foreach (var objectNameToTypeObjectsKvp in objectNameToTypeObjectsMapB)
@@ -479,7 +483,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var objectName = objectNameToTypeObjectsKvp.Key;
                     var typeObjectsB = objectNameToTypeObjectsKvp.Value;
                     TreeViewItemData<UnityObjectsComparisonModel.ItemData> comparisonNode;
-                    if(typeObjectsB.ListOfObjects != null)
+                    if (typeObjectsB.ListOfObjects != null)
                     {
                         comparisonNode = CreateComparisonNodeForCreatedUnityObjects(
                             typeObjectsB.ListOfObjects,
@@ -488,7 +492,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                             typeObjectsB.Reason == DictionaryOrList.SplitReason.InstanceIDs ? nativeTypeName : groupName,
                             args.UnityObjectNameGroupComparisonSelectionProcessor);
                     }
-                    else if(typeObjectsB.MapOfObjects != null)
+                    else if (typeObjectsB.MapOfObjects != null)
                     {
                         if (dummyDictionaryOrListB == null)
                         {
@@ -512,7 +516,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                                 nodes, objectName, nativeTypeName,
                                 args.UnityObjectNameGroupComparisonSelectionProcessor);
                         else
-                        comparisonNode = CreateTypeComparisonNodeForUnityObjectComparisonNodes(objectName, nodes, null);
+                            comparisonNode = CreateTypeComparisonNodeForUnityObjectComparisonNodes(objectName, nodes, null);
                     }
                     else
                         throw new Exception($"Expected either {nameof(typeObjectsB.ListOfObjects)} or {nameof(typeObjectsB.MapOfObjects)} to not be null");
@@ -633,7 +637,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // only filter by native type and name, don't filter by instance Id. A
                 unityObjectNameGroupComparisonSelectionProcessor?.Invoke(unityObjectName, nativeTypeName, null,
                     countInA > 0 ? (countInB > 0 ? SnapshotType.Undefined : SnapshotType.Base) : (countInB > 0 ? SnapshotType.Compared : SnapshotType.Undefined));
-            };
+            }
+            ;
 
             // Create node for Unity Object Type.
             return new TreeViewItemData<UnityObjectsComparisonModel.ItemData>(
@@ -671,7 +676,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             void ProcessUnityObjectTypeComparisonSelection()
             {
                 unityObjectTypeComparisonSelectionProcessor?.Invoke(nativeTypeName);
-            };
+            }
+            ;
 
             // Create node for Unity Object Type.
             return new TreeViewItemData<UnityObjectsComparisonModel.ItemData>(
@@ -755,4 +761,3 @@ namespace Unity.MemoryProfiler.Editor.UI
 
     }
 }
-#endif

@@ -1,10 +1,11 @@
 using System;
-using System.IO;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
+using System.Collections.ObjectModel;
+using System.IO;
 using Unity.EditorCoroutines.Editor;
 using UnityEditor;
+using UnityEngine;
 
 internal class ScreenshotsManager : IDisposable
 {
@@ -22,9 +23,9 @@ internal class ScreenshotsManager : IDisposable
         }
     }
 
-    Queue<Request> m_Queue;
+    readonly Queue<Request> m_Queue;
+    readonly Dictionary<string, Texture2D> m_LoadedTextures;
     EditorCoroutine m_Loader;
-    Dictionary<string, Texture2D> m_LoadedTextures;
 
     const int k_ThumbWidth = 256;
     const int k_ThumbHeight = 144;
@@ -42,37 +43,37 @@ internal class ScreenshotsManager : IDisposable
         m_LoadedTextures = new Dictionary<string, Texture2D>();
     }
 
-    public static string ToScreenshotPath(string thePath)
+    static string ToScreenshotPath(string thePath)
     {
         return Path.ChangeExtension(thePath, k_SnapshotScreenshotFileExtension);
     }
 
-    public static string ToThumbnailPath(string thePath)
+    static string ToThumbnailPath(string thePath)
     {
         return Path.ChangeExtension(thePath, k_SnapshotScreenshotThumbExtension);
     }
 
     public static void SnapshotDeleted(string snapshotPath)
     {
-        string screenshotPath = ToScreenshotPath(snapshotPath);
+        var screenshotPath = ToScreenshotPath(snapshotPath);
         if (File.Exists(screenshotPath))
             File.Delete(screenshotPath);
 
-        string thumbsPath = ToThumbnailPath(snapshotPath);
+        var thumbsPath = ToThumbnailPath(snapshotPath);
         if (File.Exists(thumbsPath))
             File.Delete(thumbsPath);
     }
 
     public static void SnapshotRenamed(string snapshotFrom, string snapshotTo)
     {
-        string sourceScreenshotPath = ToScreenshotPath(snapshotFrom);
+        var sourceScreenshotPath = ToScreenshotPath(snapshotFrom);
         if (File.Exists(sourceScreenshotPath))
         {
             var targetScreenshotPath = ToScreenshotPath(snapshotTo);
             File.Move(sourceScreenshotPath, targetScreenshotPath);
         }
 
-        string thumbPathFrom = ToThumbnailPath(snapshotFrom);
+        var thumbPathFrom = ToThumbnailPath(snapshotFrom);
         if (File.Exists(thumbPathFrom))
         {
             string thumbPathTo = ToThumbnailPath(snapshotTo);
@@ -82,14 +83,14 @@ internal class ScreenshotsManager : IDisposable
 
     public static void SnapshotImported(string snapshotFrom, string snapshotTo)
     {
-        string sourceScreenshotPath = ToScreenshotPath(snapshotFrom);
+        var sourceScreenshotPath = ToScreenshotPath(snapshotFrom);
         if (File.Exists(sourceScreenshotPath))
         {
             var targetScreenshotPath = ToScreenshotPath(snapshotTo);
             File.Copy(sourceScreenshotPath, targetScreenshotPath);
         }
 
-        string thumbPathFrom = ToThumbnailPath(snapshotFrom);
+        var thumbPathFrom = ToThumbnailPath(snapshotFrom);
         if (File.Exists(thumbPathFrom))
         {
             string thumbPathTo = ToThumbnailPath(snapshotTo);
@@ -102,17 +103,18 @@ internal class ScreenshotsManager : IDisposable
         if (m_LoadedTextures.TryGetValue(fileName, out var texture))
             return texture;
 
-        texture = new Texture2D(1, 1, TextureFormat.RGB24, false);
-        texture.name = fileName;
-        // Avoid the texture being unloaded on scene changes. Also, regardless of the hideflags, the ScreenshotManager is responsible for the destruction of this Texture.
-        texture.hideFlags = HideFlags.HideAndDontSave;
+        texture = new Texture2D(1, 1, TextureFormat.RGB24, false)
+        {
+            name = fileName,
+            // Avoid the texture being unloaded on scene changes. Also, regardless of the hideflags, the ScreenshotManager is responsible for the destruction of this Texture.
+            hideFlags = HideFlags.HideAndDontSave,
+        };
         m_LoadedTextures.Add(fileName, texture);
 
         var request = new Request(fileName, texture, callbackOnUpdate);
         m_Queue.Enqueue(request);
 
-        if (m_Loader == null)
-            m_Loader = EditorCoroutineUtility.StartCoroutine(ProcessRequest(), this);
+        m_Loader ??= EditorCoroutineUtility.StartCoroutine(ProcessRequest(), this);
 
         return texture;
     }
@@ -147,7 +149,7 @@ internal class ScreenshotsManager : IDisposable
 
             if (File.Exists(thumbPath))
             {
-                byte[] data = null;
+                byte[] data;
                 // guarding against hypothetical race conditions here in case the file gets deleted off of the main thread (or by another process)
                 try
                 {
@@ -160,9 +162,8 @@ internal class ScreenshotsManager : IDisposable
                 }
                 var fileSize = data.Length;
 
-                // Read in width and height that we appended to the end of the file
-                int thumbW = BitConverter.ToInt32(data, fileSize - k_ThumbWidthFileOffset);
-                int thumbH = BitConverter.ToInt32(data, fileSize - k_ThumbHeightFileOffset);
+                var thumbW = BitConverter.ToInt32(data, fileSize - k_ThumbWidthFileOffset);
+                var thumbH = BitConverter.ToInt32(data, fileSize - k_ThumbHeightFileOffset);
                 Array.Resize(ref data, fileSize - k_WidthOrHeightDataSize);
 
                 request.Texture.Reinitialize(thumbW, thumbH, TextureFormat.BC7, false);
@@ -171,7 +172,7 @@ internal class ScreenshotsManager : IDisposable
             }
             else
             {
-                byte[] dataOriginal = null;
+                byte[] dataOriginal;
                 // Read in the full size screenshot so we can make a thumbnail
                 // This has thrown an exception at least once while debugging and deleting a file via the context menu.
                 try
@@ -189,9 +190,9 @@ internal class ScreenshotsManager : IDisposable
 
                 // Make a rendertexture with the same aspect ratio, scaled to fit within thumbnail bounds:
                 // First find out what ratio we're dealing with.
-                float screenshotAspect = (float)fullSizeTex.width / (float)fullSizeTex.height;
-                int thumbWidth = k_ThumbWidth;
-                int thumbHeight = k_ThumbHeight;
+                var screenshotAspect = (float)fullSizeTex.width / (float)fullSizeTex.height;
+                var thumbWidth = k_ThumbWidth;
+                var thumbHeight = k_ThumbHeight;
 
                 // Find our final shrunk width and height.
                 // Round the numbers so that our final dimensions are multiples of 4 for BC7 compression.

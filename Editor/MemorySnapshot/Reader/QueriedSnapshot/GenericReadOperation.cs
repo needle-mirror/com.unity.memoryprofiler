@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using NUnit.Framework;
 using Unity.Collections;
 using Unity.IO.LowLevel.Unsafe;
 using Unity.Jobs;
@@ -126,6 +127,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
     unsafe struct NestedDynamicSizedArrayReadOperation<T> : IGenericReadOperation where T : unmanaged
     {
         BurstableBool m_DoneReading;
+        BurstableBool m_AbortedReading;
         NestedDynamicArray<T> m_NestedArrayStructure;
         NativeArray<GenericReadOperation> m_ReadOperations;
 
@@ -134,37 +136,40 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         /// </summary>
         /// <param name="idx"></param>
         /// <returns></returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly long Count(long idx) => m_NestedArrayStructure.Count(idx);
 
         /// <summary>
         /// Sorting the nested array structure based on the index remapping is allowed even before the async read operation is done.
         /// </summary>
         /// <param name="indexRemapping"></param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public readonly void Sort(DynamicArray<long> indexRemapping) => m_NestedArrayStructure.Sort(indexRemapping);
 
         public ReadError Error
         {
             get
             {
+                if (m_AbortedReading == BurstableBool.TRUE)
+                    return ReadError.ReadingAborted;
                 var oneSuccess = false;
                 var oneNonSuccess = false;
-                foreach (var readOp in m_ReadOperations)
+                if (m_DoneReading == BurstableBool.FALSE)
                 {
-                    if (readOp.Error != ReadError.None)
+                    foreach (var readOp in m_ReadOperations)
                     {
-                        if (readOp.Error == ReadError.Success)
-                            oneSuccess = true;
+                        if (readOp.Error != ReadError.None)
+                        {
+                            if (readOp.Error == ReadError.Success)
+                                oneSuccess = true;
+                            else
+                                return readOp.Error;
+                        }
                         else
-                            return readOp.Error;
+                            oneNonSuccess = true;
                     }
-                    else
-                        oneNonSuccess = true;
                 }
-                if (oneNonSuccess)
-                    oneNonSuccess = false;
-                return oneSuccess ? ReadError.Success : ReadError.None;
+                return oneSuccess && !oneNonSuccess ? ReadError.Success : ReadError.None;
             }
         }
 
@@ -174,6 +179,8 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         {
             get
             {
+                if (!IsCreated || m_DoneReading == BurstableBool.TRUE)
+                    return true;
                 foreach (var readOp in m_ReadOperations)
                 {
                     if (!readOp.IsDone)
@@ -181,6 +188,8 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                         return false;
                     }
                 }
+                if (IsCreated)
+                    Dispose();
                 return true;
             }
         }
@@ -192,22 +201,22 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             m_ReadOperations = new NativeArray<GenericReadOperation>(genericReadOperations.ToArray(), allocator);
             m_NestedArrayStructure = nestedArrayStructure;
             m_DoneReading = BurstableBool.FALSE;
+            m_AbortedReading = BurstableBool.FALSE;
         }
 
         internal NestedDynamicArray<T> CompleteReadAndGetNestedResults()
         {
             if (m_DoneReading == BurstableBool.FALSE)
             {
-                if (!IsDone && IsCreated)
+                if (IsCreated && !IsDone)
                 {
                     foreach (var readOp in m_ReadOperations)
                     {
                         readOp.Complete();
                         Checks.CheckEquals(true, readOp.Result.IsCreated);
-                        readOp.Dispose();
                     }
+                    Dispose();
                 }
-                m_DoneReading = BurstableBool.TRUE;
             }
             return m_NestedArrayStructure;
         }
@@ -218,14 +227,19 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         {
             if (m_DoneReading == BurstableBool.TRUE)
                 return;
+            var aborted = false;
             foreach (var readOp in m_ReadOperations)
             {
+                if (!readOp.IsDone)
+                    aborted = true;
                 readOp.Dispose();
             }
             m_ReadOperations.Dispose();
-            // While reading hasn't finished succesfully, it is no longer happening.
-            // Error State should be ReadingAborted
+            // While reading hasn't necessarily finished succesfully, it is no longer happening.
             m_DoneReading = BurstableBool.TRUE;
+            if (aborted)
+                // Error State should be ReadingAborted
+                m_AbortedReading = BurstableBool.TRUE;
         }
     }
 }

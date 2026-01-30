@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -17,9 +16,12 @@ using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.Profiling;
 using UnityEditor;
-using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Managed;
+using Unity.MemoryProfiler.Editor.UI;
+
+// Pre com.unity.collections@2.1.0 NativeHashMap was not constraining its held data to unmanaged but to struct.
+// NativeHashSet does not have the same issue, but for ease of use may get an alias below for EntityId.
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
 #if !ENTITY_ID_CHANGED_SIZE
 using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
@@ -29,6 +31,9 @@ using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCo
 using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<UnityEngine.EntityId, long>;
 #endif
 using AddressToIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
+using AddressToIntIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, int>;
+using LongToLongHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, long>;
+using LongToIntHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, int>;
 #else
 #if !ENTITY_ID_CHANGED_SIZE
 using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
@@ -38,11 +43,16 @@ using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, UnityEngine.E
 using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<UnityEngine.EntityId, long>;
 #endif
 using AddressToIndex = Unity.Collections.NativeHashMap<ulong, long>;
+using AddressToIntIndex = Unity.Collections.NativeHashMap<ulong, int>;
+using LongToLongHashMap = Unity.Collections.NativeHashMap<long, long>;
+using LongToIntHashMap = Unity.Collections.NativeHashMap<long, int>;
 #endif
 using HideFlags = UnityEngine.HideFlags;
 using RuntimePlatform = UnityEngine.RuntimePlatform;
 using Debug = UnityEngine.Debug;
 using UnityException = UnityEngine.UnityException;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+
 
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
@@ -65,7 +75,15 @@ namespace Unity.MemoryProfiler.Editor
 
         public static EntityId None => new EntityId { m_Id = 0 };
         public static EntityId From(ulong id) => new EntityId { m_Id = id };
-        internal bool IsRuntimeCreated() => m_Id < 0;
+        /// <summary>
+        /// This assumption might not hold for an 8byte EntityID future,
+        /// and the reported Persistent flag should be relied on instead.
+        ///
+        /// The actual (not MemoryProfiler package based) EntityId.IsRuntimeCreated() API
+        /// is then however only valid during execution of the actually relevant runtime, not for EntityIds loaded out of a snapshot.
+        /// </summary>
+        /// <returns></returns>
+        internal bool IsRuntimeCreated() => this.ConvertToIdInt() < 0;
         public override bool Equals(object obj) => obj is EntityId id && Equals(id);
         public bool Equals(EntityId other) => m_Id == other.m_Id;
         public override int GetHashCode() => m_Id.GetHashCode();
@@ -85,8 +103,8 @@ namespace Unity.MemoryProfiler.Editor
     // TODO: EntityAndInstanceIdHelper to be moved to EditorSelectionAndEntityIdUtilities.cs
     static class EntityAndInstanceIdHelper
     {
-#if ENTITY_ID_STRUCT_AVAILABLE && ENTITY_ID_CHANGED_SIZE
-        public static bool IsRuntimeCreated(this EntityId id) => ((long)(ulong)id) < 0;
+#if ENTITY_ID_STRUCT_AVAILABLE
+        public static bool IsRuntimeCreated(this UnityEngine.EntityId id) => ConvertToIdInt(ConvertFromUnityEntityId(id)) < 0;
 #endif
 
         public static void ConvertInstanceIdIntsToEntityIds(this DynamicArray<int> intInstanceIds, ref DynamicArray<EntityId> instanceIds)
@@ -136,8 +154,19 @@ namespace Unity.MemoryProfiler.Editor
         public static EntityId Convert(EntityId id) => id;
         public static EntityId ConvertToUnityEntityId(EntityId id) => id;
         public static EntityId ConvertFromUnityEntityId(EntityId id) => id;
+
+        public static int ConvertToIdInt(this EntityId id)
+        {
+            int instanceId = 0;
+            unsafe
+            {
+                // The ID bytes are the first 4 bytes.
+                UnsafeUtility.MemCpyStride(&instanceId, sizeof(int), ((byte*)&id), sizeof(EntityId), sizeof(EntityId), 1);
+            }
+            return instanceId;
+        }
 #else
-        public static int ConvertToInt(this EntityId id)
+        public static int ConvertToIdInt(this EntityId id)
         {
             int instanceId = 0;
             unsafe
@@ -151,7 +180,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             var eId = stackalloc UnityEngine.EntityId[1];
             var eIdInt = (int*)eId;
-            eIdInt[0] = id.ConvertToInt();
+            eIdInt[0] = id.ConvertToIdInt();
             return eId[0];
         }
         public unsafe static EntityId ConvertFromUnityEntityId(UnityEngine.EntityId id)
@@ -297,6 +326,7 @@ namespace Unity.MemoryProfiler.Editor
         public const string InvalidItemName = "<No Name>";
         public const string UnrootedItemName = "Unrooted";
         public const string UnknownMemlabelName = "Unknown MemLabel";
+        public const string RootName = "Root";
 
         static CachedSnapshot()
         {
@@ -351,6 +381,14 @@ namespace Unity.MemoryProfiler.Editor
         {
             get { return (m_SnapshotVersion >= FormatVersion.SystemMemoryResidentPagesVersion) && (SystemMemoryResidentPages.Count > 0); }
         }
+
+        public bool HasEntityIDAs8ByteStructs
+        {
+            get { return (m_SnapshotVersion >= FormatVersion.EntityIDAs8ByteStructs); }
+        }
+
+        bool m_HasPrefabRootInfo;
+        public bool HasPrefabRootInfo => m_HasPrefabRootInfo;
 
         public ManagedData CrawledData { internal set; get; }
 
@@ -617,12 +655,12 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<ulong> AccumulatedSize = default;
             public string[] AreaName;
             public string[] ObjectName;
-            public Dictionary<long, long> IdToIndex;
+            public LongToLongHashMap IdToIndex;
             public readonly SourceIndex VMRootReferenceIndex = default;
             public readonly ulong AccumulatedSizeOfVMRoot = 0UL;
             public readonly ulong ExecutableAndDllsReportedValue;
             public const string ExecutableAndDllsRootReferenceName = "ExecutableAndDlls";
-            readonly long k_ExecutableAndDllsRootReferenceIndex = -1;
+            public readonly long ExecutableAndDllsRootReferenceIndex = -1;
             static readonly string[] k_VMRootNames =
             {
                 "Mono VM",
@@ -637,7 +675,7 @@ namespace Unity.MemoryProfiler.Editor
                 AreaName = new string[Count];
                 ObjectName = new string[Count];
 
-                IdToIndex = new Dictionary<long, long>((int)Count);
+                IdToIndex = new LongToLongHashMap((int)Count, Allocator.Persistent);
 
                 if (Count == 0)
                     return;
@@ -661,9 +699,9 @@ namespace Unity.MemoryProfiler.Editor
                 var hasCalculatedAccumulatedSizeOfVMRoot = false;
                 for (long i = 0; i < Count; i++)
                 {
-                    if (k_ExecutableAndDllsRootReferenceIndex == -1 && ObjectName[i] == ExecutableAndDllsRootReferenceName)
+                    if (ExecutableAndDllsRootReferenceIndex == -1 && ObjectName[i] == ExecutableAndDllsRootReferenceName)
                     {
-                        k_ExecutableAndDllsRootReferenceIndex = i;
+                        ExecutableAndDllsRootReferenceIndex = i;
                         ExecutableAndDllsReportedValue = AccumulatedSize[i];
                         // Nothing is ever actually rooted to "System : ExecutableAndDlls". This is just a hacky way of reporting systeminfo::GetExecutableSizeMB()
                         // therefore there is no need to map it to an index (of 0) and thereby wrongly suggest that allocations with root id 0 would belong to the executable size
@@ -696,7 +734,7 @@ namespace Unity.MemoryProfiler.Editor
                 Count = 0;
                 AreaName = null;
                 ObjectName = null;
-                IdToIndex = null;
+                IdToIndex.Dispose();
             }
         }
 
@@ -968,11 +1006,20 @@ namespace Unity.MemoryProfiler.Editor
             /// <returns></returns>
             public bool IsTransformOrRectTransform(long typeIndex) => (typeIndex >= 0) && (typeIndex == TransformIdx || typeIndex == RectTransformIdx);
 
+            const string k_NamedObject = "NamedObject";
+            public int NamedObjectIdx { get; private set; } = InvalidTypeIndex;
+
+            const string k_BaseObject = "Object";
+            public int BaseObjectIdx { get; private set; } = InvalidTypeIndex;
+
             const string k_GameObject = "GameObject";
             public int GameObjectIdx { get; private set; } = InvalidTypeIndex;
 
             const string k_MonoBehaviour = "MonoBehaviour";
             public int MonoBehaviourIdx { get; private set; } = InvalidTypeIndex;
+
+            const string k_MonoScript = "MonoScript";
+            public int MonoScriptIdx { get; private set; } = InvalidTypeIndex;
 
             const string k_Component = "Component";
             public int ComponentIdx { get; private set; } = InvalidTypeIndex;
@@ -984,6 +1031,15 @@ namespace Unity.MemoryProfiler.Editor
             const string k_EditorScriptableObject = "EditorScriptableObject";
             public int EditorScriptableObjectIdx { get; private set; } = InvalidTypeIndex;
             const int k_EditorScriptableObjectDefaultTypeArrayIndexOffsetFromEnd = 1;
+
+            const string k_AssetBundle = "AssetBundle";
+            public int AssetBundleIdx { get; private set; } = InvalidTypeIndex;
+
+            const string k_Prefab = "Prefab";
+            /// <summary>
+            /// Only exists for snapshots where <see cref="MetaData.IsEditorCapture"/> is true.
+            /// </summary>
+            public int PrefabIdx { get; private set; } = InvalidTypeIndex;
 
             public NativeTypeEntriesCache(ref IFileReader reader)
             {
@@ -1002,11 +1058,17 @@ namespace Unity.MemoryProfiler.Editor
                     ConvertDynamicArrayByteBufferToManagedArray(tmp, ref TypeName);
                 }
 
+                BaseObjectIdx = Array.FindIndex(TypeName, x => x == k_BaseObject);
+                NamedObjectIdx = Array.FindIndex(TypeName, x => x == k_NamedObject);
+
                 TransformIdx = Array.FindIndex(TypeName, x => x == k_Transform);
                 RectTransformIdx = Array.FindIndex(TypeName, x => x == k_RectTransform);
                 GameObjectIdx = Array.FindIndex(TypeName, x => x == k_GameObject);
                 MonoBehaviourIdx = Array.FindIndex(TypeName, x => x == k_MonoBehaviour);
+                MonoScriptIdx = Array.FindIndex(TypeName, x => x == k_MonoScript);
                 ComponentIdx = Array.FindIndex(TypeName, x => x == k_Component);
+                AssetBundleIdx = Array.FindIndex(TypeName, x => x == k_AssetBundle);
+                PrefabIdx = Array.FindIndex(TypeName, x => x == k_Prefab);
 
                 // for the fakable types ScriptableObject and EditorScriptable Objects, with the current backend, Array.FindIndex is always going to hit the worst case
                 // in the current format, these types are always added last. Assume that for speed, keep Array.FindIndex as fallback in case the format changes
@@ -1047,8 +1109,14 @@ namespace Unity.MemoryProfiler.Editor
 
         public unsafe class SceneRootEntriesCache : IDisposable
         {
+            public const string DontDestroyOnLoadSceneName = "DontDestroyOnLoad";
+            public readonly long DontDestroyOnLoadSceneIndex = -1;
+
             // the number of scenes
-            public long Count;
+            public long SceneCount;
+            public long SceneRootCount;
+            public long PrefabRootCount;
+            public long PrefabTransformCount;
             // the asset paths for the scenes
             public string[] AssetPath;
             // the scene names
@@ -1062,224 +1130,460 @@ namespace Unity.MemoryProfiler.Editor
             // each scenes offset into the main roots list
             public DynamicArray<int> RootOffsets = default;
             // first index is for the scene then the second is the array of ids for that scene
-            public EntityId[][] SceneIndexedRootTransformInstanceIds;
-            public EntityId[][] SceneIndexedRootGameObjectInstanceIds;
-            // all of the root transform instance ids
-            public DynamicArray<EntityId> AllRootTransformInstanceIds = default;
-            // all of the root gameobject instance ids
-            public DynamicArray<EntityId> AllRootGameObjectInstanceIds = default;
-            // hash set of the ids to avoid duplication ( not sure we really need this)
-            public HashSet<EntityId> RootTransformInstanceIdHashSet = default;
-            public HashSet<EntityId> RootGameObjectInstanceIdHashSet = default;
-            // tree structures for each scene of the transforms and gameobjects so that we can lookup the structure easily
-            public TransformTree[] SceneHierarchies;
-
-            public class TransformTree
-            {
-                public EntityId InstanceId { get; private set; } = NativeObjectEntriesCache.InstanceIDNone;
-                public EntityId GameObjectID { get; set; } = NativeObjectEntriesCache.InstanceIDNone;
-                public TransformTree Parent = null;
-
-                static ReadOnlyCollection<TransformTree> s_EmptyList = new List<TransformTree>().AsReadOnly();
-                List<TransformTree> m_Children = null;
-                /// <summary>
-                /// Use <see cref="AddChild(int)"/> or <see cref="AddChildren(ICollection{int})"/> to add child Transforms instead of adding to this list directly.
-                /// </summary>
-                public ReadOnlyCollection<TransformTree> Children => m_Children?.AsReadOnly() ?? s_EmptyList;
-
-                public bool IsScene { get; private set; } = false;
-
-                public TransformTree(bool isScene)
-                {
-                    IsScene = isScene;
-                }
-
-                public TransformTree(EntityId instanceId)
-                {
-                    InstanceId = instanceId;
-                }
-
-                public void AddChild(EntityId instanceId)
-                {
-                    // only a parent (aka Scene at the root) is allowed to have an invalid instance ID
-                    // no recursion or self references are allowed either
-                    if (instanceId == NativeObjectEntriesCache.InstanceIDNone
-                        || instanceId == InstanceId
-                        || (Parent != null && Parent.InstanceId == instanceId))
-                        return;
-
-                    var child = new TransformTree(instanceId);
-                    child.Parent = this;
-                    if (m_Children == null)
-                        m_Children = new List<TransformTree>() { child };
-                    else
-                        m_Children.Add(child);
-                }
-
-                public void AddChildren(ICollection<EntityId> instanceIds)
-                {
-                    foreach (var instanceId in instanceIds)
-                    {
-                        AddChild(instanceId);
-                    }
-                }
-            }
-
+            public NestedDynamicArray<SourceIndex> SceneIndexedRootTransformInstanceIds;
+            /// <summary>
+            /// All of the scene root transform entity ids, only used for loading in the data,
+            /// and populating the Source Indices in <see cref="AllSceneRootTransformSourceIndices"/> and
+            /// <see cref="SceneIndexedRootTransformInstanceIds"/> and disposed during <see cref="GenerateBaseData"/>
+            /// </summary>
+            DynamicArray<EntityId> m_AllSceneRootTransformInstanceIds = default;
+            /// <summary>
+            /// All of the scene root gameobject instance ids
+            /// </summary>
+            public DynamicArray<SourceIndex> AllSceneRootTransformSourceIndices = default;
+            public DynamicArray<SourceIndex> AllPrefabRootTransformSourceIndices = default;
+            /// <summary>
+            /// Maps all Native Object indices of persistent GameObject and Transform instances (root and non-root)
+            /// to Prefab Root Indices which index into <see cref="AllPrefabRootTransformSourceIndices"/> for their
+            /// root transforms.
+            /// </summary>
+            public LongToLongHashMap NativeObjectIndexToPrefabRootIndex = default;
 
             public SceneRootEntriesCache(ref IFileReader reader)
             {
-                Count = reader.GetEntryCount(EntryType.SceneObjects_Name);
-                AssetPath = new string[Count];
-                Name = new string[Count];
-                Path = new string[Count];
+                SceneCount = reader.GetEntryCount(EntryType.SceneObjects_Name);
+                AssetPath = new string[SceneCount];
+                Name = new string[SceneCount];
+                Path = new string[SceneCount];
 
-
-                if (Count == 0)
-                    return;
-
-                using (var tmp = new DynamicArray<byte>(0, Allocator.TempJob))
+                if (SceneCount == 0)
                 {
-                    var tmpSize = reader.GetSizeForEntryRange(EntryType.SceneObjects_Name, 0, Count);
-                    tmp.Resize(tmpSize, false);
-                    reader.Read(EntryType.SceneObjects_Name, tmp, 0, Count);
-                    ConvertDynamicArrayByteBufferToManagedArray(tmp, ref Name);
+                    using var noOffsets = new DynamicArray<long>(1, Allocator.Temp);
+                    noOffsets[0] = 0;
+                    var sourceIds = new DynamicArray<SourceIndex>(0, Allocator.Persistent);
+                    SceneIndexedRootTransformInstanceIds = new NestedDynamicArray<SourceIndex>(noOffsets, sourceIds);
+                    return;
                 }
 
                 using (var tmp = new DynamicArray<byte>(0, Allocator.TempJob))
                 {
-                    var tmpSize = reader.GetSizeForEntryRange(EntryType.SceneObjects_Path, 0, Count);
+                    var tmpSize = reader.GetSizeForEntryRange(EntryType.SceneObjects_Name, 0, SceneCount);
                     tmp.Resize(tmpSize, false);
-                    reader.Read(EntryType.SceneObjects_Path, tmp, 0, Count);
+                    reader.Read(EntryType.SceneObjects_Name, tmp, 0, SceneCount);
+                    ConvertDynamicArrayByteBufferToManagedArray(tmp, ref Name);
+                }
+                // Find the DontDestroyOnLoad Scene, which is always the last one unless someone changed the logic in the native NativeMemorySnapshot code.
+                for (var i = SceneCount - 1; i >= 0; i--)
+                {
+                    if (Name[i] == DontDestroyOnLoadSceneName)
+                    {
+                        DontDestroyOnLoadSceneIndex = i;
+                        break;
+                    }
+                }
+
+                using (var tmp = new DynamicArray<byte>(0, Allocator.TempJob))
+                {
+                    var tmpSize = reader.GetSizeForEntryRange(EntryType.SceneObjects_Path, 0, SceneCount);
+                    tmp.Resize(tmpSize, false);
+                    reader.Read(EntryType.SceneObjects_Path, tmp, 0, SceneCount);
                     ConvertDynamicArrayByteBufferToManagedArray(tmp, ref Path);
                 }
 
-                BuildIndex = reader.Read(EntryType.SceneObjects_BuildIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
+                BuildIndex = reader.Read(EntryType.SceneObjects_BuildIndex, 0, SceneCount, Allocator.Persistent).Result.Reinterpret<int>();
 
                 using (var tmp = new DynamicArray<byte>(0, Allocator.TempJob))
                 {
-                    var tmpSize = reader.GetSizeForEntryRange(EntryType.SceneObjects_AssetPath, 0, Count);
+                    var tmpSize = reader.GetSizeForEntryRange(EntryType.SceneObjects_AssetPath, 0, SceneCount);
                     tmp.Resize(tmpSize, false);
-                    reader.Read(EntryType.SceneObjects_AssetPath, tmp, 0, Count);
+                    reader.Read(EntryType.SceneObjects_AssetPath, tmp, 0, SceneCount);
                     ConvertDynamicArrayByteBufferToManagedArray(tmp, ref AssetPath);
                 }
 
-                SceneIndexedRootTransformInstanceIds = new EntityId[Count][];
-                var rootCount = reader.GetEntryCount(EntryType.SceneObjects_RootIds);
-                RootCounts = reader.Read(EntryType.SceneObjects_RootIdCounts, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
-                RootOffsets = reader.Read(EntryType.SceneObjects_RootIdOffsets, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
+                SceneRootCount = reader.GetEntryCount(EntryType.SceneObjects_RootIds);
+                RootCounts = reader.Read(EntryType.SceneObjects_RootIdCounts, 0, SceneCount, Allocator.Persistent).Result.Reinterpret<int>();
+                RootOffsets = reader.Read(EntryType.SceneObjects_RootIdOffsets, 0, SceneCount, Allocator.Persistent).Result.Reinterpret<int>();
 
-                if (reader.FormatVersion < FormatVersion.InstanceIDAsAStruct)
+                if (reader.FormatVersion < FormatVersion.EntityIDAs8ByteStructs)
                 {
                     // Read file has the old EntityId format
-                    using var instanceIDInts = reader.Read(EntryType.SceneObjects_RootIds, 0, rootCount, Allocator.Temp).Result.Reinterpret<int>();
+                    using var instanceIDInts = reader.Read(EntryType.SceneObjects_RootIds, 0, SceneRootCount, Allocator.Temp).Result.Reinterpret<int>();
                     // Clear the memory on alloc. The MemCpyStride in ConvertInstanceId won't initialize the blank spaces
-                    AllRootTransformInstanceIds = new DynamicArray<EntityId>(rootCount, Allocator.Persistent, memClear: true);
-                    instanceIDInts.ConvertInstanceIdIntsToEntityIds(ref AllRootTransformInstanceIds);
+                    m_AllSceneRootTransformInstanceIds = new DynamicArray<EntityId>(SceneRootCount, Allocator.Persistent, memClear: true);
+                    instanceIDInts.ConvertInstanceIdIntsToEntityIds(ref m_AllSceneRootTransformInstanceIds);
                 }
                 else
                 {
-                    AllRootTransformInstanceIds = reader.Read(EntryType.SceneObjects_RootIds, 0, rootCount, Allocator.Persistent).Result.Reinterpret<EntityId>();
-                }
-                RootTransformInstanceIdHashSet = new HashSet<EntityId>();
-                for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
-                {
-                    RootTransformInstanceIdHashSet.Add(AllRootTransformInstanceIds[i]);
-                }
-                for (int i = 0; i < Count; i++)
-                {
-                    SceneIndexedRootTransformInstanceIds[i] = new EntityId[RootCounts[i]];
-                    for (int ii = 0; ii < RootCounts[i]; ii++)
-                    {
-                        SceneIndexedRootTransformInstanceIds[i][ii] = AllRootTransformInstanceIds[ii + RootOffsets[i]];
-                    }
-                }
-
-                SceneHierarchies = new TransformTree[Name.Length];
-                for (int i = 0; i < Name.Length; i++)
-                {
-                    SceneHierarchies[i] = new TransformTree(true);
-                    foreach (var ii in SceneIndexedRootTransformInstanceIds[i])
-                    {
-                        SceneHierarchies[i].AddChild(ii);
-                    }
+                    m_AllSceneRootTransformInstanceIds = reader.Read(EntryType.SceneObjects_RootIds, 0, SceneRootCount, Allocator.Persistent).Result.Reinterpret<EntityId>();
                 }
             }
 
             public void Dispose()
             {
-                Count = 0;
+                SceneCount = 0;
+                SceneRootCount = 0;
+                PrefabRootCount = 0;
+                PrefabTransformCount = 0;
                 AssetPath = null;
                 Name = null;
                 Path = null;
                 BuildIndex.Dispose();
                 RootCounts.Dispose();
                 RootOffsets.Dispose();
-                if (SceneIndexedRootTransformInstanceIds != null)
-                {
-                    for (int i = 0; i < SceneIndexedRootTransformInstanceIds.Length; i++)
-                        SceneIndexedRootTransformInstanceIds[i] = null;
-                }
-
-                SceneIndexedRootTransformInstanceIds = null;
-                AllRootTransformInstanceIds.Dispose();
-                RootTransformInstanceIdHashSet = null;
-                SceneHierarchies = null;
-                AllRootGameObjectInstanceIds.Dispose();
-                RootGameObjectInstanceIdHashSet = null;
-                SceneIndexedRootGameObjectInstanceIds = null;
+                if (SceneIndexedRootTransformInstanceIds.IsCreated)
+                    SceneIndexedRootTransformInstanceIds.Dispose();
+                else if (AllSceneRootTransformSourceIndices.IsCreated)
+                    // Dispose only if it wasn't disposed as the backing data for SceneIndexedRootTransformInstanceIds
+                    AllSceneRootTransformSourceIndices.Dispose();
+                if (m_AllSceneRootTransformInstanceIds.IsCreated) // Normally already gets disposed during GenerateBaseData
+                    m_AllSceneRootTransformInstanceIds.Dispose();
+                AllPrefabRootTransformSourceIndices.Dispose();
+                NativeObjectIndexToPrefabRootIndex.Dispose();
             }
 
-            public void GenerateGameObjectData(CachedSnapshot snapshot)
+            // TODO: Jobify, only needs
+            // Connections.ReferenceTo
+            // NativeObjects.NativeTypeArrayIndex
+            // NativeObjects.Flags
+            public void GenerateBaseData(CachedSnapshot snapshot, InstanceIdToNativeObjectIndex nativeObjectsInstanceId2Index, int gameObjectNativeTypeIndex)
             {
-                AllRootGameObjectInstanceIds = new DynamicArray<EntityId>(AllRootTransformInstanceIds.Count, Allocator.Persistent);
+                AllPrefabRootTransformSourceIndices = new DynamicArray<SourceIndex>(0, 100, Allocator.Persistent);
+
+                ProcessPrefabRoots(snapshot, gameObjectNativeTypeIndex);
+
+                AllSceneRootTransformSourceIndices = new DynamicArray<SourceIndex>(SceneRootCount, Allocator.Persistent);
                 {
-                    var cachedList = new List<int>();
-                    for (int i = 0; i < AllRootTransformInstanceIds.Count; i++)
+                    for (long i = 0; i < SceneRootCount; i++)
                     {
-                        AllRootGameObjectInstanceIds[i] = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, AllRootTransformInstanceIds[i]);
+                        var transformIndex = new SourceIndex(SourceIndex.SourceId.NativeObject, nativeObjectsInstanceId2Index[m_AllSceneRootTransformInstanceIds[i]]);
+                        AllSceneRootTransformSourceIndices[i] = transformIndex;
+                        var gameObjectIndex = ObjectConnection.GetGameObjectIndexFromTransformOrComponentIndex(snapshot, transformIndex, gameObjectNativeTypeIndex);
+                        if (!snapshot.HasPrefabRootInfo)
+                        {
+                            // Mark these as roots if the info isn't there
+                            snapshot.NativeObjects.Flags[transformIndex.Index] |= ObjectFlags.IsRoot;
+                            if (gameObjectIndex.Valid) // with entities, it's possible to have a transform without a gameobject
+                                snapshot.NativeObjects.Flags[gameObjectIndex.Index] |= ObjectFlags.IsRoot;
+                        }
                     }
+                    // Scene root transforms are now stored as Source Indices, so we can dispose of the loaded InstanceID/EntityId data
+                    m_AllSceneRootTransformInstanceIds.Dispose();
                 }
-                RootGameObjectInstanceIdHashSet = new HashSet<EntityId>();
-                for (int i = 0; i < AllRootGameObjectInstanceIds.Count; i++)
+                if (!snapshot.HasSceneRootsAndAssetbundles || SceneCount == 0)
                 {
-                    RootGameObjectInstanceIdHashSet.Add(AllRootGameObjectInstanceIds[i]);
+                    NativeObjectIndexToPrefabRootIndex = new LongToLongHashMap(0, Allocator.Persistent);
+                    return;
                 }
 
-                SceneIndexedRootGameObjectInstanceIds = new EntityId[Count][];
-                for (int i = 0; i < Count; i++)
+                using var offsets = GetOffsetsForNestedSceneRoots(sizeof(SourceIndex), Allocator.Temp);
+
+                SceneIndexedRootTransformInstanceIds = new NestedDynamicArray<SourceIndex>(offsets, AllSceneRootTransformSourceIndices);
+            }
+
+            DynamicArray<long> GetOffsetsForNestedSceneRoots(int sizeOfElements, Allocator allocator)
+            {
+                var offsets = new DynamicArray<long>(RootOffsets.Count + 1, allocator);
+                for (long i = 0; i < RootOffsets.Count; i++)
                 {
-                    SceneIndexedRootGameObjectInstanceIds[i] = new EntityId[RootCounts[i]];
-                    for (int ii = 0; ii < RootCounts[i]; ii++)
+                    offsets[i] = RootOffsets[i] * sizeOfElements;
+                }
+                // Scene offsets are not reported as other nested arrays and are missing the total count added to the end
+                offsets[RootOffsets.Count] = SceneRootCount * sizeOfElements;
+                return offsets;
+            }
+
+            /// <summary>
+            ///
+            /// </summary>
+            /// <param name="snapshot"></param>
+            /// <param name="gameObjectNativeTypeIndex"></param>
+            /// <param name="prefabObject"></param>
+            /// <param name="nativeTypeInfo"></param>
+            /// <param name="calculateAndFlagRecursively"> if false, only returns the root count,
+            /// otherwise it includes the count of all child transforms recursively</param>
+            /// <param name="addTempFlag"> if false, only returns the root count,
+            /// otherwise it includes the count of all child transforms recursively</param>
+            /// <returns></returns>
+            long MarkPrefabRootFromPrefabAndCalculateHierarchySize(CachedSnapshot snapshot, int gameObjectNativeTypeIndex,
+                SourceIndex prefabObject, in DynamicArrayRef<UnifiedType> nativeTypeInfo, ref NativeHashSet<SourceIndex> cachedHashset,
+                bool calculateAndFlagRecursively = false, bool addTempFlag = false)
+            {
+                if (!snapshot.Connections.ReferenceTo.TryGetValue(prefabObject, out var refs))
+                    return 0;
+                var prefabTransformCount = 0L;
+                var flagsToSet = ObjectFlags.IsRoot | (addTempFlag ? ObjectFlags.IsTemporarilyMarked : 0);
+                foreach (var reference in refs)
+                {
+                    var transformReference = reference;
+                    if (nativeTypeInfo[snapshot.NativeObjects.NativeTypeArrayIndex[reference.Index]].IsGameObjectType)
                     {
-                        SceneIndexedRootGameObjectInstanceIds[i][ii] = AllRootGameObjectInstanceIds[ii + RootOffsets[i]];
+                        // redirect from GameObject reference to its Transform
+                        transformReference = ObjectConnection.GetTransformIndexFromGameObject(snapshot, reference);
+                    }
+                    if (transformReference.Id is SourceIndex.SourceId.NativeObject
+                        && snapshot.NativeObjects.Flags[transformReference.Index].HasFlag(ObjectFlags.IsPersistent)
+                        && !snapshot.NativeObjects.Flags[transformReference.Index].HasFlag(ObjectFlags.IsTemporarilyMarked)
+                        && nativeTypeInfo[snapshot.NativeObjects.NativeTypeArrayIndex[transformReference.Index]].IsTransformType)
+                    {
+                        AllPrefabRootTransformSourceIndices.Push(transformReference);
+
+                        FlagTransformAndItsGameObject(snapshot, gameObjectNativeTypeIndex, transformReference, flagsToSet);
+
+                        if (calculateAndFlagRecursively)
+                        {
+                            CountAndFlagChildTransforms(snapshot, gameObjectNativeTypeIndex, transformReference, default, addTempFlag, ref prefabTransformCount, ref cachedHashset);
+                        }
+                        else
+                        {
+                            ++prefabTransformCount;
+                        }
+                    }
+                }
+                return prefabTransformCount;
+            }
+
+            void CountAndFlagChildTransforms(CachedSnapshot snapshot, int gameObjectNativeTypeIndex, SourceIndex currentTransform, SourceIndex parentTransform, bool addTempFlag,
+                ref long prefabTransformCount, ref NativeHashSet<SourceIndex> cachedHashset)
+            {
+                var stack = new DynamicArray<(SourceIndex child, SourceIndex parent)>(0, 10, Allocator.Temp);
+                var flagsToSet = addTempFlag ? ObjectFlags.IsTemporarilyMarked : 0;
+
+                stack.Push(new(currentTransform, parentTransform));
+
+                while (stack.Count > 0)
+                {
+                    var (current, parent) = stack.Pop();
+                    ++prefabTransformCount;
+
+                    if (ObjectConnection.TryGetConnectedTransformIndicesFromTransformIndex(snapshot, current, parent, ref cachedHashset))
+                    {
+                        foreach (var reference in cachedHashset)
+                        {
+                            if (!snapshot.NativeObjects.Flags[reference.Index].HasFlag(ObjectFlags.IsTemporarilyMarked))
+                            {
+                                FlagTransformAndItsGameObject(snapshot, gameObjectNativeTypeIndex, reference, flagsToSet);
+                                stack.Push(new(reference, current));
+                            }
+                        }
                     }
                 }
             }
 
-            public void CreateTransformTrees(CachedSnapshot snapshot)
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+            void FlagTransformAndItsGameObject(CachedSnapshot snapshot, int gameObjectNativeTypeIndex, SourceIndex transform, ObjectFlags flagsToSet)
             {
-                if (!snapshot.HasSceneRootsAndAssetbundles || SceneHierarchies == null) return;
-                var cachedHashSet = new HashSet<EntityId>();
-                foreach (var hierarchy in SceneHierarchies)
-                {
-                    foreach (var child in hierarchy.Children)
-                    {
-                        AddTransforms(child, snapshot, cachedHashSet);
-                    }
-                }
+                var gameObject = ObjectConnection.GetGameObjectIndexFromTransformOrComponentIndex(snapshot, transform, gameObjectNativeTypeIndex, isPersistent: true);
+
+                snapshot.NativeObjects.Flags[transform.Index] |= flagsToSet;
+                if (gameObject.Valid) // with entities, it's possible to have a transform without a gameobject
+                    snapshot.NativeObjects.Flags[gameObject.Index] |= flagsToSet;
             }
 
-            void AddTransforms(TransformTree id, CachedSnapshot snapshot, HashSet<EntityId> cachedHashSet)
+            // TODO: Jobify, only needs
+            // Connections.ReferenceTo
+            // NativeTypes.IsTransformOrRectTransform (aka a check for Transform and RectTransform types
+            // NativeObjects.NativeTypeArrayIndex
+            // NativeObjects.Flags
+            void ProcessPrefabRoots(CachedSnapshot snapshot, int gameObjectNativeTypeIndex)
             {
-                id.GameObjectID = ObjectConnection.GetGameObjectInstanceIdFromTransformInstanceId(snapshot, id.InstanceId);
-                if (ObjectConnection.TryGetConnectedTransformInstanceIdsFromTransformInstanceId(snapshot, id.InstanceId, id.Parent.InstanceId, ref cachedHashSet))
+                ref readonly var nativeTypeInfo = ref snapshot.TypeDescriptions.UnifiedTypeInfoNative;
+                // count the prefabs to avoid hashmap growth
+                PrefabTransformCount = 0L;
+                if (!snapshot.HasPrefabRootInfo)
                 {
-                    id.AddChildren(cachedHashSet);
-                    foreach (var child in id.Children)
+                    // if there is no root info for prefabs yet, build it here
+                    var cachedHashSetForMarking = new NativeHashSet<SourceIndex>(20, Allocator.Temp);
+                    try
                     {
-                        AddTransforms(child, snapshot, cachedHashSet);
+                        if (snapshot.MetaData.IsEditorCapture && snapshot.NativeTypes.PrefabIdx != NativeTypeEntriesCache.InvalidTypeIndex)
+                        {
+                            // In the Editor, we can use the Prefab object to grab the roots
+                            for (long i = 0; i < snapshot.NativeObjects.Count; i++)
+                            {
+                                if (snapshot.NativeObjects.NativeTypeArrayIndex[i] == snapshot.NativeTypes.PrefabIdx)
+                                {
+                                    MarkPrefabRootFromPrefabAndCalculateHierarchySize(snapshot, gameObjectNativeTypeIndex,
+                                        new SourceIndex(SourceIndex.SourceId.NativeObject, i),
+                                        in nativeTypeInfo, ref cachedHashSetForMarking, calculateAndFlagRecursively: true,
+                                        // since we process all SceneObjects that are not tied to a Prefab afterwards,
+                                        // we need to flag the transforms we found here to avoid double counting
+                                        addTempFlag: true
+                                        );
+                                }
+                            }
+                        }
+
+                        using var lastTwoTransforms = new DynamicArray<SourceIndex>(0, 2, Allocator.Temp);
+                        for (long i = 0; i < snapshot.NativeObjects.Count; i++)
+                        {
+                            var flags = snapshot.NativeObjects.Flags[i];
+
+                            if (flags.HasFlag(ObjectFlags.IsPersistent) && nativeTypeInfo[snapshot.NativeObjects.NativeTypeArrayIndex[i]].IsTransformType)
+                            {
+                                ++PrefabTransformCount;
+                                // ignore this object if it already got marked by its last child
+                                if (flags.HasFlag(ObjectFlags.IsRoot) || flags.HasFlag(ObjectFlags.IsTemporarilyMarked))
+                                    continue;
+                                lastTwoTransforms.Clear(false);
+                                var thisTransform = new SourceIndex(SourceIndex.SourceId.NativeObject, i);
+                                var currentTransform = thisTransform;
+
+                                // In lieu of prefab roots being reported with the IsRoot flag, and while EntityId is 4 bytes in size there is a fallback mechanism
+                                // Essentially, each Transform has a list of children and then its parent reported as its last connection.
+                                // That means that by always recursively taking the last Transform referenced from our current Transform,
+                                // we would eventually cycle between the root and its last child. The root has a lower absolut InstanceId.
+
+                                // So, grab up to 2 potential parents
+                                for (int j = 0; j < 2; j++)
+                                {
+                                    var potentialParent = ObjectConnection.GetParentTransformOrLastChild(snapshot, currentTransform, isPersistent: true);
+                                    if (!potentialParent.Valid)
+                                        break;
+                                    lastTwoTransforms.Push(potentialParent);
+                                    // was the parent already marked?
+                                    if (snapshot.NativeObjects.Flags[potentialParent.Index].HasFlag(ObjectFlags.IsRoot))
+                                        break;
+                                    currentTransform = potentialParent;
+                                }
+                                switch (lastTwoTransforms.Count)
+                                {
+                                    case 0:
+                                    {
+                                        // no valid parent nor child makes this a lone Transform, and a root
+                                        AllPrefabRootTransformSourceIndices.Push(thisTransform);
+                                        FlagTransformAndItsGameObject(snapshot, gameObjectNativeTypeIndex, thisTransform, ObjectFlags.IsRoot);
+                                        break;
+                                    }
+                                    case 1:
+                                        // The parent was already flagged as root. Nothing to do here
+                                        break;
+                                    case 2:
+                                        // If the second one isn't a reference back, thisTransform is not a root.
+                                        // While lastTwoTransforms[0] _might_ be a root, we'll come across it down the line. Drop it for now.
+                                        if (lastTwoTransforms[1] == thisTransform)
+                                        {
+                                            // one of these two is the root.
+                                            var thisInstanceId = snapshot.NativeObjects.InstanceId[thisTransform.Index].ConvertToIdInt();
+                                            var otherInstanceId = snapshot.NativeObjects.InstanceId[lastTwoTransforms[0].Index].ConvertToIdInt();
+                                            // There is a chance that transforms lower down the line than the root where loaded in first
+                                            // But since we're down to a coin toss, this is a best guess attempt that is likely to be correct in MOST cases
+                                            // And in case it's wrong, the effect is only mildly confusing.
+                                            var prefabRootTransform = Math.Abs(thisInstanceId) < Math.Abs(otherInstanceId) ? thisTransform : lastTwoTransforms[0];
+                                            AllPrefabRootTransformSourceIndices.Push(prefabRootTransform);
+                                            FlagTransformAndItsGameObject(snapshot, gameObjectNativeTypeIndex, prefabRootTransform, ObjectFlags.IsRoot);
+                                        }
+                                        break;
+                                    default:
+                                        Debug.LogError($"Found {lastTwoTransforms.Count} elements when looking for the root. The data is faulty.");
+                                        break;
+                                }
+                            }
+                        }
+
+                    }
+                    catch
+                    {
+                        // don't throw the exception explicitly but do a generic rethrow in order to not stomp the callstack
+                        throw;
+                    }
+                    finally
+                    {
+                        cachedHashSetForMarking.Dispose();
+                    }
+
+                    // Clear the temp flags
+                    for (long i = 0; i < snapshot.NativeObjects.Count; i++)
+                    {
+                        if (snapshot.NativeObjects.Flags[i].HasFlag(ObjectFlags.IsTemporarilyMarked))
+                        {
+                            snapshot.NativeObjects.Flags[i] &= ~ObjectFlags.IsTemporarilyMarked;
+                        }
                     }
                 }
+                else
+                {
+                    // If roots have been reported, we still want to count the amount of prefab transforms and collect their roots here.
+                    for (long i = 0; i < snapshot.NativeObjects.Count; i++)
+                    {
+                        if (snapshot.NativeObjects.Flags[i].HasFlag(ObjectFlags.IsPersistent) && nativeTypeInfo[snapshot.NativeObjects.NativeTypeArrayIndex[i]].IsTransformType)
+                        {
+                            ++PrefabTransformCount;
+                            if (snapshot.NativeObjects.Flags[i].HasFlag(ObjectFlags.IsRoot))
+                                AllPrefabRootTransformSourceIndices.Push(new SourceIndex(SourceIndex.SourceId.NativeObject, i));
+                        }
+                    }
+                }
+
+                var lookupCount = PrefabTransformCount * 2;
+                NativeObjectIndexToPrefabRootIndex = new LongToLongHashMap((int)lookupCount, Allocator.Persistent);
+
+                PrefabRootCount = AllPrefabRootTransformSourceIndices.Count;
+                // Process the prefab hierarchies
+                ProcessPrefabHierarchies(snapshot, AllPrefabRootTransformSourceIndices, gameObjectNativeTypeIndex);
+            }
+
+            // TODO: Jobify, only needs
+            // Connections.ReferenceTo
+            // NativeTypes.IsTransformOrRectTransform (aka a check for Transform and RectTransform types
+            // NativeObjects.NativeTypeArrayIndex
+            // NativeObjects.Flags
+            public void ProcessPrefabHierarchies(CachedSnapshot snapshot, DynamicArray<SourceIndex> prefabRootTransforms, int gameObjectNativeTypeIndex)
+            {
+                var cachedHashSet = new NativeHashSet<SourceIndex>(100, Allocator.Temp);
+                var currentDepthLayer = new DynamicArray<(SourceIndex current, SourceIndex parent, long prefabIndex)>(0, prefabRootTransforms.Count, Allocator.Temp);
+                var nextDepthLayer = new DynamicArray<(SourceIndex current, SourceIndex parent, long prefabIndex)>(0, prefabRootTransforms.Count, Allocator.Temp);
+
+                // Nested Prefabs might reference into the hierarchy of other prefabs (i.e. not just at their roots)
+                // so we process these breadth first and ignore reoccurences as they would only happen for nested prefabs.
+
+                try
+                {
+                    var prefabIndex = 0L;
+                    foreach (var rootTransform in prefabRootTransforms)
+                    {
+                        currentDepthLayer.Push((rootTransform, default, prefabIndex++));
+                    }
+                    while (currentDepthLayer.Count > 0)
+                    {
+                        var (current, parent, prefabIdx) = currentDepthLayer.Pop();
+
+                        if (NativeObjectIndexToPrefabRootIndex.TryAdd(current.Index, prefabIdx))
+                        {
+                            // Only add the GameObject and its children if the Transform was successfully added and not part of a different prefab
+                            var gameObjectIndex =
+                                ObjectConnection.GetGameObjectIndexFromTransformOrComponentIndex(snapshot, current,
+                                    gameObjectNativeTypeIndex);
+                            if (gameObjectIndex.Valid) // with entities, it's possible to have a transform without a GameObject
+                            {
+                                if (!NativeObjectIndexToPrefabRootIndex.TryAdd(gameObjectIndex.Index, prefabIdx))
+                                {
+                                    throw new InvalidDataException($"Failed to add prefab gameObjectIndex at index {gameObjectIndex.Index} to NativeObjectIndexToPrefabRootIndex map.");
+                                }
+                            }
+
+                            if (ObjectConnection.TryGetConnectedTransformIndicesFromTransformIndex(snapshot, current,
+                                    parent, ref cachedHashSet))
+                            {
+                                foreach (var child in cachedHashSet)
+                                {
+                                    // outright ignore nested prefab roots
+                                    if (!snapshot.NativeObjects.Flags[child.Index].HasFlag(ObjectFlags.IsRoot))
+                                        nextDepthLayer.Push((child, current, prefabIdx));
+                                }
+                            }
+                        }
+                        // If the current depth layer is empty, swap the layers
+                        if (currentDepthLayer.Count <= 0)
+                            (currentDepthLayer, nextDepthLayer) = (nextDepthLayer, currentDepthLayer);
+                    }
+                }
+                finally
+                {
+                    currentDepthLayer.Dispose();
+                    nextDepthLayer.Dispose();
+                    cachedHashSet.Dispose();
+                }
+                return;
             }
         }
 
@@ -1423,7 +1727,13 @@ namespace Unity.MemoryProfiler.Editor
         {
             public static readonly EntityId InstanceIDNone = EntityId.None;
             public const long FirstValidObjectIndex = 0;
-            public const long InvalidObjectIndex = 0;
+            public const long InvalidObjectIndex = -1;
+
+            /// <summary>
+            /// This flag only exists in Unity's native code where it is used
+            /// to prevent destruction of native objects via Destroy or DestroyImmediately.
+            /// </summary>
+            public const HideFlags NativeDontAllowDestructionFlag = (HideFlags)(1 << 6);
 
             public long Count;
             public string[] ObjectName;
@@ -1439,29 +1749,32 @@ namespace Unity.MemoryProfiler.Editor
             //secondary data
             public DynamicArray<int> RefCount = default;
             public AddressToInstanceId NativeObjectAddressToEntityId { private set; get; }
-            // TODO: Use Native Hashmaps for these to optimze out GC Allocs
-            public Dictionary<long, int> RootReferenceIdToIndex { private set; get; }
-            public Dictionary<long, long> GCHandleIndexToIndex { private set; get; }
+
+            public LongToIntHashMap RootReferenceIdToIndex { private set; get; }
+            public LongToLongHashMap GCHandleIndexToIndex { private set; get; }
             public InstanceIdToNativeObjectIndex InstanceId2Index;
+            public DynamicArray<SourceIndex> AssetBundles = default;
 
             public readonly ulong TotalSizes = 0ul;
             DynamicArray<int> MetaDataBufferIndicies = default;
             NestedDynamicArray<byte> MetaDataBuffers => m_MetaDataBuffersReadOp.CompleteReadAndGetNestedResults();
             NestedDynamicSizedArrayReadOperation<byte> m_MetaDataBuffersReadOp;
 
-            unsafe public NativeObjectEntriesCache(ref IFileReader reader)
+            unsafe public NativeObjectEntriesCache(ref IFileReader reader, int assetBundleTypeIndex)
             {
                 Count = reader.GetEntryCount(EntryType.NativeObjects_InstanceId);
                 NativeObjectAddressToEntityId = new AddressToInstanceId((int)Count, Allocator.Persistent);
-                RootReferenceIdToIndex = new Dictionary<long, int>((int)Count);
-                GCHandleIndexToIndex = new Dictionary<long, long>((int)Count);
+                RootReferenceIdToIndex = new LongToIntHashMap((int)Count, Allocator.Persistent);
+                GCHandleIndexToIndex = new LongToLongHashMap((int)Count, Allocator.Persistent);
                 InstanceId2Index = new InstanceIdToNativeObjectIndex((int)Count, Allocator.Persistent);
                 ObjectName = new string[Count];
+                // AssetBundle usage might vary or not even be used at all, so preallocate with a conservative capacity of 10
+                AssetBundles = new DynamicArray<SourceIndex>(0, 10, Allocator.Persistent);
 
                 if (Count == 0)
                     return;
 
-                if (reader.FormatVersion < FormatVersion.InstanceIDAsAStruct)
+                if (reader.FormatVersion < FormatVersion.EntityIDAs8ByteStructs)
                 {
                     using var instanceIDs = reader.Read(EntryType.NativeObjects_InstanceId, 0, Count, Allocator.Temp).Result.Reinterpret<int>();
                     // Clear the memory on alloc. The MemCpyStride in ConvertInstanceId won't initialize the blank spaces
@@ -1496,6 +1809,13 @@ namespace Unity.MemoryProfiler.Editor
                     RootReferenceIdToIndex.Add(RootReferenceId[i], (int)i);
                     InstanceId2Index[id] = (int)i;
                     TotalSizes += Size[i];
+
+                    // While we're iterating over all objects anyways, collect all AssetBundle objects as they represent a special type of root.
+                    // This info is then used later for building Path From Root info as well as listing out AssetBundles as roots.
+                    if (NativeTypeArrayIndex[i] == assetBundleTypeIndex && assetBundleTypeIndex != NativeTypeEntriesCache.InvalidTypeIndex)
+                    {
+                        AssetBundles.Push(new SourceIndex(SourceIndex.SourceId.NativeObject, i));
+                    }
                 }
 
                 //fallback for the legacy snapshot formats
@@ -1554,9 +1874,11 @@ namespace Unity.MemoryProfiler.Editor
                 RootReferenceId.Dispose();
                 ManagedObjectIndex.Dispose();
                 RefCount.Dispose();
+                AssetBundles.Dispose();
                 ObjectName = null;
                 NativeObjectAddressToEntityId.Dispose();
-                RootReferenceIdToIndex = null;
+                RootReferenceIdToIndex.Dispose();
+                GCHandleIndexToIndex.Dispose();
                 InstanceId2Index.Dispose();
                 MetaDataBufferIndicies.Dispose();
                 if (m_MetaDataBuffersReadOp.IsCreated)
@@ -1863,7 +2185,7 @@ namespace Unity.MemoryProfiler.Editor
                 m_BytesReadOp.Complete();
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = true, Debug = false)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = true, Debug = false)]
             public bool Find(ulong address, VirtualMachineInformation virtualMachineInformation, out BytesAndOffset bytesAndOffset)
             {
                 bytesAndOffset = Find(address, virtualMachineInformation, out MemorySectionType _);
@@ -1913,7 +2235,7 @@ namespace Unity.MemoryProfiler.Editor
                     StartAddress = startAddress;
                 }
 
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 public int CompareTo(SortIndexHelper other) => StartAddress.CompareTo(other.StartAddress);
             }
 
@@ -1983,6 +2305,8 @@ namespace Unity.MemoryProfiler.Editor
         public class TypeDescriptionEntriesCache : IDisposable
         {
             public const int ITypeInvalid = -1;
+            public const long UnifiedTypeArrayManagedSection = 0;
+            public const long UnifiedTypeArrayNativeSection = 1;
             const int k_DefaultFieldProcessingBufferSize = 64;
             public const string UnityObjectTypeName = "UnityEngine.Object";
             public const string UnityNativeObjectPointerFieldName = "m_CachedPtr";
@@ -1994,6 +2318,8 @@ namespace Unity.MemoryProfiler.Editor
             const string k_UnityScriptableObjectTypeName = "UnityEngine.ScriptableObject";
             const string k_UnityComponentObjectTypeName = "UnityEngine.Component";
             const string k_UnityGameObjectTypeName = "UnityEngine.GameObject";
+            const string k_UnityTransformTypeName = "UnityEngine.Transform";
+            const string k_UnityRectTransformTypeName = "UnityEngine.RectTransform";
             const string k_UnityEditorEditorTypeName = "UnityEditor.Editor";
 
             const string k_SystemObjectTypeName = "System.Object";
@@ -2043,7 +2369,7 @@ namespace Unity.MemoryProfiler.Editor
             /// <param name="typeIndex"></param>
             /// <param name="vmInfo"></param>
             /// <returns></returns>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public int GetMinSizeForHeapObjectOfType(long typeIndex, in VirtualMachineInformation vmInfo)
                 => Size[typeIndex] + (HasFlag(typeIndex, TypeFlags.kValueType) ? (int)vmInfo.ObjectHeaderSize : 0);
 
@@ -2057,9 +2383,9 @@ namespace Unity.MemoryProfiler.Editor
                 IgnoreForHeapObjectTypeChecks,
             }
             DynamicArray<TypeCategory> m_TypeCategory = default;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool IsConcrete(long typeIndex) => m_TypeCategory[typeIndex] == TypeCategory.Concrete;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool IgnoreForHeapObjectTypeChecks(long typeIndex) => m_TypeCategory[typeIndex] == TypeCategory.IgnoreForHeapObjectTypeChecks;
 
             public string[] TypeDescriptionName;
@@ -2071,6 +2397,7 @@ namespace Unity.MemoryProfiler.Editor
             NestedDynamicSizedArrayReadOperation<byte> m_StaticFieldBytesReadOp;
 
             //secondary data, handled inside InitSecondaryItems
+            // TODO: move over to NestedDynamicArray<int>
             public int[][] FieldIndicesInstance;//includes all bases' instance fields
             public int[][] fieldIndicesStatic;  //includes all bases' static fields
             public int[][] fieldIndicesOwnedStatic;  //includes only type's static fields
@@ -2100,11 +2427,41 @@ namespace Unity.MemoryProfiler.Editor
             public readonly int ITypeUnityScriptableObject = ITypeInvalid;
             public readonly int ITypeUnityComponent = ITypeInvalid;
             public readonly int ITypeUnityGameObject = ITypeInvalid;
+            public readonly int ITypeUnityTransform = ITypeInvalid;
+            public readonly int ITypeUnityRectTransform = ITypeInvalid;
             public readonly int ITypeUnityEditorEditor = ITypeInvalid;
-            public Dictionary<ulong, int> TypeInfoToArrayIndex { get; private set; }
-            // only fully initialized after the Managed Crawler is done stitching up Objects. Might be better to be moved over to ManagedData
-            public Dictionary<int, int> UnityObjectTypeIndexToNativeTypeIndex { get; private set; }
-            public HashSet<int> PureCSharpTypeIndices { get; private set; }
+            public AddressToIntIndex TypeInfoToArrayIndex { get; private set; }
+
+            // Well these also include native types so making them part of the managed type descriptions isn't that
+            // clean but there isn't a very clean alternative right now so, good enough as any place. Consider moving...
+            readonly NestedDynamicArray<UnifiedType> m_UnifiedTypeInfo = default;
+            /// <summary>
+            /// Only fully initialized after the Managed Crawler is done stitching up Objects.
+            /// </summary>
+            public ref readonly NestedDynamicArray<UnifiedType> UnifiedTypeInfo => ref m_UnifiedTypeInfo;
+            public ref readonly DynamicArrayRef<UnifiedType> UnifiedTypeInfoManaged => ref m_UnifiedTypeInfo[UnifiedTypeArrayManagedSection];
+            public ref readonly DynamicArrayRef<UnifiedType> UnifiedTypeInfoNative => ref m_UnifiedTypeInfo[UnifiedTypeArrayNativeSection];
+            public NativeHashSet<int> PureCSharpTypeIndices { get; private set; }
+
+            readonly NativeHashSet<int> m_UninstantiatableUnityBaseTypesWithSetNativeType = default;
+            /// <summary>
+            /// AKA: UnityEngine.Object & UnityEngine.Component
+            /// If an object where a Scriptable type, its fallback would be set as <see cref="UninstantiatableUnityBaseTypesWithScriptingDefinedTypes"/> after
+            /// <see cref="TypeDescriptionEntriesCache"/> has been constructed and <see cref="TypeDescriptionEntriesCache.InitSecondaryItems(FieldDescriptionEntriesCache, NativeTypeEntriesCache, VirtualMachineInformation, Dictionary{string, int})"/> called.
+            /// </summary>
+            public ref readonly NativeHashSet<int> UninstantiatableUnityBaseTypesWithSetNativeType => ref m_UninstantiatableUnityBaseTypesWithSetNativeType;
+
+            readonly NativeHashSet<int> m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes = default;
+            /// <summary>
+            /// AKA: ScriptableObjects and MonoBehaviour
+            /// </summary>
+            public ref readonly NativeHashSet<int> UninstantiatableUnityBaseTypesWithScriptingDefinedTypes => ref m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes;
+
+            readonly NativeHashSet<int> m_AllUninstantiatableUnityBaseTypes = default;
+            /// <summary>
+            /// A combined hashset of both <see cref="UninstantiatableUnityBaseTypesWithSetNativeType"/> and <see cref="UninstantiatableUnityBaseTypesWithScriptingDefinedTypes"/>.
+            /// </summary>
+            public ref readonly NativeHashSet<int> AllUninstantiatableUnityBaseTypes => ref m_AllUninstantiatableUnityBaseTypes;
 
             public TypeDescriptionEntriesCache(ref IFileReader reader, FieldDescriptionEntriesCache fieldDescriptions, NativeTypeEntriesCache nativeTypes, VirtualMachineInformation vmInfo)
             {
@@ -2112,9 +2469,31 @@ namespace Unity.MemoryProfiler.Editor
 
                 TypeDescriptionName = new string[Count];
                 Assembly = new string[Count];
-                UnityObjectTypeIndexToNativeTypeIndex = new Dictionary<int, int>();
-                PureCSharpTypeIndices = new HashSet<int>();
+
+                // granted, that capacity is more than likely too much but it beats reallocs. It's trimmed later.
+                PureCSharpTypeIndices = new NativeHashSet<int>((int)Math.Max(0, Count - nativeTypes.Count), Allocator.Persistent);
+
                 m_TypeCategory = new DynamicArray<TypeCategory>(Count, Allocator.Persistent, true);
+                var unifiedTypeInfoBackingMemory = new DynamicArray<UnifiedType>(Count + nativeTypes.Count, Allocator.Persistent, false);
+                var nativeTypeIndex = 0;
+                for (long i = Count; i < unifiedTypeInfoBackingMemory.Count; i++, nativeTypeIndex++)
+                {
+                    unifiedTypeInfoBackingMemory[i] = new UnifiedType(nativeTypes, null, nativeTypeIndex);
+                }
+                for (long i = 0; i < Count; i++)
+                {
+                    unifiedTypeInfoBackingMemory[i] = new UnifiedType(nativeTypes, null, CachedSnapshot.NativeTypeEntriesCache.InvalidTypeIndex, (int)i);
+                }
+                using var unifiedTypeOffsets = new DynamicArray<long>(3, Allocator.Temp);
+                var typeInfoSize = 0L;
+                unsafe
+                {
+                    typeInfoSize = sizeof(UnifiedType);
+                }
+                unifiedTypeOffsets[UnifiedTypeArrayManagedSection] = 0;
+                unifiedTypeOffsets[UnifiedTypeArrayNativeSection] = Count * typeInfoSize;
+                unifiedTypeOffsets[2] = unifiedTypeInfoBackingMemory.Count * typeInfoSize;
+                m_UnifiedTypeInfo = new NestedDynamicArray<UnifiedType>(unifiedTypeOffsets, unifiedTypeInfoBackingMemory);
 
                 if (Count == 0)
                 {
@@ -2122,7 +2501,7 @@ namespace Unity.MemoryProfiler.Editor
                     BaseOrElementTypeIndex = new DynamicArray<int>(0, Allocator.Persistent);
                     Size = new DynamicArray<int>(0, Allocator.Persistent);
                     TypeInfoAddress = new DynamicArray<ulong>(0, Allocator.Persistent);
-                    TypeInfoToArrayIndex = new Dictionary<ulong, int>();
+                    TypeInfoToArrayIndex = new AddressToIntIndex(0, Allocator.Persistent);
                     return;
                 }
 
@@ -2131,7 +2510,7 @@ namespace Unity.MemoryProfiler.Editor
                 Size = reader.Read(EntryType.TypeDescriptions_Size, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
                 TypeInfoAddress = reader.Read(EntryType.TypeDescriptions_TypeInfoAddress, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
 #if DEBUG_VALIDATION
-                if(reader.FormatVersion == FormatVersion.SnapshotMinSupportedFormatVersion)
+                if (reader.FormatVersion == FormatVersion.SnapshotMinSupportedFormatVersion)
                 {
                     // Nb! This code is left here for posterity in case anyone wonders what EntryType.TypeDescriptions_TypeIndex is, and if it is needed. No it is not.
 
@@ -2142,7 +2521,7 @@ namespace Unity.MemoryProfiler.Editor
                     var TypeIndex = reader.Read(EntryType.TypeDescriptions_TypeIndex, 0, Count, Allocator.Persistent).Result.Reinterpret<int>();
                     for (int i = 0; i < TypeIndex.Count; i++)
                     {
-                        if(i != TypeIndex[i])
+                        if (i != TypeIndex[i])
                         {
                             Debug.LogError("Attempted to load a broken Snapshot file from an ancient Unity version!");
                             break;
@@ -2206,8 +2585,58 @@ namespace Unity.MemoryProfiler.Editor
                 typeNameToIndex.GetOrInitializeValue(k_UnityScriptableObjectTypeName, out ITypeUnityScriptableObject, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_UnityComponentObjectTypeName, out ITypeUnityComponent, ITypeInvalid);
                 typeNameToIndex.GetOrInitializeValue(k_UnityGameObjectTypeName, out ITypeUnityGameObject, ITypeInvalid);
+                typeNameToIndex.GetOrInitializeValue(k_UnityTransformTypeName, out ITypeUnityTransform, ITypeInvalid);
+                typeNameToIndex.GetOrInitializeValue(k_UnityRectTransformTypeName, out ITypeUnityRectTransform, ITypeInvalid);
 
                 typeNameToIndex.GetOrInitializeValue(k_UnityEditorEditorTypeName, out ITypeUnityEditorEditor, ITypeInvalid);
+
+                m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes = new NativeHashSet<int>(3, Allocator.Persistent);
+
+                // There will never be instances of objects in the snapshot that have these key Unity native types as
+                // while their managed type would be that of the corresponding managed base type
+                // (i.e. UnityEngine.ScriptableObject/MonoBehaviour) as only their derived type can be instantiated.
+                // As such, the managed types mapped to these native types are also always the managed base types.
+                if (ITypeUnityScriptableObject is not ITypeInvalid)
+                {
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityScriptableObject, nativeTypes.ScriptableObjectIdx, ref m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes, baseFallbackType: ITypeUnityScriptableObject);
+                    // Not actually a discrete managed type so this shouldn't update the managed base type info for ITypeUnityScriptableObject, only the native info
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityScriptableObject, nativeTypes.EditorScriptableObjectIdx, baseFallbackType: ITypeUnityScriptableObject);
+                }
+                if (ITypeUnityMonoBehaviour is not ITypeInvalid)
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityMonoBehaviour, nativeTypes.MonoBehaviourIdx, ref m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes, baseFallbackType: ITypeUnityMonoBehaviour);
+
+                m_UninstantiatableUnityBaseTypesWithSetNativeType = new NativeHashSet<int>(2, Allocator.Persistent);
+
+                if (ITypeUnityComponent is not ITypeInvalid)
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityComponent, nativeTypes.ComponentIdx, ref m_UninstantiatableUnityBaseTypesWithSetNativeType, baseFallbackType: ITypeUnityComponent);
+
+                if (ITypeUnityObject is not ITypeInvalid)
+                {
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityObject, nativeTypes.BaseObjectIdx, ref m_UninstantiatableUnityBaseTypesWithSetNativeType, baseFallbackType: ITypeUnityObject);
+                    // Not actually a discrete managed type so this shouldn't update the managed base type info for ITypeUnityComponent, only the native info
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityObject, nativeTypes.NamedObjectIdx, baseFallbackType: ITypeUnityObject);
+                }
+
+                m_AllUninstantiatableUnityBaseTypes = new NativeHashSet<int>(m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes.Count() + m_UninstantiatableUnityBaseTypesWithSetNativeType.Count(), Allocator.Persistent);
+
+                foreach (var item in m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes)
+                {
+                    m_AllUninstantiatableUnityBaseTypes.Add(item);
+                }
+                foreach (var item in m_UninstantiatableUnityBaseTypesWithSetNativeType)
+                {
+                    m_AllUninstantiatableUnityBaseTypes.Add(item);
+                }
+
+                // GameObject, Transforms and RectTransforms can be instantiated and can't be more concrete, so we can update their type here and call it a day
+                if (ITypeUnityGameObject is not ITypeInvalid)
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityGameObject, nativeTypes.GameObjectIdx, baseFallbackType: ITypeUnityGameObject);
+
+                // Note: while having a managed shell type for Transforms is basically guaranteed as soon as there is even one MonoBehaviour in the runtime, the same is not necessarily true for RectTransforms
+                if (ITypeUnityTransform is not ITypeInvalid && nativeTypes.TransformIdx is not NativeTypeEntriesCache.InvalidTypeIndex)
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityTransform, nativeTypes.TransformIdx, baseFallbackType: ITypeUnityTransform);
+                if (ITypeUnityRectTransform is not ITypeInvalid && nativeTypes.RectTransformIdx is not NativeTypeEntriesCache.InvalidTypeIndex)
+                    UpdateManagedToNativeTypeMapping(nativeTypes, ITypeUnityRectTransform, nativeTypes.RectTransformIdx, baseFallbackType: ITypeUnityRectTransform);
 
                 InitSecondaryItems(fieldDescriptions, nativeTypes, vmInfo, typeNameToIndex);
             }
@@ -2240,14 +2669,14 @@ namespace Unity.MemoryProfiler.Editor
                 return StaticFieldBytes[iType].Count > 0;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool CouldThisFieldBeReadAsAnAddress(long arrayIndex, CachedSnapshot snapshot)
             {
                 return (!HasFlag(arrayIndex, TypeFlags.kValueType) ||
                     (FieldIndicesInstance[arrayIndex].Length == 0 && Size[arrayIndex] == snapshot.VirtualMachineInformation.PointerSize));
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool HasFlag(long arrayIndex, TypeFlags flag)
             {
                 return (Flags[arrayIndex] & flag) == flag;
@@ -2269,38 +2698,22 @@ namespace Unity.MemoryProfiler.Editor
             static readonly ProfilerMarker k_TypeFieldArraysBuild = new ProfilerMarker("MemoryProfiler.TypeFields.TypeFieldArrayBuilding");
             void InitSecondaryItems(FieldDescriptionEntriesCache fieldDescriptions, NativeTypeEntriesCache nativeTypes, VirtualMachineInformation vmInfo, Dictionary<string, int> typeNameToIndex)
             {
-                TypeInfoToArrayIndex = new Dictionary<ulong, int>((int)TypeInfoAddress.Count);
+                TypeInfoToArrayIndex = new AddressToIntIndex((int)TypeInfoAddress.Count, Allocator.Persistent);
                 for (int i = 0; i < TypeInfoAddress.Count; i++)
                 {
-                    TypeInfoToArrayIndex[TypeInfoAddress[i]] = i;
+                    TypeInfoToArrayIndex.Add(TypeInfoAddress[i], i);
                 }
 
-                if (ITypeUnityScriptableObject > ITypeInvalid)
-                    UnityObjectTypeIndexToNativeTypeIndex.Add(ITypeUnityScriptableObject, nativeTypes.ScriptableObjectIdx);
-                if (ITypeUnityMonoBehaviour > ITypeInvalid)
-                    UnityObjectTypeIndexToNativeTypeIndex.Add(ITypeUnityMonoBehaviour, nativeTypes.MonoBehaviourIdx);
-                if (ITypeUnityGameObject > ITypeInvalid)
-                    UnityObjectTypeIndexToNativeTypeIndex.Add(ITypeUnityGameObject, nativeTypes.GameObjectIdx);
-                if (ITypeUnityComponent > ITypeInvalid)
-                    UnityObjectTypeIndexToNativeTypeIndex.Add(ITypeUnityComponent, nativeTypes.ComponentIdx);
-
-                var hashmapOfUnityBaseTypes = new HashSet<int>();
-                hashmapOfUnityBaseTypes.Add(ITypeUnityObject);
-                // Include all Unity Base Types mapped to native indices above
-                foreach (var item in UnityObjectTypeIndexToNativeTypeIndex.Keys)
-                {
-                    hashmapOfUnityBaseTypes.Add(item);
-                    if (item != ITypeInvalid)
-                        m_TypeCategory[item] = TypeCategory.Concrete;
-                }
-                // It might be that not everyone of these types is present in the snapshot, so in case an invalid one was added, remove it again.
-                hashmapOfUnityBaseTypes.Remove(ITypeInvalid);
-
-                var hashmapOfSaveConcreteTypes = new HashSet<int>();
+                using var hashmapOfSaveConcreteTypes = new NativeHashSet<int>(1000, Allocator.Temp);
                 hashmapOfSaveConcreteTypes.Add(ITypeObject);
                 hashmapOfSaveConcreteTypes.Add(ITypeValueType);
-                // Include all Unity Base Types
-                foreach (var item in hashmapOfUnityBaseTypes)
+
+                // Include all Unity Base Types.
+                // Inheriting from these doesn't mean the type can't still be an abstract type, but their count is low and the chances of these being concrete types is generally pretty high.
+                // The off chance of these being abstract and false flagging them as concrete leading to invalid objects getting crawled due to that flag is worth it over the risk of not crawling
+                // a Unity Object derived class due to funky inheritance chain issues.
+                // That said, having the actual type flags would be vastly preferable.
+                foreach (var item in m_AllUninstantiatableUnityBaseTypes)
                 {
                     hashmapOfSaveConcreteTypes.Add(item);
                 }
@@ -2356,10 +2769,9 @@ namespace Unity.MemoryProfiler.Editor
 
 
                         var typeIndex = i;
-                        if (DerivesFromTypes(typeIndex, hashmapOfUnityBaseTypes))
+                        if (DerivesFromTypes(typeIndex, in m_AllUninstantiatableUnityBaseTypes, out var managedBaseType))
                         {
-                            UnityObjectTypeIndexToNativeTypeIndex.TryAdd(typeIndex, ITypeInvalid);
-                            m_TypeCategory[typeIndex] = TypeCategory.Concrete;
+                            UpdateManagedToNativeTypeMapping(nativeTypes, typeIndex, UnifiedTypeInfoManaged[managedBaseType].NativeTypeIndex, baseFallbackType: managedBaseType);
                         }
                         else
                         {
@@ -2453,6 +2865,9 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     IFieldUnityObjectMCachedPtrOffset = fieldDescriptions.Offset[IFieldUnityObjectMCachedPtr];
                 }
+#if UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+                PureCSharpTypeIndices.TrimExcess();
+#endif
 
 #if DEBUG_VALIDATION
                 if (IFieldUnityObjectMCachedPtrOffset < 0)
@@ -2463,21 +2878,87 @@ namespace Unity.MemoryProfiler.Editor
 #endif
             }
 
+            void UpdateManagedToNativeTypeMapping(CachedSnapshot.NativeTypeEntriesCache nativeTypes, int managedType, int nativeType, ref NativeHashSet<int> hashmapOfUnityBaseTypes, int baseFallbackType = CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid)
+            {
+                UpdateManagedToNativeTypeMapping(nativeTypes, managedType, nativeType, baseFallbackType);
+                hashmapOfUnityBaseTypes.Add(managedType);
+            }
+
+            public void UpdateManagedToNativeTypeMapping(CachedSnapshot.NativeTypeEntriesCache nativeTypes, int managedType, int nativeType, int baseFallbackType = CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid)
+            {
+                // Updating the mapping only makes sense if at least the managed types are valid
+                Checks.IsTrue(managedType is not ITypeInvalid);
+
+                // Updating the type means we sorta confirmed it is concrete
+                // (As we currently assume that all Unity Types are concrete, which isn't necessarily the case but probable enough.
+                // In the future we'd ideally be reporting type flags, but also, we're currently only using these to determine
+                // if reading some heap bytes (pointed to from somewhere else) as a pointer to a type could reasonably be
+                // an object header for a heap object. Since only concrete types could have objects on the heap,
+                // including slightly more types than necessary as concrete is preferable to falsely excluding some.)
+                m_TypeCategory[managedType] = TypeCategory.Concrete;
+
+                var previousBaseType = UnifiedTypeInfoManaged[managedType].ManagedBaseTypeIndexForNativeType;
+                var setFallBackType = baseFallbackType is not CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid;
+                var onlyUpdateNativeType = false;
+
+                // if we are setting a base type, only update info if it wasn't already set or the new base type is more specific
+                if (setFallBackType && previousBaseType is not CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid
+                    && (previousBaseType == baseFallbackType || !DerivesFrom(baseFallbackType, previousBaseType, true)))
+                {
+                    if (nativeType is not NativeTypeEntriesCache.InvalidTypeIndex)
+                        previousBaseType = UnifiedTypeInfoNative[nativeType].ManagedBaseTypeIndexForNativeType;
+                    // Check if we also do not need to update the native type info
+                    if (previousBaseType is not CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid
+                        && (previousBaseType == baseFallbackType || !DerivesFrom(baseFallbackType, previousBaseType, true)))
+                        return;
+                    onlyUpdateNativeType = true;
+                }
+
+                // Only update the fallback base type if it wasn't previously a Unity scripting type.
+                // All Unity scripting types should get initialized correctly to their fallback types through InitSecondaryItems
+                // And subsequently should not be updated to be more specific, as they have a multiple managed to one native(& managed base type) relationship.
+                // Other base types such as UnityEngine.Object or Component have specific scripting types that map to their native types 1-to-1
+                // so those should get updated to be more specifc.
+                var updateFallbackType = setFallBackType && !UninstantiatableUnityBaseTypesWithScriptingDefinedTypes.Contains(previousBaseType);
+                var fallbackTypeToSet = updateFallbackType ? baseFallbackType : previousBaseType;
+
+                if (nativeType is not NativeTypeEntriesCache.InvalidTypeIndex
+                    && updateFallbackType && UnifiedTypeInfoNative[nativeType].ManagedBaseTypeIndexForNativeType != fallbackTypeToSet)
+                {
+                    // The native type info never gets a more concrete managed type linked up to it than the base type.
+                    UnifiedTypeInfoNative[nativeType] = new UnifiedType(nativeTypes, this, nativeType, fallbackTypeToSet, managedBaseTypeIndex: fallbackTypeToSet);
+                }
+
+                if (!onlyUpdateNativeType)
+                {
+                    // updating the managed type with a new native type mapping shouldn't change the managed type
+                    Checks.CheckEquals(managedType, UnifiedTypeInfoManaged[managedType].ManagedTypeIndex);
+                    UnifiedTypeInfoManaged[managedType] = new UnifiedType(nativeTypes, this, nativeType, managedType, managedBaseTypeIndex: fallbackTypeToSet);
+                }
+
+            }
+
             /// <summary>
-            /// Past <see cref="InitSecondaryItems(FieldDescriptionEntriesCache, VirtualMachineInformation, Dictionary{string, int})"/> being done, <see cref="DerivesFromUnityObject"/> should be used instead.
+            /// Past <see cref="InitSecondaryItems(FieldDescriptionEntriesCache, NativeTypeEntriesCache, VirtualMachineInformation, Dictionary{string, int})"/> being done, <see cref="DerivesFromUnityObject"/> should be used instead.
             /// </summary>
             /// <param name="iTypeDescription"></param>
             /// <returns></returns>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private bool DerivesFromTypes(int iTypeDescription, HashSet<int> baseTypes)
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+            private bool DerivesFromTypes(int iTypeDescription, in NativeHashSet<int> baseTypes, out int managedBaseType)
             {
+                managedBaseType = ITypeInvalid;
                 while (!baseTypes.Contains(iTypeDescription) && iTypeDescription >= 0)
                 {
                     if (HasFlag(iTypeDescription, TypeFlags.kArray))
                         return false;
                     iTypeDescription = BaseOrElementTypeIndex[iTypeDescription];
                 }
-                return baseTypes.Contains(iTypeDescription);
+                if (baseTypes.Contains(iTypeDescription))
+                {
+                    managedBaseType = iTypeDescription;
+                    return true;
+                }
+                return false;
             }
 
             /// <summary>
@@ -2489,13 +2970,13 @@ namespace Unity.MemoryProfiler.Editor
             /// </summary>
             /// <param name="iTypeDescription"></param>
             /// <returns></returns>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool DerivesFromUnityObject(int iTypeDescription)
             {
-                return iTypeDescription == ITypeUnityObject || UnityObjectTypeIndexToNativeTypeIndex.ContainsKey(iTypeDescription);
+                return UnifiedTypeInfoManaged[iTypeDescription].IsUnityObjectType;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool DerivesFrom(int iTypeDescription, int potentialBase, bool excludeArrayElementBaseTypes)
             {
                 while (iTypeDescription != potentialBase && iTypeDescription >= 0)
@@ -2509,7 +2990,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool IsNativeContainerType(int managedTypeIndex)
             {
                 return TypeDescriptionName[managedTypeIndex].StartsWith(NativeCollectionsNamspaceAndTypePrefix)
@@ -2547,9 +3028,18 @@ namespace Unity.MemoryProfiler.Editor
                 FieldIndicesInstance = null;
                 fieldIndicesStatic = null;
                 fieldIndicesOwnedStatic = null;
-                TypeInfoToArrayIndex = null;
-                UnityObjectTypeIndexToNativeTypeIndex = null;
-                PureCSharpTypeIndices = null;
+                if (m_UnifiedTypeInfo.IsCreated)
+                    m_UnifiedTypeInfo.Dispose();
+                if (TypeInfoToArrayIndex.IsCreated)
+                    TypeInfoToArrayIndex.Dispose();
+                if (PureCSharpTypeIndices.IsCreated)
+                    PureCSharpTypeIndices.Dispose();
+                if (m_AllUninstantiatableUnityBaseTypes.IsCreated)
+                    m_AllUninstantiatableUnityBaseTypes.Dispose();
+                if (m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes.IsCreated)
+                    m_UninstantiatableUnityBaseTypesWithScriptingDefinedTypes.Dispose();
+                if (m_UninstantiatableUnityBaseTypesWithSetNativeType.IsCreated)
+                    m_UninstantiatableUnityBaseTypesWithSetNativeType.Dispose();
             }
         }
 
@@ -2645,7 +3135,12 @@ namespace Unity.MemoryProfiler.Editor
             // List of objects referencing an object with the specfic key
             public Dictionary<SourceIndex, List<SourceIndex>> ReferencedBy { get; private set; } = new Dictionary<SourceIndex, List<SourceIndex>>();
 
-            // List of objects an object with the specific key is refereing to
+            /// <summary>
+            /// List of objects an object with the specific key is refereing to.
+            /// For GameObjects, their first reference is that to its Transform component, followed by all other components.
+            /// For Transforms its their host GameObject, followed by all child transforms, with the final addition of their parent transform, IF IT HAS ONE! (i.e. Root transforms only report child Transforms).
+            /// For Components, its their host GameObject, followed by all other references.
+            /// </summary>
             public Dictionary<SourceIndex, List<SourceIndex>> ReferenceTo { get; private set; } = new Dictionary<SourceIndex, List<SourceIndex>>();
 
 #if DEBUG_VALIDATION // could be always present but currently only used for validation in the crawler
@@ -2669,7 +3164,7 @@ namespace Unity.MemoryProfiler.Editor
 
                 DynamicArray<EntityId> instanceIDFrom;
                 DynamicArray<EntityId> instanceIDTo;
-                if (reader.FormatVersion < FormatVersion.InstanceIDAsAStruct)
+                if (reader.FormatVersion < FormatVersion.EntityIDAs8ByteStructs)
                 {
                     From = reader.Read(EntryType.Connections_From, 0, Count, allocator).Result.Reinterpret<int>();
                     To = reader.Read(EntryType.Connections_To, 0, Count, allocator).Result.Reinterpret<int>();
@@ -2702,7 +3197,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             SourceIndex ToSourceIndex(int index, long gcHandlesCount)
             {
                 if (index < gcHandlesCount)
@@ -2818,6 +3313,7 @@ namespace Unity.MemoryProfiler.Editor
         public SystemMemoryResidentPagesEntriesCache SystemMemoryResidentPages;
         public EntriesMemoryMapCache EntriesMemoryMap;
         public ProcessedNativeRoots ProcessedNativeRoots;
+        public RootAndImpactInfo RootAndImpactInfo;
 
         public CachedSnapshot(IFileReader reader)
         {
@@ -2843,13 +3339,14 @@ namespace Unity.MemoryProfiler.Editor
                 m_SnapshotVersion = reader.FormatVersion;
 
                 MetaData = new MetaData(reader);
+                SetUnityVersionSpecificFlags();
 
                 NativeAllocationSites = new NativeAllocationSiteEntriesCache(ref reader);
                 FieldDescriptions = new FieldDescriptionEntriesCache(ref reader);
                 NativeTypes = new NativeTypeEntriesCache(ref reader);
                 TypeDescriptions = new TypeDescriptionEntriesCache(ref reader, FieldDescriptions, NativeTypes, vmInfo);
                 NativeRootReferences = new NativeRootReferenceEntriesCache(ref reader);
-                NativeObjects = new NativeObjectEntriesCache(ref reader);
+                NativeObjects = new NativeObjectEntriesCache(ref reader, NativeTypes.AssetBundleIdx);
                 NativeMemoryRegions = new NativeMemoryRegionEntriesCache(ref reader);
                 NativeMemoryLabels = new NativeMemoryLabelEntriesCache(ref reader, HasMemoryLabelSizesAndGCHeapTypes);
                 NativeCallstackSymbols = new NativeCallstackSymbolEntriesCache(ref reader);
@@ -2859,6 +3356,9 @@ namespace Unity.MemoryProfiler.Editor
                 GcHandles = new GCHandleEntriesCache(ref reader);
                 Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.Count, HasConnectionOverhaul);
                 SceneRoots = new SceneRootEntriesCache(ref reader);
+                // TODO: Jobifiy GenerateBaseData and sync at end
+                SceneRoots.GenerateBaseData(this, NativeObjects.InstanceId2Index, NativeTypes.GameObjectIdx);
+
                 NativeGfxResourceReferences = new NativeGfxResourceReferenceEntriesCache(ref reader);
                 NativeAllocators = new NativeAllocatorEntriesCache(ref reader);
 
@@ -2874,28 +3374,49 @@ namespace Unity.MemoryProfiler.Editor
                 EntriesMemoryMap = new EntriesMemoryMapCache(this);
 
                 CrawledData = new ManagedData(GcHandles.Count, Connections.Count, NativeTypes.Count);
-                if (MemoryProfilerSettings.FeatureFlags.GenerateTransformTreesForByStatusTable_2022_09)
-                    SceneRoots.CreateTransformTrees(this);
-                SceneRoots.GenerateGameObjectData(this);
 
                 ProcessedNativeRoots = new ProcessedNativeRoots();
             }
         }
 
-        public int PostProcessStepCount =>
+        void SetUnityVersionSpecificFlags()
+        {
+            m_HasPrefabRootInfo = UnityVersionHasPrefabRootInfo();
+        }
+
+        bool UnityVersionHasPrefabRootInfo()
+        {
+            return MetaData.UnityVersionEqualOrNewer(6000, 5, 0, MetaData.UnityReleaseType.Alpha, 3)
+                   || MetaData.UnityVersionEqualOrNewerWithinMinorRelease(6000, 4, 0, MetaData.UnityReleaseType.Alpha, 6)
+                   || MetaData.UnityVersionEqualOrNewerWithinMinorRelease(6000, 3, 1, MetaData.UnityReleaseType.Full, 1)
+                   || MetaData.UnityVersionEqualOrNewerWithinMinorRelease(6000, 2, 15, MetaData.UnityReleaseType.Full, 1)
+                   // skip 6000.1 as it did not get the prefab fix.
+                   || MetaData.UnityVersionEqualOrNewerWithinMinorRelease(6000, 0, 64, MetaData.UnityReleaseType.Full, 1);
+        }
+
+        public int PostProcessStepCountWithCrawler =>
             ManagedDataCrawler.CrawlStepCount
-            + EntriesMemoryMapCache.BuildStepCount
+            + PostProcessStepCountWithoutCrawler;
+        public int PostProcessStepCountWithoutCrawler =>
+            +EntriesMemoryMapCache.BuildStepCount
             + ProcessedNativeRoots.ProcessStepCount
+            + RootAndImpactInfo.ProcessStepCount
             + 1; //final step
 
-        public IEnumerator<EnumerationStatus> PostProcess()
+        public IEnumerator<EnumerationStatus> PostProcess(bool crawlManaged = true)
         {
-            var status = new EnumerationStatus(PostProcessStepCount);
+            var status = new EnumerationStatus(crawlManaged ? PostProcessStepCountWithCrawler : PostProcessStepCountWithoutCrawler);
 
+            IEnumerator<EnumerationStatus> processor = null;
             // Managed Objects end up on the Memory Map, so crawl them first
-            var processor = ManagedDataCrawler.Crawl(this, status);
-            while (processor.MoveNext())
-                yield return processor.Current;
+            if (crawlManaged)
+            {
+                processor = ManagedDataCrawler.Crawl(this, status);
+                while (processor.MoveNext())
+                    yield return processor.Current;
+            }
+            // these need the managed object count
+            RootAndImpactInfo = new RootAndImpactInfo(this);
 
             // To populate ProcessedNativeRoots with reliable native sizes for all allocations, as well as Resident vs Committed amounts for all Native Roots,the Memory Map needs to be built
             processor = EntriesMemoryMap.Build(status);
@@ -2904,6 +3425,11 @@ namespace Unity.MemoryProfiler.Editor
 
             // The Unity Objects Summary table will need ready to go ProcessedNativeRoots to show Unity Objects with their rooted native, gfx and managed memory
             processor = ProcessedNativeRoots.ReadOrProcess(this, status);
+            while (processor.MoveNext())
+                yield return processor.Current;
+
+            // The Impact columns need Path To Root info, though this could be moved to the background?
+            processor = RootAndImpactInfo.ReadOrProcess(this, status);
             while (processor.MoveNext())
                 yield return processor.Current;
         }
@@ -2983,7 +3509,7 @@ namespace Unity.MemoryProfiler.Editor
             NothingFound
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public NativeAllocationOrRegionSearchResult FindNativeAllocationOrRegion(ulong pointer,
             out SourceIndex nativeRegionIndex, out SourceIndex nativeAllocationIndex)
         {
@@ -2991,7 +3517,7 @@ namespace Unity.MemoryProfiler.Editor
                  out _, false);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public NativeAllocationOrRegionSearchResult FindNativeAllocationOrRegion(ulong pointer,
             out SourceIndex nativeRegionIndex, out SourceIndex nativeAllocationIndex,
             out string nativeRegionPath)
@@ -3104,6 +3630,7 @@ namespace Unity.MemoryProfiler.Editor
                 SystemMemoryRegions.Dispose();
                 SystemMemoryResidentPages.Dispose();
 
+                RootAndImpactInfo.Dispose();
                 EntriesMemoryMap.Dispose();
                 CrawledData.Dispose();
                 CrawledData = null;
@@ -3392,7 +3919,7 @@ namespace Unity.MemoryProfiler.Editor
                     m_Ptr = managedObjectInfos.GetUnsafeTypedPtr();
                 }
 
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
                 public int Compare(ref long objectAIndex, ref long objectBIndex)
                 {
                     // managed objects can't have a negative size, or be nested within other managed objects, so we don't need to compare sizes as well
@@ -3634,6 +4161,7 @@ namespace Unity.MemoryProfiler.Editor
         /// is used with the index and it's user's responsibility to pair index with
         /// the correct snapshot.
         /// </summary>
+        [StructLayout(LayoutKind.Explicit, Size = sizeof(ulong), Pack = sizeof(ulong))]
         readonly public struct SourceIndex : IEquatable<SourceIndex>, IComparable<SourceIndex>, IEqualityComparer<SourceIndex>
         {
             const int kSourceIdShift = 56;
@@ -3654,7 +4182,9 @@ namespace Unity.MemoryProfiler.Editor
                 NativeRootReference,
                 GfxResource,
                 GCHandleIndex,
-                MemoryLabel
+                MemoryLabel,
+                Scene,
+                Prefab
             }
 
             public enum SpecialNoneCase : long
@@ -3662,8 +4192,10 @@ namespace Unity.MemoryProfiler.Editor
                 None,
                 UnrootedAllocation,
                 UnknownMemLabel,
+                Root,
             }
 
+            [FieldOffset(0)]
             readonly ulong m_Data;
 
             public readonly SourceId Id
@@ -3697,6 +4229,8 @@ namespace Unity.MemoryProfiler.Editor
                                 return UnrootedItemName;
                             case SpecialNoneCase.UnknownMemLabel:
                                 return UnknownMemlabelName;
+                            case SpecialNoneCase.Root:
+                                return RootName;
                             default:
                                 return string.Empty;
                         }
@@ -3757,29 +4291,33 @@ namespace Unity.MemoryProfiler.Editor
                         return $"GCHandle index: {Index}";
                     case SourceId.MemoryLabel:
                         return Index >= NativeMemoryLabelEntriesCache.InvalidMemLabelIndex ? snapshot.NativeMemoryLabels.MemoryLabelName[Index] : UnknownMemlabelName;
+                    case SourceId.Scene:
+                        return $"{snapshot.SceneRoots.Name[Index]}.scene";
+                    case SourceId.Prefab:
+                        return snapshot.SceneRoots.AllPrefabRootTransformSourceIndices[Index].GetName(snapshot);
                 }
 
                 Debug.Assert(false, $"Unknown source link type {Id}, please report a bug.");
                 return InvalidItemName;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool Equals(SourceIndex other) => m_Data == other.m_Data;
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public override bool Equals(object obj) => obj is SourceIndex other && Equals(other);
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public bool Equals(SourceIndex x, SourceIndex y) => x.Equals(y);
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public override int GetHashCode() => m_Data.GetHashCode();
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public int GetHashCode(SourceIndex index) => index.m_Data.GetHashCode();
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public static bool operator ==(SourceIndex x, SourceIndex y) => x.m_Data == y.m_Data;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public static bool operator !=(SourceIndex x, SourceIndex y) => x.m_Data != y.m_Data;
 
             public override string ToString()
@@ -3799,7 +4337,7 @@ namespace Unity.MemoryProfiler.Editor
         public class EntriesMemoryMapCache : IDisposable
         {
             // We assume this address space not to be used in the real life
-            const ulong kGraphicsResourcesStartFakeAddress = 0x8000_0000_0000_0000UL;
+            const ulong k_GraphicsResourcesStartFakeAddress = 0x8000_0000_0000_0000UL;
 
             public enum AddressPointType : byte
             {
@@ -4343,13 +4881,13 @@ namespace Unity.MemoryProfiler.Editor
                     });
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             bool IsEndPoint(AddressPoint p) => p.PointType == AddressPointType.EndPoint;
 
             // We use ChildCount to store begin/end pair IDs, so that
             // we can check that they are from the same pair
             // ChildrenCount is updated to be the actual ChildrenCount in PostProcess once a point is ended and removed from the processing stack.
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             static long GetPointId(AddressPoint p) => p.ChildrenCount;
 
             void SortPoints()
@@ -4464,11 +5002,11 @@ namespace Unity.MemoryProfiler.Editor
                                     ref var enclosingManagedObject = ref m_Snapshot.CrawledData.ManagedObjects[parentPoint.Source.Index];
                                     ref var containedManagedObject = ref m_Snapshot.CrawledData.ManagedObjects[point.Source.Index];
 #if DEBUG_VALIDATION
-                                    ObjectConnection.GetAllReferencingObjects(m_Snapshot, point.Source, ref connectionsToContainedObject);
+                                    ObjectConnection.GetAllReferencingObjects(m_Snapshot, point.Source, connectionsToContainedObject);
                                     connectionsToEnclosedObject.Clear();
                                     try
                                     {
-                                        ObjectConnection.GetAllReferencingObjects(m_Snapshot, parentPoint.Source, ref connectionsToEnclosedObject);
+                                        ObjectConnection.GetAllReferencingObjects(m_Snapshot, parentPoint.Source, connectionsToEnclosedObject);
                                     }
                                     catch
                                     {
@@ -4476,7 +5014,7 @@ namespace Unity.MemoryProfiler.Editor
                                     }
                                     string GetFieldInfo(List<ObjectData> connections)
                                     {
-                                        if(connections == null || connections.Count == 0)
+                                        if (connections == null || connections.Count == 0)
                                         {
                                             return "(No connections) ";
                                         }
@@ -4484,7 +5022,7 @@ namespace Unity.MemoryProfiler.Editor
                                             return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)} via {connections[0].GetFieldDescription(m_Snapshot)}) ";
                                         if (connections[0].IsArrayItem())
                                             return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)} via {connections[0].GenerateArrayDescription(m_Snapshot, true, true)}) ";
-                                        if(connections[0].isNativeObject)
+                                        if (connections[0].isNativeObject)
                                             return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)} named \"{m_Snapshot.NativeObjects.ObjectName[connections[0].nativeObjectIndex]}\") ";
                                         return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)}) ";
                                     }

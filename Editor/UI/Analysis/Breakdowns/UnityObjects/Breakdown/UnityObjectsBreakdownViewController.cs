@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 namespace Unity.MemoryProfiler.Editor.UI
 {
     class UnityObjectsBreakdownViewController : BreakdownViewController, UnityObjectsTableViewController.IResponder, IViewControllerWithVisibilityEvents
@@ -16,17 +18,23 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Initialize All Tracked Memory table as a child view controller.
             m_TableViewController = new UnityObjectsTableViewController(Snapshot, searchField: SearchField, responder: this);
             AddChild(m_TableViewController);
+
+            // Set table mode before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
+            var columnVisibilityTask = m_TableViewController.SetColumnsVisibilityAsync(TableColumnsMode);
+            // Should not trigger a build and effectively terminate immediately
+            Task.WaitAll(columnVisibilityTask);
+
             TableContainer.Add(m_TableViewController.View);
             // Setup table mode context menu and dropdown
             m_TableViewController.HeaderContextMenuPopulateEvent += GenerateTreeViewContextMenu;
-            m_TableViewController.SetColumnsVisibility(TableColumnsMode);
             TableColumnsModeChanged += UpdateTableColumnsMode;
         }
 
         void UpdateTableColumnsMode(AllTrackedMemoryTableMode mode)
         {
             // Update table mode view
-            m_TableViewController.SetColumnsVisibility(mode);
+            var columnVisibilityTask = m_TableViewController.SetColumnsVisibilityAsync(mode);
+            Task.WaitAll(columnVisibilityTask);
 
             // Refresh table common header
             var model = m_TableViewController.Model;

@@ -1,15 +1,21 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.UIElements;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
-    class UnityObjectsTableViewController : TreeViewController<UnityObjectsModel, UnityObjectsModel.ItemData>
+    class UnityObjectsTableViewController : SingleSnapshotTreeViewController<UnityObjectsModel, UnityObjectsModel.ItemData>
     {
+        // In contrast to AllTrackedMemory, setting the mode and column visibility for Unity Objects tables does not require a table rebuild
+        // The TreeView needs to be refreshed though as the cells changed and need to be rebuild
+        protected override bool SwitchingTableModeRequiresRebuild { get; } = false;
+
+        protected override string UxmlIdentifier_TreeViewColumn__Size => k_UxmlIdentifier_TreeViewColumn__Size;
+        protected override string UxmlIdentifier_TreeViewColumn__ResidentSize => k_UxmlIdentifier_TreeViewColumn__ResidentSize;
         const string k_UxmlAssetGuid = "e43db30ef43ddfd44bea11154f274126";
         const string k_UssClass_Dark = "unity-objects-table-view__dark";
         const string k_UssClass_Light = "unity-objects-table-view__light";
@@ -27,7 +33,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_DuplicatesToggle = "unity-objects-table-view__toolbar__duplicates-toggle";
         const string k_UxmlIdentifier_LoadingOverlay = "unity-objects-table-view__loading-overlay";
         const string k_UxmlIdentifier_ErrorLabel = "unity-objects-table-view__error-label";
-        const string k_ErrorMessage = "Snapshot is from an outdated Unity version that is not fully supported.";
         const string k_Graphics_NotAvailable = "N/A";
         const string k_Graphics_NotAvailable_ToolTip = "The memory profiler cannot certainly attribute which part of the resident memory belongs to graphics." +
             "\n\nChange focus to 'Allocated Memory' to inspect graphics memory." +
@@ -35,21 +40,17 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // Model.
         readonly CachedSnapshot m_Snapshot;
-        readonly bool m_BuildOnLoad;
         readonly bool m_ShowAdditionalOptions;
         readonly IResponder m_Responder;
-        readonly Dictionary<string, Comparison<TreeViewItemData<UnityObjectsModel.ItemData>>> m_SortComparisons;
+        protected override Dictionary<string, Comparison<TreeViewItemData<UnityObjectsModel.ItemData>>> SortComparisons { get; }
         bool m_ShowDuplicatesOnly;
         bool m_FlattenHierarchy;
 
         // View.
-        AllTrackedMemoryTableMode m_TableMode;
         Toolbar m_Toolbar;
         // Search not yet implemented
         Toggle m_FlattenToggle;
         Toggle m_DuplicatesToggle;
-        ActivityIndicatorOverlay m_LoadingOverlay;
-        Label m_ErrorLabel;
 
         public UnityObjectsTableViewController(
             CachedSnapshot snapshot,
@@ -58,11 +59,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             bool showAdditionalOptions = true,
             IResponder responder = null,
             bool disambiguateByInstanceID = false)
-            : base(idOfDefaultColumnWithPercentageBasedWidth: k_UxmlIdentifier_TreeViewColumn__Description)
+            : base(idOfDefaultColumnWithPercentageBasedWidth: k_UxmlIdentifier_TreeViewColumn__Description, buildOnLoad)
         {
             m_Snapshot = snapshot;
             m_SearchField = searchField;
-            m_BuildOnLoad = buildOnLoad;
             m_ShowAdditionalOptions = showAdditionalOptions;
             m_Responder = responder;
             DisambiguateByInstanceID = disambiguateByInstanceID;
@@ -70,7 +70,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             SearchFilterChanged += OnSearchFilterChanged;
 
             // Sort comparisons for each column.
-            m_SortComparisons = new()
+            SortComparisons = new()
             {
                 { k_UxmlIdentifier_TreeViewColumn__Description, (x, y) => string.Compare(x.data.Name, y.data.Name, StringComparison.OrdinalIgnoreCase) },
                 { k_UxmlIdentifier_TreeViewColumn__Size, (x, y) => x.data.TotalSize.Committed.CompareTo(y.data.TotalSize.Committed) },
@@ -78,7 +78,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 { k_UxmlIdentifier_TreeViewColumn__NativeSize, (x, y) => x.data.NativeSize.Committed.CompareTo(y.data.NativeSize.Committed) },
                 { k_UxmlIdentifier_TreeViewColumn__ManagedSize, (x, y) => x.data.ManagedSize.Committed.CompareTo(y.data.ManagedSize.Committed) },
                 { k_UxmlIdentifier_TreeViewColumn__GpuSize, (x, y) => x.data.GpuSize.Committed.CompareTo(y.data.GpuSize.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__SizeBar, (x, y) => m_TableMode != AllTrackedMemoryTableMode.OnlyResident ? x.data.TotalSize.Committed.CompareTo(y.data.TotalSize.Committed) : x.data.TotalSize.Resident.CompareTo(y.data.TotalSize.Resident) },
+                { k_UxmlIdentifier_TreeViewColumn__SizeBar, (x, y) => TableMode != AllTrackedMemoryTableMode.OnlyResident ? x.data.TotalSize.Committed.CompareTo(y.data.TotalSize.Committed) : x.data.TotalSize.Resident.CompareTo(y.data.TotalSize.Resident) },
             };
         }
 
@@ -94,7 +94,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_ShowDuplicatesOnly = value;
                 if (IsViewLoaded)
-                    BuildModelAsync();
+                    // ShowDuplicatesOnly is a listener to UI input and therefore doesn't expect an awaitable task.
+                    // No caller or following code expects any part of the asnyc build to be done.
+                    // Therefore: Discard the returned task.
+                    _ = BuildModelAsync(false);
             }
         }
 
@@ -105,7 +108,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_FlattenHierarchy = value;
                 if (IsViewLoaded)
-                    BuildModelAsync();
+                    // FlattenHierarchy is a listener to UI input or startup config (before IsViewLoaded is true) and therefore doesn't expect an awaitable task.
+                    // No caller or following code expects any part of the asnyc build to be done.
+                    // Therefore: Discard the returned task.
+                    _ = BuildModelAsync(false);
             }
         }
 
@@ -120,46 +126,52 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OnSearchFilterChanged(IScopedFilter<string> searchFilter)
         {
-            SetFilters(searchFilter);
+            SetFilters(searchStringFilter: searchFilter);
         }
 
         public void SetFilters(
+            UnityObjectsModel model = null,
             IScopedFilter<string> searchStringFilter = null,
             ITextFilter unityObjectNameFilter = null,
             ITextFilter unityObjectTypeNameFilter = null,
             IEntityIdFilter unityObjectInstanceIdFilter = null)
         {
+            // SetFilters is a listener to UI input (search filter changes) and therefore doesn't expect an awaitable task.
+            // No caller or following code expects any part of the asnyc build to be done.
+            // Therefore: Discard the returned task.
+            _ = SetFiltersAsync(model, searchStringFilter, unityObjectNameFilter, unityObjectTypeNameFilter, unityObjectInstanceIdFilter);
+        }
+
+        public async Task SetFiltersAsync(
+            UnityObjectsModel model = null,
+            IScopedFilter<string> searchStringFilter = null,
+            ITextFilter unityObjectNameFilter = null,
+            ITextFilter unityObjectTypeNameFilter = null,
+            IEntityIdFilter unityObjectInstanceIdFilter = null)
+        {
+            ClearFilters();
+
             SearchStringFilter = searchStringFilter;
             UnityObjectNameFilter = unityObjectNameFilter;
             UnityObjectTypeNameFilter = unityObjectTypeNameFilter;
             SourceIndexFilter = unityObjectInstanceIdFilter;
+
+            // to align this logic with the All Of Memory table, set an empty tree node id filter if the goal is to exclude everything
+            // TODO: filtering out to show no objects is still handles via the SourceIndexFilter instead of the ExcludeAllFilterApplied that checks m_TreeNodeIdFilter
+            m_TreeNodeIdFilter =
+                // This kind of filtering is essentially a hack to keep the Base & Compare tables empty.
+                (unityObjectInstanceIdFilter?.Passes(CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone) ?? false)
+                ? new List<int>() : null;
+
+            // TODO: do not fully rebuild if a model was supplied
             if (IsViewLoaded)
-                BuildModelAsync();
+                await BuildModelAsync(false);
         }
 
-        public void SetColumnsVisibility(AllTrackedMemoryTableMode mode)
+        protected virtual void ClearFilters()
         {
-            m_TableMode = mode;
-
-            var columns = m_TreeView.columns;
-            switch (mode)
-            {
-                case AllTrackedMemoryTableMode.OnlyResident:
-                    columns[k_UxmlIdentifier_TreeViewColumn__Size].visible = false;
-                    columns[k_UxmlIdentifier_TreeViewColumn__ResidentSize].visible = true;
-                    break;
-                case AllTrackedMemoryTableMode.OnlyCommitted:
-                    columns[k_UxmlIdentifier_TreeViewColumn__Size].visible = true;
-                    columns[k_UxmlIdentifier_TreeViewColumn__ResidentSize].visible = false;
-                    break;
-                case AllTrackedMemoryTableMode.CommittedAndResident:
-                    columns[k_UxmlIdentifier_TreeViewColumn__Size].visible = true;
-                    columns[k_UxmlIdentifier_TreeViewColumn__ResidentSize].visible = true;
-                    break;
-            }
-
-            if (IsViewLoaded && (m_Model != null))
-                RefreshView();
+            m_BaseModelForTreeNodeIdFiltering = default;
+            m_TreeNodeIdFilter = null;
         }
 
         protected override VisualElement LoadView()
@@ -179,7 +191,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void ViewLoaded()
         {
-            ConfigureTreeView();
+            base.ViewLoaded();
 
             m_FlattenToggle.text = "Flatten Hierarchy";
             m_FlattenToggle.RegisterValueChangedCallback(OnFlattenHierarchyToggleValueChanged);
@@ -189,13 +201,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (!m_ShowAdditionalOptions)
                 UIElementsHelper.SetElementDisplay(m_Toolbar, false);
-
-            if (m_BuildOnLoad)
-                BuildModelAsync();
-            else
-                m_LoadingOverlay.Hide();
         }
-
 
         void GatherReferencesInView(VisualElement view)
         {
@@ -212,25 +218,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ConfigureTreeView();
 
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Description, "Description", BindCellForDescriptionColumn(), makeCell: UnityObjectsDescriptionCell.Instantiate);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Size, "Allocated Size", BindCellForSizeColumn(SizeType.Total));
+            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Size, "Allocated Size", BindCellForSizeColumn(SizeType.Total), visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__SizeBar, "% Impact", BindCellForSizeBarColumn(), makeCell: MakeSizeBarCell);
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__NativeSize, "Native Size", BindCellForSizeColumn(SizeType.Native));
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__ManagedSize, "Managed Size", BindCellForSizeColumn(SizeType.Managed));
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__ResidentSize, "Resident Size", BindCellForSizeColumn(SizeType.Resident));
+            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__ResidentSize, "Resident Size", BindCellForSizeColumn(SizeType.Resident), visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
             ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__GpuSize, "Graphics Size", BindCellForGpuSizeColumn());
         }
 
-        protected override void BuildModelAsync()
+        protected UnityObjectsModelBuilder.BuildArgs GetModelBuilderArgs()
         {
-            // Cancel existing build if necessary.
-            m_BuildModelWorker?.Dispose();
-
-            // Show loading UI.
-            m_LoadingOverlay.Show();
-
-            // Dispatch asynchronous build.
-            var snapshot = m_Snapshot;
-            var args = new UnityObjectsModelBuilder.BuildArgs(
+            return new UnityObjectsModelBuilder.BuildArgs(
                 SearchStringFilter,
                 UnityObjectNameFilter,
                 UnityObjectTypeNameFilter,
@@ -239,67 +237,58 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ShowDuplicatesOnly,
                 DisambiguateByInstanceID,
                 ProcessUnityObjectItemSelected);
-            var sortComparison = BuildSortComparisonFromTreeView();
-            m_BuildModelWorker = new AsyncWorker<UnityObjectsModel>();
-            m_BuildModelWorker.Execute((token) =>
+        }
+
+        protected override Func<UnityObjectsModel> GetModelBuilderTask(CancellationToken cancellationToken)
+        {
+            // Capture all variables locally in case they are changed before the task is started
+            var modelTypeName = typeof(UnityObjectsModel).ToString();
+            var treeNodeIdFilter = m_TreeNodeIdFilter;
+            var baseModel = m_BaseModelForTreeNodeIdFiltering;
+            if (treeNodeIdFilter != null)
             {
-                try
+                return () =>
                 {
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived)                 " + modelTypeName);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived) (not canceled)                 " + modelTypeName);
+
+                    // Build the data model as a derivative of an existing model with only certain tree node ids present
+                    var modelBuilder = new UnityObjectsModelBuilder();
+                    var model = modelBuilder.Build(baseModel, treeNodeIdFilter);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
+                    return model;
+                };
+            }
+
+            var snapshot = m_Snapshot;
+            var args = GetModelBuilderArgs();
+
+            return () =>
+                {
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building                 " + modelTypeName);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (not canceled)                 " + modelTypeName);
                     // Build the data model.
                     var modelBuilder = new UnityObjectsModelBuilder();
                     var model = modelBuilder.Build(snapshot, args);
 
-                    token.ThrowIfCancellationRequested();
-                    // Sort it according to the current sort descriptors.
-                    model.Sort(sortComparison);
+                    cancellationToken.ThrowIfCancellationRequested();
 
-
+                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
                     return model;
-                }
-                catch (UnsupportedSnapshotVersionException)
-                {
-                    return null;
-                }
-                catch (OperationCanceledException)
-                {
-                    // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
-                    return null;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogException(e);
-                    return null;
-                }
-            }, (model) =>
-                {
-                    // Update model.
-                    m_Model = model;
+                };
+        }
 
-                    var success = model != null;
-                    if (success)
-                    {
-                        // Refresh UI with new data model.
-                        RefreshView();
-                    }
-                    else
-                    {
-                        // Display error message.
-                        m_ErrorLabel.text = k_ErrorMessage;
-                        UIElementsHelper.SetElementDisplay(m_ErrorLabel, true);
-                    }
-
-                    // Hide loading UI.
-                    m_LoadingOverlay.Hide();
-
-                    // Notify responder.
-                    m_Responder?.UnityObjectsTableViewControllerReloaded(this, success);
-
-                    // Dispose asynchronous worker.
-                    m_BuildModelWorker.Dispose();
-
-                    // Update usage counters
-                    MemoryProfilerAnalytics.AddUnityObjectsUsage(SearchStringFilter != null, FlattenHierarchy, ShowDuplicatesOnly, m_TableMode);
-                });
+        protected override void OnViewReloaded(bool success)
+        {
+            base.OnViewReloaded(success);
+            // Notify responder.
+            m_Responder?.UnityObjectsTableViewControllerReloaded(this, success);
+            // Update usage counters
+            MemoryProfilerAnalytics.AddUnityObjectsUsage(SearchStringFilter != null, FlattenHierarchy, ShowDuplicatesOnly, TableMode);
         }
 
         Action<VisualElement, int> BindCellForDescriptionColumn()
@@ -332,7 +321,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 CachedSnapshot.SourceIndex.SourceId.NativeObject => m_Snapshot.NativeObjects.NativeTypeArrayIndex[source.Index],
                 CachedSnapshot.SourceIndex.SourceId.NativeType => source.Index,
-                CachedSnapshot.SourceIndex.SourceId.ManagedType => m_Snapshot.TypeDescriptions.UnityObjectTypeIndexToNativeTypeIndex[(int)source.Index],
+                CachedSnapshot.SourceIndex.SourceId.ManagedType => m_Snapshot.TypeDescriptions.UnifiedTypeInfoManaged[source.Index].NativeTypeIndex,
                 _ => throw new ArgumentOutOfRangeException(),
             };
             return m_Snapshot.NativeTypes.TypeName[typeIndex];
@@ -342,7 +331,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             return (element, rowIndex) =>
             {
-                var maxValue = m_TableMode != AllTrackedMemoryTableMode.OnlyResident ?
+                var maxValue = TableMode != AllTrackedMemoryTableMode.OnlyResident ?
                     m_Model.TotalMemorySize.Committed : m_Model.TotalMemorySize.Resident;
 
                 var cell = element as MemoryBar;
@@ -379,7 +368,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var itemData = m_TreeView.GetItemDataForIndex<UnityObjectsModel.ItemData>(rowIndex);
                 var label = element as Label;
 
-                if (m_TableMode == AllTrackedMemoryTableMode.OnlyResident)
+                if (TableMode == AllTrackedMemoryTableMode.OnlyResident)
                 {
                     label.text = k_Graphics_NotAvailable;
                     label.tooltip = k_Graphics_NotAvailable_ToolTip;
@@ -400,7 +389,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement MakeSizeBarCell()
         {
             var bar = new MemoryBar();
-            bar.Mode = m_TableMode switch
+            bar.Mode = TableMode switch
             {
                 AllTrackedMemoryTableMode.OnlyCommitted => MemoryBarElement.VisibilityMode.CommittedOnly,
                 AllTrackedMemoryTableMode.OnlyResident => MemoryBarElement.VisibilityMode.ResidentOnly,
@@ -431,39 +420,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Responder?.UnityObjectsTableViewControllerSelectedItem(itemId, this, itemData);
         }
 
-        Comparison<TreeViewItemData<UnityObjectsModel.ItemData>> BuildSortComparisonFromTreeView()
-        {
-            var sortedColumns = m_TreeView.sortedColumns;
-            if (sortedColumns == null)
-                return null;
-
-            var sortComparisons = new List<Comparison<TreeViewItemData<UnityObjectsModel.ItemData>>>();
-            foreach (var sortedColumnDescription in sortedColumns)
-            {
-                if (sortedColumnDescription == null)
-                    continue;
-
-                var sortComparison = m_SortComparisons[sortedColumnDescription.columnName];
-
-                // Invert the comparison's input arguments depending on the sort direction.
-                var sortComparisonWithDirection = (sortedColumnDescription.direction == SortDirection.Ascending) ? sortComparison : (x, y) => sortComparison(y, x);
-                sortComparisons.Add(sortComparisonWithDirection);
-            }
-
-            return (x, y) =>
-            {
-                var result = 0;
-                foreach (var sortComparison in sortComparisons)
-                {
-                    result = sortComparison.Invoke(x, y);
-                    if (result != 0)
-                        break;
-                }
-
-                return result;
-            };
-        }
-
         public interface IResponder
         {
             // Invoked when a Unity Object item is selected in the table. Arguments are the view controller, the native object's instance id, and the item's data.
@@ -488,4 +444,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

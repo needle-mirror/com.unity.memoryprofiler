@@ -14,6 +14,7 @@
             <engine:VisualElement name="reference-trees" class="details-panel__section">
                 <engine:Foldout text="References" name="details-panel__section-header__references" display-tooltip-when-elided="true" class="details-panel__section-header">
                     <Unity.MemoryProfiler.Editor.UI.Ribbon name="references__ribbon__container" show-help-button="false" alignment="FlexStart" style="align-items: stretch;">
+                        <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Shortest Path To Root"  toggled="true" name="shortest-path" style="flex-grow: 1;max-width: 200px; " tooltip="Displays the shortest list of other entities that, by referencing the selected object, root it to memory."/>
                         <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="Referenced By (Raw)"  toggled="true" name="raw-connections" style="flex-grow: 1;max-width: 200px; " tooltip="Displays a list of other entities that reference the selected object."/>
                         <Unity.MemoryProfiler.Editor.UI.RibbonButton focusable="true" text="References To" toggled="false" name="referencing-to" style="flex-grow: 1; display: flex;" tooltip="Displays a list of the objects that the selection has references to." />
                     </Unity.MemoryProfiler.Editor.UI.Ribbon>

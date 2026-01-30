@@ -49,8 +49,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Merge two platform specific containers into table rows
             if ((a.PlatformSpecific != null) || (b.PlatformSpecific != null))
             {
-                var keysA = a.PlatformSpecific?.Keys.ToArray() ?? new string[0];
-                var keysB = b.PlatformSpecific?.Keys.ToArray() ?? new string[0];
+                var keysA = a.PlatformSpecific?.Keys.ToArray() ?? Array.Empty<string>();
+                var keysB = b.PlatformSpecific?.Keys.ToArray() ?? Array.Empty<string>();
                 var keys = keysA.Union(keysB);
                 foreach (var key in keys)
                 {

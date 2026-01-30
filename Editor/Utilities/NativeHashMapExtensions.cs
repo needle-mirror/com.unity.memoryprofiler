@@ -6,6 +6,17 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Unity.MemoryProfiler.Editor.Extensions
 {
+    static class NativeHashSetExtensions
+    {
+#if UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static int Count<TKey>(this NativeHashSet<TKey> values)
+            where TKey : unmanaged, IEquatable<TKey>
+        {
+            return values.Count;
+        }
+#endif
+    }
     static class NativeHashMapExtensions
     {
         /// <summary>
@@ -21,7 +32,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
         /// <param name="initializeAs">What to initialize the <paramref name="value"/> with if it is missing.</param>
         /// <param name="addToDictionaryIfMissing">(Optional, defaulting to false) if or if not the key should be added to the dictionary with the initialized value if it was missing.</param>
         /// <returns>If the key existed in the dictionary beforehand or not</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static bool GetOrInitializeValue<TKey, TValue>(
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
             this Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<TKey, TValue> dictionary,
@@ -42,7 +53,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
             return true;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static TValue GetOrAdd<TKey, TValue>(
 
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
@@ -62,7 +73,7 @@ namespace Unity.MemoryProfiler.Editor.Extensions
             return value;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static void GetAndAddToListOrCreateList<TKey, TValue>(
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
             this Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<TKey, UnsafeList<TValue>> dictionary,
@@ -86,6 +97,26 @@ namespace Unity.MemoryProfiler.Editor.Extensions
                 };
                 dictionary.Add(key, list);
             }
+        }
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static void DisposeListsAndHashmap<TKey, TValue>(
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+            ref this Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<TKey, UnsafeList<TValue>> dictionary
+#else
+            ref this Unity.Collections.NativeHashMap<TKey, UnsafeList<TValue>> dictionary
+#endif
+            )
+            where TKey : unmanaged, IEquatable<TKey>
+            where TValue : unmanaged
+        {
+            if (!dictionary.IsCreated)
+                return;
+            foreach (var item in dictionary)
+            {
+                item.Value.Dispose();
+            }
+            dictionary.Dispose();
         }
     }
 }

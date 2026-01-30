@@ -1,11 +1,11 @@
 using System;
-using UnityEngine;
-using UnityEditor;
 using Unity.MemoryProfiler.Editor.UI;
-using UnityEngine.UIElements;
-using UnityEditor.UIElements;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling.Memory;
+using UnityEditor;
+using UnityEditor.UIElements;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -22,6 +22,33 @@ namespace Unity.MemoryProfiler.Editor
         const string k_UxmlIdentifierSettingsButton = "memory-profiler-view__toolbar__settings-button";
         const string k_UxmlIdentifierHelpButton = "memory-profiler-view__toolbar__help-button";
         const string k_UxmlIdentifierTargetSelection = "memory-profiler-view__toolbar__snaphsot-window-toggle__target-selection";
+
+        const string k_DetailsPaneSplitViewToggleIsVisibleStatePreferenceKey = "MemoryProfilerWindow.DetailsPaneSplitView.ToggleState";
+        const string k_SnapshotListSplitViewToggleIsVisibleStatePreferenceKey = "MemoryProfilerWindow.SnapshotListSplitView.ToggleState";
+
+        public static bool SavedSnapshotListSplitViewToggleIsVisibleState
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_SnapshotListSplitViewToggleIsVisibleStatePreferenceKey, true);
+            }
+            private set
+            {
+                EditorPrefs.SetBool(k_SnapshotListSplitViewToggleIsVisibleStatePreferenceKey, value);
+            }
+        }
+
+        public static bool SavedDetailsPaneSplitViewToggleIsVisibleState
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_DetailsPaneSplitViewToggleIsVisibleStatePreferenceKey, true);
+            }
+            private set
+            {
+                EditorPrefs.SetBool(k_DetailsPaneSplitViewToggleIsVisibleStatePreferenceKey, value);
+            }
+        }
 
         // State
         PlayerConnectionService m_PlayerConnectionService;
@@ -88,8 +115,11 @@ namespace Unity.MemoryProfiler.Editor
             // We have to do this to get the image to ToolbarToggle
             m_SnapshotsToggle.Q(null, ToolbarToggle.inputUssClassName).Add(UIElementsHelper.GetImageWithClasses(new[] { "icon_button", "square-button-icon", "icon-button__snapshot-icon" }));
             m_DetailsToggle.Q(null, ToolbarToggle.inputUssClassName).Add(UIElementsHelper.GetImageWithClasses(new[] { "icon_button", "square-button-icon", "icon-button__details-icon" }));
-            m_SnapshotsToggle.RegisterValueChangedCallback((x) => SnapshotsPanelToggle?.Invoke(x));
-            m_DetailsToggle.RegisterValueChangedCallback((x) => DetailsPanelToggle?.Invoke(x));
+            m_SnapshotsToggle.RegisterValueChangedCallback(SnapshotsPanelToggled);
+            m_DetailsToggle.RegisterValueChangedCallback(DetailsPanelToggled);
+
+            m_SnapshotsToggle.SetValueWithoutNotify(SavedSnapshotListSplitViewToggleIsVisibleState);
+            m_DetailsToggle.SetValueWithoutNotify(SavedDetailsPaneSplitViewToggleIsVisibleState);
 
             // Targe selection
             m_TargetSelectionDropdown.clicked += ShowTargetSelectionMenu;
@@ -106,6 +136,18 @@ namespace Unity.MemoryProfiler.Editor
             // Right side help & settings
             m_SettingsButton.clickable.clicked += () => OpenFurtherOptions(m_SettingsButton.GetRect());
             m_HelpButton.clickable.clicked += () => Application.OpenURL(DocumentationUrls.LatestPackageVersionUrl);
+        }
+
+        void SnapshotsPanelToggled(ChangeEvent<bool> e)
+        {
+            SnapshotsPanelToggle?.Invoke(e);
+            SavedSnapshotListSplitViewToggleIsVisibleState = e.newValue;
+        }
+
+        void DetailsPanelToggled(ChangeEvent<bool> e)
+        {
+            DetailsPanelToggle?.Invoke(e);
+            SavedDetailsPaneSplitViewToggleIsVisibleState = e.newValue;
         }
 
         void ImportCapture()

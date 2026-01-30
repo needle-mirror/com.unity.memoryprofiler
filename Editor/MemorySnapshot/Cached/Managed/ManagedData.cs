@@ -7,12 +7,10 @@ using System.Collections.Generic;
 
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
 using AddressToManagedIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
-using TypeIndexMappingHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<int, int>;
 using ConnectionsHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.Collections.LowLevel.Unsafe.UnsafeList<int>>;
 using InvalidObjectsHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, Unity.MemoryProfiler.Editor.ManagedObjectInfo>;
 #else
 using AddressToManagedIndexHashMap = Unity.Collections.NativeHashMap<ulong, long>;
-using TypeIndexMappingHashMap  = Unity.Collections.NativeHashMap<int, int>;
 using ConnectionsHashMap  = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.Collections.LowLevel.Unsafe.UnsafeList<int>>;
 using InvalidObjectsHashMap  = Unity.Collections.NativeHashMap<long, Unity.MemoryProfiler.Editor.ManagedObjectInfo>;
 #endif
@@ -31,8 +29,6 @@ namespace Unity.MemoryProfiler.Editor
         AddressToManagedIndexHashMap m_MangedObjectIndexByAddress;
         public ref AddressToManagedIndexHashMap MangedObjectIndexByAddress => ref m_MangedObjectIndexByAddress;
         public BlockList<ManagedConnection> Connections { private set; get; }
-        TypeIndexMappingHashMap m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new TypeIndexMappingHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
-        public ref TypeIndexMappingHashMap NativeUnityObjectTypeIndexToManagedBaseTypeIndex => ref m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex;
         public ulong ManagedObjectMemoryUsage { private set; get; }
         public ulong ActiveHeapMemoryUsage { private set; get; }
         public ulong ActiveHeapMemoryEmptySpace { private set; get; }
@@ -57,7 +53,6 @@ namespace Unity.MemoryProfiler.Editor
             //compute initial block counts for larger snapshots
             m_ManagedObjects = new DynamicArray<ManagedObjectInfo>(0, rawGcHandleCount, Allocator.Persistent, true);
             m_MangedObjectIndexByAddress = new AddressToManagedIndexHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
-            m_NativeUnityObjectTypeIndexToManagedBaseTypeIndex = new TypeIndexMappingHashMap((int)nativeTypeCount, Allocator.Persistent);
             m_ConnectionsToMappedToSourceIndex = new ConnectionsHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
             m_ConnectionsFromMappedToSourceIndex = new ConnectionsHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
 #if DEBUG_VALIDATION
@@ -135,13 +130,8 @@ namespace Unity.MemoryProfiler.Editor
         {
             ManagedObjects.Dispose();
             MangedObjectIndexByAddress.Dispose();
-            NativeUnityObjectTypeIndexToManagedBaseTypeIndex.Dispose();
-            foreach (var to in ConnectionsToMappedToSourceIndex)
-                to.Value.Dispose();
-            ConnectionsToMappedToSourceIndex.Dispose();
-            foreach (var from in ConnectionsFromMappedToSourceIndex)
-                from.Value.Dispose();
-            ConnectionsFromMappedToSourceIndex.Dispose();
+            ConnectionsToMappedToSourceIndex.DisposeListsAndHashmap();
+            ConnectionsFromMappedToSourceIndex.DisposeListsAndHashmap();
 #if DEBUG_VALIDATION
             InvalidManagedObjectsReportedViaGCHandles.Dispose();
 #endif

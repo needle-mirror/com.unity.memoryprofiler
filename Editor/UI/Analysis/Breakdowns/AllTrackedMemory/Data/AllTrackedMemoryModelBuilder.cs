@@ -7,6 +7,7 @@ using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using static Unity.MemoryProfiler.Editor.UI.TreeModelHelpers;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -48,6 +49,58 @@ namespace Unity.MemoryProfiler.Editor.UI
         public AllTrackedMemoryModelBuilder()
         {
             m_ItemId = (int)IAnalysisViewSelectable.Category.FirstDynamicId;
+        }
+        Dictionary<int, IndexableTreeViewListAndIndex<AllTrackedMemoryModel.ItemData>> m_IdToIndex;
+
+        public AllTrackedMemoryModel Build(AllTrackedMemoryModel baseModel, IEnumerable<int> treeNodeIds = null)
+        {
+            var tree = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+
+            var totalMemory = new MemorySize();
+
+            if (treeNodeIds != null)
+            {
+                var stack = new Stack<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
+                foreach (var id in treeNodeIds)
+                {
+                    // the only place where the base model has to be assumed as non-null.
+                    var item = baseModel.RootNodes.GetItemById(ref m_IdToIndex, id);
+                    stack.Push(item);
+                }
+                while (stack.Count > 0)
+                {
+                    var treeNode = stack.Pop();
+                    // only add leaf nodes, add children to the stack to be processed
+                    if (treeNode.hasChildren)
+                    {
+                        foreach (var child in treeNode.children)
+                        {
+                            stack.Push(child);
+                        }
+                    }
+                    else
+                    {
+                        tree.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(treeNode.id, treeNode.data));
+                        totalMemory += treeNode.data.TotalSize;
+                    }
+                }
+            }
+            // the base model could be null, but in an empty model, there are no selections to be made anyways.
+            var model = CreateDerivedModel(tree, totalMemory, baseModel);
+            return model;
+        }
+
+        /// <summary>
+        /// Creates a derived model, based on a provided <paramref name="baseModel"/> and some <paramref name="rootNodes"/>.
+        /// The <paramref name="baseModel"/> may be null if <paramref name="rootNodes"/> is an empty list.
+        /// </summary>
+        /// <param name="rootNodes"></param>
+        /// <param name="totalMemory"></param>
+        /// <param name="baseModel"></param>
+        /// <returns></returns>
+        protected AllTrackedMemoryModel CreateDerivedModel(List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> rootNodes, MemorySize totalMemory, AllTrackedMemoryModel baseModel)
+        {
+            return new AllTrackedMemoryModel(rootNodes, totalMemory, baseModel?.SelectionProcessor);
         }
 
         public AllTrackedMemoryModel Build(CachedSnapshot snapshot, in BuildArgs args)
@@ -301,7 +354,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // the split allocation case for Unrooted allocations is handled in ProcessNativeAllocation
             }
 
-            // handle Unkown Graphics allocation root
+            // handle Unknown Graphics allocation root
             if (processedNativeRoots.UnrootedGraphicsResourceIndices.Count > 0)
             {
                 var indexOfFirstUnrootedGfxResource = processedNativeRoots.UnrootedGraphicsResourceIndices[0];
@@ -392,7 +445,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return context;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         void AddItemSizeToMap<TKey>(Dictionary<TKey, MemorySize> map, TKey key, MemorySize itemSize)
         {
             if (map.TryGetValue(key, out var itemTotals))
@@ -401,13 +454,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 map.Add(key, itemSize);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         bool NameFilter(in BuildArgs args, in string name)
         {
             return args.NameFilter?.Passes(name) ?? true;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         bool SearchFilter(in BuildArgs args, in string scope, in string name = null)
         {
             using var mainGroupFilter = args.SearchFilter?.OpenScope(scope);
@@ -599,7 +652,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             } // the split allocation case for Unrooted allocations is handled in ProcessNativeAllocation
 
             if (!k_SplitNonObjectRootedGfxResourcesByResource
-                && data.AssociatadGraphicsResourceIndex.Valid)
+                && data.AssociatedGraphicsResourceIndex.Valid)
             {
                 var gfxSizeToAdd = size.GfxSize;
                 if (args.BreakdownGfxResources)
@@ -860,7 +913,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             var total = new MemorySize();
             foreach (var item in tree)
-                total += item.data.Size;
+                total += item.data.TotalSize;
 
             return total;
         }

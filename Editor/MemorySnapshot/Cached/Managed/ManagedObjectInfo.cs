@@ -11,9 +11,13 @@ namespace Unity.MemoryProfiler.Editor
         public int RefCount;
         public BytesAndOffset data;
 
-        public bool IsKnownType => ITypeDescription >= 0;
+        public bool IsKnownType => ITypeDescription is not CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid;
 
-        public static ManagedObjectInfo Invalid => new ManagedObjectInfo() { NativeObjectIndex = -1, ManagedObjectIndex = -1 };
+        public static ManagedObjectInfo Invalid => new ManagedObjectInfo()
+        {
+            NativeObjectIndex = CachedSnapshot.NativeObjectEntriesCache.InvalidObjectIndex,
+            ManagedObjectIndex = ManagedData.InvalidObjectIndex
+        };
 
         public bool IsValid()
         {

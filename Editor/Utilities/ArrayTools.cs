@@ -160,12 +160,11 @@ namespace Unity.MemoryProfiler.Editor
                 return 0;
             }
 
-            var heap = data.ManagedHeapSections;
-            heap.Find(address, data.VirtualMachineInformation, out BytesAndOffset bo);
+            data.ManagedHeapSections.Find(address, data.VirtualMachineInformation, out BytesAndOffset bo);
             return ReadArrayLength(data, bo, iTypeDescriptionArrayType);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static long ReadArrayLength(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
             return ReadArrayLength(data, arrayData, iTypeDescriptionArrayType, out var _);
@@ -177,7 +176,6 @@ namespace Unity.MemoryProfiler.Editor
             if (iTypeDescriptionArrayType < 0) return 0;
 
             var virtualMachineInformation = data.VirtualMachineInformation;
-            var heap = data.ManagedHeapSections;
             var bo = arrayData;
 
             bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out var bounds);
@@ -185,7 +183,7 @@ namespace Unity.MemoryProfiler.Editor
             if (bounds == 0)
                 return bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
 
-            heap.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor);
+            data.ManagedHeapSections.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor);
             // Multidimensional arrays can have a total LongLength > int.MaxValue
             long length = 0;
 

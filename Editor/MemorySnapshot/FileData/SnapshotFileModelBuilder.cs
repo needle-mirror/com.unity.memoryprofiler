@@ -1,10 +1,10 @@
 using System;
 using System.IO;
-using UnityEngine;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
+using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {

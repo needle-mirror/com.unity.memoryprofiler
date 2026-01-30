@@ -15,5 +15,9 @@
       <Expression>2022.2.0a13</Expression>
       <Define>MEMORY_PROFILER_API_PUBLIC</Define>
     </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>7000.0.0a1</Expression>
+      <Define>LIVECYCLE_APIS_AVAILABLE</Define>
+    </UnityVersionDefine>
   </ItemGroup>
 </Project>

@@ -29,7 +29,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
 #if !UNITY_6000_0_OR_NEWER
-        public new class UxmlFactory : UxmlFactory<ActivityIndicatorOverlay> {}
+        public new class UxmlFactory : UxmlFactory<ActivityIndicatorOverlay> { }
 #endif
     }
 }

@@ -1,10 +1,11 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Extensions;
+using UnityEditor.MemoryProfiler;
 using UnityEngine;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using static Unity.MemoryProfiler.Editor.UI.TreeModelHelpers;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -21,6 +22,59 @@ namespace Unity.MemoryProfiler.Editor.UI
         public UnityObjectsModelBuilder()
         {
             m_ItemId = (int)IAnalysisViewSelectable.Category.FirstDynamicId;
+        }
+
+        Dictionary<int, IndexableTreeViewListAndIndex<UnityObjectsModel.ItemData>> m_IdToIndex;
+
+        public UnityObjectsModel Build(UnityObjectsModel baseModel, IEnumerable<int> treeNodeIds = null)
+        {
+            var tree = new List<TreeViewItemData<UnityObjectsModel.ItemData>>();
+
+            var totalMemory = new MemorySize();
+
+            if (treeNodeIds != null)
+            {
+                var stack = new Stack<TreeViewItemData<UnityObjectsModel.ItemData>>();
+                foreach (var id in treeNodeIds)
+                {
+                    // the only place where the base model has to be assumed as non-null.
+                    var item = baseModel.RootNodes.GetItemById(ref m_IdToIndex, id);
+                    stack.Push(item);
+                }
+                while (stack.Count > 0)
+                {
+                    var treeNode = stack.Pop();
+                    // only add leaf nodes, add children to the stack to be processed
+                    if (treeNode.hasChildren)
+                    {
+                        foreach (var child in treeNode.children)
+                        {
+                            stack.Push(child);
+                        }
+                    }
+                    else
+                    {
+                        tree.Add(new TreeViewItemData<UnityObjectsModel.ItemData>(treeNode.id, treeNode.data));
+                        totalMemory += treeNode.data.TotalSize;
+                    }
+                }
+            }
+            // the base model could be null, but in an empty model, there are no selections to be made anyways.
+            var model = CreateDerivedModel(tree, totalMemory, baseModel);
+            return model;
+        }
+
+        /// <summary>
+        /// Creates a derived model, based on a provided <paramref name="baseModel"/> and some <paramref name="rootNodes"/>.
+        /// The <paramref name="baseModel"/> may be null if <paramref name="rootNodes"/> is an empty list.
+        /// </summary>
+        /// <param name="rootNodes"></param>
+        /// <param name="totalMemory"></param>
+        /// <param name="baseModel"></param>
+        /// <returns></returns>
+        protected UnityObjectsModel CreateDerivedModel(List<TreeViewItemData<UnityObjectsModel.ItemData>> rootNodes, MemorySize totalMemory, UnityObjectsModel baseModel)
+        {
+            return new UnityObjectsModel(rootNodes, totalMemory, baseModel?.SelectionProcessor);
         }
 
         public UnityObjectsModel Build(CachedSnapshot snapshot, in BuildArgs args)
@@ -141,7 +195,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var dictionaryOrList = kvp.Value;
 
             // Calculate the total size of the Unity Object Type by summing all of its Unity Objects.
-            if(dictionaryOrList.ListOfObjects != null)
+            if (dictionaryOrList.ListOfObjects != null)
             {
                 var typeObjects = dictionaryOrList.ListOfObjects;
                 return CreateGroupNode(typeSource.GetName(snapshot), typeSource, dictionaryOrList.ListOfObjects);
@@ -287,7 +341,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // The mitigation should probably stay in place even after that bug is fixed,
                     // as old snapshot data with that fault can't be fixed retroactively.
                     // (At max, the Managed Base Type can be used in some, but not all instances.)
-                    if(managedTypeIndex >= 0)
+                    if (managedTypeIndex >= 0)
                         managedTypeName = snapshot.TypeDescriptions.TypeDescriptionName[managedTypeIndex];
                 }
 
@@ -315,12 +369,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (args.SearchStringFilter != null)
                 {
                     // Check if Native Type Name still needs initializing
-                    if(args.UnityObjectTypeNameFilter == null)
+                    if (args.UnityObjectTypeNameFilter == null)
                         nativeTypeName = nativeTypes.TypeName[typeIndex];
 
                     string managedBaseTypeName = null;
-                    if (snapshot.CrawledData.NativeUnityObjectTypeIndexToManagedBaseTypeIndex.TryGetValue(typeIndex, out var managedBaseTypeIndex)
-                        && managedBaseTypeIndex >= 0)
+                    var managedBaseTypeIndex = snapshot.TypeDescriptions.UnifiedTypeInfoNative[typeIndex].ManagedBaseTypeIndexForNativeType;
+                    if (managedBaseTypeIndex is not CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid)
                     {
                         // If there is a managed base type, also check the filter against that type name
                         managedBaseTypeName = snapshot.TypeDescriptions.TypeDescriptionName[managedBaseTypeIndex];
@@ -356,7 +410,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var nativeTypeSourceIndex = new SourceIndex(SourceIndex.SourceId.NativeType, typeIndex);
                 if (nativeUnityObjectBaseTypesToDisambiguateByManagedType.Contains(nativeTypeSourceIndex))
                 {
-                    if(managedTypeIndex >= 0)
+                    if (managedTypeIndex >= 0)
                     {
                         var managedTypeMap = disambiguatedTypeIndexToTypeObjectsMap.GetOrAdd(nativeTypeSourceIndex);
                         AddObjectToTypeMap(managedTypeMap, new SourceIndex(SourceIndex.SourceId.ManagedType, managedTypeIndex), nativeObjectName, item, args);
@@ -457,7 +511,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 // Add list containing duplicate type objects to corresponding type index in filtered map.
                 if (potentialDuplicateItems.Count > 0)
-                    filteredTypeIndexToTypeObjectsMap.Add(typeIndex, new DictionaryOrList(){ ListOfObjects = potentialDuplicateItems });
+                    filteredTypeIndexToTypeObjectsMap.Add(typeIndex, new DictionaryOrList() { ListOfObjects = potentialDuplicateItems });
             }
 
             return filteredTypeIndexToTypeObjectsMap;
@@ -530,4 +584,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

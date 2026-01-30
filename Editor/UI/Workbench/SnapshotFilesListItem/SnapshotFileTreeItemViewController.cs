@@ -22,16 +22,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlRenameFieldWarningMsg = "memory-profile__warning-msg";
         const string k_UxmlTotalAllocatedInvertedLabel = "memory-profile-snapshotfile__bar__allocated-label-inverted";
 
-        public enum State
-        {
-            None,
-            Loaded,
-            LoadedBase,
-            LoadedCompare
-        }
-
         // State
-        State m_LoadedState;
+        SnapshotLoadedState m_LoadedState;
         SnapshotDataService m_SnapshotDataService;
 
         // View
@@ -47,9 +39,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             base(model, screenshotsManager)
         {
             m_SnapshotDataService = snapshotDataService;
+            m_SnapshotDataService.LoadedSnapshotsChanged += RefreshLoadedState;
+            m_SnapshotDataService.CompareModeChanged += RefreshLoadedState;
         }
 
-        public State LoadedState
+        public SnapshotLoadedState LoadedState
         {
             get => m_LoadedState;
             set
@@ -66,8 +60,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-
-            m_WarningMessage?.RemoveFromHierarchy();
+            if (disposing)
+            {
+                m_WarningMessage?.RemoveFromHierarchy();
+                m_SnapshotDataService.LoadedSnapshotsChanged -= RefreshLoadedState;
+                m_SnapshotDataService.CompareModeChanged -= RefreshLoadedState;
+            }
         }
 
         protected override VisualElement LoadView()
@@ -104,7 +102,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             Debug.Assert(Model != null);
 
-            m_Container.AddManipulator(new ContextualMenuManipulator((binder) => PopulateOpenSnapshotOptionMenu(binder)));
+            m_Container.AddManipulator(new ContextualMenuManipulator(PopulateOpenSnapshotOptionMenu));
             m_Container.RegisterCallback<MouseUpEvent>((evt) =>
             {
                 if ((MouseButton)evt.button == MouseButton.LeftMouse)
@@ -114,7 +112,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             });
 
-            m_Name.AddManipulator(new Clickable(() => RenameCapture()));
+            m_Name.AddManipulator(new Clickable(RenameCapture));
 
             m_RenameField.isDelayed = true;
             m_RenameField.SetValueWithoutNotify(Model.Name);
@@ -170,7 +168,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             else
                 UIElementsHelper.SetVisibility(m_TotalLabelAllocatedInverted, false);
 
-            m_SnapshotDataService.LoadedSnapshotsChanged += RefreshLoadedState;
             RefreshLoadedState();
         }
 
@@ -181,21 +178,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             View.RemoveFromClassList("memory-profile-snapshotfile__state__in-view");
             UIElementsHelper.SetVisibility(m_OpenSnapshotTag, false);
 
-            if (m_LoadedState == State.None)
+            // check loaded state based on the state of the Snapshot Data Service to avoid situations where this gets out of sync
+
+            // don't go via setter else we'll recurse
+            m_LoadedState = m_SnapshotDataService.GetSnapshotLoadedState(Model.FullPath);
+            if (m_LoadedState == SnapshotLoadedState.None)
                 return;
 
             View.AddToClassList("memory-profile-snapshotfile__state__in-view");
 
             switch (m_LoadedState)
             {
-                case State.LoadedBase:
+                case SnapshotLoadedState.LoadedBase:
                 {
                     m_OpenSnapshotTag.text = "A";
                     View.AddToClassList("memory-profile-snapshotfile__state__base");
                     UIElementsHelper.SetVisibility(m_OpenSnapshotTag, true);
                     break;
                 }
-                case State.LoadedCompare:
+                case SnapshotLoadedState.LoadedCompare:
                 {
                     m_OpenSnapshotTag.text = "B";
                     View.AddToClassList("memory-profile-snapshotfile__state__compare");
@@ -254,7 +255,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         Debug.LogException(exception);
                     return;
                 }
-                var snapshot = m_SnapshotDataService.LoadWithoutLoadingToUI(Model.FullPath);
+                var snapshot = m_SnapshotDataService.LoadWithoutLoadingToUI(Model.FullPath, crawlEvenIfNotYetOpened: false);
                 if (snapshot.NativeCallstackSymbols.Count > 0)
                 {
                     ExportUtility.OpenCallstacksWindowForNativeRoot(snapshot, CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootId, invertedCallstacks: invertedCallstacks, callstackWindowOwnsSnapshot: true, callstackMapping: mappingInfo);
@@ -325,6 +326,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return false;
             }
 
+            if (!m_SnapshotDataService.PathLengthIsValid(Model.FullPath, newSnapshotName))
+            {
+                ShowRenameWarning("File path is too long");
+                return false;
+            }
+
             if (!m_SnapshotDataService.CanRename(Model.FullPath, newSnapshotName) && (Model.Name != newSnapshotName))
             {
                 ShowRenameWarning("Snapshot with the same name already exist");
@@ -341,6 +348,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
 
             if (!m_SnapshotDataService.ValidateName(newSnapshotName))
+                return;
+
+            if (!m_SnapshotDataService.PathLengthIsValid(Model.FullPath, newSnapshotName))
                 return;
 
             if (!m_SnapshotDataService.CanRename(Model.FullPath, newSnapshotName))

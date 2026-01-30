@@ -1,15 +1,15 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Unity.MemoryProfiler.Editor.UI;
 using UnityEditor;
+using UnityEngine;
+using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using static Unity.MemoryProfiler.Editor.CallstacksTreeWindow;
-using UnityEngine.UIElements;
-using System.Collections;
-using System;
-using Unity.MemoryProfiler.Editor.UI;
-using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -192,82 +192,82 @@ namespace Unity.MemoryProfiler.Editor
                 m_Writer = writer;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void Write(char value)
             {
                 m_Writer.Write(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void Write(string value)
             {
                 m_Writer.Write(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteWithDepth(char value)
             {
                 WriteDepth();
                 m_Writer.Write(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteWithDepth(char value, int extraDepth)
             {
                 WriteExtraDepth(extraDepth);
                 m_Writer.Write(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteWithDepth(string value)
             {
                 WriteDepth();
                 m_Writer.Write(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteWithDepth(string value, int extraDepth)
             {
                 WriteExtraDepth(extraDepth);
                 m_Writer.Write(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteLineWithDepth(string value)
             {
                 WriteDepth();
                 m_Writer.WriteLine(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteLineWithDepth(string value, int extraDepth)
             {
                 WriteExtraDepth(extraDepth);
                 m_Writer.WriteLine(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteLineWithDepth(char value)
             {
                 WriteDepth();
                 m_Writer.WriteLine(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             public void WriteLineWithDepth(char value, int extraDepth)
             {
                 WriteExtraDepth(extraDepth);
                 m_Writer.WriteLine(value);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             void WriteDepth()
             {
                 if (StackToUseForDepth != null)
                     WriteDepth(k_BaseIndentWithStack + StackToUseForDepth.Count * 2);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             void WriteExtraDepth(int additionalDepth)
             {
                 if (StackToUseForDepth != null)
@@ -276,7 +276,7 @@ namespace Unity.MemoryProfiler.Editor
                     WriteDepth(additionalDepth);
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             void WriteDepth(int depth)
             {
                 for (int i = 0; i < depth; i++)
@@ -292,7 +292,11 @@ namespace Unity.MemoryProfiler.Editor
                 var unterminatedLine = false;
                 if (data.data.CallstackEntry != null)
                 {
-                    WriteWithDepth($"\"Callstack\": \"{data.data.CallstackEntry}\"", 1);
+                    // make sure there are no line breaks in the entry
+                    var callstack = data.data.CallstackEntry;
+                    callstack = callstack.Replace("\n", "");
+                    callstack = callstack.Replace("\r", "");
+                    WriteWithDepth($"\"Callstack\": \"{callstack}\"", 1);
                     unterminatedLine = true;
                 }
 
@@ -497,8 +501,8 @@ namespace Unity.MemoryProfiler.Editor
         public static void WriteTreeToJson(CachedSnapshot snapshot, TreeViewItemData<SymbolTreeViewItemData> model, bool mergeSingleEntryBranches = false)
         {
             var roots = model.children as IList<TreeViewItemData<SymbolTreeViewItemData>>;
-
-            var path = EditorUtility.SaveFilePanel("Export json by Call-Stack", MemoryProfilerSettings.LastImportPath, "AllocationsByCallstack", "json");
+            var fileName = Path.GetFileNameWithoutExtension(snapshot.FullPath) + "_AllocationsByCallstack";
+            var path = EditorUtility.SaveFilePanel("Export json by Call-Stack", Path.GetDirectoryName(snapshot.FullPath), fileName, "json");
             if (string.IsNullOrEmpty(path))
                 return;
             var streamWriter = new StreamWriter(path);
@@ -510,6 +514,8 @@ namespace Unity.MemoryProfiler.Editor
             {
                 jsonWriter.WriteLineWithDepth('{');
                 jsonWriter.WriteLineWithDepth($"\"Total Size\": \"{EditorUtility.FormatBytes((long)model.data.Size)}\",", 1);
+                jsonWriter.WriteLineWithDepth($"\"Platform\": \"{snapshot.MetaData.Platform}\",", 1);
+                jsonWriter.WriteLineWithDepth($"\"Unity Version\": \"{snapshot.MetaData.UnityVersion}\",", 1);
                 jsonWriter.WriteLineWithDepth($"\"Total Size in B\": {model.data.Size},", 1);
                 const string childrenJson = "\"Children\": [";
                 jsonWriter.WriteLineWithDepth("\"Base Nodes\": [", 1);
@@ -525,7 +531,11 @@ namespace Unity.MemoryProfiler.Editor
                         nodeStack.Push((rootList.GetEnumerator(), rootList.Count, rootList.Count));
                     else
                     {
-                        jsonWriter.WriteLineWithDepth("},");
+                        if (rootIndex + 1 < roots.Count)
+                            jsonWriter.WriteLineWithDepth("},");
+                        else
+                            // if the last root node has no children, do not add a trailing comma as that's illegal for the last array entry in json
+                            jsonWriter.WriteLineWithDepth("}");
                         continue;
                     }
                     ProgressBarDisplay.UpdateProgress((float)roots.Count / rootIndex, string.Format("Writing out json objects for branch {0}/{1}", rootIndex + 1, roots.Count));

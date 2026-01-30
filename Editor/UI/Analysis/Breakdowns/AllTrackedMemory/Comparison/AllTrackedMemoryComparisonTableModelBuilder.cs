@@ -1,12 +1,19 @@
-#if UNITY_2022_1_OR_NEWER
-using System;
 using System.Collections.Generic;
+using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    class AllTrackedComparisonTableModel : ComparisonTableModel<AllTrackedMemoryModel, AllTrackedMemoryModel.ItemData>
+    {
+        public AllTrackedComparisonTableModel(
+            List<TreeViewItemData<ComparisonData>> rootNodes, AllTrackedMemoryModel baseModel, MemorySize totalSnapshotSizeA,
+            AllTrackedMemoryModel comparedModel, MemorySize totalSnapshotSizeB, long largestAbsoluteSizeDelta)
+            : base(rootNodes, baseModel, totalSnapshotSizeA, comparedModel, totalSnapshotSizeB, largestAbsoluteSizeDelta) { }
+    }
+
     static class AllTrackedMemoryComparisonTableModelBuilder
     {
-        public static ComparisonTableModel Build(
+        public static AllTrackedComparisonTableModel Build(
             CachedSnapshot snapshotA,
             CachedSnapshot snapshotB,
             AllTrackedMemoryModelBuilder.BuildArgs snapshotModelBuildArgs,
@@ -19,22 +26,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             var modelB = builderB.Build(snapshotB, snapshotModelBuildArgs);
 
             var treeComparisonBuilder = new TreeComparisonBuilder();
-            var comparisonTree = treeComparisonBuilder.Build(
+            var comparisonTree = treeComparisonBuilder.Build<AllTrackedMemoryModel.ItemData, AllTrackedMemoryModel>(
                 modelA.RootNodes,
                 modelB.RootNodes,
                 comparisonModelBuildArgs,
                 out var largestAbsoluteSizeDelta);
 
-            var totalSnapshotSizeA = snapshotA.MetaData.TargetMemoryStats.Value.TotalVirtualMemory;
-            var totalSnapshotSizeB = snapshotB.MetaData.TargetMemoryStats.Value.TotalVirtualMemory;
-            var comparisonModel = new ComparisonTableModel(
+            var comparisonModel = new AllTrackedComparisonTableModel(
                 comparisonTree,
-                totalSnapshotSizeA,
-                totalSnapshotSizeB,
+                modelA,
+                modelA.TotalSnapshotMemorySize,
+                modelB,
+                modelB.TotalSnapshotMemorySize,
                 largestAbsoluteSizeDelta);
 
             return comparisonModel;
         }
     }
 }
-#endif

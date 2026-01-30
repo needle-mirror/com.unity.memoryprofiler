@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Unity.EditorCoroutines.Editor;
+using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
@@ -36,6 +36,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             public static readonly string NoObjectSelected = L10n.Tr("No Object Selected");
             public static readonly string SelectionHasNoReferences = L10n.Tr("Selection has no references");
             public static readonly string NoInspectableObjectSelected = L10n.Tr("No inspectable object selected.");
+            public static readonly GUIStyle TypeLabel = new(EditorStyles.label) { richText = true };
+            public static readonly GUIStyle TypeLabelBold = new(EditorStyles.boldLabel) { richText = true, fontStyle = FontStyle.Bold };
         }
 
         const int k_CurrentSelectionTreeViewItemId = Int32.MaxValue;
@@ -53,15 +55,16 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             Flags
         }
 
-        private enum PathsToRootViewGUIState
+        enum PathsToRootViewGUIState
         {
             NothingSelected,
             Searching,
             SearchComplete
         }
 
-        private enum ActiveTree
+        public enum ActiveTree
         {
+            ShortestPath,
             RawReferences,
             ReferencesTo
         }
@@ -70,13 +73,16 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         CachedSnapshot m_CachedSnapshot;
         ActiveTree m_ActiveTree;
+        PathsToRootDetailTreeViewItem m_ShortestPathToRootReferenceTree;
         PathsToRootDetailTreeViewItem m_RawReferenceTree;
         PathsToRootDetailTreeViewItem m_ReferencesToTree;
+        RibbonButton m_ShortestPathButton;
         RibbonButton m_RawConnectionButton;
         RibbonButton m_ReferencesToButton;
         Ribbon m_Ribbon;
 
         SourceIndex m_CurrentSelection;
+        SourceIndex m_OtherPartOfSelectedUnityObject;
 
         Thread m_BackgroundThread;
 #pragma warning disable 0649
@@ -107,6 +113,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             multiColumnHeaderWithTruncateTypeName.ResizeToFit();
             MemoryProfilerSettings.TruncateStateChanged += OnTruncateStateChanged;
 
+            m_ShortestPathToRootReferenceTree = new PathsToRootDetailTreeViewItem();
+            SetupDepthsFromParentsAndChildren(m_ShortestPathToRootReferenceTree);
             m_RawReferenceTree = new PathsToRootDetailTreeViewItem();
             SetupDepthsFromParentsAndChildren(m_RawReferenceTree);
 
@@ -114,13 +122,14 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             SetupDepthsFromParentsAndChildren(m_ReferencesToTree);
 
             m_Ribbon = ribbon;
+            m_ShortestPathButton = m_Ribbon.Q<RibbonButton>("shortest-path");
+            UIElementsHelper.SetVisibility(m_ShortestPathButton, false);
             m_RawConnectionButton = m_Ribbon.Q<RibbonButton>("raw-connections");
             m_ReferencesToButton = m_Ribbon.Q<RibbonButton>("referencing-to");
             m_RawConnectionButton.text = $"Referenced By ({m_RawReferenceTree.children.Count})";
             m_Ribbon.Clicked += RibbonClicked;
             m_ReferencesToButton.text = $"References To ()";
-            m_ActiveTree = ActiveTree.RawReferences;
-
+            m_ActiveTree = ActiveTree.ShortestPath;
             Reload();
         }
 
@@ -193,6 +202,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 
         public void UpdateToAllocation(long item)
         {
+            m_ShortestPathToRootReferenceTree = CreateRootItem();
             m_RawReferenceTree = CreateRootItem();
             SetupDepthsFromParentsAndChildren(m_RawReferenceTree);
             Reload();
@@ -203,6 +213,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             if (item == m_CurrentSelection) return;
 
             m_CurrentSelection = item;
+            m_OtherPartOfSelectedUnityObject = GetAlternativeUnityObjectIndex(item);
             if (m_BackgroundThread != null)
             {
                 m_BackgroundThread.Abort();
@@ -217,12 +228,21 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     Debug.LogError($"a {nameof(PathsToRootDetailView)} was leaked");
                     return;
                 }
+                // Shortest path to root isn't really a search and multithreading
+                // it is totally overkill, so we do it here synchronously.
+                BuildShortestPath(item);
+                if (m_ShortestPathToRootReferenceTree != null)
+                {
+                    SetupDepthsFromParentsAndChildren(m_ShortestPathToRootReferenceTree);
+                }
                 m_BackgroundThreadState = BackGroundThreadState.Analyze;
                 m_BackgroundThread = new Thread(AnalysisThread);
                 m_BackgroundThread.Start(item);
             }
             else
             {
+                UIElementsHelper.SetVisibility(m_ShortestPathButton, false);
+                NoObject(m_CachedSnapshot, ref m_ShortestPathToRootReferenceTree);
                 NoObject(m_CachedSnapshot, ref m_RawReferenceTree);
                 NoObject(m_CachedSnapshot, ref m_ReferencesToTree);
                 Reload();
@@ -301,13 +321,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 return;
             }
 
-            ObjectConnection.GenerateReferencesTo(m_CachedSnapshot, item, ref m_CachedObjectDataList,
+            ObjectConnection.GenerateReferencesTo(m_CachedSnapshot, item, m_CachedObjectDataList,
                 addManagedObjectsWithFieldInfo: true, foundSourceIndices: m_ReferenceSearchAccelerator);
 
             m_ReferencesToTree = CreateRootItem();
             foreach (var data in m_CachedObjectDataList)
             {
-                m_ReferencesToTree.AddChild(new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot, truncateTypeNames, referencesToItem: true));
+                m_ReferencesToTree.AddChild(new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot, truncateTypeNames, treeType: ActiveTree.ReferencesTo));
             }
         }
 
@@ -452,7 +472,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             m_GUIState = PathsToRootViewGUIState.Searching;
             m_RawReferenceTree = CreateRootItem();
 
-            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, item, ref m_CachedObjectDataList, m_ReferenceSearchAccelerator);
+            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, item, m_CachedObjectDataList, m_ReferenceSearchAccelerator);
 
             if (m_CachedObjectDataList.Count == 0)
             {
@@ -482,6 +502,89 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             m_GUIState = PathsToRootViewGUIState.SearchComplete;
         }
 
+        SourceIndex GetAlternativeUnityObjectIndex(SourceIndex index)
+        {
+            if (index.Id is SourceIndex.SourceId.NativeObject)
+            {
+                var managedIndex = m_CachedSnapshot.NativeObjects.ManagedObjectIndex[index.Index];
+                if (managedIndex != NativeObjectEntriesCache.InvalidObjectIndex)
+                {
+                    return new SourceIndex(SourceIndex.SourceId.ManagedObject, managedIndex);
+                }
+            }
+            else if (index.Id is SourceIndex.SourceId.ManagedObject)
+            {
+                var nativeIndex = m_CachedSnapshot.CrawledData.ManagedObjects[index.Index].NativeObjectIndex;
+                if (nativeIndex != NativeObjectEntriesCache.InvalidObjectIndex)
+                {
+                    return new SourceIndex(SourceIndex.SourceId.NativeObject, nativeIndex);
+                }
+            }
+
+            return default;
+        }
+
+        void BuildShortestPath(SourceIndex currentIndex)
+        {
+            m_ShortestPathToRootReferenceTree = CreateRootItem();
+            if (!m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt)
+            {
+                return;
+            }
+
+            SourceIndex alternativeObject = GetAlternativeUnityObjectIndex(currentIndex);
+            ref readonly var currentPathStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_CachedSnapshot.RootAndImpactInfo.ShortestPathInfo, currentIndex);
+
+            if (alternativeObject.Valid)
+            {
+                ref readonly var alternativePathStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_CachedSnapshot.RootAndImpactInfo.ShortestPathInfo, alternativeObject);
+                if (alternativePathStep.Valid && alternativePathStep.Root != currentPathStep.Root)
+                {
+                    BuildShortestPath(alternativeObject, in alternativePathStep);
+                }
+            }
+
+            BuildShortestPath(currentIndex, in currentPathStep);
+        }
+
+        long BuildShortestPath(SourceIndex currentIndex, in ShortestRootPathInfo currentPathStep)
+        {
+            var shortestPathLength = -1L;
+            if (currentPathStep.Valid)
+            {
+                shortestPathLength = currentPathStep.Depth;
+                var currentTreeNode = m_ShortestPathToRootReferenceTree;
+                // add the selected Item to the list
+                var selectedItemTreeNode = new PathsToRootDetailTreeViewItem(ObjectData.FromSourceLink(m_CachedSnapshot, currentIndex), m_CachedSnapshot, currentTreeNode, truncateTypeNames, ActiveTree.ShortestPath);
+                currentTreeNode.AddChild(selectedItemTreeNode);
+                if (currentPathStep.IsRoot)
+                    return shortestPathLength;
+                // Since this is a flat list to root, we don't need to nest the children
+                // uncomment to get a more traditional tree view though
+                // currentTreeNode = selectedItemTreeNode;
+                while (currentPathStep.Valid)
+                {
+                    var parent = currentPathStep.Parent;
+                    var data = ObjectData.FromSourceLink(m_CachedSnapshot, parent);
+
+                    var parentTreeNode = new PathsToRootDetailTreeViewItem(data, m_CachedSnapshot, currentTreeNode, truncateTypeNames, ActiveTree.ShortestPath);
+                    currentTreeNode.AddChild(parentTreeNode);
+                    // Since this is a flat list to root, we don't need to nest the children
+                    // uncomment to get a more traditional tree view though
+                    // currentTreeNode = parentTreeNode;
+
+                    // if the selected item already is the root, break
+                    if (currentPathStep.IsRoot)
+                        break;
+                    currentPathStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_CachedSnapshot.RootAndImpactInfo.ShortestPathInfo, parent);
+                    // if the parent is the root, we already added it, so break
+                    if (currentPathStep.IsRoot)
+                        break;
+                }
+            }
+            return shortestPathLength;
+        }
+
         void RawDataSearch(Queue<PathsToRootDetailTreeViewItem> processingQueue)
         {
             while (processingQueue.Count > 0 && m_ObjectsProcessed < 1000)
@@ -489,7 +592,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 var current = processingQueue.Dequeue();
                 m_ObjectsProcessed++;
 
-                current.Data.GetAllReferencingObjects(m_CachedSnapshot, ref m_CachedObjectDataList, m_ReferenceSearchAccelerator);
+                current.Data.GetAllReferencingObjects(m_CachedSnapshot, m_CachedObjectDataList, m_ReferenceSearchAccelerator);
                 if (m_CachedObjectDataList.Count == 0) continue;
 
                 foreach (var connection in m_CachedObjectDataList)
@@ -515,7 +618,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 var current = processingStack.Pop();
                 m_ObjectsProcessed++;
 
-                ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, current.Data.GetSourceLink(m_CachedSnapshot), ref m_CachedObjectDataList, m_ReferenceSearchAccelerator);
+                ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, current.Data.GetSourceLink(m_CachedSnapshot), m_CachedObjectDataList, m_ReferenceSearchAccelerator);
                 if (m_CachedObjectDataList.Count == 0) continue;
 
 
@@ -552,7 +655,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 var current = processingStack.Pop();
                 m_ObjectsProcessed++;
 
-                ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, current.Data.GetSourceLink(m_CachedSnapshot), ref m_CachedObjectDataList, m_ReferenceSearchAccelerator);
+                ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, current.Data.GetSourceLink(m_CachedSnapshot), m_CachedObjectDataList, m_ReferenceSearchAccelerator);
                 FilterToOnlyTransforms(ref m_CachedObjectDataList);
                 if (m_CachedObjectDataList.Count == 0) continue;
 
@@ -563,9 +666,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     var child = new PathsToRootDetailTreeViewItem(objectData, m_CachedSnapshot, current, truncateTypeNames);
                     current.AddChild(child);
 
-                    if (child.Data.IsRootTransform(m_CachedSnapshot))
+                    if (child.Data.IsSceneRootTransform(m_CachedSnapshot))
                     {
-                        ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, child.Data.GetSourceLink(m_CachedSnapshot), ref m_CachedObjectDataListInnerLoop, m_ReferenceSearchAccelerator);
+                        ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, child.Data.GetSourceLink(m_CachedSnapshot), m_CachedObjectDataListInnerLoop, m_ReferenceSearchAccelerator);
                         foreach (var data in m_CachedObjectDataListInnerLoop)
                         {
                             if (data.IsGameObject(m_CachedSnapshot))
@@ -628,6 +731,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         {
             CurrentSelection = default;
             m_CurrentSelection = default;
+            m_OtherPartOfSelectedUnityObject = default;
             tree = CreateRootItem();
         }
 
@@ -644,14 +748,36 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 m_ReferencesToTree = new PathsToRootDetailTreeViewItem();
                 SetupDepthsFromParentsAndChildren(m_ReferencesToTree);
             }
+            // The TreeView gets initialized before a snapshot is assigned. In that case, don't mess with the ActiveTree.
+            if (m_CachedSnapshot?.RootAndImpactInfo.SuccessfullyBuilt ?? true)
+            {
+                UIElementsHelper.SetVisibility(m_ShortestPathButton, true);
+            }
+            else
+            {
+                // Only show the shortest path button when we have a shortest path
+                UIElementsHelper.SetVisibility(m_ShortestPathButton, false);
+                if (m_ActiveTree == ActiveTree.ShortestPath)
+                {
+                    m_ActiveTree = ActiveTree.RawReferences;
+                }
+            }
+            if (m_Ribbon.CurrentOption != (int)m_ActiveTree)
+                m_Ribbon.CurrentOption = (int)m_ActiveTree;
 
+            GenerateIcons(m_ShortestPathToRootReferenceTree);
             GenerateIcons(m_RawReferenceTree);
             GenerateIcons(m_ReferencesToTree);
-
+            m_ShortestPathButton.text = "Shortest Path To Root";
             m_RawConnectionButton.text = $"Referenced By ({m_RawReferenceTree.children.Count})";
             m_ReferencesToButton.text = $"References To ({m_ReferencesToTree.children.Count})";
             switch (m_ActiveTree)
             {
+                case ActiveTree.ShortestPath:
+                    if (m_ShortestPathToRootReferenceTree.children.Count > 0)
+                        // Select the currently selected item which is only added to the Shortest Path tree and none of the other trees
+                        SetSelection(new List<int> { m_ShortestPathToRootReferenceTree.children[0].id });
+                    return m_ShortestPathToRootReferenceTree;
                 case ActiveTree.RawReferences:
                     return m_RawReferenceTree;
                 case ActiveTree.ReferencesTo:
@@ -832,6 +958,28 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     var indent = GetContentIndent(item);
                     cellRect.x += indent;
                     cellRect.width -= indent;
+
+                    var isRootOnShortestPathToRoot = false;
+                    var isCurrentSelectionOnShortestPathToRoot = false;
+                    if (m_ActiveTree is ActiveTree.ShortestPath && m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt)
+                    {
+                        var sourceIndex = pathsToRootDetailTreeViewItem.Data.displayObject.GetSourceLink(m_CachedSnapshot);
+                        ref readonly var rootStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_CachedSnapshot.RootAndImpactInfo.ShortestPathInfo, sourceIndex);
+                        isRootOnShortestPathToRoot = rootStep.IsRoot;
+                        if (m_CurrentSelection != sourceIndex && (!m_OtherPartOfSelectedUnityObject.Valid || m_OtherPartOfSelectedUnityObject != sourceIndex))
+                        {
+                            const int kWidth = 15;
+                            var pathText = (isRootOnShortestPathToRoot ? "└" : "│");
+                            GUI.Label(new Rect(cellRect.x, cellRect.y, kWidth, 20), pathText);
+                            cellRect.x += kWidth;
+                            cellRect.width -= kWidth;
+                        }
+                        else
+                        {
+                            isCurrentSelectionOnShortestPathToRoot = true;
+                        }
+                    }
+
                     if (pathsToRootDetailTreeViewItem.Data.IsValid)
                         GUI.DrawTexture(new Rect(cellRect.x, cellRect.y, 20, 20),
                             pathsToRootDetailTreeViewItem.Data.isManaged || pathsToRootDetailTreeViewItem.Data.dataType == ObjectDataType.GCHandle ? Styles.CSharpIcon : Styles.CPlusPlusIcon);
@@ -840,21 +988,25 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     if (pathsToRootDetailTreeViewItem.icon != null)
                         GUI.Label(new Rect(cellRect.x, cellRect.y, 20, 20), pathsToRootDetailTreeViewItem.TypeIcon);
                     var typeNameRect = new Rect(cellRect.x + 20, cellRect.y, cellRect.width - 20, cellRect.height);
+
                     var text = $"{(truncateTypeNames ? pathsToRootDetailTreeViewItem.TruncatedTypeName : pathsToRootDetailTreeViewItem.TypeName)} \"{pathsToRootDetailTreeViewItem.displayName}\"";
-                    if (pathsToRootDetailTreeViewItem.IsRoot(m_CachedSnapshot))
+
+                    if (pathsToRootDetailTreeViewItem.IsSceneRoot(m_CachedSnapshot))
                         text = $"SceneRoot {text}";
+                    if (isRootOnShortestPathToRoot)
+                        text = $"<b>ROOT:</b> {text}";
                     var isMainSelection = item.id == k_CurrentSelectionTreeViewItemId;
-                    if (isMainSelection)
+                    if (isMainSelection || isRootOnShortestPathToRoot || isCurrentSelectionOnShortestPathToRoot)
                     {
-                        GUI.Label(typeNameRect, text, EditorStyles.boldLabel);
+                        GUI.Label(typeNameRect, text, Styles.TypeLabelBold);
                     }
                     else
-                        GUI.Label(typeNameRect, text);
+                        GUI.Label(typeNameRect, text, Styles.TypeLabel);
 
-                    if (pathsToRootDetailTreeViewItem.IsRoot(m_CachedSnapshot))
+                    if (m_ActiveTree is not ActiveTree.ShortestPath && pathsToRootDetailTreeViewItem.IsSceneRoot(m_CachedSnapshot) || pathsToRootDetailTreeViewItem.Data.dataType is ObjectDataType.Scene)
                     {
                         var size = GUI.skin.label.CalcSize(new GUIContent(text));
-                        GUI.DrawTexture(new Rect(typeNameRect.x + size.x, typeNameRect.y, 20, 20), Styles.SceneIcon.image);
+                        GUI.DrawTexture(new Rect(typeNameRect.x + size.x, typeNameRect.y, size.y, size.y), Styles.SceneIcon.image);
                     }
                 }
                 break;

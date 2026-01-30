@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using UnityEditorInternal;
 using Unity.MemoryProfiler.Editor.UIContentData;
+using UnityEditorInternal;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {

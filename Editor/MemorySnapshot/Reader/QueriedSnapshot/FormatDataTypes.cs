@@ -42,9 +42,9 @@ namespace Unity.MemoryProfiler.Editor.Format
         public enum UnityReleaseType
         {
             Unknown,
-            Full, // or Final, letter f
-            Beta, // letter b
             Alpha, // letter a
+            Beta, // letter b
+            Full, // or Final, letter f
         }
 
         public const uint InvalidSessionGUID = 0;
@@ -218,19 +218,55 @@ namespace Unity.MemoryProfiler.Editor.Format
                 else
                     meta.UnityVersionPatch = meta.UnityVersionReleaseType == UnityReleaseType.Unknown ? -1 : 0;
 
-                if (meta.UnityVersionReleaseType == UnityReleaseType.Alpha || meta.UnityVersionReleaseType == UnityReleaseType.Beta)
+                if (meta.UnityVersionReleaseType is not UnityReleaseType.Unknown)
                 {
                     var prereleaseVersion = snapshotUnityVersion[2].AsSpan().Slice(patchVersion.Length);
                     while (prereleaseVersion.Length > 0 && !char.IsDigit(prereleaseVersion[0]))
                     {
                         prereleaseVersion = prereleaseVersion.Slice(1);
                     }
-                    if (prereleaseVersion.Length > 0 && int.TryParse(patchVersion, out var versionPrerelease))
+                    if (prereleaseVersion.Length > 0 && int.TryParse(prereleaseVersion, out var versionPrerelease))
                         meta.UnityVersionPrerelease = versionPrerelease;
                     else
                         meta.UnityVersionPrerelease = 0;
                 }
             }
+        }
+
+        public bool UnityVersionEqualOrNewer(int major, int minor = 0, int patch = 0, UnityReleaseType releaseType = UnityReleaseType.Full, int preRelease = 1)
+        {
+            return UnityVersionMajor > major
+                || (UnityVersionMajor == major && UnityVersionMinor > minor)
+                || (UnityVersionMajor == major && UnityVersionMinor == minor && UnityVersionPatch > patch)
+                || (UnityVersionMajor == major && UnityVersionMinor == minor && UnityVersionPatch == patch && UnityVersionReleaseType > releaseType)
+                || (UnityVersionMajor == major && UnityVersionMinor == minor && UnityVersionPatch == patch && UnityVersionReleaseType == releaseType && UnityVersionPrerelease >= preRelease);
+        }
+
+        /// <summary>
+        /// Only returns true if the version fits within the specific Major and Minor version stream and in that stream is equal or newer.
+        /// </summary>
+        /// <param name="major"></param>
+        /// <param name="minor"></param>
+        /// <param name="patch"></param>
+        /// <param name="releaseType"></param>
+        /// <param name="preRelease"></param>
+        /// <returns></returns>
+        public bool UnityVersionEqualOrNewerWithinMinorRelease(int major, int minor = 0, int patch = 0, UnityReleaseType releaseType = UnityReleaseType.Full, int preRelease = 1)
+        {
+            return (UnityVersionMajor == major && UnityVersionMinor == minor && UnityVersionPatch > patch)
+                   || (UnityVersionMajor == major && UnityVersionMinor == minor && UnityVersionPatch == patch && UnityVersionReleaseType > releaseType)
+                   || (UnityVersionMajor == major && UnityVersionMinor == minor && UnityVersionPatch == patch && UnityVersionReleaseType == releaseType && UnityVersionPrerelease >= preRelease);
+        }
+
+        public bool UnityVersionEqualOrOlder(int major, int minor)
+        {
+            return UnityVersionMajor < major || (UnityVersionMajor == major
+                                                 && UnityVersionMinor <= minor);
+        }
+        public bool UnityVersionEqualOrOlder(int major, int minor, int patch)
+        {
+            return UnityVersionMajor < major || (UnityVersionMajor == major
+                   && (UnityVersionMinor < minor || (UnityVersionMinor == minor && UnityVersionPatch <= patch)));
         }
     }
 
@@ -240,6 +276,12 @@ namespace Unity.MemoryProfiler.Editor.Format
         IsDontDestroyOnLoad = 0x1,
         IsPersistent = 0x2,
         IsManager = 0x4,
+        IsRoot = 0x8,
+        /// <summary>
+        /// Only used for some algorithms to flag objects while working on them.
+        /// Remember to always unset the flag once you're done with it.
+        /// </summary>
+        IsTemporarilyMarked = 0x10,
     }
 
     [Flags]

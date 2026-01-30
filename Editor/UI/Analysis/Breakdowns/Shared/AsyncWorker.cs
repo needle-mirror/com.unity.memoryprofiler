@@ -1,9 +1,32 @@
+// Never ship without commenting out this define
+// #define DEBUG_ASYNC_TASK_WORKER // needs to be set in PlayerSettings
 using System;
 using System.Collections;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.EditorCoroutines.Editor;
 using UnityEngine;
+
+
+namespace Unity.MemoryProfiler.Editor.UI
+{
+    static class AsyncTaskHelper
+    {
+        /// <summary>
+        /// Helper method to conditionally log out messages about async tasks if e.g. the order of operations needs debugging.
+        /// Conditionally compiled out in release.
+        /// </summary>
+        /// <param name="text"></param>
+        [Conditional("DEBUG_ASYNC_TASK_WORKER"), MethodImpl(MethodImplementationHelper.AggressiveInlining), HideInCallstack()]
+        public static void DebugLogAsyncStep(string text)
+        {
+            UnityEngine.Debug.Log(text);
+        }
+    }
+}
+
 
 namespace Unity.MemoryProfiler.Editor.UI
 {

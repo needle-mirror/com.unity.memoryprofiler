@@ -24,7 +24,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
         public readonly DynamicArrayRef<FieldLayoutInfo> this[int typeIndex]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
             get
             {
                 var index = m_TypeIndexToFieldLayoutInfoIndex[typeIndex];
