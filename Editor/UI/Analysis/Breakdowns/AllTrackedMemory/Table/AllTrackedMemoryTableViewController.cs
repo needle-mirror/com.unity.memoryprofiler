@@ -8,6 +8,21 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    class AllTrackedMemoryModelBuilderAdapter : IModelBuilder<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs>
+    {
+        readonly AllTrackedMemoryModelBuilder m_Builder = new AllTrackedMemoryModelBuilder();
+
+        public AllTrackedMemoryModel Build(CachedSnapshot snapshot, AllTrackedMemoryModelBuilder.BuildArgs args)
+        {
+            return m_Builder.Build(snapshot, args);
+        }
+
+        public AllTrackedMemoryModel Build(AllTrackedMemoryModel baseModel, List<int> treeNodeIdFilter)
+        {
+            return m_Builder.Build(baseModel, treeNodeIdFilter);
+        }
+    }
+
     class AllTrackedMemoryTableViewController : SingleSnapshotTreeViewController<AllTrackedMemoryModel, AllTrackedMemoryModel.ItemData>, IAnalysisViewSelectable
     {
         const string k_UxmlAssetGuid = "e7ac30fe2b076984e978d41347c5f0e0";
@@ -36,6 +51,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         readonly bool m_DisambiguateUnityObjects;
         readonly IResponder m_Responder;
         protected override Dictionary<string, Comparison<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> SortComparisons { get; }
+
+        // Composed components
+        readonly TableFilterManager<AllTrackedMemoryModel, AllTrackedMemoryModel.ItemData> m_FilterManager;
+        readonly ModelBuildOrchestrator<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs> m_BuildOrchestrator;
+        TreeViewColumnManager<AllTrackedMemoryModel.ItemData> m_ColumnManager;
+        SizeCellRenderer m_SizeCellRenderer;
+
         // View.
         int? m_SelectAfterLoadItemId;
 
@@ -56,6 +78,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_SelectAfterLoadItemId = null;
 
+            // Initialize composed components
+            m_FilterManager = new TableFilterManager<AllTrackedMemoryModel, AllTrackedMemoryModel.ItemData>();
+            m_BuildOrchestrator = new ModelBuildOrchestrator<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs>(
+                snapshot,
+                new AllTrackedMemoryModelBuilderAdapter(),
+                typeof(AllTrackedMemoryModel).ToString());
+
             SearchFilterChanged += OnSearchFilterChanged;
             MemoryProfilerSettings.AllocationRootsToSplitChanged += OnAllocationRootsToSplitChanged;
 
@@ -71,11 +100,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public AllTrackedMemoryModel Model => m_Model;
 
-        public IScopedFilter<string> SearchFilter { get; private set; }
-        // TODO: this looks to be unused and can probably be removed?
-        public ITextFilter ItemNameFilter { get; private set; }
-
-        public IEnumerable<ITextFilter> ItemPathFilter { get; private set; }
+        public IScopedFilter<string> SearchFilter => m_FilterManager.SearchFilter;
+        public IEnumerable<ITextFilter> ItemPathFilter => m_FilterManager.PathFilters;
 
         ToolbarSearchField m_SearchField = null;
         protected override ToolbarSearchField SearchField => m_SearchField;
@@ -88,39 +114,40 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void SetFilters(
             AllTrackedMemoryModel model = null,
             IScopedFilter<string> searchFilter = null,
-            ITextFilter itemNameFilter = null,
             IEnumerable<ITextFilter> itemPathFilter = null,
             bool excludeAll = false)
         {
             // SetFilters is a listener to UI input (search filter changes) and therefore doesn't expect an awaitable task.
             // No caller or following code expects any part of the asnyc build to be done.
             // Therefore: Discard the returned task.
-            _ = SetFiltersAsync(model, searchFilter, itemNameFilter, itemPathFilter, excludeAll);
+            _ = SetFiltersAsync(model, searchFilter, itemPathFilter, excludeAll);
         }
 
         public async Task SetFiltersAsync(
             AllTrackedMemoryModel model = null,
             IScopedFilter<string> searchFilter = null,
-            ITextFilter itemNameFilter = null,
             IEnumerable<ITextFilter> itemPathFilter = null,
             bool excludeAll = false)
         {
-            SearchFilter = searchFilter;
-            ItemNameFilter = itemNameFilter;
-            ItemPathFilter = itemPathFilter;
-            m_TreeNodeIdFilter = excludeAll ? new List<int>() : null;
-            // TODO: do not fully rebuild if a model was supplied
-            if (IsViewLoaded)
-                await BuildModelAsync(false);
+            m_FilterManager.SearchFilter = searchFilter;
+            m_FilterManager.PathFilters = itemPathFilter;
+            m_FilterManager.TreeNodeIdFilter = excludeAll ? new List<int>() : null;
+            m_FilterManager.BaseModelForTreeNodeIdFiltering = model;
+
+            // Update base class members for compatibility
+            m_TreeNodeIdFilter = m_FilterManager.TreeNodeIdFilter;
+            m_BaseModelForTreeNodeIdFiltering = m_FilterManager.BaseModelForTreeNodeIdFiltering;
+
+            await m_FilterManager.ApplyFiltersAsync(() => BuildModelAsync(false), IsViewLoaded);
         }
 
         void OnAllocationRootsToSplitChanged(string[] allocationRootsToSplit)
         {
             if (IsViewLoaded)
                 // OnAllocationRootsToSplitChanged is a listener to UI input and therefore doesn't expect an awaitable task.
-                // No caller or following code expects any part of the asnyc build to be done.
-                // Therefore: Discard the returned task.
-                _ = BuildModelAsync(false);
+                // No caller or following code expects any part of the async build to be done.
+                // Therefore: Fire-and-forget with proper error handling.
+                FireAndForgetBuildModelAsync(false);
         }
 
         public bool TrySelectCategory(IAnalysisViewSelectable.Category category)
@@ -163,6 +190,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TreeView = view.Q<MultiColumnTreeView>(k_UxmlIdentifier_TreeView);
             m_LoadingOverlay = view.Q<ActivityIndicatorOverlay>(k_UxmlIdentifier_LoadingOverlay);
             m_ErrorLabel = view.Q<Label>(k_UxmlIdentifier_ErrorLabel);
+
+            // Initialize components that depend on m_TreeView
+            m_ColumnManager = new TreeViewColumnManager<AllTrackedMemoryModel.ItemData>(m_TreeView);
+            m_SizeCellRenderer = new SizeCellRenderer(m_TreeView, () => TableMode, k_NotAvailable, k_UssClass_Cell_Unreliable);
         }
 
         bool CanShowResidentMemory()
@@ -174,35 +205,53 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             base.ConfigureTreeView();
 
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Description, "Description", 0, BindCellForDescriptionColumn(), AllTrackedMemoryDescriptionCell.Instantiate);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Size, "Allocated Size", 120, BindCellForSizeColumn(), visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__SizeBar, "% Impact", 180, BindCellForMemoryBarColumn(), MakeMemoryBarCell);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__ResidentSize, "Resident Size", 120, BindCellForResidentSizeColumn(), visible: CanShowResidentMemory() && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
-        }
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Description,
+                "Description",
+                0,
+                BindCellForDescriptionColumn(),
+                AllTrackedMemoryDescriptionCell.Instantiate);
 
-        void ConfigureTreeViewColumn(string columnName, string columnTitle, int width, Action<VisualElement, int> bindCell, Func<VisualElement> makeCell = null, bool visible = true)
-        {
-            var column = m_TreeView.columns[columnName];
-            column.title = columnTitle;
-            column.bindCell = bindCell;
-            column.visible = visible;
-            if (width != 0)
-            {
-                column.width = width;
-                column.minWidth = width / 2;
-                column.maxWidth = width * 2;
-            }
-            if (makeCell != null)
-                column.makeCell = makeCell;
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Size,
+                "Allocated Size",
+                120,
+                m_SizeCellRenderer.CreateMemorySizeBinding<AllTrackedMemoryModel.ItemData>(
+                    item => item.TotalSize,
+                    item => item.Unreliable,
+                    k_UnreliableTooltip),
+                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
+
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__SizeBar,
+                "% Impact",
+                180,
+                m_SizeCellRenderer.CreateMemoryBarBinding<AllTrackedMemoryModel.ItemData>(
+                    item => item.TotalSize,
+                    () => TableMode != AllTrackedMemoryTableMode.OnlyResident
+                        ? new MemorySize(m_Model.TotalMemorySize.Committed, m_Model.TotalMemorySize.Committed)
+                        : new MemorySize(m_Model.TotalMemorySize.Resident, m_Model.TotalMemorySize.Resident),
+                    item => item.Unreliable),
+                m_SizeCellRenderer.MakeMemoryBarCell);
+
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__ResidentSize,
+                "Resident Size",
+                120,
+                m_SizeCellRenderer.CreateMemorySizeBinding<AllTrackedMemoryModel.ItemData>(
+                    item => item.TotalSize,
+                    item => item.Unreliable,
+                    k_UnreliableTooltip,
+                    useResident: true),
+                visible: CanShowResidentMemory() && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
         }
 
         protected AllTrackedMemoryModelBuilder.BuildArgs GetModelBuilderArgs()
         {
             return new AllTrackedMemoryModelBuilder.BuildArgs(
-                SearchFilter,
-                ItemNameFilter,
-                ItemPathFilter,
-                ExcludeAllFilterApplied,
+                m_FilterManager.SearchFilter,
+                m_FilterManager.PathFilters,
+                m_FilterManager.ExcludeAllFilterApplied,
                 MemoryProfilerSettings.ShowReservedMemoryBreakdown,
                 m_DisambiguateUnityObjects,
                 TableMode == AllTrackedMemoryTableMode.OnlyCommitted,
@@ -212,45 +261,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override Func<AllTrackedMemoryModel> GetModelBuilderTask(CancellationToken cancellationToken)
         {
-            // Capture all variables locally in case they are changed before the task is started
-            var modelTypeName = typeof(UnityObjectsModel).ToString();
-            var treeNodeIdFilter = m_TreeNodeIdFilter;
-            var baseModel = m_BaseModelForTreeNodeIdFiltering;
-            if (treeNodeIdFilter != null)
-            {
-                return () =>
-                {
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived)                 " + modelTypeName);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived) (not canceled)                 " + modelTypeName);
-
-                    // Build the data model as a derivative of an existing model with only certain tree node ids present
-                    var modelBuilder = new AllTrackedMemoryModelBuilder();
-                    var model = modelBuilder.Build(baseModel, treeNodeIdFilter);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
-                    return model;
-                };
-            }
-
-            var snapshot = m_Snapshot;
             var args = GetModelBuilderArgs();
-
-            return () =>
-                {
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building                 " + modelTypeName);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (not canceled)                 " + modelTypeName);
-                    // Build the data model.
-                    var modelBuilder = new AllTrackedMemoryModelBuilder();
-                    var model = modelBuilder.Build(snapshot, args);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
-                    return model;
-                };
+            return m_BuildOrchestrator.CreateBuildTask(
+                args,
+                m_FilterManager.BaseModelForTreeNodeIdFiltering,
+                m_FilterManager.TreeNodeIdFilter,
+                cancellationToken);
         }
 
         protected override void OnViewReloaded(bool success)
@@ -259,7 +275,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Notify responder.
             m_Responder?.Reloaded(this, success);
             // Update usage counters
-            MemoryProfilerAnalytics.AddAllTrackedMemoryUsage(SearchFilter != null, MemoryProfilerSettings.ShowReservedMemoryBreakdown, TableMode);
+            MemoryProfilerAnalytics.AddAllTrackedMemoryUsage(m_FilterManager.SearchFilter != null, MemoryProfilerSettings.ShowReservedMemoryBreakdown, TableMode);
         }
 
         protected override void RefreshView()
@@ -317,84 +333,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                     cell.RemoveFromClassList(k_UssClass_Cell_Unreliable);
                 }
             };
-        }
-
-        Action<VisualElement, int> BindCellForSizeColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<AllTrackedMemoryModel.ItemData>(rowIndex);
-                var size = itemData.TotalSize.Committed;
-                var cell = (Label)element;
-
-                if (!itemData.Unreliable)
-                {
-                    cell.text = EditorUtility.FormatBytes((long)size);
-                    cell.tooltip = $"{itemData.TotalSize.Committed:N0} B";
-                    cell.displayTooltipWhenElided = false;
-                    cell.RemoveFromClassList(k_UssClass_Cell_Unreliable);
-                }
-                else
-                {
-                    cell.text = k_NotAvailable;
-                    cell.tooltip = k_UnreliableTooltip;
-                    cell.AddToClassList(k_UssClass_Cell_Unreliable);
-                }
-            };
-        }
-
-        Action<VisualElement, int> BindCellForResidentSizeColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<AllTrackedMemoryModel.ItemData>(rowIndex);
-                var size = itemData.TotalSize.Resident;
-                var cell = (Label)element;
-
-                if (!itemData.Unreliable)
-                {
-                    cell.text = EditorUtility.FormatBytes((long)size);
-                    cell.tooltip = $"{size:N0} B";
-                    cell.displayTooltipWhenElided = false;
-                    cell.RemoveFromClassList(k_UssClass_Cell_Unreliable);
-                }
-                else
-                {
-                    cell.text = k_NotAvailable;
-                    cell.tooltip = k_UnreliableTooltip;
-                    cell.AddToClassList(k_UssClass_Cell_Unreliable);
-                }
-            };
-        }
-
-        Action<VisualElement, int> BindCellForMemoryBarColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var maxValue = TableMode != AllTrackedMemoryTableMode.OnlyResident ?
-                    m_Model.TotalMemorySize.Committed : m_Model.TotalMemorySize.Resident;
-
-                var item = m_TreeView.GetItemDataForIndex<AllTrackedMemoryModel.ItemData>(rowIndex);
-                var cell = element as MemoryBar;
-
-                if (!item.Unreliable)
-                    cell.Set(item.TotalSize, maxValue, maxValue);
-                else
-                    cell.SetEmpty();
-            };
-        }
-
-        VisualElement MakeMemoryBarCell()
-        {
-            var bar = new MemoryBar();
-            bar.Mode = TableMode switch
-            {
-                AllTrackedMemoryTableMode.OnlyCommitted => MemoryBarElement.VisibilityMode.CommittedOnly,
-                AllTrackedMemoryTableMode.OnlyResident => MemoryBarElement.VisibilityMode.ResidentOnly,
-                AllTrackedMemoryTableMode.CommittedAndResident => MemoryBarElement.VisibilityMode.CommittedAndResident,
-                _ => throw new NotImplementedException(),
-            };
-            return bar;
         }
 
         protected override void OnTreeItemSelected(int itemId, AllTrackedMemoryModel.ItemData itemData)

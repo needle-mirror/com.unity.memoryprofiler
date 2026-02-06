@@ -62,6 +62,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         ISelectionDetails m_SelectionDetails;
         bool m_SameSessionComparison;
 
+        // Composed components
+        ComparisonModelBuildOrchestrator<UnityObjectsComparisonModel, UnityObjectsComparisonModelBuilder.BuildArgs> m_BuildOrchestrator;
+        ComparisonTableColumnManager<UnityObjectsComparisonModel.ItemData> m_ColumnManager;
+
         // View.
         Label m_DescriptionLabel;
         ToolbarSearchField m_SearchField;
@@ -90,6 +94,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SnapshotB = snapshotB;
             m_Description = description;
             m_SelectionDetails = selectionDetails;
+
+            // Initialize comparison model build orchestrator
+            m_BuildOrchestrator = new ComparisonModelBuildOrchestrator<UnityObjectsComparisonModel, UnityObjectsComparisonModelBuilder.BuildArgs>(
+                snapshotA,
+                snapshotB,
+                new UnityObjectsComparisonModelBuilderAdapter(),
+                typeof(UnityObjectsComparisonModel).ToString());
         }
 
         protected override ToolbarSearchField SearchField => m_SearchField;
@@ -109,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return view;
         }
 
-        protected override void ViewLoaded()
+        protected override async void ViewLoaded()
         {
             m_SameSessionComparison = m_SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID && m_SnapshotA.MetaData.SessionGUID == m_SnapshotB.MetaData.SessionGUID;
 
@@ -126,10 +137,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 FlattenHierarchy = true
             };
             // Set table mode and filtering before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            var baseViewColumnVisibilityTask = m_BaseTableViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
-            var baseViewFilterTask = m_BaseTableViewController.SetFiltersAsync(m_Model?.BaseModel, unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
-            // Should not trigger a build and effectively terminate immediately
-            Task.WaitAll(baseViewColumnVisibilityTask, baseViewFilterTask);
+            await m_BaseTableViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            await m_BaseTableViewController.SetFiltersAsync(m_Model?.BaseModel, unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
 
             m_BaseViewContainer.Add(m_BaseTableViewController.View);
             AddChild(m_BaseTableViewController);
@@ -148,10 +157,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 FlattenHierarchy = true
             };
             // Set table mode and filtering before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            var comparedViewColumnVisibilityTask = m_ComparedTableViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
-            var comparedViewFilterTask = m_ComparedTableViewController.SetFiltersAsync(m_Model?.ComparedModel, unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
-            // Should not trigger a build and effectively terminate immediately
-            Task.WaitAll(comparedViewColumnVisibilityTask, comparedViewFilterTask);
+            await m_ComparedTableViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            await m_ComparedTableViewController.SetFiltersAsync(m_Model?.ComparedModel, unityObjectInstanceIdFilter: UnityObjectsModelBuilder.ShowNoObjectsAtAllFilter);
 
             m_ComparedViewContainer.Add(m_ComparedTableViewController.View);
             AddChild(m_ComparedTableViewController);
@@ -210,14 +217,52 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UnchangedToggle.text = "Show Unchanged";
             m_UnchangedToggle.RegisterValueChangedCallback(ApplyFilter);
 
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Description, "Description", BindCellForDescriptionColumn(), makeCell: UnityObjectsDescriptionCell.Instantiate);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountDelta, "Count Difference", BindCellForCountDeltaColumn(), makeCell: CountDeltaCell.Instantiate);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__SizeDeltaBar, "Size Difference Bar", BindCellForSizeDeltaBarColumn(), makeCell: DeltaBarCell.Instantiate);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__SizeDelta, "Size Difference", BindCellForSizeColumn(SizeType.SizeDelta), makeCell: MakeSizeDeltaCell);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__TotalSizeInA, "Size In A", BindCellForSizeColumn(SizeType.TotalSizeInA));
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__TotalSizeInB, "Size In B", BindCellForSizeColumn(SizeType.TotalSizeInB));
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountInA, "Count In A", BindCellForCountColumn(CountType.CountInA));
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountInB, "Count In B", BindCellForCountColumn(CountType.CountInB));
+            // Initialize column manager
+            m_ColumnManager = new ComparisonTableColumnManager<UnityObjectsComparisonModel.ItemData>(m_TreeView);
+
+            // Configure columns using the column manager
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Description,
+                "Description",
+                0,
+                BindCellForDescriptionColumn(),
+                UnityObjectsDescriptionCell.Instantiate);
+
+            m_ColumnManager.ConfigureCountDeltaColumn(
+                k_UxmlIdentifier_TreeViewColumn__CountDelta,
+                "Count Difference",
+                item => item.CountDelta);
+
+            m_ColumnManager.ConfigureSizeDeltaBarColumn(
+                k_UxmlIdentifier_TreeViewColumn__SizeDeltaBar,
+                "Size Difference Bar",
+                item => item.SizeDelta,
+                () => m_Model.LargestAbsoluteSizeDelta);
+
+            m_ColumnManager.ConfigureSizeDeltaColumn(
+                k_UxmlIdentifier_TreeViewColumn__SizeDelta,
+                "Size Difference",
+                item => item.SizeDelta);
+
+            m_ColumnManager.ConfigureSizeColumn(
+                k_UxmlIdentifier_TreeViewColumn__TotalSizeInA,
+                "Size In A",
+                item => Convert.ToInt64(item.TotalSizeInA.Committed));
+
+            m_ColumnManager.ConfigureSizeColumn(
+                k_UxmlIdentifier_TreeViewColumn__TotalSizeInB,
+                "Size In B",
+                item => Convert.ToInt64(item.TotalSizeInB.Committed));
+
+            m_ColumnManager.ConfigureCountColumn(
+                k_UxmlIdentifier_TreeViewColumn__CountInA,
+                "Count In A",
+                item => Convert.ToInt32(item.CountInA));
+
+            m_ColumnManager.ConfigureCountColumn(
+                k_UxmlIdentifier_TreeViewColumn__CountInB,
+                "Count In B",
+                item => Convert.ToInt32(item.CountInB));
         }
 
         protected UnityObjectsComparisonModelBuilder.BuildArgs GetComparisonModelBuilderArgs()
@@ -238,27 +283,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override Func<UnityObjectsComparisonModel> GetModelBuilderTask(CancellationToken cancellationToken)
         {
-            // Capture all variables locally in case they are changed before the task is started
-            var modelTypeName = typeof(UnityObjectsModel).ToString();
-
-            var snapshotA = m_SnapshotA;
-            var snapshotB = m_SnapshotB;
             var compareArgs = GetComparisonModelBuilderArgs();
-
-            return () =>
-                {
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building                 " + modelTypeName);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (not canceled)                 " + modelTypeName);
-                    // Build the data model.
-                    var modelBuilder = new UnityObjectsComparisonModelBuilder();
-                    var model = modelBuilder.Build(snapshotA, snapshotB, compareArgs);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
-                    return model;
-                };
+            return m_BuildOrchestrator.CreateBuildTask(compareArgs, cancellationToken);
         }
 
         protected override void OnViewReloaded(bool success)
@@ -330,89 +356,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
         }
 
-        Action<VisualElement, int> BindCellForSizeDeltaBarColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var cell = (DeltaBarCell)element;
-                var sizeDelta = m_TreeView.GetItemDataForIndex<UnityObjectsComparisonModel.ItemData>(rowIndex).SizeDelta;
-                var proportionalSizeDelta = 0f;
-                if (sizeDelta != 0)
-                    proportionalSizeDelta = (float)sizeDelta / m_Model.LargestAbsoluteSizeDelta;
-                cell.SetDeltaScalar(proportionalSizeDelta);
-                cell.tooltip = FormatBytes(sizeDelta);
-            };
-        }
-
-        Action<VisualElement, int> BindCellForCountDeltaColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var cell = (CountDeltaCell)element;
-                var itemData = m_TreeView.GetItemDataForIndex<UnityObjectsComparisonModel.ItemData>(rowIndex);
-                var countDelta = itemData.CountDelta;
-                cell.SetCountDelta(countDelta);
-            };
-        }
-
-        Action<VisualElement, int> BindCellForSizeColumn(SizeType sizeType)
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<UnityObjectsComparisonModel.ItemData>(rowIndex);
-                var size = sizeType switch
-                {
-                    SizeType.SizeDelta => itemData.SizeDelta,
-                    SizeType.TotalSizeInA => Convert.ToInt64(itemData.TotalSizeInA.Committed),
-                    SizeType.TotalSizeInB => Convert.ToInt64(itemData.TotalSizeInB.Committed),
-                    _ => throw new ArgumentException("Unknown size type."),
-                };
-
-                ((Label)element).text = FormatBytes(size);
-            };
-        }
-
-        Action<VisualElement, int> BindCellForCountColumn(CountType countType)
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<UnityObjectsComparisonModel.ItemData>(rowIndex);
-                var count = countType switch
-                {
-                    CountType.CountInA => Convert.ToInt32(itemData.CountInA),
-                    CountType.CountInB => Convert.ToInt32(itemData.CountInB),
-                    _ => throw new ArgumentException("Unknown count type."),
-                };
-
-                ((Label)element).text = $"{count:N0}";
-            };
-        }
-
-        VisualElement MakeSizeDeltaCell()
-        {
-            var cell = new Label();
-            cell.AddToClassList("unity-multi-column-view__cell__label");
-
-            // Make this a cell with a darkened background. This requires quite a bit of styling to be compatible with tree view selection styling, so that is why it is its own class.
-            cell.AddToClassList("dark-tree-view-cell");
-
-            return cell;
-        }
-
         void ApplyFilter(ChangeEvent<bool> evt)
         {
             // ApplyFilter is a listener to UI input (Unchanged filter changes) and therefore doesn't expect an awaitable task.
-            // No caller or following code expects any part of the asnyc build to be done.
-            // Therefore: Discard the returned task.
-            _ = BuildModelAsync(false);
+            // No caller or following code expects any part of the async build to be done.
+            // Therefore: Fire-and-forget with proper error handling.
+            FireAndForgetBuildModelAsync(false);
         }
 
         void SetHierarchyFlattened(ChangeEvent<bool> evt)
         {
             // SetHierarchyFlattened is a listener to UI input and therefore doesn't expect an awaitable task.
-            // No caller or following code expects any part of the asnyc build to be done.
-            // Therefore: Discard the returned task.
-            _ = BuildModelAsync(false);
+            // No caller or following code expects any part of the async build to be done.
+            // Therefore: Fire-and-forget with proper error handling.
+            FireAndForgetBuildModelAsync(false);
         }
 
         protected override void OnTreeItemSelected(int itemId, UnityObjectsComparisonModel.ItemData itemData)
@@ -541,19 +498,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SelectionDetails.SetSelection(view);
         }
 
-        static string FormatBytes(long bytes)
-        {
-            var sizeText = new System.Text.StringBuilder();
-
-            // Our built-in formatter for bytes doesn't support negative values.
-            if (bytes < 0)
-                sizeText.Append("-");
-
-            var absoluteBytes = Math.Abs(bytes);
-            sizeText.Append(EditorUtility.FormatBytes(absoluteBytes));
-            return sizeText.ToString();
-        }
-
         void IViewControllerWithVisibilityEvents.ViewWillBeDisplayed()
         {
             // Silent deselection on revisiting this view.
@@ -565,19 +509,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void IViewControllerWithVisibilityEvents.ViewWillBeHidden()
         {
-        }
-
-        enum SizeType
-        {
-            SizeDelta,
-            TotalSizeInA,
-            TotalSizeInB,
-        }
-
-        enum CountType
-        {
-            CountInA,
-            CountInB,
         }
     }
 }

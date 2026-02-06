@@ -1,15 +1,14 @@
 using System;
 using System.Runtime.InteropServices;
-#if DEBUG_VALIDATION
-using Unity.MemoryProfiler.Editor.Diagnostics;
-#endif
 using Unity.MemoryProfiler.Editor.Format;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Unity.MemoryProfiler.Editor.Managed;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
-
+using Unity.MemoryProfiler.Editor.Diagnostics;
 using Debug = UnityEngine.Debug;
+
+
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
 // so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
@@ -66,14 +65,12 @@ namespace Unity.MemoryProfiler.Editor
     }
     internal struct ObjectData
     {
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static ObjectData()
         {
-#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
-#pragma warning disable CS0184 // 'is' expression's given expression is never of the provided type (until it is, because UnityEngine was accidentally included.)
-            Debug.Assert(!(typeof(EntityId) is UnityEngine.EntityId), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
-#pragma warning restore CS0184 // 'is' expression's given expression is never of the provided type
-#endif
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
         }
+#endif
 
         private void SetManagedType(CachedSnapshot snapshot, int iType)
         {

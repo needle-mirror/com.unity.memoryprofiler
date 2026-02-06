@@ -52,7 +52,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.Dispose(disposing);
         }
 
-        protected override void ViewLoaded()
+        protected override async void ViewLoaded()
         {
             m_SameSessionDiff = SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID && SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
 
@@ -65,10 +65,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SameSessionDiff,
                 this);
             // Set table mode and filtering before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            var baseViewColumnVisibilityTask = m_BaseViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
-            var baseViewFilterTask = m_BaseViewController.SetFiltersAsync(m_Model?.BaseModel, excludeAll: true);
-            // Should not trigger a build and effectively terminate immediately
-            Task.WaitAll(baseViewColumnVisibilityTask, baseViewFilterTask);
+            await m_BaseViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            await m_BaseViewController.SetFiltersAsync(m_Model?.BaseModel, excludeAll: true);
 
             BaseViewContainer.Add(m_BaseViewController.View);
             AddChild(m_BaseViewController);
@@ -83,10 +81,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SameSessionDiff,
                 this);
             // Set table mode before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            var comparedViewColumnVisibilityTask = m_ComparedViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
-            var comparedViewFilterTask = m_ComparedViewController.SetFiltersAsync(m_Model?.ComparedModel, excludeAll: true);
-            // Should not trigger a build and effectively terminate immediately
-            Task.WaitAll(comparedViewColumnVisibilityTask, comparedViewFilterTask);
+            await m_ComparedViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
+            await m_ComparedViewController.SetFiltersAsync(m_Model?.ComparedModel, excludeAll: true);
 
             ComparedViewContainer.Add(m_ComparedViewController.View);
             AddChild(m_ComparedViewController);

@@ -8,6 +8,21 @@ using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+    class MemoryMapBreakdownModelBuilderAdapter : IModelBuilder<MemoryMapBreakdownModel, MemoryMapBreakdownModelBuilder.BuildArgs>
+    {
+        readonly MemoryMapBreakdownModelBuilder m_Builder = new MemoryMapBreakdownModelBuilder();
+
+        public MemoryMapBreakdownModel Build(CachedSnapshot snapshot, MemoryMapBreakdownModelBuilder.BuildArgs args)
+        {
+            return m_Builder.Build(snapshot, args);
+        }
+
+        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, List<int> treeNodeIdFilter)
+        {
+            return m_Builder.Build(baseModel, treeNodeIdFilter);
+        }
+    }
+
     class MemoryMapBreakdownViewController : SingleSnapshotTreeViewController<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>, IViewControllerWithVisibilityEvents
     {
         const string k_UxmlAssetGuid = "bc16108acf3b6484aa65bf05d6048e8f";
@@ -32,6 +47,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         readonly CachedSnapshot m_Snapshot;
         protected override Dictionary<string, Comparison<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>> SortComparisons { get; }
 
+        // Composed components
+        readonly TableFilterManager<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData> m_FilterManager;
+        readonly ModelBuildOrchestrator<MemoryMapBreakdownModel, MemoryMapBreakdownModelBuilder.BuildArgs> m_BuildOrchestrator;
+        TreeViewColumnManager<MemoryMapBreakdownModel.ItemData> m_ColumnManager;
+        SizeCellRenderer m_SizeCellRenderer;
+
         // State
         ISelectionDetails m_SelectionDetails;
 
@@ -46,6 +67,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Snapshot = snapshot;
             m_SelectionDetails = selectionDetails;
             TableMode = AllTrackedMemoryTableMode.CommittedAndResident;
+
+            // Initialize composed components
+            m_FilterManager = new TableFilterManager<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>();
+            m_BuildOrchestrator = new ModelBuildOrchestrator<MemoryMapBreakdownModel, MemoryMapBreakdownModelBuilder.BuildArgs>(
+                snapshot,
+                new MemoryMapBreakdownModelBuilderAdapter(),
+                typeof(MemoryMapBreakdownModel).ToString());
+
+            SearchFilterChanged += OnSearchFilterChanged;
+
             // Sort comparisons for each column.
             SortComparisons = new()
             {
@@ -58,6 +89,37 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         protected override ToolbarSearchField SearchField => m_SearchField;
+
+        public IScopedFilter<string> SearchFilter => m_FilterManager.SearchFilter;
+
+        void OnSearchFilterChanged(IScopedFilter<string> searchFilter)
+        {
+            SetFilters(searchFilter: searchFilter);
+        }
+
+        public void SetFilters(
+            MemoryMapBreakdownModel model = null,
+            IScopedFilter<string> searchFilter = null,
+            bool excludeAll = false)
+        {
+            _ = SetFiltersAsync(model, searchFilter, excludeAll);
+        }
+
+        public async Task SetFiltersAsync(
+            MemoryMapBreakdownModel model = null,
+            IScopedFilter<string> searchFilter = null,
+            bool excludeAll = false)
+        {
+            m_FilterManager.SearchFilter = searchFilter;
+            m_FilterManager.TreeNodeIdFilter = excludeAll ? new List<int>() : null;
+            m_FilterManager.BaseModelForTreeNodeIdFiltering = model;
+
+            // Update base class members for compatibility
+            m_TreeNodeIdFilter = m_FilterManager.TreeNodeIdFilter;
+            m_BaseModelForTreeNodeIdFiltering = m_FilterManager.BaseModelForTreeNodeIdFiltering;
+
+            await m_FilterManager.ApplyFiltersAsync(() => BuildModelAsync(false), IsViewLoaded);
+        }
 
         protected override VisualElement LoadView()
         {
@@ -93,74 +155,72 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TreeView = View.Q<MultiColumnTreeView>(k_UxmlIdentifier_TreeView);
             m_LoadingOverlay = View.Q<ActivityIndicatorOverlay>(k_UxmlIdentifier_LoadingOverlay);
             m_ErrorLabel = View.Q<Label>(k_UxmlIdentifier_ErrorLabel);
+
+            // Initialize components that depend on m_TreeView
+            m_ColumnManager = new TreeViewColumnManager<MemoryMapBreakdownModel.ItemData>(m_TreeView);
+            m_SizeCellRenderer = new SizeCellRenderer(m_TreeView, () => TableMode);
         }
 
         protected override void ConfigureTreeView()
         {
             base.ConfigureTreeView();
 
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Address, "Address", BindCellForAddressColumn(), width: 180, makeCell: MakeCellForAddressColumn);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Size, "Allocated Size", BindCellForSizeColumn(), width: 100, makeCell: MakeCellForSizeColumn, visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__ResidentSize, "Resident Size", BindCellForResidentSizeColumn(), width: 100, visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Type, "Type", BindCellForTypeColumn(), width: 180);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Description, "Name", BindCellForNameColumn());
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Address,
+                "Address",
+                180,
+                BindCellForAddressColumn(),
+                MakeCellForAddressColumn);
+
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Size,
+                "Allocated Size",
+                100,
+                m_SizeCellRenderer.CreateMemorySizeBinding<MemoryMapBreakdownModel.ItemData>(
+                    item => item.TotalSize),
+                MakeCellForSizeColumn,
+                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
+
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__ResidentSize,
+                "Resident Size",
+                100,
+                BindCellForResidentSizeColumn(),
+                visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
+
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Type,
+                "Type",
+                180,
+                BindCellForTypeColumn());
+
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Description,
+                "Name",
+                0,
+                BindCellForNameColumn());
         }
 
         protected MemoryMapBreakdownModelBuilder.BuildArgs GetModelBuilderArgs()
         {
-            var nameFilter = m_SearchField.value;
-            return new MemoryMapBreakdownModelBuilder.BuildArgs(nameFilter);
+            // Pass the scoped filter directly for proper hierarchical search
+            return new MemoryMapBreakdownModelBuilder.BuildArgs(m_FilterManager.SearchFilter);
         }
 
         protected override Func<MemoryMapBreakdownModel> GetModelBuilderTask(CancellationToken cancellationToken)
         {
-            // Capture all variables locally in case they are changed before the task is started
-            var modelTypeName = typeof(MemoryMapBreakdownModel).ToString();
-            var treeNodeIdFilter = m_TreeNodeIdFilter;
-            var baseModel = m_BaseModelForTreeNodeIdFiltering;
-            if (treeNodeIdFilter != null)
-            {
-                return () =>
-                {
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived)                 " + modelTypeName);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived) (not canceled)                 " + modelTypeName);
-
-                    // Build the data model as a derivative of an existing model with only certain tree node ids present
-                    var modelBuilder = new MemoryMapBreakdownModelBuilder();
-                    var model = modelBuilder.Build(baseModel, treeNodeIdFilter);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
-                    return model;
-                };
-            }
-
-            var snapshot = m_Snapshot;
             var args = GetModelBuilderArgs();
-
-            return () =>
-                {
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building                 " + modelTypeName);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (not canceled)                 " + modelTypeName);
-                    // Build the data model.
-                    var modelBuilder = new MemoryMapBreakdownModelBuilder();
-                    var model = modelBuilder.Build(snapshot, args);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
-                    return model;
-                };
+            return m_BuildOrchestrator.CreateBuildTask(
+                args,
+                m_FilterManager.BaseModelForTreeNodeIdFiltering,
+                m_FilterManager.TreeNodeIdFilter,
+                cancellationToken);
         }
 
         protected override void OnViewReloaded(bool success)
         {
             base.OnViewReloaded(success);
-
-            // Update usage counters
-            MemoryProfilerAnalytics.AddMemoryMapUsage(m_SearchField.value != null);
+            MemoryProfilerAnalytics.AddMemoryMapUsage(m_FilterManager.SearchFilter != null);
         }
 
         protected override void RefreshView()
@@ -200,15 +260,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             var cell = new Label();
             cell.AddToClassList("memory-map-breakdown-view__tree-view__size");
             return cell;
-        }
-
-        Action<VisualElement, int> BindCellForSizeColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
-                ((Label)element).text = EditorUtility.FormatBytes((long)itemData.TotalSize.Committed);
-            };
         }
 
         Action<VisualElement, int> BindCellForResidentSizeColumn()

@@ -11,7 +11,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
         }
 
-        protected override void ViewLoaded()
+        protected override async void ViewLoaded()
         {
             base.ViewLoaded();
 
@@ -20,9 +20,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             AddChild(m_TableViewController);
 
             // Set table mode before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            var columnVisibilityTask = m_TableViewController.SetColumnsVisibilityAsync(TableColumnsMode);
-            // Should not trigger a build and effectively terminate immediately
-            Task.WaitAll(columnVisibilityTask);
+            await m_TableViewController.SetColumnsVisibilityAsync(TableColumnsMode);
 
             TableContainer.Add(m_TableViewController.View);
             // Setup table mode context menu and dropdown
@@ -30,11 +28,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             TableColumnsModeChanged += UpdateTableColumnsMode;
         }
 
-        void UpdateTableColumnsMode(AllTrackedMemoryTableMode mode)
+        async void UpdateTableColumnsMode(AllTrackedMemoryTableMode mode)
         {
             // Update table mode view
-            var columnVisibilityTask = m_TableViewController.SetColumnsVisibilityAsync(mode);
-            Task.WaitAll(columnVisibilityTask);
+            await m_TableViewController.SetColumnsVisibilityAsync(mode);
 
             // Refresh table common header
             var model = m_TableViewController.Model;

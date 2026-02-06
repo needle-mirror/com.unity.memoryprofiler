@@ -4,6 +4,11 @@ using Unity.Collections;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Extensions;
 using System.Collections.Generic;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using System.Runtime.CompilerServices;
+
+using System.Runtime.InteropServices;
+
 
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
 using AddressToManagedIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
@@ -138,4 +143,86 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+    internal partial class CachedSnapshot
+    {
+        public class SortedManagedObjectsCache : IndirectlySortedEntriesCache<SortedManagedObjectsCache.IndexedManagedObjectAddressComparer, SortedManagedObjectsCache.UnsafeManagedObjectsCache>
+        {
+            /// <summary>
+            /// This comparer is used to sort <seealso cref="IndirectlySortedEntriesCache.m_Sorting"/>
+            /// (which is array of indices of, in the cas of this class, all <seealso cref="ManagedData.ManagedObjects"/>)
+            /// based on the address of each object.
+            ///
+            /// This helper struct is needed as <seealso cref="ManagedObjectInfo"/> does not implement <seealso cref="IComparable{ManagedObjectInfo}"/>
+            /// as it would be unclear what parameters it would compare by, and if it would forcibly be the address, that could be rather confusing.
+            /// Especially since it is only needed here.
+            /// </summary>
+            public unsafe readonly struct IndexedManagedObjectAddressComparer : IRefComparer<long>
+            {
+                readonly ManagedObjectInfo* m_Ptr;
+                public IndexedManagedObjectAddressComparer(in DynamicArray<ManagedObjectInfo> managedObjectInfos)
+                {
+                    m_Ptr = managedObjectInfos.GetUnsafeTypedPtr();
+                }
+
+                [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+                public int Compare(ref long objectAIndex, ref long objectBIndex)
+                {
+                    // managed objects can't have a negative size, or be nested within other managed objects, so we don't need to compare sizes as well
+                    return m_Ptr[objectAIndex].PtrObject.CompareTo(m_Ptr[objectBIndex].PtrObject);
+                }
+            }
+
+            public SortedManagedObjectsCache(CachedSnapshot snapshot) : base(snapshot) { }
+
+
+            public override long Count => m_Snapshot.CrawledData.ManagedObjects.Count;
+
+            protected override IndexedManagedObjectAddressComparer SortingComparer => new IndexedManagedObjectAddressComparer(in m_Snapshot.CrawledData.ManagedObjects);
+
+            public override ulong Address(long index) => m_Snapshot.CrawledData.ManagedObjects[this[index]].PtrObject;
+            public override ulong FullSize(long index) => (ulong)m_Snapshot.CrawledData.ManagedObjects[this[index]].Size;
+
+            public override void Preload()
+            {
+                if (!m_Snapshot.CrawledData.Crawled)
+                    throw new InvalidOperationException("Can't use SortedManagedObjectsCache before crawling is done");
+                var wasLoaded = Loaded;
+                base.Preload();
+                if (!wasLoaded)
+                {
+                    m_UnsafeCache = new UnsafeManagedObjectsCache(m_Sorting, m_Snapshot.CrawledData.ManagedObjects);
+                }
+            }
+            UnsafeManagedObjectsCache m_UnsafeCache;
+            public override UnsafeManagedObjectsCache UnsafeCache
+            {
+                get
+                {
+                    if (Loaded)
+                        return m_UnsafeCache;
+                    Preload();
+                    return m_UnsafeCache;
+                }
+            }
+            [StructLayout(LayoutKind.Sequential)]
+            public readonly struct UnsafeManagedObjectsCache : CachedSnapshot.ISortedEntriesCache
+            {
+                public long Count => m_ManagedObjects.Count;
+
+                public long this[long index] => m_Sorting[index];
+                readonly DynamicArray<long> m_Sorting;
+                readonly DynamicArray<ManagedObjectInfo> m_ManagedObjects;
+                public ulong Address(long index) => m_ManagedObjects[this[index]].PtrObject;
+                public ulong FullSize(long index) => (ulong)m_ManagedObjects[this[index]].Size;
+
+                public UnsafeManagedObjectsCache(DynamicArray<long> sorting, DynamicArray<ManagedObjectInfo> managedObjects)
+                {
+                    m_Sorting = sorting;
+                    m_ManagedObjects = managedObjects;
+                }
+                // already preloaded
+                public void Preload() { }
+            }
+        }
+    }
 }

@@ -1,4 +1,6 @@
+using Unity.MemoryProfiler.Editor.Diagnostics;
 using Debug = UnityEngine.Debug;
+
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
 // so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
@@ -18,6 +20,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         public EntityId Value => m_InstanceID;
 
         readonly EntityId m_InstanceID;
+
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
+        static MatchesInstanceIdFilter()
+        {
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+        }
+#endif
 
         MatchesInstanceIdFilter(EntityId EntityId, CachedSnapshot sourceSnapshot)
         {

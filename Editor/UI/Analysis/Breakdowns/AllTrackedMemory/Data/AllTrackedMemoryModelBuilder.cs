@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.Profiling;
@@ -344,9 +343,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // handle Unkown Native allocation root
             {
                 var unknownAllocationRootIndex = k_FakeInvalidlyRootedAllocationIndex;
-                var unknownAllocationRootName = CachedSnapshot.UnrootedItemName;
-                if (NameFilter(args, unknownAllocationRootName) &&
-                    processedNativeRoots.UnrootedMemory.NativeSize.Committed > 0 &&
+                if (processedNativeRoots.UnrootedMemory.NativeSize.Committed > 0 &&
                     !ShouldGroupBeSplitIntoAllocations(snapshot, context.NativeRootReference2UnsafeAllocations2SizeMap, ref unknownAllocationRootIndex, out var splitGroup))
                 {
                     AddItemSizeToMap(context.NativeRootReference2SizeMap, unknownAllocationRootIndex, processedNativeRoots.UnrootedMemory.NativeSize);
@@ -358,9 +355,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (processedNativeRoots.UnrootedGraphicsResourceIndices.Count > 0)
             {
                 var indexOfFirstUnrootedGfxResource = processedNativeRoots.UnrootedGraphicsResourceIndices[0];
-                var unknownAllocationRootName = indexOfFirstUnrootedGfxResource.GetName(snapshot);
-                if (NameFilter(args, unknownAllocationRootName) &&
-                    processedNativeRoots.UnrootedMemory.GfxSize.Committed > 0)
+                if (processedNativeRoots.UnrootedMemory.GfxSize.Committed > 0)
                 {
                     var size = args.BreakdownGfxResources ? processedNativeRoots.UnrootedMemory.GfxSize : new MemorySize();
                     AddItemSizeToMap(context.GfxObjectIndex2SizeMap, indexOfFirstUnrootedGfxResource, size);
@@ -377,10 +372,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 for (int i = 0; i < processedNativeRoots.NonObjectRootedGraphicsResourceIndices.Count; i++)
                 {
                     var source = processedNativeRoots.NonObjectRootedGraphicsResourceIndices[i];
-
-                    var name = source.GetName(snapshot);
-                    if (!NameFilter(args, name))
-                        continue;
 
                     var size = 0UL;
                     if (args.BreakdownGfxResources)
@@ -434,12 +425,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 // Add untracked graphics resources to untracked map
-                if (context.UntrackedGraphicsResources.Committed > 0)
+                if (context.UntrackedGraphicsResources.Committed > 0 && SearchFilter(args, UntrackedGroupName, k_UntrackedGraphicsName))
                     AddItemSizeToMap(context.UntrackedRegionsName2SizeMap, k_UntrackedGraphicsName, context.UntrackedGraphicsResources);
 
                 // Reduce untracked
                 if (untrackedToReassign.Committed > 0)
-                    ReduceUntrackedByGraphicsResourcesSize(snapshot, context.UntrackedRegionsName2SizeMap, untrackedToReassign);
+                    ReduceUntrackedByGraphicsResourcesSize(context.UntrackedRegionsName2SizeMap, untrackedToReassign);
             }
 
             return context;
@@ -452,12 +443,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 map[key] = itemTotals + itemSize;
             else
                 map.Add(key, itemSize);
-        }
-
-        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
-        bool NameFilter(in BuildArgs args, in string name)
-        {
-            return args.NameFilter?.Passes(name) ?? true;
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
@@ -512,22 +497,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (ShouldGroupBeSplitIntoAllocations(snapshot, context.NativeRootReference2UnsafeAllocations2SizeMap, ref groupSource, out var splitGroup))
             {
-                string groupName = groupSource.Valid ? groupSource.GetName(snapshot) : CachedSnapshot.UnrootedItemName;
-                // Apply name filter.
-                if (!NameFilter(args, groupName))
-                    return;
-
                 if (snapshot.NativeAllocationSites?.Count > 0)
                 {
                     var siteId = snapshot.NativeAllocations.AllocationSiteId[source.Index];
                     var memLabelSourceIndex = snapshot.NativeAllocationSites.GetMemLabel(siteId);
-                    string memLabelName = memLabelSourceIndex.Valid ? snapshot.NativeMemoryLabels.MemoryLabelName[memLabelSourceIndex.Index] : CachedSnapshot.UnknownMemlabelName;
 
                     if (splitGroup.ChildNodes == null)
                         splitGroup.ChildNodes = new Dictionary<SourceIndex, MemorySizeTreeNode>();
                     splitGroup = splitGroup.ChildNodes.GetOrAdd(memLabelSourceIndex);
-                    if (!NameFilter(args, memLabelName))
-                        return;
                 }
 
                 if (splitGroup.ChildNodes == null)
@@ -610,12 +587,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             Dictionary<SourceIndex, MemorySize> regionsTotalMap,
             Dictionary<SourceIndex, MemorySize> gpuSizesMap)
         {
-            var name = source.GetName(snapshot);
-
-            // Apply name filter (only if don't collapse reserved)
-            if (args.BreakdownNativeReserved && !NameFilter(args, name))
-                return;
-
             var memIndex = snapshot.NativeMemoryRegions.ParentIndex[source.Index];
             if (snapshot.UseDeviceMemoryForGraphics && snapshot.NativeMemoryRegions.GPUAllocatorIndices.Contains(memIndex))
                 AddItemSizeToMap(gpuSizesMap, source, size);
@@ -640,10 +611,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 context.ManagedMemoryVM += size.NativeSize;
                 return;
             }
-
-            var name = itemIndex.GetName(snapshot);
-            if (!NameFilter(args, name))
-                return;
 
             var splitItemIndex = itemIndex;
             if (!ShouldGroupBeSplitIntoAllocations(snapshot, context.NativeRootReference2UnsafeAllocations2SizeMap, ref splitItemIndex, out var splitGroup))
@@ -679,11 +646,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             ref MemorySize totalEstimatedGraphicsMemory)
         {
             ref readonly var nativeSource = ref data.NativeObjectOrRootIndex;
-
-            var name = nativeSource.GetName(snapshot);
-            if (!NameFilter(args, name))
-                return;
-
             ref readonly var size = ref data.AccumulatedRootSizes;
 
             // Handle Graphics entry
@@ -712,6 +674,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return;
 
                 string id = null;
+                var name = nativeSource.GetName(snapshot);
                 if (args.DisambiguateUnityObjects && nativeObjectIndex > 0)
                 {
                     id = NativeObjectTools.ProduceNativeObjectId(nativeObjectIndex, snapshot);
@@ -772,10 +735,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var name = source.GetName(snapshot);
 
-            // Apply name filter.
-            if (!NameFilter(args, name))
-                return;
-
             // to add the object to corresponding type entry in the map, we need a valid type.
             var managedTypeIndex = managedObject.ITypeDescription;
             if (managedTypeIndex < 0)
@@ -815,11 +774,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             in BuildArgs args,
             BuildContext context)
         {
-            // Apply name filter.
-            var name = source.GetName(snapshot);
-            if (!NameFilter(args, name))
-                return;
-
             var managedHeaps = snapshot.ManagedHeapSections;
             var sectionType = managedHeaps.SectionType[source.Index];
             switch (sectionType)
@@ -843,10 +797,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             in BuildArgs args,
             BuildContext context)
         {
-            // Apply name filter.
             var name = source.GetName(snapshot);
-            if (!NameFilter(args, name))
-                return;
 
             var regionType = snapshot.EntriesMemoryMap.GetPointType(source);
             switch (regionType)
@@ -888,12 +839,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        void ReduceUntrackedByGraphicsResourcesSize(CachedSnapshot snapshot, Dictionary<string, MemorySize> untrackedMap, MemorySize graphicsMemorySize)
+        void ReduceUntrackedByGraphicsResourcesSize(Dictionary<string, MemorySize> untrackedMap, MemorySize graphicsMemorySize)
         {
-            var systemRegions = snapshot.SystemMemoryRegions;
-
             // Sort by size, biggest first
-            var untrackedMem = untrackedMap.ToList();
+            var untrackedMem = new List<KeyValuePair<string, MemorySize>>(untrackedMap);
             untrackedMem.Sort((l, r) => -l.Value.Committed.CompareTo(r.Value.Committed));
             for (int i = 0; i < untrackedMem.Count; i++)
             {
@@ -1041,7 +990,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // SearchFilter doesn't have to be applied to the managed objects, as their Tree is already fully build by the context builder and filtered right there
             using var mainGroupNameFilter = args.SearchFilter?.OpenScope(k_ManagedGroupName);
             // Add "VM"
-            if (SearchFilter(args, k_ManagedVMGroupName) && NameFilter(args, k_ManagedVMGroupName))
+            if (SearchFilter(args, k_ManagedVMGroupName))
             {
                 treeItems.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                 m_ItemId++,
@@ -1052,7 +1001,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             // Add "Reserved"
-            if (SearchFilter(args, k_ReservedItemName) && NameFilter(args, k_ReservedItemName))
+            if (SearchFilter(args, k_ReservedItemName))
             {
                 treeItems.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     (int)IAnalysisViewSelectable.Category.ManagedReserved,
@@ -1172,7 +1121,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             MemorySize androidRuntimeSize,
             out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
         {
-            if (NameFilter(args, k_AndroidRuntime) && SearchFilter(args, k_AndroidRuntime) && (androidRuntimeSize.Committed > 0))
+            if (SearchFilter(args, k_AndroidRuntime) && (androidRuntimeSize.Committed > 0))
             {
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     (int)IAnalysisViewSelectable.Category.AndroidRuntime,
@@ -1457,7 +1406,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
         {
             // As it's collapses in single item, it can be filtered out
-            if (!SearchFilter(args, groupName) || !NameFilter(args, groupName))
+            if (!SearchFilter(args, groupName))
             {
                 tree = default;
                 return false;
@@ -1484,7 +1433,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             return false;
         }
 
-
         // Returns all items in the tree that pass the provided filterPath. Each filter is applied at one level in the tree, starting at the root. Children will be removed.
         List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> BuildItemsAtPathInTreeExclusively(
             IEnumerable<ITextFilter> filterPath,
@@ -1499,7 +1447,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var found = false;
                 TreeViewItemData<AllTrackedMemoryModel.ItemData> itemOnPath = default;
                 var filter = filterPathQueue.Dequeue();
-                var sb = new System.Text.StringBuilder();
                 foreach (var item in items)
                 {
                     if (filter.Passes(item.data.Name))
@@ -1539,7 +1486,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             public BuildArgs(
                 IScopedFilter<string> searchFilter,
-                ITextFilter nameFilter = null,
                 IEnumerable<ITextFilter> pathFilter = null,
                 bool excludeAll = false,
                 bool breakdownNativeReserved = false,
@@ -1548,7 +1494,6 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Action<int, AllTrackedMemoryModel.ItemData> selectionProcessor = null,
                 string[] allocationRootNamesToSplitIntoSuballocations = null)
             {
-                NameFilter = nameFilter;
                 SearchFilter = searchFilter;
                 PathFilter = pathFilter;
                 ExcludeAll = excludeAll;
@@ -1563,10 +1508,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// Only leaf items that pass directly or as part of their parent scope will be included.
             /// </summary>
             public IScopedFilter<string> SearchFilter { get; }
-
-            // TODO: this looks to be unused and can probably be removed?
-            // Only items with a name that passes this filter will be included.
-            public ITextFilter NameFilter { get; }
 
             // Only items with a path (of names) that passes this filter will be included.
             public IEnumerable<ITextFilter> PathFilter { get; }

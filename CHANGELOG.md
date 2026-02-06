@@ -7,18 +7,26 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.11] - 2026-02-06
+
+### Fixed
+- Fixed an occasional deadlock when switching the table modes between Allocated, Allocated and Resident and Resident.
+
+### Changed
+- Adjusted the search logic for the Memory Map table to not just filter by the content of the *Name* column but now also by the *Address* or *Type* and deals properly with nested table entries in the same way search works in the other tables. 
+
 ## [1.1.10] - 2026-01-30
 
 ### Added
 - Added a "Shortest Path To Root" tab to the References section. This shows the shortest path to what roots every object or (referenced) native allocation to memory. Note that it shows only *one* path and that it is only guaranteed to be the shortest path within all paths to the strongest binding type of root. There can be multiple paths and even shorter ones in weaker binding root types, none of which are currently shown in this list. While there are more insights to be gained by inspecting all paths to root, this additional view should provide a quick starting point, particularly for long and complex reference chains where the *Referenced By* tab might never drill deep enough to get to a root. For Unity Objects where the shortest path for their Managed Shell ends in a different root than the native object, both paths are shown.
 - Added entries for the "Impact" any object has on the overall memory usage to the new *Impact* section of their *Selection Details*. This *Impact* includes their own memory usage as well as the proportional amount of the *Impact* attributed to objects and allocations that the object references. That is to say, if it is the only one referencing another object, the *Impact* of the other object is added to its impact in full; if others reference that other object, the *Impact* of the other object is distributed among all those referencing it. To ensure no byte gets lost due to rounding issues, the references to a shared object that were found first might get 1 B more added to their *Impact* than the references found later. When a *Unity Object* is selected that consists of both a native and a mangaged object, the *Impact* for each is shown separately, as it might differ or fully include the other. For example, if the Managed Shell of a MonoBehaviour is rooted to a static field, the *Impact* of the Managed Shell is shared with the native object and all managed reference, but the *Impact* of the native object's *Impact* is not attributed to the managed shell or the static field root, as it exclusively bound to the lifetime of its GameObject and Scene. In case of an Asset however, the native object's *Impact* would be shared with the static reference chain, as that chain will keep it from being unloaded by `Resources.UnloadUnusedAssets()`.
-- Added an option to the Memory Profiler's preferences to disable the calculations needed for the above mentione Impact and Root determinations. While we did our best to consider all possibilities, there might be edge cases where these calculations cause issues while opening a snapshot, and the capture opening times might increase due to these calculations. You can therefore disable the calculations, but please report any errors you may encounter, so that we can fix them.
+- Added an option to the Memory Profiler's preferences to disable the calculations needed for the above mentioned Impact and Root determinations. While we did our best to consider all possibilities, there might be edge cases where these calculations cause issues while opening a snapshot, and the capture opening times might increase due to these calculations. You can therefore disable the calculations, but please report any errors you may encounter, so that we can fix them.
 
 ### Fixed
 - Snapshot panel and details panel size and toggle state are now persisting.
 - Fixed a few smaller managed memory leaks in the UI.
 - Fixed Memory Usage module UI in Profiler Window in light mode having too dark a background color.
-- Fixed a broken profiler target selection dropdown on Unity 6000.5 with a nullpointer exception thrown during EditorStyles.toolbarDropDown inside PlayerConnectionCompatibilityHelper.GetPlayerDisplayName.
+- Fixed a broken profiler target selection drop-down on Unity 6000.5 with a null-pointer exception thrown during EditorStyles.toolbarDropDown inside PlayerConnectionCompatibilityHelper.GetPlayerDisplayName.
 - Fixed a native memory leak in the ManagedData constructor and when loading the dumped managed heap bytes out of a snapshot file.
 - Fixed the toggle labeled "Show Address in Call Stacks" so it does what it says, instead of the opposite.
 - Fixed the *Selection Details* for Unity Objects without a Managed Shell claiming the object to be "Referenced By: 0" where they totally had native references.

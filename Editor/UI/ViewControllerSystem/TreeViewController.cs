@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor.UIElements;
@@ -103,23 +102,19 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_ErrorMessage = "Snapshot is from an outdated Unity version that is not fully supported.";
         protected virtual string ModelBuilderErrorMessage => k_ErrorMessage;
 
+        // Composed component for async model building
+        AsyncModelBuildCoordinator<TModel> m_BuildCoordinator;
+
         // Model.
-        protected bool HasModelOrIsBuildingOne => m_LastBuildModelTask != null;
+        protected bool HasModelOrIsBuildingOne => m_BuildCoordinator.HasModelOrIsBuildingOne;
         protected virtual TModel m_Model
         {
-            get => (m_LastFinalizedModelTask?.IsCompletedSuccessfully ?? false) ? m_LastFinalizedModelTask.Result : default;
+            get => m_BuildCoordinator.CurrentModel;
             set => throw new NotImplementedException();
         }
         protected virtual List<TreeViewItemData<TTreeItemData>> RootNodes => m_Model.RootNodes;
         protected abstract Dictionary<string, Comparison<TreeViewItemData<TTreeItemData>>> SortComparisons { get; }
         readonly bool m_BuildOnLoad;
-
-        Task<TModel> m_LastBuildModelTask;
-        Task<TModel> m_LastFinalizedModelTask;
-        List<Task<TModel>> m_CanceledTasks = new List<Task<TModel>>();
-        CancellationTokenSource m_BuildModelCTS;
-        Func<Task<TModel>, TModel> m_PendingModelSorting;
-        CancellationTokenSource m_BuildModelSortingCTS;
 
         // View.
         protected MultiColumnTreeView m_TreeView;
@@ -137,6 +132,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_IDOfDefaultColumnWithPercentageBasedWidth = idOfDefaultColumnWithPercentageBasedWidth;
             m_BuildOnLoad = buildOnLoad;
+            m_BuildCoordinator = new AsyncModelBuildCoordinator<TModel>();
         }
 
         public event Action<ContextualMenuPopulateEvent> HeaderContextMenuPopulateEvent;
@@ -172,9 +168,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_BuildOnLoad)
                 // Building on load in ViewLoaded is an automatic trigger, likely to be automatically triggered for accessing the .View property,
                 // which therefore doesn't expect an awaitable task.
-                // No caller or following code expects any part of the asnyc build to be done.
-                // Therefore: Discard the returned task.
-                _ = BuildModelAsync(false);
+                // No caller or following code expects any part of the async build to be done.
+                // Therefore: Fire-and-forget with proper error handling.
+                FireAndForgetBuildModelAsync(false);
             else
                 m_LoadingOverlay.Hide();
         }
@@ -245,9 +241,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
 
             // OnTreeViewSortingChanged is a listener to UI input and therefore doesn't expect an awaitable task.
-            // No caller or following code expects any part of the asnyc build to be done.
-            // Therefore: Discard the returned task.
-            _ = BuildModelAsync(justSort: true);
+            // No caller or following code expects any part of the async build to be done.
+            // Therefore: Fire-and-forget with proper error handling.
+            FireAndForgetBuildModelAsync(justSort: true);
         }
 
         void OnSearchValueChanged(ChangeEvent<string> evt)
@@ -260,9 +256,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else if (IsViewLoaded)
                 // OnSearchValueChanged is a listener to UI input and therefore doesn't expect an awaitable task.
-                // No caller or following code expects any part of the asnyc build to be done.
-                // Therefore: Discard the returned task.
-                _ = BuildModelAsync();
+                // No caller or following code expects any part of the async build to be done.
+                // Therefore: Fire-and-forget with proper error handling.
+                FireAndForgetBuildModelAsync();
         }
 
         void GenerateContextMenu(ContextualMenuPopulateEvent evt, Column column)
@@ -284,7 +280,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected virtual Func<Task<TModel>, TModel> GetModelSorterTask(CancellationToken cancellationToken)
         {
             // Capture all variables locally in case they are changed before the sorting task is started
-            var sortComparison = BuildSortComparisonFromTreeView();
+            var sortComparison = TreeViewSortHelper.BuildSortComparison(m_TreeView, SortComparisons);
             return new Func<Task<TModel>, TModel>((t) =>
             {
                 AsyncTaskHelper.DebugLogAsyncStep("Start Sorting                 " + typeof(TModel));
@@ -301,175 +297,38 @@ namespace Unity.MemoryProfiler.Editor.UI
             });
         }
 
-        protected virtual async Task BuildModelAsync(bool justSort = false)
+        /// <summary>
+        /// Executes BuildModelAsync in a fire-and-forget manner with proper exception handling.
+        /// This is appropriate for UI event handlers that cannot be async and don't need to wait for completion.
+        /// Exceptions are logged but don't crash the application.
+        /// </summary>
+        protected async void FireAndForgetBuildModelAsync(bool justSort = false)
         {
-            // Show loading UI.
-            m_LoadingOverlay.Show();
-
-            // cleanup previously canceled builds
-            for (var i = m_CanceledTasks.Count - 1; i >= 0; i--)
-            {
-                if (!m_CanceledTasks[i].IsCompleted) continue;
-                m_CanceledTasks[i].Dispose();
-                m_CanceledTasks.RemoveAt(i);
-            }
-
-            // grab the main thread scheduler before any 'await' can move this method off of the main thread
-            var mainThreadScheduler = TaskScheduler.FromCurrentSynchronizationContext();
-            CancellationTokenSource buildCTS = null;
-
-            var modelTypeName = typeof(TModel).ToString();
-
-            AsyncTaskHelper.DebugLogAsyncStep("Async Building setup                 " + modelTypeName);
-            if (!justSort || !HasModelOrIsBuildingOne)
-            {
-                // if we don't just sort or have no previous model builder task to continue on, we need to do a full (re)build
-
-                // cancel previous build, if any. this will also cancel the current sort task
-                if (m_LastBuildModelTask is { IsCompleted: false })
-                    m_CanceledTasks.Add(m_LastBuildModelTask);
-                m_BuildModelCTS?.Cancel();
-                m_BuildModelCTS = buildCTS = new CancellationTokenSource();
-
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building setup - Builder                 " + modelTypeName);
-                // Get the task on mainthread as some builder configs come from EditorPrefs, which is main thread accessible only
-                var buildModelChildTask = GetModelBuilderTask(buildCTS.Token);
-                m_LastBuildModelTask = Task.Run(() =>
-                {
-                    try
-                    {
-                        buildCTS.Token.ThrowIfCancellationRequested();
-                        // run actual task on the threaded task's thread
-                        return buildModelChildTask();
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // cancellation is expected. Log it though.
-                        AsyncTaskHelper.DebugLogAsyncStep("Building Canceled                 " + modelTypeName);
-                        // continuation tasks check for cancellation and against null models, but critically,
-                        // the UI needs to get updated (by the last task in the queue) no matter the exception.
-                        return null;
-                    }
-                    catch (UnsupportedSnapshotVersionException)
-                    {
-                        return null;
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogException(e);
-                        return null;
-                    }
-                }, buildCTS.Token);
-            }
-            else
-            {
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building setup - Builder Reuse                 " + modelTypeName);
-                // The builder might still be around, but the CancellationTokenSource might have been disposed and nulled.
-                // If so, create a new one so that the rest of the code behaves consistently.
-                buildCTS = m_BuildModelCTS ??= new CancellationTokenSource();
-            }
-
-            // cancel pending sort operations before creating new sort cancelation token source
-            m_BuildModelSortingCTS?.Cancel();
-            var sortCTS = m_BuildModelSortingCTS = new CancellationTokenSource();
-
-            // store current sorting state as sorting delegate before awaiting the builder task,
-            // which frees the main thread to trigger a new sorting task while the model is still building
-            m_PendingModelSorting = GetModelSorterTask(sortCTS.Token);
-
-            buildCTS.Token.Register(
-                () =>
-                {
-                    // cancel whatever sort operation would have followed this build, which may not be the one that was started with it
-                    // therefore use the CTS stored on instance fields rather than method local fields
-                    if (m_BuildModelSortingCTS != null && !m_BuildModelSortingCTS.IsCancellationRequested)
-                        m_BuildModelSortingCTS.Cancel();
-                    m_BuildModelSortingCTS = null;
-                    AsyncTaskHelper.DebugLogAsyncStep("buildCTS canceled Sorting                 " + modelTypeName);
-                }
-            );
-
-            TModel MainThreadUIIntegrationFunc(Task<TModel> t)
-            {
-                sortCTS.Token.ThrowIfCancellationRequested();
-                AsyncTaskHelper.DebugLogAsyncStep("Apply Model                 " + modelTypeName);
-
-                // Apply the model
-                var model = t.Result;
-                m_LastFinalizedModelTask = Task.FromResult(model);
-
-                var success = model != null;
-                OnModelRebuild(success);
-
-                // Hide loading UI.
-                m_LoadingOverlay.Hide();
-
-                // Notify responder.
-                OnViewReloaded(success);
-
-                AsyncTaskHelper.DebugLogAsyncStep("Model Applied                 " + modelTypeName);
-                return model;
-            }
-            ;
-
             try
             {
-                // Wait for the model to finish building to avoid scheduling a continuation to a task that might've been canceled
-                await m_LastBuildModelTask;
-
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building setup - Sorting                 " + modelTypeName);
-                var sortTaskFunc = m_PendingModelSorting;
-                buildCTS.Token.ThrowIfCancellationRequested();
-                sortCTS.Token.ThrowIfCancellationRequested();
-                var sortTask = m_LastBuildModelTask.ContinueWith(t => sortTaskFunc(t),
-                    sortCTS.Token,
-                    // Option None instead of OnlyOnRanToCompletion because with the latter it's unclear if cancellation ripples through and all tasks will end (ending the Task.WhenAll).
-                    // Since Builder task cancels sort task, only running to completion is implied.
-                    // None also means this task will run Async, i.e. off the main thread, unless given the mainThreadScheduler (see mainThreadUIIntegrationTask)
-                    TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
-
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building setup - Integration                 " + modelTypeName);
-                var mainThreadUIIntegrationTask = sortTask.ContinueWith(MainThreadUIIntegrationFunc
-                    , sortCTS.Token, TaskContinuationOptions.None, mainThreadScheduler);
-
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building - Await                 " + modelTypeName);
-                await mainThreadUIIntegrationTask.ConfigureAwait(false);
-
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building - Await Fininshed                 " + modelTypeName);
+                await BuildModelAsync(justSort);
             }
             catch (OperationCanceledException)
             {
-                // meh, expected. Ignore.
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building - Canceled                 " + modelTypeName);
+                // Cancellation is expected and acceptable - don't log
             }
             catch (Exception e)
             {
-                // Update the UI even if an exception happens
-                try
-                {
-                    MainThreadUIIntegrationFunc(Task.FromResult((TModel)null));
-                }
-                catch (OperationCanceledException) { }
+                // Log unexpected exceptions but don't rethrow (would crash the application in async void)
                 Debug.LogException(e);
             }
-            finally
-            {
-                // Cleanup:
-                // There can only ever be one overall model builder & Sort combo that will run to completion at a time
-                // but while a new one might have been started and set as m_BuildModelTask,
-                // an old one could be canceled and still run to the end.
-                if (!buildCTS.IsCancellationRequested)
-                {
-                    // Only clean up the instance fields if this is the running main task and it was not canceled
-                    m_BuildModelCTS = null;
-                    m_BuildModelSortingCTS = null;
-                }
-                buildCTS.Dispose();
-                sortCTS.Dispose();
+        }
 
-                AsyncTaskHelper.DebugLogAsyncStep("Async Building - Finally                 " + modelTypeName);
-            }
-            AsyncTaskHelper.DebugLogAsyncStep("Async Building - Done                 " + modelTypeName);
+        protected virtual async Task BuildModelAsync(bool justSort = false)
+        {
+            await m_BuildCoordinator.BuildModelAsync(
+                GetModelBuilderTask,
+                GetModelSorterTask,
+                (model, success) => OnModelRebuild(success),
+                OnViewReloaded,
+                () => m_LoadingOverlay.Show(),
+                () => m_LoadingOverlay.Hide(),
+                justSort);
         }
 
         protected virtual void OnModelRebuild(bool success)
@@ -571,103 +430,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 column.makeCell = makeCell;
         }
 
-        protected Comparison<TreeViewItemData<TTreeItemData>> BuildSortComparisonFromTreeView()
-        {
-            var sortedColumns = m_TreeView.sortedColumns;
-            if (sortedColumns == null)
-                return null;
-
-            var sortComparisons = new List<Comparison<TreeViewItemData<TTreeItemData>>>();
-            foreach (var sortedColumnDescription in sortedColumns)
-            {
-                if (sortedColumnDescription == null)
-                    continue;
-
-                var sortComparison = SortComparisons[sortedColumnDescription.columnName];
-
-                // Invert the comparison's input arguments depending on the sort direction.
-                var sortComparisonWithDirection = (sortedColumnDescription.direction == SortDirection.Ascending) ? sortComparison : (x, y) => sortComparison(y, x);
-                sortComparisons.Add(sortComparisonWithDirection);
-            }
-
-            return (x, y) =>
-            {
-                var result = 0;
-                foreach (var sortComparison in sortComparisons)
-                {
-                    result = sortComparison.Invoke(x, y);
-                    if (result != 0)
-                        break;
-                }
-
-                return result;
-            };
-        }
-
         protected override void Dispose(bool disposing)
         {
             if (disposing)
-            {
-                m_BuildModelCTS?.Cancel();
-                m_BuildModelSortingCTS?.Cancel();
-                m_BuildModelCTS = null;
-                m_BuildModelSortingCTS = null;
-
-                DisposeTaskAsync(m_LastBuildModelTask).Wait();
-
-                if (m_LastBuildModelTask != m_LastFinalizedModelTask)
-                    DisposeTaskAsync(m_LastFinalizedModelTask).Wait();
-
-                foreach (var canceledTask in m_CanceledTasks)
-                {
-                    if (!canceledTask.IsCompleted)
-                        DisposeTaskAsync(canceledTask).Wait();
-                }
-                m_CanceledTasks.Clear();
-
-                m_LastFinalizedModelTask = null;
-                m_LastBuildModelTask = null;
-            }
+                m_BuildCoordinator?.Dispose();
 
             base.Dispose(disposing);
-        }
-
-        static async Task DisposeTaskAsync(Task task)
-        {
-            if (task != null)
-            {
-                try
-                {
-                    AsyncTaskHelper.DebugLogAsyncStep($"Async Building - DisposeTaskAsync  - task status: {task.Status}  -   {typeof(TModel)}");
-
-                    if (task.Status > TaskStatus.WaitingForActivation)
-                        await task.ConfigureAwait(false);
-                    else
-                    {
-                        // the task is canceled so there is no risk of it triggering a crash,
-                        // but littering zombie tasks around isn't ideal...
-#if DEBUG_VALIDATION
-                        Debug.LogWarning("Zombie Task detected.");
-#endif
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    // meh, expected. Ignore.
-                    AsyncTaskHelper.DebugLogAsyncStep($"Async Building canceled - DisposeTaskAsync                 {typeof(TModel)}");
-                }
-                catch (Exception e)
-                {
-                    // Log the exception but finish up without rethrowing
-                    Debug.LogException(e);
-                }
-                finally
-                {
-                    if (task.IsFaulted)
-                        task.Dispose();
-                }
-            }
-            await Task.CompletedTask;
         }
     }
 }

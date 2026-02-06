@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -20,18 +20,18 @@
     "com.unity.profiling.core": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.10"
+    "com.unity.memoryprofiler.tests": "1.1.11"
   },
   "_upm": {
-    "changelog": "### Added\n- Added a \"Shortest Path To Root\" tab to the References section. This shows the shortest path to what roots every object or (referenced) native allocation to memory. Note that it shows only *one* path and that it is only guaranteed to be the shortest path within all paths to the strongest binding type of root. There can be multiple paths and even shorter ones in weaker binding root types, none of which are currently shown in this list. While there are more insights to be gained by inspecting all paths to root, this additional view should provide a quick starting point, particularly for long and complex reference chains where the *Referenced By* tab might never drill deep enough to get to a root. For Unity Objects where the shortest path for their Managed Shell ends in a different root than the native object, both paths are shown.\n- Added entries for the \"Impact\" any object has on the overall memory usage to the new *Impact* section of their *Selection Details*. This *Impact* includes their own memory usage as well as the proportional amount of the *Impact* attributed to objects and allocations that the object references. That is to say, if it is the only one referencing another object, the *Impact* of the other object is added to its impact in full; if others reference that other object, the *Impact* of the other object is distributed among all those referencing it. To ensure no byte gets lost due to rounding issues, the references to a shared object that were found first might get 1 B more added to their *Impact* than the references found later. When a *Unity Object* is selected that consists of both a native and a mangaged object, the *Impact* for each is shown separately, as it might differ or fully include the other. For example, if the Managed Shell of a MonoBehaviour is rooted to a static field, the *Impact* of the Managed Shell is shared with the native object and all managed reference, but the *Impact* of the native object's *Impact* is not attributed to the managed shell or the static field root, as it exclusively bound to the lifetime of its GameObject and Scene. In case of an Asset however, the native object's *Impact* would be shared with the static reference chain, as that chain will keep it from being unloaded by `Resources.UnloadUnusedAssets()`.\n- Added an option to the Memory Profiler's preferences to disable the calculations needed for the above mentione Impact and Root determinations. While we did our best to consider all possibilities, there might be edge cases where these calculations cause issues while opening a snapshot, and the capture opening times might increase due to these calculations. You can therefore disable the calculations, but please report any errors you may encounter, so that we can fix them.\n\n### Fixed\n- Snapshot panel and details panel size and toggle state are now persisting.\n- Fixed a few smaller managed memory leaks in the UI.\n- Fixed Memory Usage module UI in Profiler Window in light mode having too dark a background color.\n- Fixed a broken profiler target selection dropdown on Unity 6000.5 with a nullpointer exception thrown during EditorStyles.toolbarDropDown inside PlayerConnectionCompatibilityHelper.GetPlayerDisplayName.\n- Fixed a native memory leak in the ManagedData constructor and when loading the dumped managed heap bytes out of a snapshot file.\n- Fixed the toggle labeled \"Show Address in Call Stacks\" so it does what it says, instead of the opposite.\n- Fixed the *Selection Details* for Unity Objects without a Managed Shell claiming the object to be \"Referenced By: 0\" where they totally had native references.\n\n### Changed\n- Improved performance for table sorting.\n- Unrooted memory is now broken down by allocation for snapshots taken from 6000.3 or newer even if the Editor is not in `internal mode` and the snapshot was not taken from a Player or Editor started with the command line option `-enable-memoryprofiler-callstacks`. With that option these allocations are grouped by their Memory Label."
+    "changelog": "### Fixed\n- Fixed an occasional deadlock when switching the table modes between Allocated, Allocated and Resident and Resident.\n\n### Changed\n- Adjusted the search logic for the Memory Map table to not just filter by the content of the *Name* column but now also by the *Address* or *Type* and deals properly with nested table entries in the same way search works in the other tables."
   },
   "upmCi": {
-    "footprint": "b461b1a6ff62094ea44ac3cab05fd8a05e7ffdc8"
+    "footprint": "861a9ec7678086ff9fcbcf1ee995bca38b9c856e"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "cce3e8a0418473b7484d6fb6efacdc0f1358d2e3"
+    "revision": "3bbfaba8b49299ca3e2f86ea5dd7c1b9eea03746"
   }
 }

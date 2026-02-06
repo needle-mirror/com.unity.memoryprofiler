@@ -60,14 +60,12 @@ namespace Unity.MemoryProfiler.Editor.Managed
     [BurstCompile]
     static partial class ManagedDataCrawler
     {
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static ManagedDataCrawler()
         {
-#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
-#pragma warning disable CS0184 // 'is' expression's given expression is never of the provided type (until it is, because UnityEngine was accidentally included.)
-            Debug.Assert(!(typeof(EntityId) is UnityEngine.EntityId), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
-#pragma warning restore CS0184 // 'is' expression's given expression is never of the provided type
-#endif
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
         }
+#endif
 
         // Processing arrays in jobs is a neat speed up but for smaller arrays, the scheduling overhead beats the gain.
         // These values are based on rough experiments. Feel free to test and fine tune

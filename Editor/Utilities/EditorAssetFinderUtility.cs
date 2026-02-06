@@ -17,7 +17,8 @@ using RenderTexture = UnityEngine.RenderTexture;
 using HideFlags = UnityEngine.HideFlags;
 using GameObject = UnityEngine.GameObject;
 using Vector2 = UnityEngine.Vector2;
-using Debug = UnityEngine.Debug;
+using Unity.MemoryProfiler.Editor.Diagnostics;
+
 #if UNITY_6000_4_OR_NEWER
 using GUID = UnityEngine.GUID;
 #endif
@@ -395,6 +396,11 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             s_SearchDatabase_Options_Disabled = searchDatabaseOptions.GetField("disabled", BindingFlags.Instance | BindingFlags.Public);
             s_SearchDatabase_Options_Types = searchDatabaseOptions.GetField("types", BindingFlags.Instance | BindingFlags.Public);
+
+
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+#endif
         }
 
         // This is less than ideal since the whole SearchDatabase API is internal. But here is how you would tests if all indexes (i.e SearchDatabase) are ready.

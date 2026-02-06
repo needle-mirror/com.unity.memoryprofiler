@@ -16,6 +16,9 @@ using TextAlignment = UnityEngine.TextAlignment;
 using Rect = UnityEngine.Rect;
 using GUI = UnityEngine.GUI;
 using Debug = UnityEngine.Debug;
+using Unity.MemoryProfiler.Editor.Diagnostics;
+
+
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
 // so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
@@ -162,6 +165,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             Size, // Field and referenced?
             Notes,
         }
+
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
+        static ManagedObjectInspector()
+        {
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+        }
+#endif
 
         public ManagedObjectInspector(int managedObjectInspectorID, TreeViewState state, MultiColumnHeaderWithTruncateTypeName multiColumnHeader)
             : base(state, multiColumnHeader)

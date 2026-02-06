@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
 using UnityEditor.UIElements;
@@ -63,6 +62,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         readonly string m_Description;
         readonly Func<CachedSnapshot, CachedSnapshot, TBaseModelBuilderArgs, TreeComparisonBuilder.BuildArgs, ComparisonTableModel<TBaseModel, TBaseModelItemData>> m_BuildModel;
 
+        // Composed components - using orchestrator pattern for consistency
+        ComparisonModelBuildOrchestrator<ComparisonTableModel<TBaseModel, TBaseModelItemData>, ComparisonModelBuilderArgs> m_BuildOrchestrator;
+        ComparisonTableColumnManager<ComparisonTableModel<TBaseModel, TBaseModelItemData>.ComparisonData> m_ColumnManager;
+
         // View.
         Label m_DescriptionLabel;
         ToolbarSearchField m_SearchField;
@@ -84,6 +87,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             SnapshotB = snapshotB;
             m_Description = description;
             m_BuildModel = buildModel;
+
+            // Initialize comparison model build orchestrator with functional adapter
+            m_BuildOrchestrator = new ComparisonModelBuildOrchestrator<
+                ComparisonTableModel<TBaseModel, TBaseModelItemData>,
+                ComparisonModelBuilderArgs>(
+                snapshotA,
+                snapshotB,
+                new FunctionalComparisonModelBuilderAdapter(buildModel),
+                typeof(ComparisonTableModel<TBaseModel, TBaseModelItemData>).ToString());
         }
 
         protected override ToolbarSearchField SearchField => m_SearchField;
@@ -169,14 +181,51 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             base.ConfigureTreeView();
 
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__Description, "Description", BindCellForDescriptionColumn());
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountDelta, "Count Difference", BindCellForCountDeltaColumn(), makeCell: CountDeltaCell.Instantiate);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__SizeDeltaBar, "Size Difference Bar", BindCellForSizeDeltaBarColumn(), makeCell: DeltaBarCell.Instantiate);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__SizeDelta, "Size Difference", BindCellForSizeColumn(SizeType.SizeDelta), makeCell: MakeSizeDeltaCell);
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__TotalSizeInA, "Size In A", BindCellForSizeColumn(SizeType.TotalSizeInA));
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__TotalSizeInB, "Size In B", BindCellForSizeColumn(SizeType.TotalSizeInB));
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountInA, "Count In A", BindCellForCountColumn(CountType.CountInA));
-            ConfigureTreeViewColumn(k_UxmlIdentifier_TreeViewColumn__CountInB, "Count In B", BindCellForCountColumn(CountType.CountInB));
+            // Initialize column manager for consistent column configuration
+            m_ColumnManager = new ComparisonTableColumnManager<ComparisonTableModel<TBaseModel, TBaseModelItemData>.ComparisonData>(m_TreeView);
+
+            // Configure standard comparison columns using column manager
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Description,
+                "Description",
+                0,
+                BindCellForDescriptionColumn());
+
+            m_ColumnManager.ConfigureCountDeltaColumn(
+                k_UxmlIdentifier_TreeViewColumn__CountDelta,
+                "Count Difference",
+                item => item.CountDelta);
+
+            m_ColumnManager.ConfigureSizeDeltaBarColumn(
+                k_UxmlIdentifier_TreeViewColumn__SizeDeltaBar,
+                "Size Difference Bar",
+                item => item.SizeDelta,
+                () => m_Model.LargestAbsoluteSizeDelta);
+
+            m_ColumnManager.ConfigureSizeDeltaColumn(
+                k_UxmlIdentifier_TreeViewColumn__SizeDelta,
+                "Size Difference",
+                item => item.SizeDelta);
+
+            m_ColumnManager.ConfigureSizeColumn(
+                k_UxmlIdentifier_TreeViewColumn__TotalSizeInA,
+                "Size In A",
+                item => Convert.ToInt64(item.TotalSizeInA.Committed));
+
+            m_ColumnManager.ConfigureSizeColumn(
+                k_UxmlIdentifier_TreeViewColumn__TotalSizeInB,
+                "Size In B",
+                item => Convert.ToInt64(item.TotalSizeInB.Committed));
+
+            m_ColumnManager.ConfigureCountColumn(
+                k_UxmlIdentifier_TreeViewColumn__CountInA,
+                "Count In A",
+                item => Convert.ToInt32(item.CountInA));
+
+            m_ColumnManager.ConfigureCountColumn(
+                k_UxmlIdentifier_TreeViewColumn__CountInB,
+                "Count In B",
+                item => Convert.ToInt32(item.CountInB));
         }
 
         protected abstract TBaseModelBuilderArgs GetBaseModelBuilderArgs(IScopedFilter<string> itemNameFilter, bool sameSessionComparison);
@@ -189,33 +238,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override Func<ComparisonTableModel<TBaseModel, TBaseModelItemData>> GetModelBuilderTask(CancellationToken cancellationToken)
         {
-            // Capture all variables locally in case they are changed before the task is started
-            var modelTypeName = GetType().ToString();
-
-            var snapshotA = SnapshotA;
-            var snapshotB = SnapshotB;
-            var sameSessionComparison = SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID && SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
+            // Build arguments for the comparison model
+            var sameSessionComparison = SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID &&
+                                       SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
             var itemNameFilter = BuildTextFilterFromSearchText();
+            var baseModelArgs = GetBaseModelBuilderArgs(itemNameFilter, sameSessionComparison);
+            var comparisonArgs = GetComparisonModelBuilderArgs();
 
-            var args = GetBaseModelBuilderArgs(itemNameFilter, sameSessionComparison);
-            var compareArgs = GetComparisonModelBuilderArgs();
-
-            return () =>
-                {
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building                 " + modelTypeName);
-                    // Build the data model.
-                    var model = m_BuildModel.Invoke(
-                        snapshotA,
-                        snapshotB,
-                        args,
-                        compareArgs);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AsyncTaskHelper.DebugLogAsyncStep("Start Building (not canceled, sorting)                 " + modelTypeName);
-
-                    AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + modelTypeName);
-                    return model;
-                };
+            var args = new ComparisonModelBuilderArgs(baseModelArgs, comparisonArgs);
+            return m_BuildOrchestrator.CreateBuildTask(args, cancellationToken);
         }
 
         protected override void OnViewReloaded(bool success)
@@ -266,80 +297,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
         }
 
-        Action<VisualElement, int> BindCellForCountDeltaColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<ComparisonTableModel<TBaseModel, TBaseModelItemData>.ComparisonData>(rowIndex);
-                var countDelta = itemData.CountDelta;
-
-                var cell = (CountDeltaCell)element;
-                cell.SetCountDelta(countDelta);
-            };
-        }
-
-        Action<VisualElement, int> BindCellForSizeDeltaBarColumn()
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<ComparisonTableModel<TBaseModel, TBaseModelItemData>.ComparisonData>(rowIndex);
-                var sizeDelta = itemData.SizeDelta;
-
-                var cell = (DeltaBarCell)element;
-                var proportionalSizeDelta = 0f;
-                if (sizeDelta != 0)
-                    proportionalSizeDelta = (float)sizeDelta / m_Model.LargestAbsoluteSizeDelta;
-                cell.SetDeltaScalar(proportionalSizeDelta);
-                cell.tooltip = FormatBytes(sizeDelta);
-            };
-        }
-
-        Action<VisualElement, int> BindCellForSizeColumn(SizeType sizeType)
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<ComparisonTableModel<TBaseModel, TBaseModelItemData>.ComparisonData>(rowIndex);
-                var size = sizeType switch
-                {
-                    SizeType.SizeDelta => itemData.SizeDelta,
-                    SizeType.TotalSizeInA => Convert.ToInt64(itemData.TotalSizeInA.Committed),
-                    SizeType.TotalSizeInB => Convert.ToInt64(itemData.TotalSizeInB.Committed),
-                    _ => throw new ArgumentException("Unknown size type."),
-                };
-
-                var cell = (Label)element;
-                cell.text = FormatBytes(size);
-            };
-        }
-
-        Action<VisualElement, int> BindCellForCountColumn(CountType countType)
-        {
-            return (element, rowIndex) =>
-            {
-                var itemData = m_TreeView.GetItemDataForIndex<ComparisonTableModel<TBaseModel, TBaseModelItemData>.ComparisonData>(rowIndex);
-                var count = countType switch
-                {
-                    CountType.CountInA => Convert.ToInt32(itemData.CountInA),
-                    CountType.CountInB => Convert.ToInt32(itemData.CountInB),
-                    _ => throw new ArgumentException("Unknown count type."),
-                };
-
-                var cell = (Label)element;
-                cell.text = $"{count:N0}";
-            };
-        }
-
-        VisualElement MakeSizeDeltaCell()
-        {
-            var cell = new Label();
-            cell.AddToClassList("unity-multi-column-view__cell__label");
-
-            // Make this a cell with a darkened background. This requires quite a bit of styling to be compatible with tree view selection styling, so that is why it is its own class.
-            cell.AddToClassList("dark-tree-view-cell");
-
-            return cell;
-        }
-
         void ApplyFilter(ChangeEvent<bool> evt)
         {
             // ApplyFilter is a listener to UI input (Unchanged filter changes) and therefore doesn't expect an awaitable task.
@@ -348,30 +305,37 @@ namespace Unity.MemoryProfiler.Editor.UI
             _ = BuildModelAsync(false);
         }
 
-        static string FormatBytes(long bytes)
+        // Wrapper struct to hold both base model args and comparison args
+        readonly struct ComparisonModelBuilderArgs
         {
-            var sizeText = new System.Text.StringBuilder();
+            public ComparisonModelBuilderArgs(TBaseModelBuilderArgs baseModelArgs, TreeComparisonBuilder.BuildArgs comparisonArgs)
+            {
+                BaseModelArgs = baseModelArgs;
+                ComparisonArgs = comparisonArgs;
+            }
 
-            // Our built-in formatter for bytes doesn't support negative values.
-            if (bytes < 0)
-                sizeText.Append("-");
-
-            var absoluteBytes = Math.Abs(bytes);
-            sizeText.Append(EditorUtility.FormatBytes(absoluteBytes));
-            return sizeText.ToString();
+            public TBaseModelBuilderArgs BaseModelArgs { get; }
+            public TreeComparisonBuilder.BuildArgs ComparisonArgs { get; }
         }
 
-        enum SizeType
+        // Adapter to bridge functional builder to IComparisonModelBuilder interface
+        class FunctionalComparisonModelBuilderAdapter : IComparisonModelBuilder<ComparisonTableModel<TBaseModel, TBaseModelItemData>, ComparisonModelBuilderArgs>
         {
-            SizeDelta,
-            TotalSizeInA,
-            TotalSizeInB,
-        }
+            readonly Func<CachedSnapshot, CachedSnapshot, TBaseModelBuilderArgs, TreeComparisonBuilder.BuildArgs, ComparisonTableModel<TBaseModel, TBaseModelItemData>> m_BuildFunc;
 
-        enum CountType
-        {
-            CountInA,
-            CountInB,
+            public FunctionalComparisonModelBuilderAdapter(
+                Func<CachedSnapshot, CachedSnapshot, TBaseModelBuilderArgs, TreeComparisonBuilder.BuildArgs, ComparisonTableModel<TBaseModel, TBaseModelItemData>> buildFunc)
+            {
+                m_BuildFunc = buildFunc;
+            }
+
+            public ComparisonTableModel<TBaseModel, TBaseModelItemData> Build(
+                CachedSnapshot snapshotA,
+                CachedSnapshot snapshotB,
+                ComparisonModelBuilderArgs args)
+            {
+                return m_BuildFunc(snapshotA, snapshotB, args.BaseModelArgs, args.ComparisonArgs);
+            }
         }
     }
 }

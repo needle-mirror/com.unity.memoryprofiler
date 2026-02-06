@@ -88,13 +88,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             var filterArgs = args;
             var data = snapshot.EntriesMemoryMap.Data;
             var output = new List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>();
+
             snapshot.EntriesMemoryMap.ForEachChild(parentIndex, (index, address, size, source) =>
             {
                 var item = data[index];
-
                 var name = snapshot.EntriesMemoryMap.GetName(index);
-                if (!NamePassesFilter(name, filterArgs.NameFilter))
-                    return;
 
                 // Track current/parent system region for resident memory calculations
                 var systemRegion = currentSystemRegion;
@@ -106,22 +104,49 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // children with the same index as its parent
                 var parentHeadReserved = parentIndex == index;
 
-                // Generate nodes for all children spans
+                // Get type early for filtering
+                var itemType = GetDataSourceTypeName(snapshot, index, parentHeadReserved);
+
+                // Get address string for filtering
+                var addressString = $"{item.Address:X16}";
+
+                // Use scoped filtering for proper hierarchical search support
+                // Search across Name, Address, and Type columns
+                using var nameScope = filterArgs.SearchFilter?.OpenScope(name, snapshot);
+                using var addressScope = filterArgs.SearchFilter?.OpenScope(addressString, snapshot);
+                using var typeScope = filterArgs.SearchFilter?.OpenScope(itemType, snapshot);
+
+                // Generate nodes for all children spans (children inherit the open scope)
                 List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>> children = null;
                 if (!parentHeadReserved && (item.ChildrenCount > 0))
                     ConvertToTreeViewRecursive(snapshot, filterArgs, systemRegion, index, ref children);
 
-                var residentSize = 0UL;
-                if (systemRegion.HasValue && snapshot.HasSystemMemoryResidentPages)
-                    residentSize = snapshot.SystemMemoryResidentPages.CalculateResidentMemory(snapshot, systemRegion.Value.Index, item.Address, size, item.Source.Id);
+                // Only after processing children can we determine if this node should be included:
+                // - If we have matching children, include this parent node to show the hierarchy
+                // - If no filter is active, include all nodes
+                // - If this is a leaf node (no children possible), check if the node's scope itself matches 
+                bool isLeafNode = parentHeadReserved || item.ChildrenCount == 0;
+                bool hasMatchingChildren = children != null && children.Count > 0;
+                bool nodeMatchesFilter = filterArgs.SearchFilter?.CurrentScopePasses ?? true;
 
-                var treeNode = new MemoryMapBreakdownModel.ItemData(
-                    name,
-                    item.Address,
-                    new MemorySize(size, residentSize),
-                    GetDataSourceTypeName(snapshot, index, parentHeadReserved),
-                    item.Source);
-                output.Add(new TreeViewItemData<MemoryMapBreakdownModel.ItemData>(m_ItemId++, treeNode, children));
+                bool shouldInclude = hasMatchingChildren ||                      // Parent of matching children
+                                    (filterArgs.SearchFilter == null) ||          // No filter active
+                                    (isLeafNode && nodeMatchesFilter);            // Leaf node that matches
+
+                if (shouldInclude)
+                {
+                    var residentSize = 0UL;
+                    if (systemRegion.HasValue && snapshot.HasSystemMemoryResidentPages)
+                        residentSize = snapshot.SystemMemoryResidentPages.CalculateResidentMemory(snapshot, systemRegion.Value.Index, item.Address, size, item.Source.Id);
+
+                    var treeNode = new MemoryMapBreakdownModel.ItemData(
+                        name,
+                        item.Address,
+                        new MemorySize(size, residentSize),
+                        itemType,
+                        item.Source);
+                    output.Add(new TreeViewItemData<MemoryMapBreakdownModel.ItemData>(m_ItemId++, treeNode, children));
+                }
             });
 
             _output = output;
@@ -153,7 +178,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return GetSystemRegionType(snapshot, itemIndex, reservedMemSpan);
 
                 case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
-                    // See comment in ConvertToTreeViewRecursive
+                    // See comment in ConvertToTreeViewRecursive about "fake" reserved children
                     if (reservedMemSpan)
                         return "Reserved";
                     return "Unity Allocator";
@@ -165,7 +190,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
 
                 case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
-                    // See comment in ConvertToTreeViewRecursive
+                    // See comment in ConvertToTreeViewRecursive about "fake" reserved children
                     if (reservedMemSpan)
                         return "Reserved";
                     return "Managed Heap";
@@ -242,28 +267,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             return "Untracked";
         }
 
-        bool NamePassesFilter(string name, string nameFilter)
-        {
-            if (!string.IsNullOrEmpty(nameFilter))
-            {
-                if (string.IsNullOrEmpty(name))
-                    return false;
-
-                if (!name.Contains(nameFilter, StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-
-            return true;
-        }
-
         internal readonly struct BuildArgs
         {
-            public BuildArgs(string nameFilter)
+            public BuildArgs(IScopedFilter<string> searchFilter)
             {
-                NameFilter = nameFilter;
+                SearchFilter = searchFilter;
             }
 
-            public string NameFilter { get; }
+            public IScopedFilter<string> SearchFilter { get; }
         }
     }
 }
