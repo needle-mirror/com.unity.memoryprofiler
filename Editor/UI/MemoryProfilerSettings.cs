@@ -1,17 +1,13 @@
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
-using UnityEditor;
-using UnityEngine;
 using Unity.MemoryProfiler.Editor.UI;
 using Unity.Profiling.Memory;
-using System.Runtime.InteropServices;
-
-
-#if UNITY_2021_2_OR_NEWER
-using System.Runtime.CompilerServices;
+using UnityEditor;
+using UnityEngine;
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.MemoryProfilerModule")]
-#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -355,7 +351,12 @@ namespace Unity.MemoryProfiler.Editor
 
         public static void ResetAllOptOutModalDialogSettings()
         {
-            EditorPrefs.SetBool(HeapWarningWindowOptOutKey, false);
+            EditorUtilityCompatibilityHelper.SetDialogOptOutDecision(EditorUtilityCompatibilityHelper.DialogOptOutDecisionType.ForThisMachine, HeapWarningWindowOptOutKey, false);
+        }
+
+        public static void OptOutOfAllModalDialogs()
+        {
+            EditorUtilityCompatibilityHelper.SetDialogOptOutDecision(EditorUtilityCompatibilityHelper.DialogOptOutDecisionType.ForThisMachine, HeapWarningWindowOptOutKey, true);
         }
 
         public static void ToggleTruncateTypes()

@@ -14,8 +14,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         , UnityObjectsTableViewController.IResponder, IViewControllerWithVisibilityEvents
     {
         const string k_UxmlAssetGuid = "22b678e6f811eec4782c655ff73c2677";
-        const string k_UssClass_Dark = "unity-objects-comparison-view__dark";
-        const string k_UssClass_Light = "unity-objects-comparison-view__light";
         const string k_UxmlIdentifier_DescriptionLabel = "unity-objects-comparison-view__description-label";
         const string k_UxmlIdentifier_SearchField = "unity-objects-comparison-view__search-field";
         const string k_UxmlIdentifier_SplitView = "unity-objects-comparison-view__split-view";
@@ -111,9 +109,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (view == null)
                 throw new InvalidOperationException("Unable to create view from Uxml. Uxml must contain at least one child element.");
             view.style.flexGrow = 1;
-
-            var themeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
-            view.AddToClassList(themeUssClass);
 
             GatherReferencesInView(view);
 
@@ -325,7 +320,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Action<VisualElement, int> BindCellForDescriptionColumn()
         {
-            const string k_NoName = "<No Name>";
             return (element, rowIndex) =>
             {
                 var cell = (UnityObjectsDescriptionCell)element;
@@ -336,7 +330,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 var displayText = itemData.Name;
                 if (string.IsNullOrEmpty(displayText))
-                    displayText = k_NoName;
+                    displayText = CachedSnapshot.InvalidItemName;
                 cell.SetText(displayText);
 
                 string secondaryDisplayText;

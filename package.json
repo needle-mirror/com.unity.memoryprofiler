@@ -1,7 +1,7 @@
 {
   "name": "com.unity.memoryprofiler",
   "displayName": "Memory Profiler",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "unity": "2022.3",
   "description": "The Memory Profiler offers a unified solution allowing you to profile both small projects on mobile devices and big AAA projects on high end machines. It provides actionable information about allocations in the engine to allow developers to manage and reduce memory usage.",
   "keywords": [
@@ -20,18 +20,18 @@
     "com.unity.profiling.core": "1.0.0"
   },
   "relatedPackages": {
-    "com.unity.memoryprofiler.tests": "1.1.11"
+    "com.unity.memoryprofiler.tests": "1.1.12"
   },
   "_upm": {
-    "changelog": "### Fixed\n- Fixed an occasional deadlock when switching the table modes between Allocated, Allocated and Resident and Resident.\n\n### Changed\n- Adjusted the search logic for the Memory Map table to not just filter by the content of the *Name* column but now also by the *Address* or *Type* and deals properly with nested table entries in the same way search works in the other tables."
+    "changelog": "### Changed\n- Unified the display of unnamed native Unity objects in all tables, including the Reference tables to be `\"<No Name>\"`.\n\n### Fixed\n- Fixed two native memory leaks during snapshot opening.\n- Fixed search field alignment in small memory profiler window configurations ([UUM-133948](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-133948)).\n- Fixed error “InvalidOperationException: is a persistent scene object on Transform on GameObject that does not map to a prefab!“ on opening snapshots containing prefabs that are in the process of getting unloaded via the delayed deletion queue.\n- Fixed that table searches did not reliably allow searching for `\"<No Name>\"` objects, aka native Unity objects that do not have a name set to their `.name` property.\n- Fixed the \"Reset Opt-Out settings for dialog prompts\" button in the Memory Profiler preferences to work with the new `EditorDialog.DisplayDecisionDialogWithOptOut()` API in Unity 6000.3 and newer.\n\n### Added\n- Added a status and hint to the selected item details for persistent scene objects in the delayed deletion queue.\n- Added the hint to set the `.name` property for unnamed dynamic assets, even when they are marked as `DontDestroyOnLoad`.\n- Added a warning box to non-prefab scene objects (i.e. they are *NOT* assets) with the `HideFlags.DontUnloadUnusedAsset` set, additional to the warning logged on opening snapshots containing such objects. The warning message was also extended to highlight that this is a mistake in the project code that will lead to unexpected behavior. Always use the method `Object.DontDestroyOnLoad()` to move scene objects (GameObjects and their components) into the `DontDestroyOnLoad` scene to properly keep them from being unloaded as the `HideFlag.DontUnloadUnusedAsset` will be ignored for non-asset."
   },
   "upmCi": {
-    "footprint": "861a9ec7678086ff9fcbcf1ee995bca38b9c856e"
+    "footprint": "1b72d0bc5764329f5f5144ce758af4c5b93c4880"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.memoryprofiler.git",
     "type": "git",
-    "revision": "3bbfaba8b49299ca3e2f86ea5dd7c1b9eea03746"
+    "revision": "27ef26fae8c07d261184e19300e8539ac51f9422"
   }
 }

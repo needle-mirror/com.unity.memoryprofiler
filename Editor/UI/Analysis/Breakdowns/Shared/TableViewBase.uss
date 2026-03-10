@@ -1,0 +1,73 @@
+/* 
+ * TableViewBase.uss
+ * Shared base styles for all table view components in the Memory Profiler.
+ * This stylesheet should be imported by specific table view USS files.
+ */
+
+/* ========================================
+   Theme Variables
+   ======================================== */
+
+.table-view-base__dark:root
+{
+    --table-view-background-color: #3E3E3E;
+    --table-view-border-color: #232323;
+}
+
+.table-view-base__light:root
+{
+    --table-view-background-color: #C8C8C8;
+    --table-view-border-color: #999999;
+}
+
+/* ========================================
+   Container Styles
+   ======================================== */
+
+.table-view-base__container
+{
+    flex-grow: 1;
+}
+
+.table-view-base__tree-view__main-container
+{
+    flex-grow: 1;
+}
+
+/* ========================================
+   Tree View Styles
+   ======================================== */
+
+.table-view-base__tree-view
+{
+    background-color: var(--table-view-background-color);
+    border-color: var(--table-view-border-color);
+    border-top-width: 1px;
+    flex-grow: 1;
+}
+
+.table-view-base__tree-view .unity-multi-column-header
+{
+    margin: 2px 8px;
+}
+
+.table-view-base__tree-view #unity-content-viewport
+{
+    margin: 0px 8px;
+}
+
+/* ========================================
+   Error Label Styles
+   ======================================== */
+
+.table-view-base__error-label
+{
+    -unity-text-align: middle-center;
+    bottom: 0px;
+    display: none;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    visibility: hidden;
+}

@@ -6,18 +6,10 @@
     xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
     xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
 
-    <engine:VisualElement name="memory-map-breakdown-view">
+    <engine:VisualElement name="memory-map-breakdown-view" class="table-view-base__container">
         <Style src="MemoryMapBreakdownView.uss"/>
-
-        <engine:VisualElement name="memory-map-breakdown-view__search-field-container">
-            <engine:Label name="memory-map-breakdown-view__description"/>
-            <editor:ToolbarSearchField name="memory-map-breakdown-view__search-field"/>
-        </engine:VisualElement>
-
-        <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="memory-map-breakdown-view__table-size-bar"/>
-
-        <engine:VisualElement name="memory-map-breakdown-view__tree-view__main-container">
-            <engine:MultiColumnTreeView name="memory-map-breakdown-view__tree-view" sorting-enabled="true">
+        <engine:VisualElement name="memory-map-breakdown-view__tree-view__main-container" class="table-view-base__tree-view__main-container">
+            <engine:MultiColumnTreeView name="memory-map-breakdown-view__tree-view" class="table-view-base__tree-view" sorting-enabled="true">
                 <engine:Columns reorderable="false">
                     <engine:Column name="memory-map-breakdown-view__tree-view__column__address" resizable="true" stretchable="false" optional="false"/>
                     <engine:Column name="memory-map-breakdown-view__tree-view__column__type" resizable="true" stretchable="false"/>
@@ -32,7 +24,7 @@
             <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="memory-map-breakdown-view__loading-overlay"/>
         </engine:VisualElement>
 
-        <engine:Label name="memory-map-breakdown-view__error-label"/>
+        <engine:Label name="memory-map-breakdown-view__error-label" class="table-view-base__error-label"/>
     </engine:VisualElement>
 
 </engine:UXML>

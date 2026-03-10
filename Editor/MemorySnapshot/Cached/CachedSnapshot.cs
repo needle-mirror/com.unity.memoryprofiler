@@ -10,9 +10,12 @@ using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Managed;
+using Unity.MemoryProfiler.Editor.Diagnostics;
+using Unity.Profiling;
+
 using Debug = UnityEngine.Debug;
 using UnityException = UnityEngine.UnityException;
-using Unity.MemoryProfiler.Editor.Diagnostics;
+
 
 
 #if !ENTITY_ID_CHANGED_SIZE
@@ -35,10 +38,19 @@ namespace Unity.MemoryProfiler.Editor
         public const string UnknownMemlabelName = "Unknown MemLabel";
         public const string RootName = "Root";
 
+        /// <summary>
+        /// Metrics collected during the last snapshot load (<see cref="CachedSnapshot.CachedSnapshot(IFileReader)"/>)
+        /// and <see cref="PostProcess"/> call.
+        /// Only populated when MEMORY_PROFILER_METRICS is defined.
+        /// </summary>
+        public SnapshotMetrics LastMetrics { get; private set; }
+
+        SnapshotMetricsCollector m_MetricsCollector;
+
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static CachedSnapshot()
         {
-            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
         }
 #endif
 
@@ -132,8 +144,18 @@ namespace Unity.MemoryProfiler.Editor
         public ProcessedNativeRoots ProcessedNativeRoots;
         public RootAndImpactInfo RootAndImpactInfo;
 
+        /// <summary>
+        /// Cache of table entry names that require heap bytes access.
+        /// This includes string previews and native allocation names.
+        /// Populated during crawling and persists after heap bytes are unloaded.
+        /// </summary>
+        public TableEntryNameCache TableEntryNames { get; private set; }
+
         public CachedSnapshot(IFileReader reader)
         {
+            m_MetricsCollector = new SnapshotMetricsCollector();
+            m_MetricsCollector.StartTiming();
+
             unsafe
             {
                 VirtualMachineInformation vmInfo;
@@ -158,42 +180,97 @@ namespace Unity.MemoryProfiler.Editor
                 MetaData = new MetaData(reader);
                 SetUnityVersionSpecificFlags();
 
+                m_MetricsCollector.StartFirstConstructorTiming(SnapshotMetrics.TimingStep.NativeAllocationSitesCache);
                 NativeAllocationSites = new NativeAllocationSiteEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocationSitesCache);
+
                 FieldDescriptions = new FieldDescriptionEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.FieldDescriptionsCache);
+
                 NativeTypes = new NativeTypeEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeTypesCache);
+
                 TypeDescriptions = new TypeDescriptionEntriesCache(ref reader, FieldDescriptions, NativeTypes, vmInfo);
+#if MEMORY_PROFILER_METRICS
+                // Sync async reads to get accurate timing for this cache
+                TypeDescriptions.CompleteAsyncReadOperations();
+#endif
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.TypeDescriptionsCache);
+
                 NativeRootReferences = new NativeRootReferenceEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeRootReferencesCache);
+
                 NativeObjects = new NativeObjectEntriesCache(ref reader, NativeTypes.AssetBundleIdx);
+#if MEMORY_PROFILER_METRICS
+                // Sync async reads to get accurate timing for this cache
+                NativeObjects.CompleteAsyncReadOperations();
+#endif
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeObjectsCache);
+
                 NativeMemoryRegions = new NativeMemoryRegionEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeMemoryRegionsCache);
+
                 NativeMemoryLabels = new NativeMemoryLabelEntriesCache(ref reader, HasMemoryLabelSizesAndGCHeapTypes);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeMemoryLabelsCache);
+
                 NativeCallstackSymbols = new NativeCallstackSymbolEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeCallstackSymbolsCache);
+
                 NativeAllocations = new NativeAllocationEntriesCache(ref reader, NativeAllocationSites.Count != 0);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocationsCache);
+
                 ManagedStacks = new ManagedMemorySectionEntriesCache(ref reader, false, true);
+#if MEMORY_PROFILER_METRICS
+                // Sync async reads to get accurate timing for this cache
+                ManagedStacks.CompleteHeapBytesRead();
+#endif
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ManagedStacksCache);
+
                 ManagedHeapSections = new ManagedMemorySectionEntriesCache(ref reader, HasMemoryLabelSizesAndGCHeapTypes, false);
+#if MEMORY_PROFILER_METRICS
+                // Sync async reads to get accurate timing for this cache
+                ManagedHeapSections.CompleteHeapBytesRead();
+#endif
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ManagedHeapSectionsCache);
+
                 GcHandles = new GCHandleEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.GcHandlesCache);
+
                 Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.Count, HasConnectionOverhaul);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ConnectionsCache);
+
                 SceneRoots = new SceneRootEntriesCache(ref reader);
                 // TODO: Jobifiy GenerateBaseData and sync at end
                 SceneRoots.GenerateBaseData(this, NativeObjects.InstanceId2Index, NativeTypes.GameObjectIdx);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.SceneRootsCache);
 
                 NativeGfxResourceReferences = new NativeGfxResourceReferenceEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeGfxResourcesCache);
+
                 NativeAllocators = new NativeAllocatorEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocatorsCache);
 
                 SystemMemoryRegions = new SystemMemoryRegionEntriesCache(ref reader);
                 SystemMemoryResidentPages = new SystemMemoryResidentPagesEntriesCache(ref reader);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.SystemMemoryRegionsCache);
 
                 SortedManagedObjects = new SortedManagedObjectsCache(this);
-
                 SortedNativeRegionsEntries = new SortedNativeMemoryRegionEntriesCache(this);
                 SortedNativeAllocations = new SortedNativeAllocationsCache(this);
                 SortedNativeObjects = new SortedNativeObjectsCache(this);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.SortedCaches, doNotStartNext: true);
 
                 EntriesMemoryMap = new EntriesMemoryMapCache(this);
 
                 CrawledData = new ManagedData(GcHandles.Count, Connections.Count, NativeTypes.Count);
 
                 ProcessedNativeRoots = new ProcessedNativeRoots();
+
+                // Initialize string preview cache for table display (survives heap bytes unload)
+                TableEntryNames = new TableEntryNameCache();
             }
+
+            m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ConstructorTotal, doNotStartNext: true);
         }
 
         void SetUnityVersionSpecificFlags()
@@ -211,6 +288,31 @@ namespace Unity.MemoryProfiler.Editor
                    || MetaData.UnityVersionEqualOrNewerWithinMinorRelease(6000, 0, 64, MetaData.UnityReleaseType.Full, 1);
         }
 
+        public const string CacheNativeAllocationNamesMarkerName = "CachedSnapshot.CacheNativeAllocationNames";
+        static readonly ProfilerMarker k_CacheNativeAllocationNamesMarker = new ProfilerMarker(CacheNativeAllocationNamesMarkerName);
+        /// <summary>
+        /// Cache native allocation names that have managed references.
+        /// Must be called after crawling is complete and before heap bytes are unloaded.
+        /// </summary>
+        void CacheNativeAllocationNames()
+        {
+            if (TableEntryNames == null)
+                return;
+            using var _ = k_CacheNativeAllocationNamesMarker.Auto();
+
+            // Iterate over all native allocations that have managed references
+            for (long i = 0; i < NativeAllocations.Count; i++)
+            {
+                var nativeAllocationIndex = new SourceIndex(SourceIndex.SourceId.NativeAllocation, i);
+                if (CrawledData.ConnectionsToMappedToSourceIndex.TryGetValue(nativeAllocationIndex, out var references))
+                {
+                    // Generate and cache the name while heap bytes are still available
+                    var name = NativeAllocationTools.ProduceNativeAllocationNameInternal(nativeAllocationIndex, this, ref references, MemoryProfilerSettings.MemorySnapshotTruncateTypes);
+                    TableEntryNames.CacheNativeAllocationName(nativeAllocationIndex.Index, name);
+                }
+            }
+        }
+
         public int PostProcessStepCountWithCrawler =>
             ManagedDataCrawler.CrawlStepCount
             + PostProcessStepCountWithoutCrawler;
@@ -223,32 +325,67 @@ namespace Unity.MemoryProfiler.Editor
         public IEnumerator<EnumerationStatus> PostProcess(bool crawlManaged = true)
         {
             var status = new EnumerationStatus(crawlManaged ? PostProcessStepCountWithCrawler : PostProcessStepCountWithoutCrawler);
+            m_MetricsCollector.StartPostProcessTiming();
 
             IEnumerator<EnumerationStatus> processor = null;
             // Managed Objects end up on the Memory Map, so crawl them first
             if (crawlManaged)
             {
+                m_MetricsCollector.StartPostProcessStep(SnapshotMetrics.TimingStep.CrawlTime, ManagedDataCrawler.CrawlStepCount);
                 processor = ManagedDataCrawler.Crawl(this, status);
                 while (processor.MoveNext())
+                {
+                    m_MetricsCollector.PausePostProcessTiming(SnapshotMetrics.TimingStep.CrawlTime);
                     yield return processor.Current;
+                    m_MetricsCollector.ResumePostProcessTiming(SnapshotMetrics.TimingStep.CrawlTime);
+                }
+                // Cache table entry names. As they are informed by the crawler results, include them in the crawl time metric.
+                CacheNativeAllocationNames();
+                m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.CrawlTime);
             }
             // these need the managed object count
             RootAndImpactInfo = new RootAndImpactInfo(this);
 
             // To populate ProcessedNativeRoots with reliable native sizes for all allocations, as well as Resident vs Committed amounts for all Native Roots,the Memory Map needs to be built
+            m_MetricsCollector.StartPostProcessStep(SnapshotMetrics.TimingStep.MemoryMapBuildTime, EntriesMemoryMapCache.BuildStepCount);
             processor = EntriesMemoryMap.Build(status);
             while (processor.MoveNext())
+            {
+                m_MetricsCollector.PausePostProcessTiming(SnapshotMetrics.TimingStep.MemoryMapBuildTime);
                 yield return processor.Current;
+                m_MetricsCollector.ResumePostProcessTiming(SnapshotMetrics.TimingStep.MemoryMapBuildTime);
+            }
+            m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.MemoryMapBuildTime);
 
             // The Unity Objects Summary table will need ready to go ProcessedNativeRoots to show Unity Objects with their rooted native, gfx and managed memory
+            m_MetricsCollector.StartPostProcessStep(SnapshotMetrics.TimingStep.ProcessedRootsBuildTime, ProcessedNativeRoots.ProcessStepCount);
             processor = ProcessedNativeRoots.ReadOrProcess(this, status);
             while (processor.MoveNext())
+            {
+                m_MetricsCollector.PausePostProcessTiming(SnapshotMetrics.TimingStep.ProcessedRootsBuildTime);
                 yield return processor.Current;
+                m_MetricsCollector.ResumePostProcessTiming(SnapshotMetrics.TimingStep.ProcessedRootsBuildTime);
+            }
+            m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.ProcessedRootsBuildTime);
 
             // The Impact columns need Path To Root info, though this could be moved to the background?
+            m_MetricsCollector.StartPostProcessStep(SnapshotMetrics.TimingStep.RootAndImpactBuildTime, RootAndImpactInfo.ProcessStepCount);
             processor = RootAndImpactInfo.ReadOrProcess(this, status);
             while (processor.MoveNext())
+            {
+                m_MetricsCollector.PausePostProcessTiming(SnapshotMetrics.TimingStep.RootAndImpactBuildTime);
                 yield return processor.Current;
+                m_MetricsCollector.ResumePostProcessTiming(SnapshotMetrics.TimingStep.RootAndImpactBuildTime);
+            }
+            m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.RootAndImpactBuildTime);
+
+            // Finalize metrics collection
+            m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.TotalPostProcessTime);
+            m_MetricsCollector.CollectSnapshotMetadata(this);
+            m_MetricsCollector.CollectEntryCounts(this);
+            m_MetricsCollector.CollectProcessedDataCounts(this);
+            LastMetrics = m_MetricsCollector.Metrics;
+            m_MetricsCollector.LogMetrics();
         }
 
         public string FullPath
@@ -425,6 +562,10 @@ namespace Unity.MemoryProfiler.Editor
             if (!m_Disposed)
             {
                 m_Disposed = true;
+
+                m_MetricsCollector.Dispose();
+                m_MetricsCollector = default;
+
                 NativeAllocationSites.Dispose();
                 TypeDescriptions.Dispose();
                 NativeTypes.Dispose();
@@ -451,6 +592,9 @@ namespace Unity.MemoryProfiler.Editor
                 EntriesMemoryMap.Dispose();
                 CrawledData.Dispose();
                 CrawledData = null;
+
+                TableEntryNames?.Dispose();
+                TableEntryNames = null;
 
                 SortedNativeRegionsEntries.Dispose();
                 SortedManagedObjects.Dispose();
@@ -535,7 +679,7 @@ namespace Unity.MemoryProfiler.Editor
         /// is used with the index and it's user's responsibility to pair index with
         /// the correct snapshot.
         /// </summary>
-        [StructLayout(LayoutKind.Explicit, Size = sizeof(ulong), Pack = sizeof(ulong))]
+        [Serializable, StructLayout(LayoutKind.Explicit, Size = sizeof(ulong), Pack = sizeof(ulong))]
         readonly public struct SourceIndex : IEquatable<SourceIndex>, IComparable<SourceIndex>, IEqualityComparer<SourceIndex>
         {
             const int kSourceIdShift = 56;
@@ -626,12 +770,11 @@ namespace Unity.MemoryProfiler.Editor
                     case SourceId.NativeAllocation:
                         return snapshot.NativeAllocations.ProduceAllocationNameForAllocation(snapshot, Index);
                     case SourceId.NativeObject:
-                        return snapshot.NativeObjects.ObjectName[Index];
+                        return snapshot.NativeObjects.GetNonEmptyObjectName(Index);
                     case SourceId.NativeType:
                         return snapshot.NativeTypes.TypeName[Index];
                     case SourceId.NativeRootReference:
-                        return snapshot.NativeRootReferences.ObjectName[Index];
-
+                        return snapshot.NativeRootReferences.GetNonEmptyObjectName(Index);
                     case SourceId.ManagedHeapSection:
                         return snapshot.ManagedHeapSections.SectionName(Index);
                     case SourceId.ManagedObject:
@@ -651,7 +794,7 @@ namespace Unity.MemoryProfiler.Editor
 
                         // Lookup native object index associated with memory label root
                         if (snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootReferenceId, out var objectIndex))
-                            return snapshot.NativeObjects.ObjectName[objectIndex];
+                            return snapshot.NativeObjects.GetNonEmptyObjectName(objectIndex);
 
                         // Try to see is memory label root associated with any memory area
                         if (snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReferenceId, out long rootIndex))

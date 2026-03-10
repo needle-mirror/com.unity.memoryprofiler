@@ -133,11 +133,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var x1 = pos.x + size.x;
             var y1 = pos.y + size.y;
 
-#if UNITY_2022_2_OR_NEWER
             Rect uvRegion = new Rect(0, 0, 1, 1);
-#else
-            Rect uvRegion = mesh.uvRegion;
-#endif
 
             mesh.SetNextVertex(new Vertex()
             {

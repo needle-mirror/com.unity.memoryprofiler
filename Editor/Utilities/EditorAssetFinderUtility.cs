@@ -399,7 +399,7 @@ namespace Unity.MemoryProfiler.Editor
 
 
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
-            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
 #endif
         }
 
@@ -684,12 +684,13 @@ namespace Unity.MemoryProfiler.Editor
                 // Asset database search for e.g. "Guard t:Mesh" also finds "Guard" Mesh and "Guard.fbx" Mesh, so, try trimming it down if its only a small set of results
                 searchItem = null;
                 int likelyCandidateCount = 0;
+                var nativeObjectName = unifiedUnityObjectInfo.NativeObjectName;
                 foreach (var item in search)
                 {
                     if (item != null)
                     {
                         var obj = item.ToObject(unifiedUnityObjectInfo);
-                        if (obj != null && obj.name == unifiedUnityObjectInfo.NativeObjectName && !CheckTypeMismatch(obj, unifiedUnityObjectInfo, snapshot))
+                        if (obj != null && obj.name == nativeObjectName && !CheckTypeMismatch(obj, unifiedUnityObjectInfo, snapshot))
                         {
                             if (foundObject == null && foundObject != obj)
                             {

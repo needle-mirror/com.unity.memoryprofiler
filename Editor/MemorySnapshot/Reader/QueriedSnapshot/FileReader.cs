@@ -276,16 +276,36 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 {
                     var entryCount = GetEntryCount(entry);
                     // entryCount + 1 as the first entry is offset 0 and the last is the total size
-                    using var offsets = new DynamicArray<long>(entryCount + 1, allocator);
+                    using var offsets = new DynamicArray<long>(entryCount + 1, Allocator.TempJob);
 
                     GetEntryOffsets(entry, offsets);
+
+                    // When reading a subset of sections, we need to extract and adjust their offsets
                     if (count < entryCount)
                     {
-                        using var offsets2 = new DynamicArray<long>(count + 1, Allocator.TempJob);
-                        UnsafeUtility.MemCpyReplicate(offsets2.GetUnsafePtr(), offsets.GetUnsafeTypedPtr() + offset, sizeof(long), (int)count);
-                        offsets.Resize(count, false);
-                        UnsafeUtility.MemCpyReplicate(offsets.GetUnsafePtr(), offsets2.GetUnsafePtr(), sizeof(long), (int)count);
+                        // We need count + 1 offsets (start offset of each section plus the end offset of the last section)
+                        var offsetCount = count + 1L;
+
+                        // Get the base offset (start of first requested section) to make offsets relative
+                        var baseOffset = offsets[offset];
+
+                        // Move the required range to the start of the array
+                        // MemMove safely handles overlapping regions (copying from higher index to 0)
+                        UnsafeUtility.MemMove(offsets.GetUnsafeTypedPtr(), offsets.GetUnsafeTypedPtr() + offset, sizeof(long) * offsetCount);
+
+                        // Resize to adjust count.
+                        // The remaining memory will be retained until the offsets array is discarded at the end of this method
+                        // But that's still less wasteful than interleaving Temp allocations and deallocations.
+                        offsets.Resize(offsetCount, false);
+
+                        // Adjust offsets to be relative to the start of the first requested section
+                        long* offsetPtr = (long*)offsets.GetUnsafePtr();
+                        for (long i = 0; i < offsetCount; i++)
+                        {
+                            offsetPtr[i] -= baseOffset;
+                        }
                     }
+
                     var currentStartOffsetIndex = 0L;
                     var remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
 
@@ -320,7 +340,8 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                         var block = blocks[i];
                         var bufferSize = offsets[block.NextOffsetStartIndexOrEndOfLastSectionOffset] - offsets[block.StartOffsetIndex];
                         var data = new DynamicArray<byte>(bufferSize, allocator);
-                        var readOp = AsyncRead(entry, data, block.StartOffsetIndex, block.OffsetCount, includeOffsets: false);
+                        // IMPORTANT: When reading a subset, add the original offset to read from the correct position in the file
+                        var readOp = AsyncRead(entry, data, block.StartOffsetIndex + offset, block.OffsetCount, includeOffsets: false);
                         dataBlocks.Push(data.Reinterpret<T>());
                         readOps.Add(readOp);
                     }
@@ -653,7 +674,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             var chunkWithLocalOffset = *chunk + (uint)(blockOffset % chunkSize);
 
             byte* dstPtr = (byte*)dst;
-            using (DynamicBlockArray<ReadCommand> chunkReads = new DynamicBlockArray<ReadCommand>(64, 64))
+            using (DynamicBlockArray<ReadCommand> chunkReads = new DynamicBlockArray<ReadCommand>(64, 64, Allocator.TempJob))
             {
                 var readCmd = ReadCommandBufferUtils.GetCommand(dstPtr, readSize, chunkWithLocalOffset);
                 chunkReads.Push(readCmd);
@@ -737,7 +758,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             var block = m_Blocks[(int)entry.Header.BlockIndex];
             byte* dst = (byte*)buffer;
 
-            var chunkReads = new DynamicBlockArray<ReadCommand>(64, 64);
+            var chunkReads = new DynamicBlockArray<ReadCommand>(64, 64, Allocator.TempJob);
             for (int i = 0; i < elementCount; ++i)
             {
                 var e = new ElementRead();

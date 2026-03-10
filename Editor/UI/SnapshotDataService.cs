@@ -8,6 +8,7 @@ using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.MemoryProfiler.Editor.Managed;
 using Unity.MemoryProfiler.Editor.UI;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling;
 using UnityEditor;
 using UnityEngine;
@@ -31,7 +32,6 @@ namespace Unity.MemoryProfiler.Editor
 
     internal class SnapshotDataService : IDisposable, ISnapshotDataService
     {
-        const string k_SnapshotFileExtension = ".snap";
         const int k_MaxFilenameLengthBytes = 255; // Limit on Mac/Linux
 
         static ProfilerMarker s_ProcessSnapshotMarker = new ProfilerMarker("Post Process and Crawl snapshot");
@@ -294,7 +294,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             // The .snap suffix is the longest, and if we're renaming, that
             // will need changing too, so try with that.
-            var filenameWithExtension = targetFileName + k_SnapshotFileExtension;
+            var filenameWithExtension = targetFileName + FileExtensionContent.SnapshotFileExtension;
 
             // First check the actual filename's length:
             if (System.Text.Encoding.UTF8.GetByteCount(filenameWithExtension) > k_MaxFilenameLengthBytes)
@@ -319,13 +319,13 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool CanRename(string sourceFilePath, string targetFileName)
         {
-            var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + k_SnapshotFileExtension);
+            var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + FileExtensionContent.SnapshotFileExtension);
             return !File.Exists(targetFilePath);
         }
 
         public bool Rename(string sourceFilePath, string targetFileName)
         {
-            var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + k_SnapshotFileExtension);
+            var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath), targetFileName + FileExtensionContent.SnapshotFileExtension);
             if (File.Exists(targetFilePath))
             {
                 Debug.LogError($"Can't rename {sourceFilePath} to {targetFileName}, file with the same name already exists!");
@@ -543,7 +543,7 @@ namespace Unity.MemoryProfiler.Editor
                 yield break;
             }
 
-            var filesEnum = directory.GetFiles('*' + k_SnapshotFileExtension, SearchOption.AllDirectories);
+            var filesEnum = directory.GetFiles('*' + FileExtensionContent.SnapshotFileExtension, SearchOption.AllDirectories);
             foreach (var file in filesEnum)
                 yield return file.FullName;
         }
@@ -551,7 +551,7 @@ namespace Unity.MemoryProfiler.Editor
         bool ImportSnapshot(string sourceFilePath)
         {
             var snapshotFolderPath = GetSnapshotFolderPath();
-            var targetFilePath = Path.Combine(snapshotFolderPath, Path.GetFileNameWithoutExtension(sourceFilePath) + k_SnapshotFileExtension);
+            var targetFilePath = Path.Combine(snapshotFolderPath, Path.GetFileNameWithoutExtension(sourceFilePath) + FileExtensionContent.SnapshotFileExtension);
             if (File.Exists(targetFilePath))
                 return false;
 

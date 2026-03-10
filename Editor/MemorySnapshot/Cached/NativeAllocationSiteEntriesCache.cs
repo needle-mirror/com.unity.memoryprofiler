@@ -116,21 +116,6 @@ namespace Unity.MemoryProfiler.Editor
                 return memLabelSourceIndex;
             }
 
-            public ReadableCallstack GetReadableCallstackForId(NativeMemoryLabelEntriesCache memLabels, NativeCallstackSymbolEntriesCache symbols, ulong id)
-            {
-                long entryIdx = -1;
-                for (long i = 0; i < Id.Count; ++i)
-                {
-                    if (Id[i] == id)
-                    {
-                        entryIdx = i;
-                        break;
-                    }
-                }
-
-                return entryIdx < 0 ? new ReadableCallstack(string.Empty, string.Empty, null) : GetReadableCallstack(memLabels, symbols, entryIdx);
-            }
-
             public void AppendCallstackLine(NativeCallstackSymbolEntriesCache symbols, ulong targetSymbol, StringBuilder stringBuilder,
                 List<KeyValuePair<int, string>> fileLinkHashToFileName = null, bool simplifyCallStacks = true, bool clickableCallStacks = true, bool terminateWithLineBreak = true)
             {
@@ -226,6 +211,12 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     stringBuilder.AppendLine("<unknown>");
                 }
+            }
+
+            public ReadableCallstack GetReadableCallstackForId(NativeMemoryLabelEntriesCache memLabels, NativeCallstackSymbolEntriesCache symbols, ulong id)
+            {
+                var entryIdx = IdToIndex.GetValueOrDefault(id, -1);
+                return entryIdx < 0 ? new ReadableCallstack(string.Empty, string.Empty, null) : GetReadableCallstack(memLabels, symbols, entryIdx);
             }
 
             public ReadableCallstack GetReadableCallstack(NativeMemoryLabelEntriesCache memLabels, NativeCallstackSymbolEntriesCache symbols, long idx, bool simplifyCallStacks = true, bool clickableCallStacks = true)

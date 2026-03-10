@@ -63,7 +63,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static ManagedDataCrawler()
         {
-            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
         }
 #endif
 
@@ -302,13 +302,17 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 m_TypesWithObjectsThatMayStillNeedNativeTypeConnection.Dispose();
             }
         }
+        public const string ConnectNativeToManageObjectProfilerMarkerName = "Crawler.ConnectNativeToManageObject";
+        static readonly ProfilerMarker k_ConnectNativeToManageObjectProfilerMarker = new ProfilerMarker(ConnectNativeToManageObjectProfilerMarkerName);
+        public const string PostProcessNonGCHeldObjectsProfilerMarkerName = "Crawler.PostProcessNonGCHeldObjects";
+        static readonly ProfilerMarker k_PostProcessNonGCHeldObjectsProfilerMarker = new ProfilerMarker(PostProcessNonGCHeldObjectsProfilerMarkerName);
+        public const string ConnectRemainingManagedTypesToNativeTypesProfilerMarkerName = "Crawler.ConnectRemainingManagedTypesToNativeTypes";
+        static readonly ProfilerMarker k_ConnectRemainingManagedTypesToNativeTypesProfilerMarker = new ProfilerMarker(ConnectRemainingManagedTypesToNativeTypesProfilerMarkerName);
+        public const string ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypesProfilerMarkerName = "Crawler.ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes";
+        static readonly ProfilerMarker k_ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypesProfilerMarker = new ProfilerMarker(ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypesProfilerMarkerName);
 
-        static readonly ProfilerMarker k_ConnectNativeToManageObjectProfilerMarker = new ProfilerMarker("Crawler.ConnectNativeToManageObject");
-        static readonly ProfilerMarker k_PostProcessNonGCHeldObjectsProfilerMarker = new ProfilerMarker("Crawler.PostProcessNonGCHeldObjects");
-        static readonly ProfilerMarker k_ConnectRemainingManagedTypesToNativeTypesProfilerMarker = new ProfilerMarker("Crawler.ConnectRemainingManagedTypesToNativeTypes");
-        static readonly ProfilerMarker k_ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypesProfilerMarker = new ProfilerMarker("Crawler.ReportManagedTypeToNativeTypeConnectionForThisTypeAndItsBaseTypes");
-
-        static readonly ProfilerMarker k_GatherIntermediateCrawlDataMarker = new ProfilerMarker("GatherIntermediateCrawlData");
+        public const string GatherIntermediateCrawlDataMarkerName = "GatherIntermediateCrawlData";
+        static readonly ProfilerMarker k_GatherIntermediateCrawlDataMarker = new ProfilerMarker(GatherIntermediateCrawlDataMarkerName);
 
         static void GatherIntermediateCrawlData(CachedSnapshot snapshot, IntermediateCrawlData crawlData, ref DynamicArray<StackCrawlData> crawlerStack)
         {
@@ -372,12 +376,18 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 snapshot.GcHandles.UniqueCount = writtenRange;
             }
         }
-
-        static readonly ProfilerMarker k_CrawlHandleRootedObjectsMarker = new ProfilerMarker("Crawl GC Handle Rooted Objects");
-        static readonly ProfilerMarker k_CrawlHandlesOldDataMarker = new ProfilerMarker("Adjust for Old Snapshot Data");
-        static readonly ProfilerMarker k_CrawlStaticsMarker = new ProfilerMarker("Crawl Static Fields");
-        static readonly ProfilerMarker k_CrawlStaticallyReferencedObjectsMarker = new ProfilerMarker("Crawl Statically Rooted Objects");
-        static readonly ProfilerMarker k_CrawlFinalizeMarker = new ProfilerMarker("Crawler Finalizing");
+        public const string CrawlHandleRootedObjectsMarkerName = "Crawl GC Handle Rooted Objects";
+        static readonly ProfilerMarker k_CrawlHandleRootedObjectsMarker = new ProfilerMarker(CrawlHandleRootedObjectsMarkerName);
+        public const string CrawlHandlesOldDataMarkerName = "Adjust for Old Snapshot Data";
+        static readonly ProfilerMarker k_CrawlHandlesOldDataMarker = new ProfilerMarker(CrawlHandlesOldDataMarkerName);
+        public const string CrawlStaticsMarker = "Crawl Static Fields";
+        static readonly ProfilerMarker k_CrawlStaticsMarker = new ProfilerMarker(CrawlStaticsMarker);
+        public const string CrawlStaticallyReferencedObjectsMarker = "Crawl Statically Rooted Objects";
+        static readonly ProfilerMarker k_CrawlStaticallyReferencedObjectsMarker = new ProfilerMarker(CrawlStaticallyReferencedObjectsMarker);
+        public const string CrawlUnityObjectConnectionsMarkerName = "Crawler mapping Unity Object connections";
+        static readonly ProfilerMarker k_CrawlUnityObjectConnectionsMarker = new ProfilerMarker(CrawlUnityObjectConnectionsMarkerName);
+        public const string CrawlFinalizeMarkerName = "Crawler Finalizing";
+        static readonly ProfilerMarker k_CrawlFinalizeMarker = new ProfilerMarker(CrawlFinalizeMarkerName);
         public const int CrawlStepCount = 8;
         public static IEnumerator<EnumerationStatus> Crawl(CachedSnapshot snapshot, EnumerationStatus status)
         {
@@ -434,16 +444,19 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 status.IncrementStep(stepStatus: "Skipped");
             //crawl connection data
             yield return status.IncrementStep(stepStatus: "Mapping out Unity Object references");
-            using var finalizerMarker = k_CrawlFinalizeMarker.Auto();
-            ConnectNativeToManageObject(crawlData);
-            PostProcessNonGCHeldObjects(crawlData);
-            ConnectRemainingManagedTypesToNativeTypes(crawlData);
-            AddupRawRefCount(snapshot);
+            {
+                using var _ = k_CrawlUnityObjectConnectionsMarker.Auto();
+                ConnectNativeToManageObject(crawlData);
+                PostProcessNonGCHeldObjects(crawlData);
+                ConnectRemainingManagedTypesToNativeTypes(crawlData);
+                AddupRawRefCount(snapshot);
+            }
 
             //crawl connection data
             yield return status.IncrementStep(stepStatus: "Tallying up managed memory usage and creating connection maps");
 
-            snapshot.CrawledData.AddUpTotalMemoryUsage(crawlData.CachedMemorySnapshot.ManagedHeapSections);
+            using var finalizerMarker = k_CrawlFinalizeMarker.Auto();
+            snapshot.CrawledData.AddUpTotalMemoryUsageAndCacheStringPreviews(snapshot, snapshot.ManagedHeapSections);
             snapshot.CrawledData.CreateConnectionMaps(snapshot);
             snapshot.CrawledData.FinishedCrawling();
 #if CRAWLER_PERFORMANCE_ANALYSIS
@@ -1212,8 +1225,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
         {
 
             var fieldIndexCountAssumption = useStaticFields
-                ? crawlData.CachedMemorySnapshot.TypeDescriptions.fieldIndicesOwnedStatic[iTypeDescription].Length * 2
-                : crawlData.CachedMemorySnapshot.TypeDescriptions.FieldIndicesInstance[iTypeDescription].Length * 4;
+                ? crawlData.CachedMemorySnapshot.TypeDescriptions.FieldIndicesOwnedStatic[iTypeDescription].Count * 2
+                : crawlData.CachedMemorySnapshot.TypeDescriptions.FieldIndicesInstance[iTypeDescription].Count * 4;
             var fieldLayoutInfos = new DynamicArray<FieldLayoutInfo>(0, Math.Max(1, fieldIndexCountAssumption), Allocator.Temp);
 
             BuildFieldLayoutForCrawling(crawlData, ref fieldLayoutInfos, iTypeDescription, useStaticFields);
@@ -1241,7 +1254,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         {
             var snapshot = crawlData.CachedMemorySnapshot;
 
-            var fields = useStaticFields ? snapshot.TypeDescriptions.fieldIndicesOwnedStatic[iTypeDescription] : snapshot.TypeDescriptions.FieldIndicesInstance[iTypeDescription];
+            var fields = useStaticFields ? snapshot.TypeDescriptions.FieldIndicesOwnedStatic[iTypeDescription] : snapshot.TypeDescriptions.FieldIndicesInstance[iTypeDescription];
             var isNonStaticReferenceType = !useStaticFields && !snapshot.TypeDescriptions.HasFlag(iTypeDescription, TypeFlags.kValueType);
             var objectHeaderSizeSkippedByCrawler = isNonStaticReferenceType ? (int)snapshot.VirtualMachineInformation.ObjectHeaderSize : 0;
             foreach (var iField in fields)
@@ -1277,8 +1290,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
                                 fieldReferenceType: nestedValueTypeFields[i].FieldReferenceType
                             ), memClearForExcessExpansion: k_MemClearFieldLayoutData);
                     }
-                    if (useStaticFields ? snapshot.TypeDescriptions.fieldIndicesStatic[iField_TypeDescription_TypeIndex].Length > 0
-                        : snapshot.TypeDescriptions.FieldIndicesInstance[iField_TypeDescription_TypeIndex].Length > 0)
+                    if (useStaticFields ? snapshot.TypeDescriptions.FieldIndicesStatic[iField_TypeDescription_TypeIndex].Count > 0
+                        : snapshot.TypeDescriptions.FieldIndicesInstance[iField_TypeDescription_TypeIndex].Count > 0)
                         continue;
                 }
 
@@ -1321,13 +1334,18 @@ namespace Unity.MemoryProfiler.Editor.Managed
             }
         }
 #if PROFILING_CORE_AVAILABLE
-        static readonly ProfilerMarker<long> k_CrawlPointerStructArraysJobScheduleMarker = new ProfilerMarker<long>("CrawlPointer - schedule value type array crawler jobs", "array length");
-        static readonly ProfilerMarker<long> k_CrawlPointerObjectArraysJobScheduleMarker = new ProfilerMarker<long>("CrawlPointer - schedule reference type array crawler jobs", "array length");
+        public const string CrawlPointerStructArraysJobScheduleMarkerName = "CrawlPointer - schedule value type array crawler jobs";
+        static readonly ProfilerMarker<long> k_CrawlPointerStructArraysJobScheduleMarker = new ProfilerMarker<long>(CrawlPointerStructArraysJobScheduleMarkerName, "array length");
+        public const string CrawlPointerObjectArraysJobScheduleMarkerName = "CrawlPointer - schedule reference type array crawler jobs";
+        static readonly ProfilerMarker<long> k_CrawlPointerObjectArraysJobScheduleMarker = new ProfilerMarker<long>(CrawlPointerObjectArraysJobScheduleMarkerName, "array length");
 #endif
-        static readonly ProfilerMarker k_CrawlPointerArrayChunkMarker = new ProfilerMarker("CrawlPointer - schedule chunk off array crawler jobs");
+        public const string CrawlPointerArrayChunkMarkerName = "CrawlPointer - schedule chunk off array crawler jobs";
+        static readonly ProfilerMarker k_CrawlPointerArrayChunkMarker = new ProfilerMarker(CrawlPointerArrayChunkMarkerName);
 
-        static readonly ProfilerMarker k_CrawlPointersInStructArraysMarker = new ProfilerMarker("CrawlPointer - handle value type array crawler");
-        static readonly ProfilerMarker k_CrawlPointersInObjectArraysMarker = new ProfilerMarker("CrawlPointer - handle reference type array crawler");
+        public const string CrawlPointersInStructArraysMarkerName = "CrawlPointer - handle value type array crawler";
+        static readonly ProfilerMarker k_CrawlPointersInStructArraysMarker = new ProfilerMarker(CrawlPointersInStructArraysMarkerName);
+        public const string CrawlPointersInObjectArraysMarkerName = "CrawlPointer - handle reference type array crawler";
+        static readonly ProfilerMarker k_CrawlPointersInObjectArraysMarker = new ProfilerMarker(CrawlPointersInObjectArraysMarkerName);
 
 #if DEBUG_VALIDATION
         static readonly ProfilerMarker k_CrawlPointerDebugValidationMarker = new ProfilerMarker("CrawlPointer - DEBUG_VALIDATION");
@@ -1473,7 +1491,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             return true;
         }
 
-        [MethodImpl(methodImplOptions: MethodImplementationHelper.AggressiveInlining)]
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static int GetReferenceTargetTypeInfo(CachedSnapshot snapshot, StackCrawlData data, int valueTypeFieldOwningITypeDescription, long managedObjectIndex, out long nativeObjectIndex)
         {
             var gcHandleBasedTypeInfo = -1;
@@ -1620,7 +1638,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
                 if (isValueTypeArray)
                 {
-                    var typeSize = (ulong)typeDescriptions.Size[iElementTypeDescription];
+                    var typeSize = (uint)typeDescriptions.Size[iElementTypeDescription];
 
                     for (var i = 0; i < arrayLength; i++)
                     {

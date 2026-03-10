@@ -60,7 +60,7 @@
             "define": "UNITY_COLLECTIONS_CHANGED"
         },
         {
-            "name": "Unity.Profiling.Core",
+            "name": "com.unity.profiling.core",
             "expression": "1.0.0",
             "define": "PROFILING_CORE_AVAILABLE"
         },

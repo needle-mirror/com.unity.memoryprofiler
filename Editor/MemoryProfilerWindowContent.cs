@@ -43,6 +43,8 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 
         public static readonly string OpenManualTooltip = L10n.Tr("Open the relevant documentation entry.");
         public const string InvalidObjectPleaseReportABugMessageShort = "Failed to read Object, please report a bug via 'Help > Report a Bug'.";
+        public const string InvalidStringDataPleaseReportABugMessageShort = "<Invalid String data> Please report a bug via 'Help > Report a Bug'.";
+        public const string InvalidStringDataOnlyPreviewPleaseReportABugMessageShort = " <ERROR: Could not only read string preview data from snapshot> Please report a bug via 'Help > Report a Bug'.";
         public const string PleaseReportABugMessage = "please report a bug via the Window Menu Bar option 'Help > Report a Bug'.";
         public const string InvalidObjectPleaseReportABugMessage = PleaseReportABugMessage + " Please attach this snapshot, info on how to find this object in the snapshot, and a project to reproduce this with.";
 
@@ -171,6 +173,8 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 
         const string AttributedImpactExlusivelyOwnedSharedImpactAddendum = "If an object exclusively owns all owners of a shared object, their impact is gathered into its shared impact.";
 
+        public const string NonpersistentSceneObjectWithInvalidDontDestroyOnLoadHideFlagWarningFormatString = "The non-prefab {0} named: \"{1}\" was marked with HideFlags.DontUnloadUnusedAsset while not being an Asset. That's not supported and the flag will be ignored by the Asset GC, which means it likely does not behave as you would expect it to and could lead to further unexpected behavior and errors. Fix this in your code by switching away from using the hideFlags property, using the method Object.DontDestroyOnLoad() instead. This will then move your non-prefab scene objects into the DontDestroyOnLoad scene, thereby actually ensuring that they won't be unloaded.";
+
         public const string RepeatReferencesLabel = "Repeat References";
         public const string RepeatReferencesTooltip = "'Repeat References' are references from managed objects already listed in the 'Referenced By' list but e.g. originating from a different field or array index. The 'Referenced By' list does not list each such reference for the sake of brevity.";
         public const string NonUnityObjectGCHandleReferencesLabel = "GCHandles";
@@ -181,6 +185,9 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
 
         public const string HeldByGCHandleStatus = "Held Alive By GCHandle";
         public const string HeldByGCHandleHint = "This object is pinned or otherwise held in memory because a GCHandle was allocated for it.";
+
+        public const string InDelayedDeletionQueueStatus = "Queued for Delayed Deletion";
+        public const string InDelayedDeletionQueueHint = "This Asset was queued for deletion off of the main thread and is waiting for deletion to happen on the main thread. This is also why it has no name anymore.";
 
         public const string GCHandleHeldManagedObjectStatus = HeldByGCHandleStatus;
         public const string GCHandleHeldManagedObjectHint = "This managed object is pinned or otherwise held in memory because a GCHandle was allocated for it.";
@@ -267,20 +274,6 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string SelectInEditorButtonSearching = "Please wait, the Editor is still trying to locate this object.";
         public const string SelectInEditorButtonSearchingWhileIndexIsBuilding = "Please wait, the Editor is still trying to locate this object. The search index has not yet been built so this can take a moment. Please check the Background Tasks window for details.";
 
-#if UNITY_2021_2_OR_NEWER
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2021.2.0a12 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2021.2.0a12 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#elif UNITY_2021_1_OR_NEWER
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2021.1.9f1 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2021.1.9f1 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#elif UNITY_2020_1_OR_NEWER
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2020.3.12f1 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2020.3.12f1 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#else
-        public const string PreSnapshotVersion11UpdgradeInfoMemoryOverview = "Make sure to take snapshots with Unity version 2019.4.29f1 or newer, to be able to see the memory overview. See the documentation for more info.";
-        public const string PreSnapshotVersion11UpdgradeInfo = "Make sure to upgrade to Unity version 2019.4.29f1 or newer, to be able to utilize this tool to the full extent. See the documentation for more info.";
-#endif
-
         public const string DataTypeGCHandleTooltip = "This is a GCHandle (one that is not held by a Native Unity Object).";
         public const string DataTypeNativeTooltip = "This is a Native Unity Object or Type (i.e. one that is derived from UnityEngine.Object).";
         public const string DataTypeManagedTooltip = "This is an Object of a pure C# type or such a Type itself (i.e. one that is not derived from UnityEngine.Object).";
@@ -318,13 +311,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
         public const string MemoryOnDeviceHelp = "manual/memory-on-device.html";
         public const string OpenSnapshotsPane = LatestPackageVersionBaseUrl + WorkbenchHelp + k_AnchorChar + "snapshots-component#open-snapshots";
         public const string AnalysisWindowHelp = LatestPackageVersionBaseUrl + "manual/main-component.html";
-#if UNITY_2022_3_OR_NEWER || UNITY_2023_2_OR_NEWER
         public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Unity.Profiling.Memory.CaptureFlags.html";
-#elif UNITY_2022_2_OR_NEWER || UNITY_2023_1_OR_NEWER
-        public const string CaptureFlagsHelp = "https://docs.unity3d.com/2022.2/Documentation/ScriptReference/Unity.Profiling.Memory.CaptureFlags.html";
-#else
-        public const string CaptureFlagsHelp = "https://docs.unity3d.com/ScriptReference/Profiling.Memory.Experimental.CaptureFlags.html";
-#endif
 
         public const string UntrackedMemoryDocumentation = LatestPackageVersionBaseUrl + MemoryOnDeviceHelp + k_AnchorChar + "untracked-memory";
     }
@@ -333,9 +320,7 @@ namespace Unity.MemoryProfiler.Editor.UIContentData
     {
         public const string SnapshotTempFileName = "temp.tmpsnap";
 
-#if UNITY_2019_3_OR_NEWER
         public const string SnapshotTempScreenshotFileExtension = ".tmppng";
-#endif
         public const string SnapshotScreenshotFileExtension = ".png";
         public const string SnapshotFileExtension = ".snap";
     }

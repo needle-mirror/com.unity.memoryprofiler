@@ -13,11 +13,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (uxml == null)
                 return null;
 
-#if UNITY_2020_3_OR_NEWER
             var template = uxml.Instantiate();
-#else
-            var template = uxml.CloneTree();
-#endif
 
             // Retrieve first child from template container.
             VisualElement view = null;
@@ -39,11 +35,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Instantiates the Uxml asset and returns its root VisualElement, discarding the Template container. If the Uxml specifies multiple roots, the first will be returned.
         public static VisualElement Instantiate(VisualTreeAsset uxml)
         {
-#if UNITY_2020_3_OR_NEWER
             var template = uxml.Instantiate();
-#else
-            var template = uxml.CloneTree();
-#endif
 
             // Retrieve first child from template container.
             VisualElement view = null;

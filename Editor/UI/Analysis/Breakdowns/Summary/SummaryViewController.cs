@@ -85,7 +85,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             bool isSupportedSnapshots = IsSupportedSnapshotFormat();
             UIElementsHelper.SetVisibility(m_SummaryUnavailable.parent, !isSupportedSnapshots);
-            m_SummaryUnavailableMessage.text = SummaryTextContent.kMemoryUsageUnavailableMessage;
+            m_SummaryUnavailableMessage.text = SummaryTextContent.MemoryUsageUnavailableMessage;
 
             // Warn about issues with snapshots
             var issuesModelBuilder = new SnapshotIssuesModelBuilder(m_BaseSnapshot, m_ComparedSnapshot);

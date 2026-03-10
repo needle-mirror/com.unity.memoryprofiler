@@ -69,7 +69,7 @@ namespace Unity.MemoryProfiler.Editor
             IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle = new HashSet<long>();
         }
 
-        internal void AddUpTotalMemoryUsage(CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)
+        internal void AddUpTotalMemoryUsageAndCacheStringPreviews(CachedSnapshot snapshot, CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)
         {
             var totalManagedObjectsCount = ManagedObjects.Count;
             ManagedObjectMemoryUsage = 0;
@@ -80,16 +80,56 @@ namespace Unity.MemoryProfiler.Editor
                 return;
             }
 
+            var tableEntryNames = snapshot.TableEntryNames;
+            var typeDescriptions = snapshot.TypeDescriptions;
+            var stringTypeIndex = typeDescriptions.ITypeString;
+            var charArrayTypeIndex = typeDescriptions.ITypeCharArray;
+            var vmInfo = snapshot.VirtualMachineInformation;
+
             var activeHeapSectionStartAddress = managedMemorySections.StartAddress[managedMemorySections.FirstAssumedActiveHeapSectionIndex];
             var activeHeapSectionEndAddress = managedMemorySections.StartAddress[managedMemorySections.LastAssumedActiveHeapSectionIndex] + managedMemorySections.SectionSize[managedMemorySections.LastAssumedActiveHeapSectionIndex];
-            for (int i = 0; i < totalManagedObjectsCount; i++)
+
+            for (long i = 0; i < totalManagedObjectsCount; i++)
             {
-                var size = (ulong)ManagedObjects[i].Size;
+                ref readonly var managedObject = ref ManagedObjects[i];
+                var size = (ulong)managedObject.Size;
                 ManagedObjectMemoryUsage += size;
 
-                if (ManagedObjects[i].PtrObject > activeHeapSectionStartAddress && ManagedObjects[i].PtrObject < activeHeapSectionEndAddress)
+                if (managedObject.PtrObject > activeHeapSectionStartAddress && managedObject.PtrObject < activeHeapSectionEndAddress)
                 {
                     ActiveHeapMemoryUsage += size;
+                }
+
+                if (tableEntryNames == null)
+                    continue;
+
+                var typeIndex = managedObject.ITypeDescription;
+                if (typeIndex == stringTypeIndex)
+                {
+                    // Cache string preview
+                    var preview = managedObject.ReadFirstStringLine(vmInfo, addQuotes: true);
+                    tableEntryNames.CachePreview(i, preview);
+                }
+                else if (typeIndex == charArrayTypeIndex)
+                {
+                    // Cache char[] preview ...
+                    var preview = managedObject.ReadFirstCharArrayLine(snapshot, addQuotes: true);
+                    tableEntryNames.CachePreview(i, preview);
+                    // ... and their array info
+                    var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(snapshot, managedObject.data, typeIndex);
+                    if (arrayInfo != null)
+                    {
+                        tableEntryNames.CacheArrayInfo(i, arrayInfo);
+                    }
+                }
+                else if (typeIndex >= 0 && typeDescriptions.HasFlag(typeIndex, Unity.MemoryProfiler.Editor.Format.TypeFlags.kArray))
+                {
+                    // Cache array info for all array types
+                    var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(snapshot, managedObject.data, typeIndex);
+                    if (arrayInfo != null)
+                    {
+                        tableEntryNames.CacheArrayInfo(i, arrayInfo);
+                    }
                 }
             }
             ActiveHeapMemoryEmptySpace = managedMemorySections.StartAddress[managedMemorySections.LastAssumedActiveHeapSectionIndex]

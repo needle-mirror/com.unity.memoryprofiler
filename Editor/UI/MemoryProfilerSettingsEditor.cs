@@ -1,12 +1,9 @@
 using System.IO;
+using System.Runtime.CompilerServices;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine;
-using Unity.MemoryProfiler.Editor.UIContentData;
-
-#if UNITY_2021_2_OR_NEWER
-using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.MemoryProfilerModule")]
-#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -120,9 +117,7 @@ namespace Unity.MemoryProfiler.Editor
                         }
                     }
                 }
-#if UNITY_2021_2_OR_NEWER
                 MemoryProfilerSettings.MemoryProfilerPackageOverridesMemoryModuleUI = EditorGUILayout.Toggle(Content.MemoryProfilerPackageOverridesMemoryModuleUI, MemoryProfilerSettings.MemoryProfilerPackageOverridesMemoryModuleUI);
-#endif
                 if (GUILayout.Button(Content.ResetOptOutDialogsButton))
                 {
                     MemoryProfilerSettings.ResetAllOptOutModalDialogSettings();

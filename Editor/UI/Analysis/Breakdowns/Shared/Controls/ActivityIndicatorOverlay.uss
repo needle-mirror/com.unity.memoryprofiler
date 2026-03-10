@@ -1,0 +1,45 @@
+.activity-indicator__dark:root
+{
+  --activity-indicator__loading-overlay__background-color: rgba(35, 35, 35, 0.8);
+}
+
+.activity-indicator__light:root
+{
+  --activity-indicator__loading-overlay__background-color: rgba(0, 0, 0, 0.2);
+}
+
+ActivityIndicatorOverlay
+{
+    align-items: center;
+    background-color: var(--activity-indicator__loading-overlay__background-color);
+    bottom: 0px;
+    justify-content: center;
+    left: 0px;
+    position: absolute;
+    right: 0px;
+    top: 0px;
+    transition-duration: 0.23s;
+    transition-property: opacity;
+    transition-timing-function: ease-out;
+}
+
+ActivityIndicatorOverlay:enabled
+{
+    display: flex;
+    opacity: 1;
+    visibility: visible;
+}
+
+ActivityIndicatorOverlay:disabled
+{
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+}
+
+ActivityIndicatorOverlay ActivityIndicator
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/Loading.png');
+    height: 16px;
+    width: 16px;
+}

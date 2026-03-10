@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
@@ -30,4 +29,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

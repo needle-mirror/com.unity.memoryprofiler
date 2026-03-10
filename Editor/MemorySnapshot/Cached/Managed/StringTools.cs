@@ -1,5 +1,7 @@
 using System;
+using System.Runtime.CompilerServices;
 using Unity.MemoryProfiler.Editor.Format;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine;
 
 namespace Unity.MemoryProfiler.Editor
@@ -12,6 +14,77 @@ namespace Unity.MemoryProfiler.Editor
         const int k_AdditionalTrimForLongStrings = 6000;
         public const int MaxStringLengthToRead = k_StringBuilderMaxCap - k_AdditionalTrimForLongStrings - 10 /*Buffer for ellipsis, quotes and spaces*/;
         public const string Elipsis = " [...]";
+
+        public static string ReadFullStringOrGetPreview(this ManagedObjectInfo managedObjectInfo, CachedSnapshot snapshot, out int fullLength, bool addQuotes)
+        {
+            if (managedObjectInfo.ITypeDescription != snapshot.TypeDescriptions.ITypeString)
+            {
+                throw new InvalidOperationException("ERROR: trying to read a managed object as a string that is not a string.");
+            }
+            // We want to ideally get the full string data for the selection details but for shorter strings,
+            // the cached preview data may be sufficient so get those first
+            var stringWasShortenedForPreview = false;
+            string str = null;
+            fullLength = 0; // Initialize out parameter
+
+            if (managedObjectInfo.ManagedObjectIndex >= 0 && snapshot.TableEntryNames?.TryGetPreview(managedObjectInfo.ManagedObjectIndex, out var preview) == true)
+            {
+                str = preview;
+                if (str.Length > Elipsis.Length)
+                {
+                    var span = str.AsSpan();
+                    if (str[str.Length - 1] == '"')
+                    {
+                        span = span.Slice(0, span.Length - 1);
+                    }
+                    if (span.EndsWith(Elipsis))
+                    {
+                        // Preview was shortened, so we can't rely on it for full string data
+                        stringWasShortenedForPreview = true;
+                    }
+                }
+                if (!addQuotes)
+                {
+                    str = StripQuotes(str);
+                }
+                // If the preview string contains an ellipsis, we keep it.
+                // Estimate string length from preview
+                fullLength = str.Length;
+            }
+
+            if (stringWasShortenedForPreview)
+            {
+                str = ReadString(managedObjectInfo.data, out fullLength, snapshot.VirtualMachineInformation);
+                return addQuotes ? $"\"{str}\"" : str;
+            }
+
+            return str;
+        }
+
+        public static string GetPreviewOrReadFirstLine(this ManagedObjectInfo managedObjectInfo, CachedSnapshot snapshot, bool addQuotes)
+        {
+            // First, check the cache.
+            if (snapshot.TableEntryNames?.TryGetPreview(managedObjectInfo.ManagedObjectIndex, out var preview) ?? false)
+            {
+                if (addQuotes)
+                    return preview;
+                return StripQuotes(preview);
+            }
+            // Otherwise read the first line of the string.
+            return ReadFirstStringLine(managedObjectInfo.data, snapshot.VirtualMachineInformation, addQuotes);
+        }
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        static string StripQuotes(string str)
+        {
+            if (str.Length >= 1)
+            {
+                var firstChar = str[0] == '"' ? 1 : 0;
+                var length = str.Length - firstChar - (str[str.Length - 1] == '"' ? 1 : 0);
+                return str.Substring(firstChar, length); // Remove quotes if the exist
+            }
+            return str;
+        }
 
         public static string ReadString(this BytesAndOffset bo, out int fullLength, VirtualMachineInformation virtualMachineInformation)
         {
@@ -60,7 +133,7 @@ namespace Unity.MemoryProfiler.Editor
                 firstChar = bo;
             }
 
-            if (fullLength < 0 || !firstChar.CouldFitAllocation((long)fullLength * 2))
+            if (fullLength < 0 || !firstChar.CouldFitAllocation((long)(fullLength) * sizeof(char)))
             {
 #if DEBUG_VALIDATION
                 Debug.LogError("Found a String Object of impossible length.");
@@ -73,10 +146,10 @@ namespace Unity.MemoryProfiler.Editor
                 if (fullLength > maxLengthToRead)
                 {
                     var cappedLength = maxLengthToRead;
-                    return $"{System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), cappedLength * 2)}{Elipsis}";
+                    return $"{System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), cappedLength * sizeof(char))}{Elipsis}";
                 }
                 else
-                    return System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), fullLength * 2);
+                    return System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), fullLength * sizeof(char));
             }
         }
 
@@ -102,7 +175,7 @@ namespace Unity.MemoryProfiler.Editor
 
         static string ReadFirstStringLineInternal(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, bool addQuotes, int fullLength)
         {
-            const int maxCharsInLine = 30;
+            const int maxCharsInLine = TableEntryNameCache.MaxPreviewLength;
             var str = ReadStringInternal(bo, ref fullLength, virtualMachineInformation, maxCharsInLine);
             var firstLineBreak = str.IndexOf('\n');
             if (firstLineBreak >= 0)
@@ -130,15 +203,16 @@ namespace Unity.MemoryProfiler.Editor
 
         public static int ReadStringObjectSizeInBytes(this BytesAndOffset bo, VirtualMachineInformation virtualMachineInformation, out bool valid, bool logError = true)
         {
-            if (!bo.CouldFitAllocation(virtualMachineInformation.ObjectHeaderSize + sizeof(Int32)))
+            if (!bo.CouldFitAllocation(virtualMachineInformation.ObjectHeaderSize + sizeof(int)))
             {
                 valid = false;
                 return 0;
             }
             var lengthPointer = bo.Add(virtualMachineInformation.ObjectHeaderSize);
             var length = lengthPointer.ReadInt32();
+            var data = lengthPointer.Add(sizeof(int));
 
-            if (length < 0 || !bo.CouldFitAllocation(sizeof(int) + (long)length * 2))
+            if (length < 0 || !data.CouldFitAllocation((long)(length) * sizeof(char)))
             {
 #if DEBUG_VALIDATION
                 if (logError)
@@ -150,7 +224,7 @@ namespace Unity.MemoryProfiler.Editor
             else
                 valid = true;
 
-            return (int)virtualMachineInformation.ObjectHeaderSize + /*lengthfield*/ 4 + (length * /*utf16=2bytes per char*/ 2) + /*2 zero terminators*/ 2;
+            return (int)virtualMachineInformation.ObjectHeaderSize + /*lengthfield*/ sizeof(int) + (length * /*utf16=2bytes per char*/ sizeof(char));
         }
     }
 }

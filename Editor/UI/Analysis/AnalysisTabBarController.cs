@@ -125,6 +125,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             const string unityObjectsDescription = "A breakdown of memory contributing to all Unity Objects.";
             const string allTrackedMemoryDescription = "A breakdown of all tracked memory that Unity knows about.";
+            const string memoryMapViewDescription = "A memory map of all allocations reported for the process.";
+
             m_Options = new List<Option>()
             {
                 new Option(TextContent.SummaryViewName,
@@ -138,7 +140,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
 
             if (MemoryProfilerSettings.ShowMemoryMapView)
-                m_Options.Add(new Option(TextContent.MemoryMapViewName, new MemoryMapBreakdownViewController(snapshot, m_SelectionDetails)));
+                m_Options.Add(new Option(TextContent.MemoryMapViewName,
+                    new MemoryMapBreakdownViewController(snapshot, memoryMapViewDescription, m_SelectionDetails),
+                    memoryMapViewDescription));
         }
 
         // Create a model containing the available Analysis options when comparing two snapshots.

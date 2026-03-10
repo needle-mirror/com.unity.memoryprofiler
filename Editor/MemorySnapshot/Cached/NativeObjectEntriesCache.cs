@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Format;
@@ -28,7 +29,9 @@ using LongToLongHashMap = Unity.Collections.NativeHashMap<long, long>;
 using LongToIntHashMap = Unity.Collections.NativeHashMap<long, int>;
 #endif
 using HideFlags = UnityEngine.HideFlags;
+#if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
 using Unity.MemoryProfiler.Editor.Diagnostics;
+#endif
 
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
@@ -55,6 +58,18 @@ namespace Unity.MemoryProfiler.Editor
             /// to prevent destruction of native objects via Destroy or DestroyImmediately.
             /// </summary>
             public const HideFlags NativeDontAllowDestructionFlag = (HideFlags)(1 << 6);
+
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+            public static bool IsInvalidHideFlagUsageForNonPersistentSceneObjects(HideFlags flags) => flags.HasFlag(UnityEngine.HideFlags.DontUnloadUnusedAsset)
+                                && !flags.HasFlag(NativeObjectEntriesCache.NativeDontAllowDestructionFlag)
+                                && !flags.HasFlag(UnityEngine.HideFlags.HideAndDontSave);
+
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+            public string GetNonEmptyObjectName(long index)
+            {
+                var name = ObjectName[index];
+                return string.IsNullOrEmpty(name) ? CachedSnapshot.InvalidItemName : name;
+            }
 
             public long Count;
             public string[] ObjectName;
@@ -84,7 +99,7 @@ namespace Unity.MemoryProfiler.Editor
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
             static NativeObjectEntriesCache()
             {
-                Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+                Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
             }
 #endif
 
@@ -178,6 +193,19 @@ namespace Unity.MemoryProfiler.Editor
                     }
 
                     m_MetaDataBuffersReadOp = reader.AsyncReadDynamicSizedArray<byte>(EntryType.ObjectMetaData_MetaDataBuffer, 0, sum, Allocator.Persistent);
+                }
+            }
+
+            /// <summary>
+            /// Completes any pending async read operations.
+            /// Used for accurate timing when profiling snapshot loading.
+            /// </summary>
+            public void CompleteAsyncReadOperations()
+            {
+                // Force completion of async metadata buffers read
+                if (m_MetaDataBuffersReadOp.IsCreated)
+                {
+                    _ = MetaDataBuffers; // Accessing the property forces completion
                 }
             }
 

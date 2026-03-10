@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
@@ -17,6 +18,13 @@ namespace Unity.MemoryProfiler.Editor
     {
         public class NativeRootReferenceEntriesCache : IDisposable
         {
+            [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+            public string GetNonEmptyObjectName(long index)
+            {
+                var name = ObjectName[index];
+                return string.IsNullOrEmpty(name) ? CachedSnapshot.InvalidItemName : name;
+            }
+
             public const long InvalidRootId = 0;
             public const long FirstValidRootId = 1;
             public const long InvalidRootIndex = 0;

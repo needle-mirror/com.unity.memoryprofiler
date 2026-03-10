@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -99,6 +100,9 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// </summary>
     abstract class TreeViewController<TModel, TTreeItemData> : ViewController where TModel : TreeModel<TTreeItemData> where TTreeItemData : INamedTreeItemData
     {
+        const string k_UssClass_Dark = "table-view-base__dark";
+        const string k_UssClass_Light = "table-view-base__light";
+
         const string k_ErrorMessage = "Snapshot is from an outdated Unity version that is not fully supported.";
         protected virtual string ModelBuilderErrorMessage => k_ErrorMessage;
 
@@ -164,6 +168,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void ViewLoaded()
         {
             ConfigureTreeView();
+
+            // Apply table-specific theme classes
+            var baseThemeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
+            View.AddToClassList(baseThemeUssClass);
 
             if (m_BuildOnLoad)
                 // Building on load in ViewLoaded is an automatic trigger, likely to be automatically triggered for accessing the .View property,

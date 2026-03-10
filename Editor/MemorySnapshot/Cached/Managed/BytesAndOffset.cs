@@ -1,12 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
-using Unity.MemoryProfiler.Editor.UIContentData;
-#if DEBUG_VALIDATION
-using UnityEngine;
-#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -136,57 +131,6 @@ namespace Unity.MemoryProfiler.Editor
         public unsafe byte* GetUnsafeOffsetTypedPtr()
         {
             return Bytes.GetUnsafeTypedPtr() + Offset;
-        }
-
-        public string ReadString(out int fullLength)
-        {
-            var readLength = fullLength = ReadInt32();
-            var additionalOffsetForObjectHeader = 0ul;
-            var size = (long)sizeof(int) + ((long)fullLength * (long)2);
-            if (fullLength < 0 || !CouldFitAllocation(size))
-            {
-                // Why is the header not included for object data in the tables?
-                // this workaround here is flakey!
-                additionalOffsetForObjectHeader = 16;
-                readLength = fullLength = ReadInt32(additionalOffsetForObjectHeader);
-                size = (long)sizeof(int) + ((long)fullLength * (long)2);
-
-                if (fullLength < 0 || !CouldFitAllocation(size))
-                {
-#if DEBUG_VALIDATION
-                    Debug.LogError("Attempted to read outside of binary buffer.");
-#endif
-                    return "Invalid String object, " + TextContent.InvalidObjectPleaseReportABugMessage;
-                }
-                // find out what causes this and fix it, then remove the additionalOffsetForObjectHeader workaround
-#if DEBUG_VALIDATION
-                Debug.LogError("String reading is broken.");
-#endif
-            }
-            if (fullLength > StringTools.MaxStringLengthToRead)
-            {
-                readLength = StringTools.MaxStringLengthToRead;
-                readLength += StringTools.Elipsis.Length;
-            }
-            unsafe
-            {
-                byte* ptr = Bytes.GetUnsafeTypedPtr();
-                {
-                    string str = null;
-                    char* begin = (char*)(ptr + (Offset + additionalOffsetForObjectHeader + sizeof(int)));
-                    str = new string(begin, 0, readLength);
-                    if (fullLength != readLength)
-                    {
-                        fixed (char* s = str, e = StringTools.Elipsis)
-                        {
-                            var c = s;
-                            c += readLength - StringTools.Elipsis.Length;
-                            UnsafeUtility.MemCpy(c, e, StringTools.Elipsis.Length);
-                        }
-                    }
-                    return str;
-                }
-            }
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]

@@ -1,6 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
-using System;
-
 namespace Unity.MemoryProfiler.Editor.UI
 {
     class MatchesAllTextFilter : ITextFilter
@@ -25,4 +22,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         public bool Passes(string text, CachedSnapshot cachedSnapshot = null) => true;
     }
 }
-#endif

@@ -6,10 +6,10 @@
     xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
     xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
 
-    <engine:VisualElement name="all-tracked-memory-table-view">
+    <engine:VisualElement name="all-tracked-memory-table-view" class="table-view-base__container">
         <Style src="AllTrackedMemoryTableView.uss"/>
-        <engine:VisualElement name="all-tracked-memory-table-view__tree-view__main-container">
-            <engine:MultiColumnTreeView name="all-tracked-memory-table-view__tree-view" sorting-enabled="true">
+        <engine:VisualElement name="all-tracked-memory-table-view__tree-view__main-container" class="table-view-base__tree-view__main-container">
+            <engine:MultiColumnTreeView name="all-tracked-memory-table-view__tree-view" class="table-view-base__tree-view" sorting-enabled="true">
                 <engine:Columns reorderable="false">
                     <engine:Column name="all-tracked-memory-table-view__tree-view__column__description" resizable="true" stretchable="true" optional="false"/>
                     <engine:Column name="all-tracked-memory-table-view__tree-view__column__size" resizable="true" stretchable="false"/>
@@ -22,7 +22,7 @@
             </engine:MultiColumnTreeView>
             <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="all-tracked-memory-table-view__loading-overlay"/>
         </engine:VisualElement>
-        <engine:Label name="all-tracked-memory-table-view__error-label"/>
+        <engine:Label name="all-tracked-memory-table-view__error-label" class="table-view-base__error-label"/>
     </engine:VisualElement>
 
 </engine:UXML>

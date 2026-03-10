@@ -21,6 +21,7 @@ namespace Unity.MemoryProfiler.Editor
     // EntityId and EntityAndInstanceIdHelper to be moved from CachedSnapshot.cs to here
 #if !ENTITY_ID_CHANGED_SIZE
     // For simple API compatibility usage in versions pre InstanceId change
+    [Serializable]
     struct EntityId : IEquatable<EntityId>, IComparable<EntityId>
     {
         ulong m_Id;
@@ -57,7 +58,7 @@ namespace Unity.MemoryProfiler.Editor
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static EntityAndInstanceIdHelper()
         {
-            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
         }
 #endif
 

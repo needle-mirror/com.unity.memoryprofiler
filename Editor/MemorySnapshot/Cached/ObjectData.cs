@@ -68,7 +68,7 @@ namespace Unity.MemoryProfiler.Editor
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static ObjectData()
         {
-            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
         }
 #endif
 
@@ -362,9 +362,9 @@ namespace Unity.MemoryProfiler.Editor
                             offset = snapshot.TypeDescriptions.TypeInfoAddress[Parent.Obj.managedTypeIndex];
                             offset += (ulong)snapshot.TypeDescriptions.Size[Parent.Obj.managedTypeIndex];
 
-                            var staticFieldIndices = snapshot.TypeDescriptions.fieldIndicesStatic[Parent.Obj.managedTypeIndex];
+                            var staticFieldIndices = snapshot.TypeDescriptions.FieldIndicesStatic[Parent.Obj.managedTypeIndex];
 
-                            for (int i = 0; i < staticFieldIndices.Length; ++i)
+                            for (long i = 0; i < staticFieldIndices.Count; ++i)
                             {
                                 var cFieldIdx = staticFieldIndices[i];
                                 if (cFieldIdx == fieldIdx)
@@ -436,6 +436,12 @@ namespace Unity.MemoryProfiler.Editor
             switch (m_dataType)
             {
                 case ObjectDataType.Array:
+                    // Try to get from cache first
+                    var managedObjectIndex = GetManagedObjectIndex(snapshot);
+                    if (managedObjectIndex >= 0 && snapshot.TableEntryNames?.TryGetArrayInfo(managedObjectIndex, out var cachedInfo) == true)
+                    {
+                        return cachedInfo;
+                    }
                     return ManagedHeapArrayDataTools.GetArrayInfo(snapshot, managedObjectData, m_data.managed.iType);
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.ReferenceArray:
@@ -457,11 +463,17 @@ namespace Unity.MemoryProfiler.Editor
 
         public ObjectData GetArrayElement(CachedSnapshot snapshot, long index, bool expandToTarget)
         {
-            return GetArrayElement(snapshot, GetArrayInfo(snapshot), index, expandToTarget);
+            var arrayInfo = GetArrayInfo(snapshot);
+            if (arrayInfo == null)
+                return Invalid;
+            return GetArrayElement(snapshot, arrayInfo, index, expandToTarget);
         }
 
         public ObjectData GetArrayElement(CachedSnapshot snapshot, ArrayInfo ai, long index, bool expandToTarget)
         {
+            if (ai == null)
+                return Invalid;
+
             switch (m_dataType)
             {
                 case ObjectDataType.Array:
@@ -545,9 +557,9 @@ namespace Unity.MemoryProfiler.Editor
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.ReferenceObject:
                 case ObjectDataType.Value:
-                    if (managedTypeIndex < 0 || managedTypeIndex >= snapshot.TypeDescriptions.FieldIndicesInstance.Length)
+                    if (managedTypeIndex < 0 || managedTypeIndex >= snapshot.TypeDescriptions.FieldIndicesInstance.SectionCount)
                         return 0;
-                    return snapshot.TypeDescriptions.FieldIndicesInstance[managedTypeIndex].Length;
+                    return (int)snapshot.TypeDescriptions.FieldIndicesInstance[managedTypeIndex].Count;
                 default:
                     return 0;
             }
@@ -629,7 +641,16 @@ namespace Unity.MemoryProfiler.Editor
                 //the field requested might come from a base class. make sure we are using the right staticFieldBytes.
                 while (iOwningType >= 0)
                 {
-                    var fieldIndex = Array.FindIndex(snapshot.TypeDescriptions.fieldIndicesOwnedStatic[iOwningType], x => x == iField);
+                    var ownedStaticFields = snapshot.TypeDescriptions.FieldIndicesOwnedStatic[iOwningType];
+                    var fieldIndex = -1;
+                    for (long i = 0; i < ownedStaticFields.Count; i++)
+                    {
+                        if (ownedStaticFields[i] == iField)
+                        {
+                            fieldIndex = (int)i;
+                            break;
+                        }
+                    }
                     if (fieldIndex >= 0)
                     {
                         //field iField is owned by type iOwningType
@@ -666,7 +687,7 @@ namespace Unity.MemoryProfiler.Editor
                     // as long as the chain has not yet been reconstructed, recurse through the value type fields until it is.
                     offsetFromManagedObjectDataStartToValueTypesField -= fieldOffset;
                     var fields = snapshot.TypeDescriptions.FieldIndicesInstance[fieldType];
-                    for (int i = 0; i < fields.Length; i++)
+                    for (long i = 0; i < fields.Count; i++)
                     {
                         var field = fields[i];
                         if (valueTypeFieldIndex != field)
@@ -918,11 +939,20 @@ namespace Unity.MemoryProfiler.Editor
 
         public string GetValueAsString(CachedSnapshot cachedSnapshot)
         {
-            if (isManaged)
+            if (isManaged && IsField())
             {
                 if (!managedObjectData.Bytes.IsCreated)
                     return "null";
+                if (managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeString)
+                {
+                    // a string field is a reference so we first need to grab the actual object
+                    var stringObject = GetReferencedObject(cachedSnapshot);
+                    if (!stringObject.IsValid)
+                        return "null";
 
+                    // We only care about the preview or a short version of the string here.
+                    return StringTools.GetPreviewOrReadFirstLine(GetManagedObject(cachedSnapshot), cachedSnapshot, false);
+                }
                 if (managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeChar)
                     return managedObjectData.ReadChar().ToString();
 
@@ -958,9 +988,6 @@ namespace Unity.MemoryProfiler.Editor
 
                 if (managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeUInt64)
                     return managedObjectData.ReadUInt64().ToString();
-
-                if (managedTypeIndex == cachedSnapshot.TypeDescriptions.ITypeString)
-                    return managedObjectData.ReadString(out _);
             }
             return "";
         }
@@ -983,10 +1010,18 @@ namespace Unity.MemoryProfiler.Editor
             if (addClassNameOfHoldingTypeOrObject)
             {
                 var parentIsArray = displayObject.m_dataType == ObjectDataType.Array;
-                parentType = parentIsArray ?
-                    // Use the Element Type destription as the array brackets are added by GetFieldName.
-                    cachedSnapshot.TypeDescriptions.TypeDescriptionName[GetArrayInfo(cachedSnapshot).ElementTypeDescription] :
-                    Parent?.Obj.GenerateTypeName(cachedSnapshot, truncateTypeNames);
+                if (parentIsArray)
+                {
+                    var arrayInfo = GetArrayInfo(cachedSnapshot);
+                    // Use the Element Type description as the array brackets are added by GetFieldName.
+                    parentType = arrayInfo != null
+                        ? cachedSnapshot.TypeDescriptions.TypeDescriptionName[arrayInfo.ElementTypeDescription]
+                        : (displayObject.managedTypeIndex >= 0 ? cachedSnapshot.TypeDescriptions.TypeDescriptionName[displayObject.managedTypeIndex] : "<unknown array>");
+                }
+                else
+                {
+                    parentType = Parent?.Obj.GenerateTypeName(cachedSnapshot, truncateTypeNames);
+                }
 
                 if (parentType != null)
                 {
@@ -1018,7 +1053,9 @@ namespace Unity.MemoryProfiler.Editor
         public string GenerateObjectName(CachedSnapshot cachedSnapshot)
         {
             if (nativeObjectIndex != -1)
-                return $"{cachedSnapshot.NativeObjects.ObjectName[nativeObjectIndex]} {NativeObjectTools.ProduceNativeObjectId(nativeObjectIndex, cachedSnapshot)}";
+            {
+                return $"{(cachedSnapshot.NativeObjects.GetNonEmptyObjectName(nativeObjectIndex))} {NativeObjectTools.ProduceNativeObjectId(nativeObjectIndex, cachedSnapshot)}";
+            }
 
             if (m_dataType == ObjectDataType.NativeAllocation)
                 return DetailFormatter.FormatPointer(GetObjectPointer(cachedSnapshot));
@@ -1043,6 +1080,12 @@ namespace Unity.MemoryProfiler.Editor
                 arrayObject = arrayObject.Parent.Obj;
             }
             var arrayInfo = arrayObject.GetArrayInfo(cachedSnapshot);
+            if (arrayInfo == null)
+            {
+                // Fallback when array info is not available (heap bytes unloaded and not in cache)
+                var typeName = arrayObject.managedTypeIndex >= 0 ? cachedSnapshot.TypeDescriptions.TypeDescriptionName[arrayObject.managedTypeIndex] : "<unknown array>";
+                return truncateTypeName ? UI.PathsToRoot.PathsToRootDetailView.TruncateTypeName(typeName) : typeName;
+            }
             return arrayInfo.GenerateArrayDescription(cachedSnapshot, arrayIndex, truncateTypeName, includeTypeName);
         }
 

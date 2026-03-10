@@ -10,7 +10,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         public const int PointerFormatSignificantDigits = 16;
         public const int PointerNameMinLength = PointerFormatSignificantDigits + 2 /*"0x"*/;
-        public static readonly string PointerFormatString = $"0x{{0:x{PointerFormatSignificantDigits}}}";
+        public static readonly string PointerFormatString = $"0x{{0:X{PointerFormatSignificantDigits}}}";
 
         const string k_NullPtrAddr = "0x0000000000000000";
         const string k_NullRef = "null";
@@ -60,11 +60,11 @@ namespace Unity.MemoryProfiler.Editor
 
         string FormatString(ObjectData od)
         {
-            if (od.dataIncludeObjectHeader)
-            {
-                od = od.GetBoxedValue(m_Snapshot, true);
-            }
-            return BasicFormat(od.managedObjectData.ReadString(out _));
+            // We don't care here if we only get a shortened preview. If it is available, get it.
+            if (m_Snapshot.TableEntryNames?.TryGetPreview(od.GetManagedObjectIndex(m_Snapshot), out var preview) ?? false)
+                return preview;
+            // Otherwise read the first line of the string.
+            return StringTools.ReadFirstStringLine(od.managedObjectData, m_Snapshot.VirtualMachineInformation, false);
         }
 
         string FormatIntPtr(ObjectData od)

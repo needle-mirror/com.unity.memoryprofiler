@@ -6,10 +6,10 @@
     xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
     xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
 
-    <engine:VisualElement name="unity-objects-table-view">
+    <engine:VisualElement name="unity-objects-table-view" class="table-view-base__container">
         <Style src="UnityObjectsTableView.uss"/>
-        <engine:VisualElement name="unity-objects-table-view__tree-view__main-container">
-            <engine:MultiColumnTreeView name="unity-objects-table-view__tree-view" sorting-enabled="true">
+        <engine:VisualElement name="unity-objects-table-view__tree-view__main-container" class="table-view-base__tree-view__main-container">
+            <engine:MultiColumnTreeView name="unity-objects-table-view__tree-view" class="table-view-base__tree-view" sorting-enabled="true">
                 <engine:Columns reorderable="false">
                     <engine:Column name="unity-objects-table-view__tree-view__column__description" resizable="true" stretchable="false" optional="false"/>
                     <engine:Column name="unity-objects-table-view__tree-view__column__size" resizable="true" stretchable="true"/>
@@ -29,7 +29,7 @@
             </editor:Toolbar>
             <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="unity-objects-table-view__loading-overlay"/>
         </engine:VisualElement>
-        <engine:Label name="unity-objects-table-view__error-label"/>
+        <engine:Label name="unity-objects-table-view__error-label" class="table-view-base__error-label"/>
     </engine:VisualElement>
 
 </engine:UXML>

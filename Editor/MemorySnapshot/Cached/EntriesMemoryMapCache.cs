@@ -592,7 +592,7 @@ namespace Unity.MemoryProfiler.Editor
             void PostProcess()
             {
                 const int kMaxStackDepth = 16;
-                var hierarchyStack = new DynamicArray<long>(0, kMaxStackDepth, Allocator.Temp);
+                using var hierarchyStack = new DynamicArray<long>(0, kMaxStackDepth, Allocator.Temp);
 #if DEBUG_VALIDATION
                 var connectionsToContainedObject = new List<ObjectData>();
                 var connectionsToEnclosedObject = new List<ObjectData>();

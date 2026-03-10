@@ -18,8 +18,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         where TBaseModel : TreeModel<TBaseModelItemData>
     {
         const string k_UxmlAssetGuid = "c7699cc627afa2943b34e839e48b88af";
-        const string k_UssClass_Dark = "comparison-view__dark";
-        const string k_UssClass_Light = "comparison-view__light";
         const string k_UxmlIdentifier_DescriptionLabel = "comparison-view__description-label";
         const string k_UxmlIdentifier_SearchField = "comparison-view__search-field";
         const string k_UxmlIdentifier_SplitView = "comparison-view__split-view";
@@ -120,9 +118,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (view == null)
                 throw new InvalidOperationException("Unable to create view from Uxml. Uxml must contain at least one child element.");
             view.style.flexGrow = 1;
-
-            var themeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
-            view.AddToClassList(themeUssClass);
 
             GatherReferencesInView(view);
 
@@ -280,13 +275,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Action<VisualElement, int> BindCellForDescriptionColumn()
         {
-            const string k_NoName = "<No Name>";
             return (element, rowIndex) =>
             {
                 var itemData = m_TreeView.GetItemDataForIndex<ComparisonTableModel<TBaseModel, TBaseModelItemData>.ComparisonData>(rowIndex);
                 var name = itemData.Name;
                 if (string.IsNullOrEmpty(name))
-                    name = k_NoName;
+                    name = CachedSnapshot.InvalidItemName;
 
                 // UITK Label supports undocumented escape formatting
                 // We need to escape all `\` to make sure that paths don't trigger it

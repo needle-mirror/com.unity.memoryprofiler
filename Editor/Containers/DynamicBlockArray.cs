@@ -32,6 +32,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
     {
         public const int k_InitialBlockSlots = 8;
         MemBlock* m_BlockList;
+        Allocator m_Allocator;
         uint m_BlockSlots;
         uint m_UnusedBlockSlots;
         int m_BlockSize;
@@ -57,22 +58,23 @@ namespace Unity.MemoryProfiler.Editor.Containers
             }
         }
 
-        public DynamicBlockArray(int blockSize, int initialCapacity)
+        public DynamicBlockArray(int blockSize, int initialCapacity, Allocator allocator)
         {
             Checks.CheckEquals(true, UnsafeUtility.IsUnmanaged<T>());
             m_BlockSize = blockSize;
+            m_Allocator = allocator;
             uint preAllocatedBlockCount = ComputeBlockCount((uint)initialCapacity, m_BlockSize);
             m_Capacity = preAllocatedBlockCount * (uint)m_BlockSize;
             Count = 0;
             m_BlockSlots = preAllocatedBlockCount;
             m_UnusedBlockSlots = 0;
-            m_BlockList = (MemBlock*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<MemBlock>() * preAllocatedBlockCount, UnsafeUtility.AlignOf<MemBlock>(), Allocator.Persistent);
+            m_BlockList = (MemBlock*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<MemBlock>() * preAllocatedBlockCount, UnsafeUtility.AlignOf<MemBlock>(), m_Allocator);
 
             while (preAllocatedBlockCount > 0)
             {
                 --preAllocatedBlockCount;
                 var block = new MemBlock();
-                block.mem = UnsafeUtility.Malloc(sizeof(T) * m_BlockSize, UnsafeUtility.AlignOf<T>(), Allocator.Persistent);
+                block.mem = UnsafeUtility.Malloc(sizeof(T) * m_BlockSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
                 *(m_BlockList + preAllocatedBlockCount) = block;
             }
         }
@@ -108,9 +110,9 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 var blockSlotsCount = m_BlockSlots;
                 m_BlockSlots = m_BlockSlots * 2 > m_BlockSlots + blocks ?
                     m_BlockSlots * 2 : MathFunc.ToNextPow2(m_BlockSlots + Count);
-                var newBlocks = UnsafeUtility.Malloc(UnsafeUtility.SizeOf<MemBlock>() * m_BlockSlots, UnsafeUtility.AlignOf<MemBlock>(), Allocator.Persistent);
+                var newBlocks = UnsafeUtility.Malloc(UnsafeUtility.SizeOf<MemBlock>() * m_BlockSlots, UnsafeUtility.AlignOf<MemBlock>(), m_Allocator);
                 UnsafeUtility.MemCpy(newBlocks, m_BlockList, UnsafeUtility.SizeOf<MemBlock>() * blockSlotsCount);
-                UnsafeUtility.Free(m_BlockList, Allocator.Persistent);
+                UnsafeUtility.Free(m_BlockList, m_Allocator);
                 m_BlockList = (MemBlock*)newBlocks;
                 m_UnusedBlockSlots = m_BlockSlots - blockSlotsCount;
             }
@@ -118,7 +120,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             for (int i = 0; i < blocks; ++i)
             {
                 var mem = UnsafeUtility.Malloc(UnsafeUtility.SizeOf<T>() * m_BlockSize,
-                    UnsafeUtility.AlignOf<T>(), Allocator.Persistent);
+                    UnsafeUtility.AlignOf<T>(), m_Allocator);
                 m_BlockList[m_BlockSlots - m_UnusedBlockSlots].mem = mem;
                 --m_UnusedBlockSlots;
             }
@@ -129,7 +131,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             for (int i = 0; i < blocks; ++i)
             {
-                UnsafeUtility.Free(m_BlockList[(m_BlockSlots - 1) - m_UnusedBlockSlots].mem, Allocator.Persistent);
+                UnsafeUtility.Free(m_BlockList[(m_BlockSlots - 1) - m_UnusedBlockSlots].mem, m_Allocator);
                 ++m_UnusedBlockSlots;
             }
 
@@ -172,9 +174,9 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 int occupiedBlocks = (int)(m_BlockSlots - m_UnusedBlockSlots);
                 for (int i = 0; i < occupiedBlocks; ++i)
                 {
-                    UnsafeUtility.Free((m_BlockList + i)->mem, Allocator.Persistent);
+                    UnsafeUtility.Free((m_BlockList + i)->mem, m_Allocator);
                 }
-                UnsafeUtility.Free(m_BlockList, Allocator.Persistent);
+                UnsafeUtility.Free(m_BlockList, m_Allocator);
                 m_BlockList = null;
             }
         }

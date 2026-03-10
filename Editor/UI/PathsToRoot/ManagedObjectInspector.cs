@@ -17,7 +17,7 @@ using Rect = UnityEngine.Rect;
 using GUI = UnityEngine.GUI;
 using Debug = UnityEngine.Debug;
 using Unity.MemoryProfiler.Editor.Diagnostics;
-
+using Unity.MemoryProfiler.Editor.Containers;
 
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
@@ -169,7 +169,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static ManagedObjectInspector()
         {
-            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+            Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
         }
 #endif
 
@@ -310,7 +310,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // strings don't get their fields processed, they write their value into the field's root
             if (snapshot.TypeDescriptions.ITypeString == item.ObjectData.managedTypeIndex && item.ObjectData.dataType != ObjectDataType.Type)
             {
-                item.Root.Value = StringTools.ReadString(item.ObjectData.managedObjectData, out _, snapshot.VirtualMachineInformation);
+                item.Root.Value = ManagedObjectTools.GetStringPreview(snapshot, item.ObjectData.GetManagedObject(snapshot), false);
                 return;
             }
 
@@ -675,20 +675,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             //    }
             //}
             else if (field.dataType == ObjectDataType.Value &&
-                    cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Length == 1 &&
+                    cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Count == 1 &&
                     GetFirstInstanceFieldIfValueType(cs, field, fieldEntry.ManagedTypeIndex, out var childField))
             {
                 // For Value type fields with exactly one value type field, show the value in-line to avoid having to expand too much.
                 // Give the type name of the field in brackets after the value to clarify it is not the same as the original field type
                 // For an enum field, this looks like e.g. : m_MyEnumValue | 0 (System.Int32) | MyEnumType
-                ProcessField(new ReferencePendingProcessing(fieldEntry, childField, cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex], 0), cs);
+                var fieldIndicesForType = cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex];
+                ProcessField(new ReferencePendingProcessing(fieldEntry, childField, BuildFieldListFromDynamicArrayRef(fieldIndicesForType), 0), cs);
                 var fieldInfo = fieldEntry.children[0] as ManagedObjectInspectorItem;
                 // Type names in brackets in the Value column signify that the item is not of the type indicated by the field type
                 fieldEntry.Value = FormatFieldValueWithContentTypeNotMatchingFieldType(fieldInfo.Value, fieldInfo.TypeName);
                 fieldEntry.children.Clear();
             }
             else if ((field.dataType == ObjectDataType.Value &&
-                    cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Length >= 1) ||
+                    cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Count >= 1) ||
                 field.dataType == ObjectDataType.Array || field.dataType == ObjectDataType.ReferenceArray ||
                 field.dataType == ObjectDataType.Object || field.dataType == ObjectDataType.ReferenceObject)
             {
@@ -698,6 +699,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        static int[] BuildFieldListFromDynamicArrayRef(in DynamicArrayRef<int> dynamicArrayRef)
+        {
+            var result = new int[(int)dynamicArrayRef.Count];
+            for (long i = 0; i < dynamicArrayRef.Count; i++)
+                result[i] = dynamicArrayRef[i];
+            return result;
+        }
         /// <summary>
         /// Helper method, no actual safety checks, just for easier to read syntax in calling code.
         /// </summary>
@@ -876,13 +884,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case ObjectDataType.Type:
                     //take all static field
-                    return snapshot.TypeDescriptions.fieldIndicesStatic[obj.managedTypeIndex];
+                    var staticFields = snapshot.TypeDescriptions.FieldIndicesStatic[obj.managedTypeIndex];
+                    var staticArray = new int[staticFields.Count];
+                    for (long i = 0; i < staticFields.Count; i++)
+                        staticArray[i] = staticFields[i];
+                    return staticArray;
                 case ObjectDataType.BoxedValue:
                 case ObjectDataType.Object:
                 case ObjectDataType.Value:
                 case ObjectDataType.ReferenceObject:
-                    fields.AddRange(snapshot.TypeDescriptions.fieldIndicesStatic[obj.managedTypeIndex]);
-                    fields.AddRange(snapshot.TypeDescriptions.FieldIndicesInstance[obj.managedTypeIndex]);
+                    var staticFieldsRef = snapshot.TypeDescriptions.FieldIndicesStatic[obj.managedTypeIndex];
+                    for (long i = 0; i < staticFieldsRef.Count; i++)
+                        fields.Add(staticFieldsRef[i]);
+                    var instanceFieldsRef = snapshot.TypeDescriptions.FieldIndicesInstance[obj.managedTypeIndex];
+                    for (long i = 0; i < instanceFieldsRef.Count; i++)
+                        fields.Add(instanceFieldsRef[i]);
                     break;
             }
             return fields.ToArray();

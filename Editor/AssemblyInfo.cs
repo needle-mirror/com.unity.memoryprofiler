@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.Tests")]
+[assembly: InternalsVisibleTo("Unity.MemoryProfiler.XtremeTests")]
 [assembly: InternalsVisibleTo("Unity.MemorySnapshot.Editor.Tests")]
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.PerformanceTests")]
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.TestProject.Editor.Tests")]

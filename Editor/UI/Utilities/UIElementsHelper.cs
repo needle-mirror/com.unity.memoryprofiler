@@ -19,11 +19,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static void SetScrollViewVerticalScrollerVisibility(ScrollView view, bool alwaysOn)
         {
-#if UNITY_2021_1_OR_NEWER
             view.verticalScrollerVisibility = alwaysOn ? ScrollerVisibility.AlwaysVisible : ScrollerVisibility.Auto;
-#else
-            view.showVertical = alwaysOn;
-#endif
         }
 
         public static void SwitchClasses(this VisualElement element, string classToAdd, string classToRemove)
@@ -84,11 +80,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static bool TemplateSourceEquals(this TemplateContainer container, VisualTreeAsset visualTreeAsset)
         {
-#if UNITY_2021_2_OR_NEWER
             return container.templateSource.Equals(visualTreeAsset);
-#else
-            return true;
-#endif
         }
 
         public static Image GetImageWithClasses(string[] classNames)
@@ -104,11 +96,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public static void RegisterClickEvent(this VisualElement element, Action callback)
         {
-#if UNITY_2020_1_OR_NEWER
             element.RegisterCallback<ClickEvent>((e) => callback());
-#else
-            element.AddManipulator(new Clickable(callback));
-#endif
         }
 
         public static VisualTreeAsset LoadAssetByGUID(string uxmlAssetGuid)
@@ -124,11 +112,7 @@ namespace Unity.MemoryProfiler.Editor
             if (uxml == null)
                 return null;
 
-#if UNITY_2020_3_OR_NEWER
             var template = uxml.Instantiate();
-#else
-            var template = uxml.CloneTree();
-#endif
 
             // Retrieve first child from template container.
             VisualElement view = null;

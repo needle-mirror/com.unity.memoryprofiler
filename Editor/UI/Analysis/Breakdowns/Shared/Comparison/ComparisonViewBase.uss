@@ -1,0 +1,209 @@
+/* 
+ * ComparisonViewBase.uss
+ * Shared base styles for comparison view components.
+ * Import this after TableViewBase.uss for tree view basics.
+ */
+
+@import url("../TableViewBase.uss");
+
+/* ========================================
+   Comparison Theme Variables
+   Extend table-view-base theme classes
+   ======================================== */
+
+.table-view-base__dark:root
+{
+    --comparison-view-snapshot-size-bar-bg: #5A5A5A;
+    --comparison-view-snapshot-size-bar-fill: #F0F0F0;
+    --comparison-view-snapshot-size-bar-remainder: #232323;
+    --comparison-view-dark-cell-bg: #313131;
+}
+
+.table-view-base__light:root
+{
+    --comparison-view-snapshot-size-bar-bg: #CBCBCB;
+    --comparison-view-snapshot-size-bar-fill: white;
+    --comparison-view-snapshot-size-bar-remainder: #AAAAAA;
+    --comparison-view-dark-cell-bg: #AAAAAA;
+}
+
+/* ========================================
+   Container Styles
+   ======================================== */
+
+.comparison-view-base__container
+{
+    flex-grow: 1;
+    margin-top: 16px;
+}
+
+.comparison-view-base__search-field-container
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    margin: 0px 16px 16px 16px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.comparison-view-base__description-label
+{
+    flex-shrink: 1;
+    margin-right: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.comparison-view-base__search-field
+{
+    height: 14px;
+    margin: 0px;
+    padding: 4px;
+    width: 40%;
+}
+
+.comparison-view-base__search-field TextField
+{
+    padding-left: 4px;
+}
+
+.comparison-view-base__search-field TextElement
+{
+    font-size: 12px;
+}
+
+/* ========================================
+   Snapshot Size Bar Styles
+   ======================================== */
+
+.comparison-view-base__snapshot-size-bar
+{
+    flex-direction: row;
+    margin: 4px 16px 0px 16px;
+}
+
+.comparison-view-base__snapshot-size-bar > .memory-profile-snapshotfile__tag__label__large
+{
+    margin-top: 4px;
+}
+
+.comparison-view-base__snapshot-size-bar .detailed-size-bar
+{
+    flex-grow: 1;
+    margin-left: 4px;
+    margin-top: 4px;
+}
+
+.comparison-view-base__snapshot-size-bar .detailed-size-bar__bar-container
+{
+    flex-direction: row;
+    flex-grow: 1;
+    height: 14px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+}
+
+.comparison-view-base__snapshot-size-bar .detailed-size-bar__bar
+{
+    flex-grow: 0;
+    height: 14px;
+    margin: 0px;
+}
+
+.comparison-view-base__snapshot-size-bar .detailed-size-bar__bar-remainder
+{
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 2px;
+    background-color: var(--comparison-view-snapshot-size-bar-remainder);
+    height: 14px;
+}
+
+.comparison-view-base__snapshot-size-bar .detailed-size-bar__size-label
+{
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.comparison-view-base__snapshot-size-bar .detailed-size-bar__total-label
+{
+    margin-left: 16px;
+}
+
+.comparison-view-base__snapshot-size-bar .detailed-size-bar__footer
+{
+    margin: 8px 0px;
+}
+
+/* ========================================
+   Primary Panel Styles
+   ======================================== */
+
+.comparison-view-base__primary
+{
+    padding: 16px;
+    min-height: 120px;
+}
+
+/* ========================================
+   Dark Cell Styles
+   ======================================== */
+
+.dark-tree-view-cell
+{
+    background-color: var(--comparison-view-dark-cell-bg);
+}
+
+.unity-multi-column-view__row-container:checked > .unity-multi-column-view__cell > .dark-tree-view-cell
+{
+    background-color: transparent;
+}
+
+.unity-multi-column-view__row-container:hover > .unity-multi-column-view__cell > .dark-tree-view-cell
+{
+    background-color: transparent;
+}
+
+/* ========================================
+   Footer Toolbar Styles
+   ======================================== */
+
+.comparison-view-base__footer-toolbar
+{
+    border-top-width: 1px;
+    height: 32px;
+}
+
+.comparison-view-base__footer-toolbar Toggle
+{
+    padding: 0px 12px;
+}
+
+.comparison-view-base__footer-toolbar .unity-toggle__text
+{
+    padding-left: 4px;
+}
+
+/* ========================================
+   Secondary Panel Styles
+   ======================================== */
+
+.comparison-view-base__secondary
+{
+    flex-direction: row;
+    padding: 16px;
+    min-height: 120px;
+}
+
+.comparison-view-base__secondary__title-container
+{
+    align-items: center;
+    flex-direction: row;
+}
+
+.comparison-view-base__secondary__title-label
+{
+    font-size: 18px;
+    padding: 8px 0px;
+}

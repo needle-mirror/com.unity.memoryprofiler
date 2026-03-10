@@ -118,8 +118,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             switch (displayObject.dataType)
             {
                 case ObjectDataType.NativeObject:
-                    var s = cachedSnapshot.NativeObjects.ObjectName[displayObject.nativeObjectIndex];
-                    return referencedItemName + (string.IsNullOrEmpty(s) ? "Unnamed Object" : s);
+                    return referencedItemName + cachedSnapshot.NativeObjects.GetNonEmptyObjectName(displayObject.nativeObjectIndex);
                 case ObjectDataType.Unknown:
                     return referencedItemName + "<unknown>";
                 case ObjectDataType.Value:
@@ -145,11 +144,11 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                         managedObjectInfo = displayObject.GetManagedObject(cachedSnapshot);
                         if (managedObjectInfo.NativeObjectIndex != -1)
                         {
-                            return referencedItemName + cachedSnapshot.NativeObjects.ObjectName[managedObjectInfo.NativeObjectIndex];
+                            return referencedItemName + cachedSnapshot.NativeObjects.GetNonEmptyObjectName(managedObjectInfo.NativeObjectIndex);
                         }
                         if (managedObjectInfo.ITypeDescription == cachedSnapshot.TypeDescriptions.ITypeString)
                         {
-                            return StringTools.ReadFirstStringLine(managedObjectInfo.data, cachedSnapshot.VirtualMachineInformation, false);
+                            return StringTools.GetPreviewOrReadFirstLine(displayObject.GetManagedObject(cachedSnapshot), cachedSnapshot, true);
                         }
                     }
                     return $"{referencedItemName}[0x{displayObject.hostManagedObjectPtr:x8}]";
@@ -168,7 +167,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                     managedObjectInfo = displayObject.GetManagedObject(cachedSnapshot);
                     if (managedObjectInfo.NativeObjectIndex != -1)
                     {
-                        return referencedItemName + cachedSnapshot.NativeObjects.ObjectName[managedObjectInfo.NativeObjectIndex];
+                        return referencedItemName + cachedSnapshot.NativeObjects.GetNonEmptyObjectName(managedObjectInfo.NativeObjectIndex);
                     }
 
                     return $"{referencedItemName}Unknown {displayObject.dataType}. Is not a field or array item";
@@ -183,8 +182,10 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 case ObjectDataType.NativeAllocation: // should not be present outside of as a referencesToItem with field information to display
                     return data.nonObjectIndex.ToString();
                 case ObjectDataType.Prefab:
+                {
                     var prefabRootTransform = cachedSnapshot.SceneRoots.AllPrefabRootTransformSourceIndices[data.nonObjectIndex];
-                    return cachedSnapshot.NativeObjects.ObjectName[prefabRootTransform.Index];
+                    return cachedSnapshot.NativeObjects.GetNonEmptyObjectName(prefabRootTransform.Index);
+                }
                 case ObjectDataType.Scene:
                     return cachedSnapshot.SceneRoots.Name[data.nonObjectIndex];
                 default:

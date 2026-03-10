@@ -32,8 +32,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override string UxmlIdentifier_TreeViewColumn__Size => k_UxmlIdentifier_TreeViewColumn__Size;
         protected override string UxmlIdentifier_TreeViewColumn__ResidentSize => k_UxmlIdentifier_TreeViewColumn__ResidentSize;
         const string k_UxmlAssetGuid = "e43db30ef43ddfd44bea11154f274126";
-        const string k_UssClass_Dark = "unity-objects-table-view__dark";
-        const string k_UssClass_Light = "unity-objects-table-view__light";
         const string k_UssClass_Cell_Unreliable = "analysis-view__text__information-unreliable-or-unavailable";
         const string k_UxmlIdentifier_TreeView = "unity-objects-table-view__tree-view";
         const string k_UxmlIdentifier_TreeViewColumn__Description = "unity-objects-table-view__tree-view__column__description";
@@ -213,10 +211,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             var view = ViewControllerUtility.LoadVisualTreeFromUxml(k_UxmlAssetGuid);
             if (view == null)
                 throw new InvalidOperationException("Unable to create view from Uxml. Uxml must contain at least one child element.");
-            view.style.flexGrow = 1;
-
-            var themeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
-            view.AddToClassList(themeUssClass);
 
             GatherReferencesInView(view);
 
@@ -345,7 +339,6 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Action<VisualElement, int> BindCellForDescriptionColumn()
         {
-            const string k_NoName = "<No Name>";
             return (element, rowIndex) =>
             {
                 var cell = (UnityObjectsDescriptionCell)element;
@@ -356,7 +349,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 var displayText = itemData.Name;
                 if (string.IsNullOrEmpty(displayText))
-                    displayText = k_NoName;
+                    displayText = CachedSnapshot.InvalidItemName;
                 cell.SetText(displayText);
 
                 var secondaryDisplayText = string.Empty;

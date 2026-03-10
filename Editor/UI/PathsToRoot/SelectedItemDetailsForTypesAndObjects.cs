@@ -553,9 +553,18 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else if (type.ManagedTypeIndex == m_CachedSnapshot.TypeDescriptions.ITypeString)
             {
-                var str = StringTools.ReadString(managedObjectInfo.data, out var fullLength, m_CachedSnapshot.VirtualMachineInformation);
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", fullLength.ToString());
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", $"\"{str}\"", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel | SelectedItemDynamicElementOptions.ShowTitle);
+                var str = StringTools.ReadFullStringOrGetPreview(managedObjectInfo, m_CachedSnapshot, out var fullLength, true);
+
+                if (str != null)
+                {
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", fullLength.ToString());
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", $"{str}", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel | SelectedItemDynamicElementOptions.ShowTitle);
+                }
+                else
+                {
+                    // String data is unavailable
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", "(String data unavailable)", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.ShowTitle);
+                }
             }
             AddMemoryImpactInfo(m_CurrentSelectionObjectData.GetSourceLink(m_CachedSnapshot));
 
@@ -1035,6 +1044,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // which, for Unity Objects, would normally indicate the presence of a Native Object.
                 UpdateStatusForGCHandleHeldObjectWithoutNativeObject(selectedUnityObject.ManagedObjectIndex, true);
             }
+            // Currently a very narrow case that won't capture all objects in the delayed deletion queue,
+            // but at least those where we are reasonably certain that they are in the queue without accidentally false flagging just any unnamed objects
+            // TODO: We need extra info in the snapshot to capture all objects in the delayed deletion queue and expand this case then
+            else if (selectedUnityObject.IsPersistentAsset && selectedUnityObject.Type.IsSceneObjectType && selectedUnityObject.HasNativeSide && string.IsNullOrEmpty(selectedUnityObject.NativeObjectName)
+                && (!m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt || m_CachedSnapshot.RootAndImpactInfo.IsPersistentSceneObjectInDelayedDeletionQueue(new SourceIndex(SourceIndex.SourceId.NativeObject, selectedUnityObject.NativeObjectIndex))))
+            {
+                UpdateStatusAndHintForObjectsInDelayedDeletionQueue(selectedUnityObject);
+            }
             else if (selectedUnityObject.IsLeakedShell)
             {
                 UpdateStatusAndHintForLeakedShellObject(selectedUnityObject);
@@ -1081,6 +1098,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.HeldByGCHandleStatus, TextContent.HeldByGCHandleHint);
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.HeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
             }
+        }
+
+        void UpdateStatusAndHintForObjectsInDelayedDeletionQueue(UnifiedUnityObjectInfo selectedUnityObject)
+        {
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.InDelayedDeletionQueueStatus, TextContent.InDelayedDeletionQueueHint);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.InDelayedDeletionQueueHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
         }
 
         void UpdateStatusAndHintForLeakedShellObject(UnifiedUnityObjectInfo selectedUnityObject)
@@ -1140,10 +1163,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
 
-            if (selectedUnityObject.TotalRefCount == 0 && !selectedUnityObject.IsDontUnload
-                && selectedUnityObject.IsRuntimeCreated && string.IsNullOrEmpty(selectedUnityObject.NativeObjectName))
+            if (selectedUnityObject.IsRuntimeCreated && string.IsNullOrEmpty(selectedUnityObject.NativeObjectName))
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, "Tip", "This leaked dynamically created Asset doesn't have a name, which will make it harder to find its source. " +
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, "Tip", "This dynamically created Asset doesn't have a name, which will make it harder to find its source. " +
                     "As a first step, search your entire project code for any instances of " + newObjectTypeConstruction +
                     " and every 'Instantiate()' or similar call that would create an instance of this type, " +
                     "and make sure you set the '.name' property of the resulting object to something that will make it easier to understand what this object is being created for.");
@@ -1204,6 +1226,16 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+
+            if (NativeObjectEntriesCache.IsInvalidHideFlagUsageForNonPersistentSceneObjects(selectedUnityObject.HideFlags))
+            {
+                var typeName = selectedUnityObject.ManagedTypeIndex >= 0 ? selectedUnityObject.ManagedTypeName : selectedUnityObject.NativeTypeName;
+                m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
+                {
+                    IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Warning,
+                    Message = string.Format(TextContent.NonpersistentSceneObjectWithInvalidDontDestroyOnLoadHideFlagWarningFormatString, typeName, selectedUnityObject.NativeObjectName),
+                });
+            }
         }
 
         void UpdateStatusAndHintForManagers(UnifiedUnityObjectInfo selectedUnityObject)

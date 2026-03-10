@@ -7,6 +7,23 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.12] - 2026-03-10
+
+### Changed
+- Unified the display of unnamed native Unity objects in all tables, including the Reference tables to be `"<No Name>"`.
+
+### Fixed
+- Fixed two native memory leaks during snapshot opening.
+- Fixed search field alignment in small memory profiler window configurations ([UUM-133948](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-133948)).
+- Fixed error “InvalidOperationException: is a persistent scene object on Transform on GameObject that does not map to a prefab!“ on opening snapshots containing prefabs that are in the process of getting unloaded via the delayed deletion queue.
+- Fixed that table searches did not reliably allow searching for `"<No Name>"` objects, aka native Unity objects that do not have a name set to their `.name` property.
+- Fixed the "Reset Opt-Out settings for dialog prompts" button in the Memory Profiler preferences to work with the new `EditorDialog.DisplayDecisionDialogWithOptOut()` API in Unity 6000.3 and newer.
+
+### Added
+- Added a status and hint to the selected item details for persistent scene objects in the delayed deletion queue.
+- Added the hint to set the `.name` property for unnamed dynamic assets, even when they are marked as `DontDestroyOnLoad`.
+- Added a warning box to non-prefab scene objects (i.e. they are *NOT* assets) with the `HideFlags.DontUnloadUnusedAsset` set, additional to the warning logged on opening snapshots containing such objects. The warning message was also extended to highlight that this is a mistake in the project code that will lead to unexpected behavior. Always use the method `Object.DontDestroyOnLoad()` to move scene objects (GameObjects and their components) into the `DontDestroyOnLoad` scene to properly keep them from being unloaded as the `HideFlag.DontUnloadUnusedAsset` will be ignored for non-asset.
+
 ## [1.1.11] - 2026-02-06
 
 ### Fixed

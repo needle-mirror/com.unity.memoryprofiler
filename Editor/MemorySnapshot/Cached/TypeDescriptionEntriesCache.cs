@@ -1,137 +1,31 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text;
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.MemoryProfiler.Editor.Containers.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
 using Unity.Profiling;
-using UnityEditor;
-using Unity.MemoryProfiler.Editor.EnumerationUtilities;
-using Unity.MemoryProfiler.Editor.Managed;
 using Unity.MemoryProfiler.Editor.UI;
 
 // Pre com.unity.collections@2.1.0 NativeHashMap was not constraining its held data to unmanaged but to struct.
 // NativeHashSet does not have the same issue, but for ease of use may get an alias below for EntityId.
 #if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
-#if !ENTITY_ID_CHANGED_SIZE
-using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
-using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.EntityId, long>;
-#else
-using AddressToInstanceId = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, UnityEngine.EntityId>;
-using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<UnityEngine.EntityId, long>;
-#endif
 using AddressToIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
 using AddressToIntIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, int>;
-using LongToLongHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, long>;
-using LongToIntHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, int>;
 #else
-#if !ENTITY_ID_CHANGED_SIZE
-using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
-using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.EntityId, long>;
-#else
-using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, UnityEngine.EntityId>;
-using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<UnityEngine.EntityId, long>;
-#endif
 using AddressToIndex = Unity.Collections.NativeHashMap<ulong, long>;
 using AddressToIntIndex = Unity.Collections.NativeHashMap<ulong, int>;
-using LongToLongHashMap = Unity.Collections.NativeHashMap<long, long>;
-using LongToIntHashMap = Unity.Collections.NativeHashMap<long, int>;
 #endif
-using HideFlags = UnityEngine.HideFlags;
-using RuntimePlatform = UnityEngine.RuntimePlatform;
 using Debug = UnityEngine.Debug;
-using UnityException = UnityEngine.UnityException;
-using static Unity.MemoryProfiler.Editor.CachedSnapshot;
-
-
-#if !ENTITY_ID_CHANGED_SIZE
-// the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
-// so to avoid mistakenly using a version of this struct with the wrong size, alias it here.
-using EntityId = Unity.MemoryProfiler.Editor.EntityId;
-#else
-// This should be greyed out by the IDE, otherwise you're missing an alias above
-using UnityEngine;
-using EntityId = UnityEngine.EntityId;
-#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
     internal partial class CachedSnapshot
     {
-        static class TypeTools
-        {
-            public enum FieldFindOptions
-            {
-                OnlyInstance,
-                OnlyStatic
-            }
-
-            static void RecurseCrawlFields(ref List<int> fieldsBuffer, int typeIndex, TypeDescriptionEntriesCache typeDescriptions, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions fieldFindOptions, bool crawlBase)
-            {
-                bool isValueType = typeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
-                if (crawlBase)
-                {
-                    int baseTypeIndex = typeDescriptions.BaseOrElementTypeIndex[typeIndex];
-                    if (crawlBase && baseTypeIndex != -1 && !isValueType)
-                    {
-                        RecurseCrawlFields(ref fieldsBuffer, baseTypeIndex, typeDescriptions, fieldDescriptions, fieldFindOptions, true);
-                    }
-                }
-
-
-                var fieldIndices = typeDescriptions.FieldIndices[typeIndex];
-                for (int i = 0; i < fieldIndices.Count; ++i)
-                {
-                    var iField = fieldIndices[i];
-
-                    if (!FieldMatchesOptions(iField, fieldDescriptions, fieldFindOptions))
-                        continue;
-
-                    if (fieldDescriptions.TypeIndex[iField] == typeIndex && isValueType)
-                    {
-                        // this happens in primitive types like System.Single, which is a weird type that has a field of its own type.
-                        continue;
-                    }
-
-                    if (fieldDescriptions.Offset[iField] == -1) //TODO: verify this assumption
-                    {
-                        // this is how we encode TLS fields. We don't support TLS fields yet.
-                        continue;
-                    }
-
-                    fieldsBuffer.Add(iField);
-                }
-            }
-
-            public static void AllFieldArrayIndexOf(ref List<int> fieldsBuffer, int ITypeArrayIndex, TypeDescriptionEntriesCache typeDescriptions, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions findOptions, bool includeBase)
-            {
-                //make sure we clear before we start crawling
-                fieldsBuffer.Clear();
-                RecurseCrawlFields(ref fieldsBuffer, ITypeArrayIndex, typeDescriptions, fieldDescriptions, findOptions, includeBase);
-            }
-
-            static bool FieldMatchesOptions(int fieldIndex, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions options)
-            {
-                if (options == FieldFindOptions.OnlyStatic)
-                {
-                    return fieldDescriptions.IsStatic[fieldIndex] == 1;
-                }
-                if (options == FieldFindOptions.OnlyInstance)
-                {
-                    return fieldDescriptions.IsStatic[fieldIndex] == 0;
-                }
-                return false;
-            }
-        }
-
         //leave this as second to last thing to convert, also a major pain in the ass
         public class TypeDescriptionEntriesCache : IDisposable
         {
@@ -228,10 +122,15 @@ namespace Unity.MemoryProfiler.Editor
             NestedDynamicSizedArrayReadOperation<byte> m_StaticFieldBytesReadOp;
 
             //secondary data, handled inside InitSecondaryItems
-            // TODO: move over to NestedDynamicArray<int>
-            public int[][] FieldIndicesInstance;//includes all bases' instance fields
-            public int[][] fieldIndicesStatic;  //includes all bases' static fields
-            public int[][] fieldIndicesOwnedStatic;  //includes only type's static fields
+            NestedDynamicArray<int> m_FieldIndicesInstance; //includes all bases' instance fields
+            NestedDynamicArray<int> m_FieldIndicesStatic;   //includes all bases' static fields
+            NestedDynamicArray<int> m_FieldIndicesOwnedStatic; //includes only type's static fields
+            // temporary processing buffer used inside of, and disposed in, InitSecondaryItems
+            NativeList<int> m_FieldProcessingBuffer;
+
+            public ref readonly NestedDynamicArray<int> FieldIndicesInstance => ref m_FieldIndicesInstance;
+            public ref readonly NestedDynamicArray<int> FieldIndicesStatic => ref m_FieldIndicesStatic;
+            public ref readonly NestedDynamicArray<int> FieldIndicesOwnedStatic => ref m_FieldIndicesOwnedStatic;
 
             public readonly int ITypeValueType = ITypeInvalid;
             public readonly int ITypeUnityObject = ITypeInvalid;
@@ -297,7 +196,7 @@ namespace Unity.MemoryProfiler.Editor
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
             static TypeDescriptionEntriesCache()
             {
-                Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally addin a 'using UnityEngine;' to this file.");
+                Checks.IsTrue((typeof(EntityId) != typeof(UnityEngine.EntityId)), "The wrong type of EntityId struct is used, probably due to accidentally adding a 'using UnityEngine;' to this file.");
             }
 #endif
 
@@ -482,19 +381,19 @@ namespace Unity.MemoryProfiler.Editor
             // Check all bases' fields
             public bool HasAnyField(int iType)
             {
-                return FieldIndicesInstance[iType].Length > 0 || fieldIndicesStatic[iType].Length > 0;
+                return FieldIndicesInstance[iType].Count > 0 || FieldIndicesStatic[iType].Count > 0;
             }
 
             // Check all bases' fields
             public bool HasAnyStaticField(int iType)
             {
-                return fieldIndicesStatic[iType].Length > 0;
+                return FieldIndicesStatic[iType].Count > 0;
             }
 
             // Check only the type's fields
             public bool HasStaticField(long iType)
             {
-                return fieldIndicesOwnedStatic[iType].Length > 0;
+                return FieldIndicesOwnedStatic[iType].Count > 0;
             }
 
             /// <summary>
@@ -511,7 +410,7 @@ namespace Unity.MemoryProfiler.Editor
             public bool CouldThisFieldBeReadAsAnAddress(long arrayIndex, CachedSnapshot snapshot)
             {
                 return (!HasFlag(arrayIndex, TypeFlags.kValueType) ||
-                    (FieldIndicesInstance[arrayIndex].Length == 0 && Size[arrayIndex] == snapshot.VirtualMachineInformation.PointerSize));
+                    (FieldIndicesInstance[arrayIndex].Count == 0 && Size[arrayIndex] == snapshot.VirtualMachineInformation.PointerSize));
             }
 
             [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
@@ -534,6 +433,109 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             static readonly ProfilerMarker k_TypeFieldArraysBuild = new ProfilerMarker("MemoryProfiler.TypeFields.TypeFieldArrayBuilding");
+
+            static NestedDynamicArray<T> ConvertNestedNativeArraysToNestedDynamicArray<T>(NativeArray<NativeArray<T>> source, Allocator allocator) where T : unmanaged
+            {
+                var count = source.Length;
+
+                // Calculate total element count
+                long totalElements = 0;
+                for (int i = 0; i < count; i++)
+                    totalElements += source[i].Length;
+
+                // Build offsets array (count + 1 entries).
+                // Allocate as Temp since it's only needed during construction and disposed off right after.
+                using var offsets = new DynamicArray<long>(count + 1, Allocator.Temp);
+                long currentOffset = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    offsets[i] = currentOffset;
+                    unsafe
+                    {
+                        currentOffset += source[i].Length * sizeof(T);
+                    }
+                }
+                offsets[count] = currentOffset; // End offset
+
+                // Build flat data array by copying directly from NativeArray
+                var data = new DynamicArray<T>(totalElements, allocator);
+                unsafe
+                {
+                    var dataPtr = data.GetUnsafeTypedPtr();
+                    for (int i = 0; i < count; i++)
+                    {
+                        var array = source[i];
+                        // MemCopy for efficiency
+                        UnsafeUtility.MemCpy(dataPtr, array.GetUnsafePtr(), array.Length * sizeof(T));
+                        dataPtr += array.Length;
+                    }
+                }
+
+                return new NestedDynamicArray<T>(offsets, data);
+            }
+
+            enum FieldFindOptions
+            {
+                OnlyInstance,
+                OnlyStatic
+            }
+
+            void AllFieldArrayIndexOf(int ITypeArrayIndex, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions findOptions, bool includeBase)
+            {
+                //make sure we clear before we start crawling
+                m_FieldProcessingBuffer.Clear();
+                RecurseCrawlFields(ITypeArrayIndex, fieldDescriptions, findOptions, includeBase);
+            }
+
+            void RecurseCrawlFields(int typeIndex, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions fieldFindOptions, bool crawlBase)
+            {
+                bool isValueType = HasFlag(typeIndex, TypeFlags.kValueType);
+                if (crawlBase)
+                {
+                    int baseTypeIndex = BaseOrElementTypeIndex[typeIndex];
+                    if (crawlBase && baseTypeIndex != -1 && !isValueType)
+                    {
+                        RecurseCrawlFields(baseTypeIndex, fieldDescriptions, fieldFindOptions, true);
+                    }
+                }
+
+                var fieldIndices = FieldIndices[typeIndex];
+                for (int i = 0; i < fieldIndices.Count; ++i)
+                {
+                    var iField = fieldIndices[i];
+
+                    if (!FieldMatchesOptions(iField, fieldDescriptions, fieldFindOptions))
+                        continue;
+
+                    if (fieldDescriptions.TypeIndex[iField] == typeIndex && isValueType)
+                    {
+                        // this happens in primitive types like System.Single, which is a weird type that has a field of its own type.
+                        continue;
+                    }
+
+                    if (fieldDescriptions.Offset[iField] == -1) //TODO: verify this assumption
+                    {
+                        // this is how we encode TLS fields. We don't support TLS fields yet.
+                        continue;
+                    }
+
+                    m_FieldProcessingBuffer.Add(iField);
+                }
+            }
+
+            bool FieldMatchesOptions(int fieldIndex, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions options)
+            {
+                if (options == FieldFindOptions.OnlyStatic)
+                {
+                    return fieldDescriptions.IsStatic[fieldIndex] == 1;
+                }
+                if (options == FieldFindOptions.OnlyInstance)
+                {
+                    return fieldDescriptions.IsStatic[fieldIndex] == 0;
+                }
+                return false;
+            }
+
             void InitSecondaryItems(FieldDescriptionEntriesCache fieldDescriptions, NativeTypeEntriesCache nativeTypes, VirtualMachineInformation vmInfo, Dictionary<string, int> typeNameToIndex)
             {
                 TypeInfoToArrayIndex = new AddressToIntIndex((int)TypeInfoAddress.Count, Allocator.Persistent);
@@ -566,122 +568,155 @@ namespace Unity.MemoryProfiler.Editor
 
                 using (k_TypeFieldArraysBuild.Auto())
                 {
-                    FieldIndicesInstance = new int[Count][];
-                    fieldIndicesStatic = new int[Count][];
-                    fieldIndicesOwnedStatic = new int[Count][];
-                    List<int> fieldProcessingBuffer = new List<int>(k_DefaultFieldProcessingBufferSize);
+                    // Use NativeArray of NativeArrays instead of managed jagged arrays
+                    var fieldIndicesInstance = new NativeArray<NativeArray<int>>(Count, Allocator.Persistent);
+                    var fieldIndicesStatic = new NativeArray<NativeArray<int>>(Count, Allocator.Persistent);
+                    var fieldIndicesOwnedStatic = new NativeArray<NativeArray<int>>(Count, Allocator.Persistent);
 
-                    var objectHeaderSize = (int)vmInfo.ObjectHeaderSize;
-                    for (int i = 0; i < Count; ++i)
+                    // Use NativeList instead of managed List for processing buffer
+                    m_FieldProcessingBuffer = new NativeList<int>(k_DefaultFieldProcessingBufferSize, Allocator.Temp);
+                    try
                     {
-                        TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, this, fieldDescriptions, TypeTools.FieldFindOptions.OnlyInstance, true);
-                        FieldIndicesInstance[i] = fieldProcessingBuffer.ToArray();
-
-                        TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, this, fieldDescriptions, TypeTools.FieldFindOptions.OnlyStatic, true);
-                        fieldIndicesStatic[i] = fieldProcessingBuffer.ToArray();
-
-                        TypeTools.AllFieldArrayIndexOf(ref fieldProcessingBuffer, i, this, fieldDescriptions, TypeTools.FieldFindOptions.OnlyStatic, false);
-                        fieldIndicesOwnedStatic[i] = fieldProcessingBuffer.ToArray();
-
-                        // There is a bug in the caluclation for the type sizes in the native capture code where it subtracts the header size from the class size for all types.
-                        // However, in IL2CPP, the header size is only included if the type derives from object, which abstract types and pointer types (e.g. "void*") don't do.
-                        // To fix it in the capture code, we need to expose more type flags and also we still need to be able to read snapshots from versions where it isn't fixed, so
-                        // if negative sizes are present, double check that they don't have a base type and if so, assume the bug is present and adjust them accordingly.
-                        if (Size[i] < 0)
+                        var objectHeaderSize = (int)vmInfo.ObjectHeaderSize;
+                        for (int i = 0; i < Count; ++i)
                         {
-                            if (Size[i] < 0 && BaseOrElementTypeIndex[i] < 0)
-                            {
-#if DEBUG_VALIDATION
-                                // pointers are the only value types that should get a negative size
-                                if (HasFlag(i, TypeFlags.kValueType))
-                                    Checks.IsTrue(TypeDescriptionName[i].EndsWith('*'));
-#endif
-                                // outside of value types, abstract generic base classes could end up with a negative size
-                                Size[i] += objectHeaderSize;
-                            }
-#if DEBUG_VALIDATION
+                            AllFieldArrayIndexOf(i, fieldDescriptions, FieldFindOptions.OnlyInstance, true);
+                            var fieldIndicesInstanceArray = new NativeArray<int>(m_FieldProcessingBuffer.Length, Allocator.TempJob);
+                            fieldIndicesInstanceArray.CopyFrom(m_FieldProcessingBuffer.AsArray());
+                            fieldIndicesInstance[i] = fieldIndicesInstanceArray;
+
+                            AllFieldArrayIndexOf(i, fieldDescriptions, FieldFindOptions.OnlyStatic, true);
+                            var fieldIndicesStaticArray = new NativeArray<int>(m_FieldProcessingBuffer.Length, Allocator.TempJob);
+                            fieldIndicesStaticArray.CopyFrom(m_FieldProcessingBuffer.AsArray());
+                            fieldIndicesStatic[i] = fieldIndicesStaticArray;
+
+                            AllFieldArrayIndexOf(i, fieldDescriptions, FieldFindOptions.OnlyStatic, false);
+                            var fieldIndicesOwnedStaticArray = new NativeArray<int>(m_FieldProcessingBuffer.Length, Allocator.TempJob);
+                            fieldIndicesOwnedStaticArray.CopyFrom(m_FieldProcessingBuffer.AsArray());
+                            fieldIndicesOwnedStatic[i] = fieldIndicesOwnedStaticArray;
+
+                            // There is a bug in the caluclation for the type sizes in the native capture code where it subtracts the header size from the class size for all types.
+                            // However, in IL2CPP, the header size is only included if the type derives from object, which abstract types and pointer types (e.g. "void*") don't do.
+                            // To fix it in the capture code, we need to expose more type flags and also we still need to be able to read snapshots from versions where it isn't fixed, so
+                            // if negative sizes are present, double check that they don't have a base type and if so, assume the bug is present and adjust them accordingly.
                             if (Size[i] < 0)
-                                Debug.LogWarning($"Type {TypeDescriptionName[i]} has a negative size ({Size[i]}).");
+                            {
+                                if (Size[i] < 0 && BaseOrElementTypeIndex[i] < 0)
+                                {
+#if DEBUG_VALIDATION
+                                    // pointers are the only value types that should get a negative size
+                                    if (HasFlag(i, TypeFlags.kValueType))
+                                        Checks.IsTrue(TypeDescriptionName[i].EndsWith('*'));
 #endif
-                        }
-
-
-                        var typeIndex = i;
-                        if (DerivesFromTypes(typeIndex, in m_AllUninstantiatableUnityBaseTypes, out var managedBaseType))
-                        {
-                            UpdateManagedToNativeTypeMapping(nativeTypes, typeIndex, UnifiedTypeInfoManaged[managedBaseType].NativeTypeIndex, baseFallbackType: managedBaseType);
-                        }
-                        else
-                        {
-                            PureCSharpTypeIndices.Add(typeIndex);
-                            var iTypeDescription = typeIndex;
-                            var isConcrete = false;
-                            while (iTypeDescription > ITypeInvalid)
-                            {
-                                if (hashmapOfSaveConcreteTypes.Contains(iTypeDescription) ||
-                                    m_TypeCategory[typeIndex] == TypeCategory.Concrete || HasFlag(iTypeDescription, TypeFlags.kArray) || HasFlag(iTypeDescription, TypeFlags.kValueType))
-                                {
-                                    isConcrete = true;
-                                    break;
+                                    // outside of value types, abstract generic base classes could end up with a negative size
+                                    Size[i] += objectHeaderSize;
                                 }
-                                iTypeDescription = BaseOrElementTypeIndex[iTypeDescription];
+#if DEBUG_VALIDATION
+                                if (Size[i] < 0)
+                                    Debug.LogWarning($"Type {TypeDescriptionName[i]} has a negative size ({Size[i]}).");
+#endif
                             }
-                            if (isConcrete)
+
+
+                            var typeIndex = i;
+                            if (DerivesFromTypes(typeIndex, in m_AllUninstantiatableUnityBaseTypes, out var managedBaseType))
                             {
-                                do
-                                {
-                                    m_TypeCategory[typeIndex] = TypeCategory.Concrete;
-                                    // go over all types between this type and the one that proofed this was derived from object and set them as well
-                                    if (typeIndex == iTypeDescription)
-                                        break;
-                                    typeIndex = BaseOrElementTypeIndex[typeIndex];
-                                } while (typeIndex > ITypeInvalid);
+                                UpdateManagedToNativeTypeMapping(nativeTypes, typeIndex, UnifiedTypeInfoManaged[managedBaseType].NativeTypeIndex, baseFallbackType: managedBaseType);
                             }
                             else
                             {
-                                if (Size[typeIndex] == vmInfo.ObjectHeaderSize
-                                    && FieldIndices[typeIndex].Count == 0)
+                                PureCSharpTypeIndices.Add(typeIndex);
+                                var iTypeDescription = typeIndex;
+                                var isConcrete = false;
+                                while (iTypeDescription > ITypeInvalid)
                                 {
-                                    var name = TypeDescriptionName[typeIndex].AsSpan();
-                                    var genericBracket = name.IndexOf('<');
-                                    if (genericBracket >= 0)
-                                        name = name.Slice(0, genericBracket);
-                                    var lastDot = name.LastIndexOf('.');
-                                    if (lastDot >= 0)
-                                        name = name.Slice(lastDot + 1);
-                                    if (name.Length > 1 && name[0] == 'I' && char.IsUpper(name[1]) || knownOddInterfaces.Contains(typeIndex))
+                                    if (hashmapOfSaveConcreteTypes.Contains(iTypeDescription) ||
+                                        m_TypeCategory[typeIndex] == TypeCategory.Concrete || HasFlag(iTypeDescription, TypeFlags.kArray) || HasFlag(iTypeDescription, TypeFlags.kValueType))
                                     {
-                                        // This is super likely to be an interface, it can't have instances on the heap.
-                                        m_TypeCategory[typeIndex] = TypeCategory.AbstractInterface;
+                                        isConcrete = true;
+                                        break;
                                     }
-                                    else
+                                    iTypeDescription = BaseOrElementTypeIndex[iTypeDescription];
+                                }
+                                if (isConcrete)
+                                {
+                                    do
                                     {
-                                        // There is a veeeeery high chance that this is an abstract class which can't have instances on the heap.
-                                        // or an interface not following the IInterface naming convention
-                                        // however, it could still be concrete and inheriting from a generic base that wasn't reported, so categorize it as Unlcear we can't be sure and therefore shouldn't ignore it.
-                                        m_TypeCategory[typeIndex] = TypeCategory.IgnoreForHeapObjectTypeChecks;
-                                    }
+                                        m_TypeCategory[typeIndex] = TypeCategory.Concrete;
+                                        // go over all types between this type and the one that proofed this was derived from object and set them as well
+                                        if (typeIndex == iTypeDescription)
+                                            break;
+                                        typeIndex = BaseOrElementTypeIndex[typeIndex];
+                                    } while (typeIndex > ITypeInvalid);
                                 }
                                 else
                                 {
-                                    bool EndOfGeneric(char c) => c == '>' || c == ',';
-                                    var name = TypeDescriptionName[typeIndex].AsSpan();
-                                    var genericBracket = name.IndexOf("<T");
-                                    if (genericBracket >= 0 && name.Length > genericBracket + 1 &&
-                                        (EndOfGeneric(name[genericBracket + 1]) ||
-                                        (char.IsUpper(name[genericBracket + 1]) && (name.Length > genericBracket + 2) && (char.IsLower(name[genericBracket + 2]) || EndOfGeneric(name[genericBracket + 2])))))
+                                    if (Size[typeIndex] == vmInfo.ObjectHeaderSize
+                                        && FieldIndices[typeIndex].Count == 0)
                                     {
-                                        // Pretty sure this is an abstract generic class, it can't have instances on the heap.
-                                        m_TypeCategory[typeIndex] = TypeCategory.AbstractGeneric;
+                                        var name = TypeDescriptionName[typeIndex].AsSpan();
+                                        var genericBracket = name.IndexOf('<');
+                                        if (genericBracket >= 0)
+                                            name = name.Slice(0, genericBracket);
+                                        var lastDot = name.LastIndexOf('.');
+                                        if (lastDot >= 0)
+                                            name = name.Slice(lastDot + 1);
+                                        if (name.Length > 1 && name[0] == 'I' && char.IsUpper(name[1]) || knownOddInterfaces.Contains(typeIndex))
+                                        {
+                                            // This is super likely to be an interface, it can't have instances on the heap.
+                                            m_TypeCategory[typeIndex] = TypeCategory.AbstractInterface;
+                                        }
+                                        else
+                                        {
+                                            // There is a veeeeery high chance that this is an abstract class which can't have instances on the heap.
+                                            // or an interface not following the IInterface naming convention
+                                            // however, it could still be concrete and inheriting from a generic base that wasn't reported, so categorize it as Unlcear we can't be sure and therefore shouldn't ignore it.
+                                            m_TypeCategory[typeIndex] = TypeCategory.IgnoreForHeapObjectTypeChecks;
+                                        }
                                     }
                                     else
                                     {
-                                        // We can't be sure if this is abstract or not, it might be concrete but inheriting from a generic base that wasn't reported
-                                        m_TypeCategory[typeIndex] = TypeCategory.IgnoreForHeapObjectTypeChecks;
+                                        bool EndOfGeneric(char c) => c == '>' || c == ',';
+                                        var name = TypeDescriptionName[typeIndex].AsSpan();
+                                        var genericBracket = name.IndexOf("<T");
+                                        if (genericBracket >= 0 && name.Length > genericBracket + 1 &&
+                                            (EndOfGeneric(name[genericBracket + 1]) ||
+                                            (char.IsUpper(name[genericBracket + 1]) && (name.Length > genericBracket + 2) && (char.IsLower(name[genericBracket + 2]) || EndOfGeneric(name[genericBracket + 2])))))
+                                        {
+                                            // Pretty sure this is an abstract generic class, it can't have instances on the heap.
+                                            m_TypeCategory[typeIndex] = TypeCategory.AbstractGeneric;
+                                        }
+                                        else
+                                        {
+                                            // We can't be sure if this is abstract or not, it might be concrete but inheriting from a generic base that wasn't reported
+                                            m_TypeCategory[typeIndex] = TypeCategory.IgnoreForHeapObjectTypeChecks;
+                                        }
                                     }
                                 }
                             }
                         }
+
+                        // Convert NativeArray<NativeList> to NestedDynamicArray
+                        m_FieldIndicesInstance = ConvertNestedNativeArraysToNestedDynamicArray(fieldIndicesInstance, Allocator.Persistent);
+                        m_FieldIndicesStatic = ConvertNestedNativeArraysToNestedDynamicArray(fieldIndicesStatic, Allocator.Persistent);
+                        m_FieldIndicesOwnedStatic = ConvertNestedNativeArraysToNestedDynamicArray(fieldIndicesOwnedStatic, Allocator.Persistent);
+                    }
+                    finally
+                    {
+                        // Dispose all NativeArrays
+                        for (int i = 0; i < Count; i++)
+                        {
+                            if (fieldIndicesInstance[i].IsCreated)
+                                fieldIndicesInstance[i].Dispose();
+                            if (fieldIndicesStatic[i].IsCreated)
+                                fieldIndicesStatic[i].Dispose();
+                            if (fieldIndicesOwnedStatic[i].IsCreated)
+                                fieldIndicesOwnedStatic[i].Dispose();
+                        }
+                        fieldIndicesInstance.Dispose();
+                        fieldIndicesStatic.Dispose();
+                        fieldIndicesOwnedStatic.Dispose();
+                        m_FieldProcessingBuffer.Dispose();
                     }
                 }
                 var fieldIndices = FieldIndices[ITypeUnityObject];
@@ -714,6 +749,24 @@ namespace Unity.MemoryProfiler.Editor
                     return;
                 }
 #endif
+            }
+
+            /// <summary>
+            /// Completes any pending async read operations.
+            /// Used for accurate timing when profiling snapshot loading.
+            /// </summary>
+            public void CompleteAsyncReadOperations()
+            {
+                // Force completion of async field indices read
+                if (m_FieldIndicesReadOp.IsCreated)
+                {
+                    _ = FieldIndices; // Accessing the property forces completion
+                }
+                // Force completion of async static field bytes read
+                if (m_StaticFieldBytesReadOp.IsCreated)
+                {
+                    _ = StaticFieldBytes; // Accessing the property forces completion
+                }
             }
 
             void UpdateManagedToNativeTypeMapping(CachedSnapshot.NativeTypeEntriesCache nativeTypes, int managedType, int nativeType, ref NativeHashSet<int> hashmapOfUnityBaseTypes, int baseFallbackType = CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid)
@@ -863,9 +916,15 @@ namespace Unity.MemoryProfiler.Editor
                     m_StaticFieldBytesReadOp = default;
                 }
 
-                FieldIndicesInstance = null;
-                fieldIndicesStatic = null;
-                fieldIndicesOwnedStatic = null;
+                if (m_FieldIndicesInstance.IsCreated)
+                    m_FieldIndicesInstance.Dispose();
+                if (m_FieldIndicesStatic.IsCreated)
+                    m_FieldIndicesStatic.Dispose();
+                if (m_FieldIndicesOwnedStatic.IsCreated)
+                    m_FieldIndicesOwnedStatic.Dispose();
+
+                if (m_TypeCategory.IsCreated)
+                    m_TypeCategory.Dispose();
                 if (m_UnifiedTypeInfo.IsCreated)
                     m_UnifiedTypeInfo.Dispose();
                 if (TypeInfoToArrayIndex.IsCreated)

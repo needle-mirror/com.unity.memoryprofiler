@@ -13,6 +13,8 @@ using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.UI;
+using Unity.MemoryProfiler.Editor.UIContentData;
+using Unity.Profiling;
 using Unity.Profiling.Memory;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
@@ -535,6 +537,8 @@ namespace Unity.MemoryProfiler.Editor
             public bool FullyDistributedImpact;
         }
         NestedDynamicArray<Marker> m_Marker;
+        NativeHashSet<SourceIndex> m_PersistentSceneObjectsInDelayedDeletionQueue;
+        public bool IsPersistentSceneObjectInDelayedDeletionQueue(SourceIndex index) => m_PersistentSceneObjectsInDelayedDeletionQueue.Contains(index);
 
         CachedProcessingData m_ProcessingData;
 
@@ -562,6 +566,8 @@ namespace Unity.MemoryProfiler.Editor
             var markerInfo = new DynamicArray<Marker>(initialCount, initialCount, Allocator.Persistent, true);
             m_Marker = new NestedDynamicArray<Marker>(offsetsForMarkers, markerInfo);
 
+            m_PersistentSceneObjectsInDelayedDeletionQueue = new NativeHashSet<SourceIndex>(100, Allocator.Persistent);
+
             m_OwnedChildList = new DynamicArray<SourceIndex>(0, initialCount, Allocator.Persistent, true);
 
             m_UnownedChildList = new DynamicArray<SourceIndex>(0, 3000, Allocator.Persistent, true);
@@ -573,6 +579,7 @@ namespace Unity.MemoryProfiler.Editor
             m_RootPathOwnedReferencesLookup.Dispose();
             m_UnownedReferencesLookup.Dispose();
             m_Impact.Dispose();
+            m_PersistentSceneObjectsInDelayedDeletionQueue.Dispose();
             if (m_Marker.IsCreated) // gets disposed after ReadOrProcess is done
                 m_Marker.Dispose();
             m_OwnedChildList.Dispose();
@@ -676,6 +683,29 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
+        public const string ProcessStaticRootsMarkerName = "RootAndImpactInfo: Processing Static Roots";
+        static readonly ProfilerMarker k_ProcessStaticRootsMarker = new ProfilerMarker(ProcessStaticRootsMarkerName);
+        public const string ProcessNonSceneDontDestroyOnLoadMarkerName = "RootAndImpactInfo: Processing Non-Scene-Objects marked DontDestroyOnLoad";
+        static readonly ProfilerMarker k_ProcessNonSceneDontDestroyOnLoadMarker = new ProfilerMarker(ProcessNonSceneDontDestroyOnLoadMarkerName);
+        public const string ProcessSceneRootsMarkerName = "RootAndImpactInfo: Processing Scene Roots";
+        static readonly ProfilerMarker k_ProcessSceneRootsMarker = new ProfilerMarker(ProcessSceneRootsMarkerName);
+        public const string ProcessAssetBundlesMarkerName = "RootAndImpactInfo: Processing Asset Bundles";
+        static readonly ProfilerMarker k_ProcessAssetBundlesMarker = new ProfilerMarker(ProcessAssetBundlesMarkerName);
+        public const string ProcessNativeObjectRootsMarkerName = "RootAndImpactInfo: Processing Native Object Roots";
+        static readonly ProfilerMarker k_ProcessNativeObjectRootsMarker = new ProfilerMarker(ProcessNativeObjectRootsMarkerName);
+        // Processing Unreferenced Prefabs
+        public const string ProcessUnreferencedPrefabsMarkerName = "RootAndImpactInfo: Processing Unreferenced Prefabs";
+        static readonly ProfilerMarker k_ProcessUnreferencedPrefabsMarker = new ProfilerMarker(ProcessUnreferencedPrefabsMarkerName);
+        // Processing Non-Unity-Object Referencing GC Handles
+        public const string ProcessGCHandleRootsMarkerName = "RootAndImpactInfo: Non-Unity-Object Referencing GC Handles";
+        static readonly ProfilerMarker k_ProcessGCHandleRootsMarker = new ProfilerMarker(ProcessGCHandleRootsMarkerName);
+        // Processing Native Root Allocations
+        public const string ProcessNativeRootAllocationsMarkerName = "RootAndImpactInfo: Processing Native Root Allocations";
+        static readonly ProfilerMarker k_ProcessNativeRootAllocationsMarker = new ProfilerMarker(ProcessNativeRootAllocationsMarkerName);
+        // Validating and Finalizing
+        public const string ValidatingAndFinalizingMarkerName = "RootAndImpactInfo: Validating and Finalizing";
+        static readonly ProfilerMarker k_ValidatingAndFinalizingMarker = new ProfilerMarker(ValidatingAndFinalizingMarkerName);
+
         public IEnumerator<EnumerationStatus> ReadOrProcess(CachedSnapshot snapshot, EnumerationStatus status)
         {
             if (m_Processed || !MemoryProfilerSettings.EnableRootsAndImpact || !snapshot.HasSceneRootsAndAssetbundles)
@@ -696,6 +726,7 @@ namespace Unity.MemoryProfiler.Editor
             m_ProcessingData = new CachedProcessingData(Allocator.Persistent);
             try
             {
+                using var _ = k_ProcessStaticRootsMarker.Auto();
                 PreprocessAssetBundles(snapshot);
                 CrawlStaticRoots(snapshot, ref m_ProcessingData);
             }
@@ -709,6 +740,7 @@ namespace Unity.MemoryProfiler.Editor
 
             try
             {
+                using var _ = k_ProcessNonSceneDontDestroyOnLoadMarker.Auto();
                 CrawlNonSceneDontDestroyOnLoadObjects(snapshot, ref m_ProcessingData);
             }
             catch
@@ -721,6 +753,7 @@ namespace Unity.MemoryProfiler.Editor
 
             try
             {
+                using var _ = k_ProcessSceneRootsMarker.Auto();
                 CrawlSceneRootsAndDontDestroyOnLoadScene(snapshot, ref m_ProcessingData);
             }
             catch
@@ -733,6 +766,7 @@ namespace Unity.MemoryProfiler.Editor
 
             try
             {
+                using var _ = k_ProcessAssetBundlesMarker.Auto();
                 CrawlAssetBundles(snapshot, ref m_ProcessingData);
             }
             catch
@@ -745,6 +779,7 @@ namespace Unity.MemoryProfiler.Editor
 
             try
             {
+                using var _ = k_ProcessNativeObjectRootsMarker.Auto();
                 CrawlNativeObjectRoots(snapshot, ref m_ProcessingData);
             }
             catch
@@ -757,6 +792,7 @@ namespace Unity.MemoryProfiler.Editor
 
             try
             {
+                using var _ = k_ProcessUnreferencedPrefabsMarker.Auto();
                 CrawlUnreferencedPrefabs(snapshot, ref m_ProcessingData);
             }
             catch
@@ -769,6 +805,7 @@ namespace Unity.MemoryProfiler.Editor
 
             try
             {
+                using var _ = k_ProcessGCHandleRootsMarker.Auto();
                 CrawlGCHandleRoots(snapshot, ref m_ProcessingData);
             }
             catch
@@ -781,6 +818,7 @@ namespace Unity.MemoryProfiler.Editor
 
             try
             {
+                using var _ = k_ProcessNativeRootAllocationsMarker.Auto();
                 CrawlNativeRootAllocations(snapshot, ref m_ProcessingData);
                 CrawlUnrootedNativeObjects(snapshot, ref m_ProcessingData);
             }
@@ -791,6 +829,8 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             yield return status.IncrementStep("Process Paths From Root: Validating and Finalizing");
+
+            using var finalizingProfilingScope = k_ValidatingAndFinalizingMarker.Auto();
             RootNativeObjectAssociatedAllocations(snapshot);
             HandleUnreferenceUnrootedAllocations(snapshot);
             Validate(snapshot);
@@ -829,6 +869,7 @@ namespace Unity.MemoryProfiler.Editor
             ref readonly var markerNativeObjects = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.NativeObject);
             var nativeObjects = snapshot.NativeObjects;
             var unifiedNativeTypes = snapshot.TypeDescriptions.UnifiedTypeInfoNative;
+            using var prefabComponentsInDeletionQueue = new DynamicArray<SourceIndex>(0, 100, Allocator.Temp);
 
             var count = nativeObjects.Count;
             for (long i = 0; i < count; i++)
@@ -855,6 +896,12 @@ namespace Unity.MemoryProfiler.Editor
                             // and the HideFlag does not get propagated past the GameObject and component that was marked by it, but it is technically possible.
 
                             var prefabIndex = GetPrefabIndexForNativeSceneObject(snapshot, dontDestroyOnLoadObjectIndex, in typeInfo);
+                            if (!prefabIndex.Valid)
+                            {
+                                prefabComponentsInDeletionQueue.Push(dontDestroyOnLoadObjectIndex);
+                                m_PersistentSceneObjectsInDelayedDeletionQueue.Add(dontDestroyOnLoadObjectIndex);
+                                continue;
+                            }
                             ref var prefabMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, prefabIndex);
                             // We only care about these if they are not yet marked as found so that we don't parse them multiple times
                             if (prefabMarker.FoundForRoot)
@@ -878,12 +925,10 @@ namespace Unity.MemoryProfiler.Editor
                             // It and some other internal objects are also set to HideAndDontSave. If the HideAndDontSave flag is missing and the flag used to mark this
                             // object as not-to-be destroyed was DontUnloadUnusedAsset instead of DontAllowDestruction, it should be skipped as a root and potentially
                             // causing a warning to be logged.
-                            if (nativeObjects.HideFlags[i].HasFlag(HideFlags.DontUnloadUnusedAsset)
-                                && !nativeObjects.HideFlags[i].HasFlag(NativeObjectEntriesCache.NativeDontAllowDestructionFlag)
-                                && !nativeObjects.HideFlags[i].HasFlag(HideFlags.HideAndDontSave))
+                            if (NativeObjectEntriesCache.IsInvalidHideFlagUsageForNonPersistentSceneObjects(nativeObjects.HideFlags[i]))
                             {
                                 if (nativeObjects.NativeTypeArrayIndex[i] == snapshot.NativeTypes.GameObjectIdx) // Only log for GameObjects to avoid logging repeat messages for each component
-                                    Debug.LogWarning($"The non-prefab GameObject named: {nativeObjects.ObjectName[i]} was marked with HideFlags.DontUnloadUnusedAsset while not being an Asset. That's not supported and the flag will be ignored by the Asset GC.");
+                                    Debug.LogWarningFormat(TextContent.NonpersistentSceneObjectWithInvalidDontDestroyOnLoadHideFlagWarningFormatString, "GameObject", nativeObjects.ObjectName[i]);
 
                                 // Marking a non-prefab Scene Object as unloadable via the HideFlag doesn't keep it from getting unloaded with the scene,
                                 // as that hideflag is not checked on scene objects during a scene unload, so for rooting purposes it doesn't matter for these
@@ -900,6 +945,18 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
             Crawl(snapshot, ref data, OwnershipBucket.DontDestroyOnLoadObjects);
+
+            foreach (var objectInDeletionQueue in prefabComponentsInDeletionQueue)
+            {
+                ref var marker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, objectInDeletionQueue);
+                if (marker.FoundForRoot)
+                    continue;
+                ref var rootStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, objectInDeletionQueue);
+                rootStep = new ShortestRootPathInfo(root: objectInDeletionQueue, parent: default, 0);
+                data.RootsInCurrentOwnershipBucket.Push(objectInDeletionQueue);
+                marker.FoundForRoot = true;
+            }
+            Crawl(snapshot, ref data, OwnershipBucket.DontDestroyOnLoadObjectsInDeletionQueue);
         }
 
         void CrawlSceneRootsAndDontDestroyOnLoadScene(CachedSnapshot snapshot, ref CachedProcessingData data)
@@ -1197,6 +1254,7 @@ namespace Unity.MemoryProfiler.Editor
         {
             StaticRoots,
             DontDestroyOnLoadObjects,
+            DontDestroyOnLoadObjectsInDeletionQueue,
             DontDestroyOnLoadScene,
             SceneRoots,
             AssetBundles,
@@ -1228,12 +1286,20 @@ namespace Unity.MemoryProfiler.Editor
             var gameObjectOrTransform = (typeInfo.IsTransformType || typeInfo.IsGameObjectType) ?
                 sceneObject : ObjectConnection.GetGameObjectIndexFromTransformOrComponentIndex(snapshot, sceneObject, snapshot.NativeTypes.GameObjectIdx);
 
-            Checks.IsTrue(gameObjectOrTransform.Valid);
-
-            if (snapshot.SceneRoots.NativeObjectIndexToPrefabRootIndex.TryGetValue(gameObjectOrTransform.Index, out var prefabIndex))
+            if (gameObjectOrTransform.Valid && snapshot.SceneRoots.NativeObjectIndexToPrefabRootIndex.TryGetValue(gameObjectOrTransform.Index, out var prefabIndex))
                 return new SourceIndex(SourceIndex.SourceId.Prefab, prefabIndex);
+            var objectName = snapshot.NativeObjects.ObjectName[sceneObject.Index];
             var transform = typeInfo.IsTransformType ? sceneObject : ObjectConnection.GetTransformIndexFromGameObject(snapshot, gameObjectOrTransform, true);
-            throw new InvalidOperationException($"{sceneObject} is a persistent scene object on {(typeInfo.IsTransformType ? "Transform" : $"Transform {transform} on GameObject")} {gameObjectOrTransform} that does not map to a prefab!");
+            if ((!transform.Valid || !gameObjectOrTransform.Valid) && string.IsNullOrEmpty(objectName))
+            {
+                // This scene object is detatched from its GameObject and/or Transform and has no name anymore
+                // It is probably waiting for deletion on the main thread.
+                return default;
+            }
+            var managedObjectIndex = snapshot.NativeObjects.ManagedObjectIndex[sceneObject.Index];
+            var managedTypeIndex = managedObjectIndex != ManagedData.InvalidObjectIndex ? snapshot.CrawledData.ManagedObjects[managedObjectIndex].ITypeDescription : -1;
+            var typeName = typeInfo.IsTransformType ? "Transform" : (managedTypeIndex != TypeDescriptionEntriesCache.ITypeInvalid ? snapshot.TypeDescriptions.TypeDescriptionName[managedTypeIndex] : snapshot.NativeTypes.TypeName[typeInfo.NativeTypeIndex]);
+            throw new InvalidOperationException($"{sceneObject} named \"{objectName}\" (EntityId {snapshot.NativeObjects.InstanceId[sceneObject.Index]}) is a persistent scene object of type {typeName} {(typeInfo.IsTransformType ? "on" : $"on Transform {transform} on GameObject")} {gameObjectOrTransform} that does not map to a prefab! (HideFlags: {snapshot.NativeObjects.HideFlags[sceneObject.Index]})");
         }
 
         static void CreateConnectionToPrefab(CachedSnapshot snapshot, SourceIndex referee, SourceIndex prefabIndex)
@@ -1433,10 +1499,20 @@ namespace Unity.MemoryProfiler.Editor
                                         //    and the managed shell reference to its native object is now getting redirected to point at the prefab index/root
 
                                         var prefabIndex = GetPrefabIndexForNativeSceneObject(snapshot, referencedItem, in referencedTypeInfo);
-                                        ProcessReferenceToPrefab(snapshot, prefabIndex, current, ref data, in m_Marker);
-                                        continue;
-                                        // Yes, at this point we abandoned the referencedItem as a reference to be put on the stack.
-                                        // Not to worry, it will be found while processing the Hierarchy of the prefab.
+                                        if (prefabIndex.Valid)
+                                        {
+                                            ProcessReferenceToPrefab(snapshot, prefabIndex, current, ref data, in m_Marker);
+                                            continue;
+                                            // Yes, at this point we abandoned the referencedItem as a reference to be put on the stack.
+                                            // Not to worry, it will be found while processing the Hierarchy of the prefab.
+                                        }
+                                        else
+                                        {
+                                            // With the prefeb being returned as invalid, this object is highly likely in the delayed deletion queue
+                                            // Add it to this hashset (so it can be excluded as problematic for referencing a Transform)
+                                            // but continue procesing as if it weren't an asset.
+                                            m_PersistentSceneObjectsInDelayedDeletionQueue.Add(referencedItem);
+                                        }
                                     }
                                     else if (current.Id is SourceIndex.SourceId.ManagedObject)
                                     {
@@ -1810,7 +1886,20 @@ namespace Unity.MemoryProfiler.Editor
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Found a {currentPathStep.Parent.Id} as a parent to a Transform, which is not supposed to happen!");
+                            var transformName = snapshot.NativeObjects.ObjectName[current.Index];
+                            if (currentPathStep.Parent.Id is SourceIndex.SourceId.ManagedObject)
+                            {
+                                // Managed references to persistent scene objects in the delayed deletion queue are fine, everything else is suspicious.
+                                if (!m_PersistentSceneObjectsInDelayedDeletionQueue.Contains(current))
+                                {
+                                    var managedTypeIndex = snapshot.CrawledData.ManagedObjects[currentPathStep.Parent.Index].ITypeDescription;
+                                    var managedTypeName = snapshot.TypeDescriptions.TypeDescriptionName[managedTypeIndex];
+
+                                    throw new InvalidOperationException($"For bucket {ownershipBucket}: Found a {currentPathStep.Parent.Id} of type {managedTypeName} as a parent to a Transform ({current} named \"{transformName}\"), which is not supposed to happen!");
+                                }
+                            }
+                            else
+                                throw new InvalidOperationException($"For bucket {ownershipBucket}: Found a {currentPathStep.Parent.Id} as a parent to a Transform ({current} named \"{transformName}\"), which is not supposed to happen!");
                         }
                     }
                     else

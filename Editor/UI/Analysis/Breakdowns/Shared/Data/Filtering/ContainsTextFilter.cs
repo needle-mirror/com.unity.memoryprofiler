@@ -1,4 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
 using System;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -40,4 +39,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

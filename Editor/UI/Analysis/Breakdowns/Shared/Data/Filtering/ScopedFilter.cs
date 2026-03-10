@@ -1,6 +1,3 @@
-#if UNITY_2022_1_OR_NEWER
-using System;
-
 namespace Unity.MemoryProfiler.Editor.UI
 {
     abstract class ScopedFilter<TFilter, TType> : IScopedFilter<TType> where TFilter : ITableFilter<TType>
@@ -54,4 +51,3 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 }
-#endif

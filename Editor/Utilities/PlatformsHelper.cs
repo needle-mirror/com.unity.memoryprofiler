@@ -53,13 +53,11 @@ namespace Unity.MemoryProfiler.Editor
                 case LinuxServer:
                     buildTarget = BuildTarget.StandaloneLinux64;
                     break;
-#if UNITY_2021_2_OR_NEWER
                 case RuntimePlatform.EmbeddedLinuxArm64:
                 case RuntimePlatform.EmbeddedLinuxX64:
                     // 32 bit variants are unused
                     buildTarget = BuildTarget.EmbeddedLinux;
                     break;
-#endif
                 case RuntimePlatform.WebGLPlayer:
                     buildTarget = BuildTarget.WebGL;
                     break;
@@ -101,25 +99,17 @@ namespace Unity.MemoryProfiler.Editor
                     buildTarget = BuildTarget.Stadia;
                     break;
 #endif
-#if UNITY_2022_2_OR_NEWER
                 case RuntimePlatform.QNXArm64:
                 case RuntimePlatform.QNXX64:
                     // 32 bit variants are unused
                     buildTarget = BuildTarget.QNX;
                     break;
-#endif
                 case CloudRendering:
-#if UNITY_2022_2_OR_NEWER
                     buildTarget = BuildTarget.LinuxHeadlessSimulation;
-#else
-                    buildTarget = BuildTarget.CloudRendering;
-#endif
                     break;
-#if UNITY_2022_3_OR_NEWER
                 case RuntimePlatform.VisionOS:
                     buildTarget = BuildTarget.VisionOS;
                     break;
-#endif
                 default:
                     // Unknown target
                     break;
@@ -186,15 +176,13 @@ namespace Unity.MemoryProfiler.Editor
             string name;
             switch (platform)
             {
-#if UNITY_2021_2_OR_NEWER
                 case RuntimePlatform.LinuxServer:
                 case RuntimePlatform.OSXServer:
                 case RuntimePlatform.WindowsServer:
                     name = "DedicatedServer";
                     break;
-#endif
 
-#if UNITY_2023_1_OR_NEWER
+#if UNITY_6000_0_OR_NEWER
                 case RuntimePlatform.LinuxHeadlessSimulation:
                     name = "LinuxHeadlessSimulation";
                     break;

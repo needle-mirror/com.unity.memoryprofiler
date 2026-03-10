@@ -357,6 +357,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 // Filter by Unity-Object-Name. Skip objects that don't pass the name filter.
                 var nativeObjectName = nativeObjects.ObjectName[obj.Key.Index];
+                if (string.IsNullOrEmpty(nativeObjectName))
+                    nativeObjectName = CachedSnapshot.InvalidItemName;
                 if (args.UnityObjectNameFilter != null)
                 {
                     if (!args.UnityObjectNameFilter.Passes(nativeObjectName))
