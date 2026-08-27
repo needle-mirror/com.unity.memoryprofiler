@@ -3,12 +3,85 @@ using System.Runtime.CompilerServices;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
+using UnityEditor;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
 namespace Unity.MemoryProfiler.Editor
 {
     internal static class ManagedHeapArrayDataTools
     {
         const string k_ArrayClosedSqBrackets = "[]";
+
+        /// <summary>
+        /// True when this capture's arrays have no out-of-line bounds pointer at all (CoreCLR).
+        /// Mono/IL2CPP arrays store a genuine, independently-allocated <c>bounds</c> pointer at
+        /// <see cref="VirtualMachineInformation.ArrayBoundsOffsetInHeader"/> — null for an SZARRAY,
+        /// pointing at a separate bounds blob otherwise (confirmed against real source:
+        /// <c>mono_array_new_full_checked</c>, <c>il2cpp::vm::Array::NewFull</c>). CoreCLR's
+        /// <c>ArrayBase</c> has no such field — <c>scripting_array_bounds_offset_in_array_object_header()</c>
+        /// is hard-coded to equal <c>scripting_array_object_header_size()</c>, so this offset equality is
+        /// the layout's signal rather than an actual pointer to dereference. On CoreCLR, length/rank data
+        /// is always inline: total count at <see cref="VirtualMachineInformation.ArraySizeOffsetInHeader"/>,
+        /// and for a genuine multi-dimensional array, per-rank {length, lowerBound} int32 pairs starting
+        /// immediately at <see cref="VirtualMachineInformation.ArrayHeaderSize"/> (matches dotnet-runtime's
+        /// <c>ArrayBase::GetBoundsPtr</c>/<c>GetLowerBoundsPtr</c>).
+        /// </summary>
+        internal static bool IsCoreClrArrayLayout(VirtualMachineInformation vmInfo)
+        {
+            return vmInfo.ArrayBoundsOffsetInHeader == vmInfo.ArrayHeaderSize;
+        }
+
+        /// <summary>
+        /// Reads a CoreCLR array's rank-length array directly from its inline layout — no bounds
+        /// pointer to dereference. Rank 1 is always just the total element count. For rank > 1,
+        /// CoreCLR stores all dimension lengths contiguously first, THEN all lower bounds
+        /// contiguously (<c>INT32 bounds[rank]; INT32 lowerBounds[rank];</c> — dotnet-runtime's
+        /// object.h, <c>ArrayBase</c> layout comment) — NOT interleaved {length, lowerBound} pairs
+        /// per dimension like Mono/IL2CPP's out-of-line bounds blob. Only the lengths are read here.
+        /// </summary>
+        static int[] ReadCoreClrArrayRankLength(CachedSnapshot data, BytesAndOffset arrayData, VirtualMachineInformation vmInfo, int iTypeDescriptionArrayType)
+        {
+            var rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
+            if (rank <= 1)
+                return new int[1] { arrayData.Add(vmInfo.ArraySizeOffsetInHeader).ReadInt32() };
+
+            var cursor = arrayData.Add(vmInfo.ArrayHeaderSize);
+            var result = new int[rank];
+            for (int i = 0; i < rank; i++)
+            {
+                result[i] = cursor.ReadInt32();
+                cursor = cursor.Add(4);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Offset from the start of an array object to its first element's bytes. On CoreCLR, a
+        /// rank > 1 array carries an inline bounds block (<c>rank</c> lengths followed by <c>rank</c>
+        /// lower bounds, each <c>int32</c>) between the header and the element data — see
+        /// <see cref="ReadCoreClrArrayRankLength"/>. Rank &lt;= 1 has no such block. Only meaningful
+        /// when <see cref="IsCoreClrArrayLayout"/> is true; Mono/IL2CPP's bounds live out-of-line via
+        /// a pointer, so their element data always starts right after the header.
+        /// </summary>
+        internal static ulong GetCoreClrArrayDataOffset(VirtualMachineInformation vmInfo, int rank)
+        {
+            if (rank <= 1)
+                return vmInfo.ArrayHeaderSize;
+            return vmInfo.ArrayHeaderSize + (ulong)rank * 2 * sizeof(int);
+        }
+
+        /// <summary>
+        /// Offset from the start of an array object to its first element's bytes, looking up the
+        /// array's rank when needed. Prefer <see cref="GetCoreClrArrayDataOffset"/> directly if the
+        /// rank is already known, to avoid a redundant <see cref="TypeDescriptionEntriesCache.GetRank"/>
+        /// lookup.
+        /// </summary>
+        internal static ulong GetArrayDataOffset(CachedSnapshot data, VirtualMachineInformation vmInfo, int iTypeDescriptionArrayType)
+        {
+            return IsCoreClrArrayLayout(vmInfo)
+                ? GetCoreClrArrayDataOffset(vmInfo, data.TypeDescriptions.GetRank(iTypeDescriptionArrayType))
+                : vmInfo.ArrayHeaderSize;
+        }
 
         public static ArrayInfo GetArrayInfo(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
@@ -19,39 +92,54 @@ namespace Unity.MemoryProfiler.Editor
 
 
             arrayInfo.Header = arrayData;
-            arrayInfo.Data = arrayInfo.Header.Add(virtualMachineInformation.ArrayHeaderSize);
-            ulong bounds;
-            arrayInfo.Header.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
-            if (bounds == 0)
+            if (IsCoreClrArrayLayout(virtualMachineInformation))
             {
-                arrayInfo.Length = arrayInfo.Header.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
-                arrayInfo.Rank = new int[1] { arrayInfo.Length };
+                arrayInfo.Rank = ReadCoreClrArrayRankLength(data, arrayInfo.Header, virtualMachineInformation, iTypeDescriptionArrayType);
+                arrayInfo.Length = 1;
+                for (int i = 0; i < arrayInfo.Rank.Length; i++)
+                    arrayInfo.Length *= arrayInfo.Rank[i];
+                arrayInfo.Data = arrayInfo.Header.Add(GetCoreClrArrayDataOffset(virtualMachineInformation, arrayInfo.Rank.Length));
             }
             else
             {
-                int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
-                arrayInfo.Rank = new int[rank];
+                arrayInfo.Data = arrayInfo.Header.Add(virtualMachineInformation.ArrayHeaderSize);
+                ulong bounds;
+                arrayInfo.Header.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
 
-                if (data.ManagedHeapSections.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor) &&
-                    cursor.IsValid)
+                if (bounds == 0)
                 {
-                    arrayInfo.Length = 1;
-                    for (int i = 0; i != rank; i++)
-                    {
-                        var l = cursor.ReadInt32();
-                        arrayInfo.Length *= l;
-                        arrayInfo.Rank[i] = l;
-                        cursor = cursor.Add(8);
-                    }
+                    arrayInfo.Length = arrayInfo.Header.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
+                    arrayInfo.Rank = new int[1] { arrayInfo.Length };
                 }
                 else
                 {
-                    //object has corrupted data
-                    arrayInfo.Length = 0;
-                    for (int i = 0; i != rank; i++)
+                    int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
+                    arrayInfo.Rank = new int[rank];
+
+                    if (data.FindHeapBytes(bounds, out var cursor, out var onDemandScope))
                     {
-                        arrayInfo.Rank[i] = -1;
+                        using (onDemandScope)
+                        {
+                            var stride = virtualMachineInformation.ArrayBoundsStride;
+                            arrayInfo.Length = 1;
+                            for (int i = 0; i != rank; i++)
+                            {
+                                var l = cursor.ReadInt32();
+                                arrayInfo.Length *= l;
+                                arrayInfo.Rank[i] = l;
+                                cursor = cursor.Add(stride);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        //object has corrupted data
+                        arrayInfo.Length = 0;
+                        for (int i = 0; i != rank; i++)
+                        {
+                            arrayInfo.Rank[i] = -1;
+                        }
                     }
                 }
             }
@@ -107,8 +195,7 @@ namespace Unity.MemoryProfiler.Editor
                 switch (l)
                 {
                     case 0:
-                        // Apparently (https://unity.slack.com/archives/CHVTMBEF5/p1706904839459539?thread_ts=1706808095.762939&cid=CHVTMBEF5)
-                        // you can have 0 length multidimensional arrays...
+                        // Apparently you can have 0 length multidimensional arrays...
                         // Practically, there are zero elements in these so all of this is null and void
                         return $"Invalid Index into zero sized array: {index}. Array Ranks: {ArrayRankToString(rankLength)}";
 
@@ -129,47 +216,109 @@ namespace Unity.MemoryProfiler.Editor
             return o;
         }
 
-        public static int[] ReadArrayRankLength(CachedSnapshot data, CachedSnapshot.ManagedMemorySectionEntriesCache heap, UInt64 address, int iTypeDescriptionArrayType, VirtualMachineInformation virtualMachineInformation)
+        public static int[] ReadArrayRankLength(CachedSnapshot data, ulong address, int iTypeDescriptionArrayType, VirtualMachineInformation virtualMachineInformation)
         {
             if (iTypeDescriptionArrayType < 0) return null;
 
-            heap.Find(address, virtualMachineInformation, out BytesAndOffset bo);
-            ulong bounds;
-            bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out bounds);
+            if (!data.FindHeapBytes(address, out BytesAndOffset bo, out var onDemandScope))
+                return null;
 
-            if (bounds == 0)
+            using (onDemandScope)
             {
-                return new int[1] { bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32() };
-            }
+                if (IsCoreClrArrayLayout(virtualMachineInformation))
+                    return ReadCoreClrArrayRankLength(data, bo, virtualMachineInformation, iTypeDescriptionArrayType);
 
-            heap.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor);
-            int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
-            int[] l = new int[rank];
-            for (int i = 0; i != rank; i++)
-            {
-                l[i] = cursor.ReadInt32();
-                cursor = cursor.Add(8);
+                bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out var bounds);
+
+                if (bounds == 0)
+                {
+                    return new int[1] { bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32() };
+                }
+
+                // Try GetHeapBytes first if we know the section index
+                bool boundsLoaded = false;
+                BytesAndOffset cursor = default;
+                OnDemandHeapSectionCache.HeapSectionCacheReferenceScope onDemandScope2 = default;
+
+                if (bo.IsValid && bo.HeapSectionIndex >= 0)
+                {
+                    var startAddress = data.ManagedHeapSections.StartAddress[bo.HeapSectionIndex];
+                    // Only attempt GetHeapBytes if the bounds pointer is within the same heap section as the array header
+                    if (bounds >= startAddress && bounds < startAddress + data.ManagedHeapSections.SectionSize[bo.HeapSectionIndex]
+                        && data.GetHeapBytes(bo.HeapSectionIndex, bounds, out cursor, out onDemandScope2))
+                    {
+                        boundsLoaded = cursor.IsValid;
+                    }
+                }
+
+                // Fallback to FindHeapBytes if GetHeapBytes failed
+                if (!boundsLoaded && data.FindHeapBytes(bounds, out cursor, out onDemandScope2))
+                {
+                    boundsLoaded = cursor.IsValid;
+                }
+
+                if (!boundsLoaded)
+                {
+                    onDemandScope2.Dispose();
+                    return null;
+                }
+
+                using (onDemandScope2)
+                {
+                    int rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
+                    int[] l = new int[rank];
+                    var stride = virtualMachineInformation.ArrayBoundsStride;
+                    for (int i = 0; i != rank; i++)
+                    {
+                        l[i] = cursor.ReadInt32();
+                        cursor = cursor.Add(stride);
+                    }
+                    return l;
+                }
             }
-            return l;
         }
 
-        public static long ReadArrayLength(CachedSnapshot data, UInt64 address, int iTypeDescriptionArrayType)
+        public static long ReadArrayLength(CachedSnapshot data, ulong address, int iTypeDescriptionArrayType)
         {
             if (iTypeDescriptionArrayType < 0)
             {
                 return 0;
             }
 
-            data.ManagedHeapSections.Find(address, data.VirtualMachineInformation, out BytesAndOffset bo);
-            return ReadArrayLength(data, bo, iTypeDescriptionArrayType);
+            if (!data.FindHeapBytes(address, out BytesAndOffset bo, out var onDemandLoadedTemporaryHeapDataCopyToBeDisposedOfWhenDone))
+                return 0;
+            using (onDemandLoadedTemporaryHeapDataCopyToBeDisposedOfWhenDone)
+            {
+                return ReadArrayLength(data, bo, iTypeDescriptionArrayType);
+            }
         }
 
+        /// <summary>
+        /// Must be called with valid heap bytes loaded into <paramref name="arrayData"/>,
+        /// potentially refreshed via on-demand loading if needed using
+        /// <see cref="BytesAndOffset.RefetchHeapBytes(CachedSnapshot, out Containers.DynamicArray{byte})"/>.
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="arrayData"></param>
+        /// <param name="iTypeDescriptionArrayType"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static long ReadArrayLength(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
             return ReadArrayLength(data, arrayData, iTypeDescriptionArrayType, out var _);
         }
 
+        /// <summary>
+        /// Must be called with valid heap bytes loaded into <paramref name="arrayData"/>,
+        /// potentially refreshed via on-demand loading if needed using
+        /// <see cref="BytesAndOffset.RefetchHeapBytes(CachedSnapshot, out Containers.DynamicArray{byte})"/>.
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="arrayData"></param>
+        /// <param name="iTypeDescriptionArrayType"></param>
+        /// <param name="rank"></param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
         public static long ReadArrayLength(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType, out int rank)
         {
             rank = -1;
@@ -178,37 +327,72 @@ namespace Unity.MemoryProfiler.Editor
             var virtualMachineInformation = data.VirtualMachineInformation;
             var bo = arrayData;
 
+            if (IsCoreClrArrayLayout(virtualMachineInformation))
+            {
+                var rankLength = ReadCoreClrArrayRankLength(data, bo, virtualMachineInformation, iTypeDescriptionArrayType);
+                rank = rankLength.Length;
+                long coreClrLength = 1;
+                for (int i = 0; i < rankLength.Length; i++)
+                    coreClrLength *= rankLength[i];
+                return coreClrLength;
+            }
+
             bo.Add(virtualMachineInformation.ArrayBoundsOffsetInHeader).TryReadPointer(out var bounds);
 
             if (bounds == 0)
                 return bo.Add(virtualMachineInformation.ArraySizeOffsetInHeader).ReadInt32();
 
-            data.ManagedHeapSections.Find(bounds, virtualMachineInformation, out BytesAndOffset cursor);
-            // Multidimensional arrays can have a total LongLength > int.MaxValue
-            long length = 0;
+            // Try GetHeapBytes first if we know the section index
+            bool boundsLoaded = false;
+            BytesAndOffset cursor = default;
+            OnDemandHeapSectionCache.HeapSectionCacheReferenceScope onDemandScope = default;
 
-            if (cursor.IsValid)
+            if (arrayData.IsValid && arrayData.HeapSectionIndex >= 0)
             {
-                length = 1;
-                rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
-                for (int i = 0; i < rank; i++)
+                if (data.GetHeapBytes(arrayData.HeapSectionIndex, bounds, out cursor, out onDemandScope))
                 {
-                    length *= cursor.ReadInt32();
-#if ENABLE_MEMORY_PROFILER_DEBUG
-                    if (length < 0)
-                    {
-                        var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(data, arrayData, iTypeDescriptionArrayType);
-                        throw new InvalidOperationException($"Array length overflow. An array of type {data.TypeDescriptions.TypeDescriptionName[iTypeDescriptionArrayType]} with the dimensions [{ArrayRankToString(arrayInfo.Rank)}] overflowed long at rank {rank}]");
-                    }
-#endif
-                    cursor = cursor.Add(8);
+                    boundsLoaded = cursor.IsValid;
                 }
             }
-            Checks.IsTrue(length >= 0);
-            return length;
+
+            // Fallback to FindHeapBytes if GetHeapBytes failed
+            if (!boundsLoaded)
+            {
+                onDemandScope.Dispose();
+
+                data.FindHeapBytes(bounds, out cursor, out onDemandScope);
+                boundsLoaded = cursor.IsValid;
+            }
+
+            using (onDemandScope)
+            {
+                // Multidimensional arrays can have a total LongLength > int.MaxValue
+                long length = 0;
+
+                if (boundsLoaded)
+                {
+                    length = 1;
+                    rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
+                    var stride = virtualMachineInformation.ArrayBoundsStride;
+                    for (int i = 0; i < rank; i++)
+                    {
+                        length *= cursor.ReadInt32();
+#if ENABLE_MEMORY_PROFILER_DEBUG
+                        if (length < 0)
+                        {
+                            var arrayInfo = ManagedHeapArrayDataTools.GetArrayInfo(data, arrayData, iTypeDescriptionArrayType);
+                            throw new InvalidOperationException($"Array length overflow. An array of type {data.TypeDescriptions.TypeDescriptionName[iTypeDescriptionArrayType]} with the dimensions [{ArrayRankToString(arrayInfo.Rank)}] overflowed long at rank {rank}]");
+                        }
+#endif
+                        cursor = cursor.Add(stride);
+                    }
+                }
+                Checks.IsTrue(length >= 0);
+                return length;
+            }
         }
 
-        public static long ReadArrayObjectSizeInBytes(CachedSnapshot data, UInt64 address, int iTypeDescriptionArrayType)
+        public static long ReadArrayObjectSizeInBytes(CachedSnapshot data, ulong address, int iTypeDescriptionArrayType)
         {
             var arrayLength = ReadArrayLength(data, address, iTypeDescriptionArrayType);
 
@@ -217,9 +401,19 @@ namespace Unity.MemoryProfiler.Editor
             var isValueType = data.TypeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
 
             var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[typeIndex] : virtualMachineInformation.PointerSize;
-            return virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength;
+            var dataOffset = GetArrayDataOffset(data, virtualMachineInformation, iTypeDescriptionArrayType);
+            return (long)dataOffset + elementSize * arrayLength;
         }
 
+        /// <summary>
+        /// Must be called with valid heap bytes loaded into <paramref name="arrayData"/>,
+        /// potentially refreshed via on-demand loading if needed using
+        /// <see cref="BytesAndOffset.RefetchHeapBytes(CachedSnapshot, out Containers.DynamicArray{byte})"/>.
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="arrayData"></param>
+        /// <param name="iTypeDescriptionArrayType"></param>
+        /// <returns></returns>
         public static long ReadArrayObjectSizeInBytes(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
         {
             var arrayLength = ReadArrayLength(data, arrayData, iTypeDescriptionArrayType);
@@ -234,7 +428,8 @@ namespace Unity.MemoryProfiler.Editor
             var isValueType = data.TypeDescriptions.HasFlag(typeIndex, TypeFlags.kValueType);
             var elementSize = isValueType ? (uint)data.TypeDescriptions.Size[typeIndex] : virtualMachineInformation.PointerSize;
 
-            return virtualMachineInformation.ArrayHeaderSize + elementSize * arrayLength;
+            var dataOffset = GetArrayDataOffset(data, virtualMachineInformation, iTypeDescriptionArrayType);
+            return (long)dataOffset + elementSize * arrayLength;
         }
 
         internal static string GenerateArrayDescription(CachedSnapshot cachedSnapshot, ArrayInfo arrayInfo, long arrayIndex, bool truncateTypeName, bool includeTypeName)

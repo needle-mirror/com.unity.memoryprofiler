@@ -17,8 +17,8 @@
         },
         {
             "name": "Unity",
-            "expression": "7000.0.0a1",
-            "define": "LIVECYCLE_APIS_AVAILABLE"
+            "expression": "6000.5.0a9",
+            "define": "LIFECYCLE_APIS_AVAILABLE"
         }
     ],
     "noEngineReferences": false

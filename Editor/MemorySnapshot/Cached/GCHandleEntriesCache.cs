@@ -13,7 +13,9 @@ namespace Unity.MemoryProfiler.Editor
             /// <summary>
             /// Use this Count when iterating over all entries in <see cref="Target"/>.
             /// When checking if a Managed Object index is low enough to belong to a Managed Shell for a Native Object that
-            /// reported it via its GCHandle, use <see cref="UniqueCount"/> instead.
+            /// reported it via its GCHandle, use <see cref="UniqueCount"/> instead — but go through
+            /// <see cref="ManagedData.ResolveManagedObjectIndexForGCHandle"/> / <see cref="ManagedData.IsGCHandleTarget"/>
+            /// rather than comparing indices directly, since that mapping isn't always index-for-index.
             /// </summary>
             public long Count;
             /// <summary>

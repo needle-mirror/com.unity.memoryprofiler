@@ -15,7 +15,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 {
     static partial class ManagedDataCrawler
     {
-        [BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
+        [BurstCompile(CompileSynchronously = true, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         struct StructArrayCrawlerJobChunk : ICrawlerJobChunk<StructArrayCrawlerJobChunk>
         {
             [ReadOnly]
@@ -71,6 +71,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #endif
             }
 
+            [BurstCompile(CompileSynchronously = true, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
             public void Process()
             {
                 for (int index = 0; index < m_ChunkElementCount; ++index)

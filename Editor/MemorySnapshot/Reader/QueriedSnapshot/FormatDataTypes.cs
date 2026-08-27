@@ -290,19 +290,37 @@ namespace Unity.MemoryProfiler.Editor.Format
         kNone = 0,
         kValueType = 1 << 0,
         kArray = 1 << 1,
+        // CoreCLR-populated type-shape bits. Mono/IL2CPP write 0. Format-neutral (bit-tested, no version bump needed).
+        kInterface = 1 << 2,
+        kAbstract = 1 << 3,
+        kSealed = 1 << 4,
+        kEnum = 1 << 5,
+        kNested = 1 << 6,
+        kExplicitLayout = 1 << 7,
         kArrayRankMask = unchecked((int)0xFFFF0000)
     }
 
 
-    internal readonly struct VirtualMachineInformation
+    /// <summary>
+    /// Exact on-disk layout of the <see cref="EntryType.Metadata_VirtualMachineInformation"/> entry
+    /// (six <c>uint32</c>s, unchanged since the earliest supported format version). Used ONLY as the
+    /// target of the raw file read in <see cref="CachedSnapshot"/>'s constructor. Never add fields here
+    /// or read it wider than <c>sizeof(VirtualMachineInformationFileData)</c> — <c>FileReader</c>
+    /// asserts the requested read size against the entry's own recorded on-disk size
+    /// (<c>Checks.CheckEquals(rangeByteSize, bufferLength)</c>), so any mismatch throws immediately on
+    /// every snapshot. Derived/computed values (that don't come from the file) belong on
+    /// <see cref="VirtualMachineInformation"/> instead, set after this raw struct is read.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly struct VirtualMachineInformationFileData
     {
-        public readonly uint PointerSize { get; }
-        public readonly uint ObjectHeaderSize { get; }
-        public readonly uint ArrayHeaderSize { get; }
-        public readonly uint ArrayBoundsOffsetInHeader { get; }
-        public readonly uint ArraySizeOffsetInHeader { get; }
-        public readonly uint AllocationGranularity { get; }
-        public VirtualMachineInformation(
+        public readonly uint PointerSize;
+        public readonly uint ObjectHeaderSize;
+        public readonly uint ArrayHeaderSize;
+        public readonly uint ArrayBoundsOffsetInHeader;
+        public readonly uint ArraySizeOffsetInHeader;
+        public readonly uint AllocationGranularity;
+        public VirtualMachineInformationFileData(
             uint pointerSize,
             uint objectHeaderSize = 0,
             uint arrayHeaderSize = 0,
@@ -316,6 +334,92 @@ namespace Unity.MemoryProfiler.Editor.Format
             ArrayBoundsOffsetInHeader = arrayBoundsOffsetInHeader;
             ArraySizeOffsetInHeader = arraySizeOffsetInHeader;
             AllocationGranularity = allocationGranularity;
+        }
+    }
+
+    internal readonly struct VirtualMachineInformation
+    {
+        public readonly uint PointerSize { get; }
+        public readonly uint ObjectHeaderSize { get; }
+        public readonly uint ArrayHeaderSize { get; }
+        public readonly uint ArrayBoundsOffsetInHeader { get; }
+        public readonly uint ArraySizeOffsetInHeader { get; }
+        public readonly uint AllocationGranularity { get; }
+
+        /// <summary>
+        /// Byte stride between successive out-of-line array-bounds entries (Mono/IL2CPP layout only;
+        /// unused and left at its default for CoreCLR, see
+        /// <see cref="ManagedHeapArrayDataTools.IsCoreClrArrayLayout"/>). Computed once via
+        /// <see cref="GetArrayBoundsStride"/> during construction (<see cref="CachedSnapshot(IFileReader, bool)"/>), not read
+        /// from the file — kept here so the array-crawling hot path (<see cref="ManagedHeapArrayDataTools.GetArrayInfo"/>
+        /// and friends, called once per dimension of every array in the heap) is a plain field read
+        /// instead of re-deriving the per-backend stride from <c>ScriptingBackend</c> on every call.
+        /// </summary>
+        public readonly ulong ArrayBoundsStride { get; }
+
+        public VirtualMachineInformation(
+            VirtualMachineInformationFileData rawVmInfo,
+            ScriptingImplementation? scriptingBackend = null) :
+            this(
+                rawVmInfo.PointerSize,
+                rawVmInfo.ObjectHeaderSize,
+                rawVmInfo.ArrayHeaderSize,
+                rawVmInfo.ArrayBoundsOffsetInHeader,
+                rawVmInfo.ArraySizeOffsetInHeader,
+                rawVmInfo.AllocationGranularity,
+                scriptingBackend)
+        { }
+
+        public VirtualMachineInformation(
+            uint pointerSize,
+            uint objectHeaderSize = 0,
+            uint arrayHeaderSize = 0,
+            uint arrayBoundsOffsetInHeader = 0,
+            uint arraySizeOffsetInHeader = 0,
+            uint allocationGranularity = 0,
+            ScriptingImplementation? scriptingBackend = null)
+        {
+            PointerSize = pointerSize;
+            ObjectHeaderSize = objectHeaderSize;
+            ArrayHeaderSize = arrayHeaderSize;
+            ArrayBoundsOffsetInHeader = arrayBoundsOffsetInHeader;
+            ArraySizeOffsetInHeader = arraySizeOffsetInHeader;
+            AllocationGranularity = allocationGranularity;
+            ArrayBoundsStride = GetArrayBoundsStride(scriptingBackend, pointerSize);
+        }
+
+        /// <summary>
+        /// Byte stride between successive out-of-line bounds entries (Mono/IL2CPP only; CoreCLR
+        /// never reaches this, see <see cref="ManagedHeapArrayDataTools.IsCoreClrArrayLayout"/>).
+        /// Mono's <see cref="MonoArrayBounds"/> is <c>{int32 length, int32 lower_bound}</c> = 8 bytes regardless of architecture bitness
+        /// (<c>mono_array_size_t</c> is a fixed 32-bit type unless <c>MONO_BIG_ARRAYS</c> is defined,
+        /// which Unity does not define). IL2CPP's <c>Il2CppArrayBounds</c> is
+        /// <c>{uintptr_t length, int32 lower_bound}</c> (<c>il2cpp-object-internals.h</c>): its
+        /// <c>length</c> field is pointer-sized, so the struct is 16 bytes on a 64-bit IL2CPP build
+        /// (8-byte length + 4-byte lower_bound, padded to the 8-byte pointer alignment) but only 8
+        /// bytes on a 32-bit build (4 + 4, already aligned) — i.e. <c>2 * pointerSize</c> either way.
+        /// <paramref name="scriptingBackend"/> is null on captures older than
+        /// <c>FormatVersion.ProfileTargetInfoAndMemStatsVersion</c> (see
+        /// <see cref="MetaData.TargetInfo"/>). Those captures predate this distinction and CANNOT be
+        /// assumed to be IL2CPP — 64-bit Mono standalone players (Windows/macOS/Linux) predate this
+        /// format version by years, so a null backend falls back to the historical fixed 8-byte
+        /// stride, same as before this per-backend stride existed. This means a rank &gt;= 2 array on
+        /// a pre-v11 64-bit IL2CPP capture still reads with the wrong stride — fixing that needs a way
+        /// to actually determine the legacy backend, which is a separate, larger piece of work, not a
+        /// guess made here.
+        ///
+        /// Called exactly once per snapshot, from the constructor which is called from the snapshot's
+        /// <see cref="CachedSnapshot(IFileReader, bool)"/> Constructor once
+        /// <see cref="MetaData.TargetInfo"/>is available, and cached on
+        /// <see cref="ArrayBoundsStride"/> — the array-crawling call sites
+        /// below (invoked once per dimension of every array on the heap) read that field directly
+        /// rather than re-deriving it here on every call.
+        /// </summary>
+        internal static ulong GetArrayBoundsStride(ScriptingImplementation? scriptingBackend, uint pointerSize)
+        {
+            return scriptingBackend == ScriptingImplementation.IL2CPP
+                ? 2ul * pointerSize
+                : 8ul;
         }
     }
 
@@ -379,6 +483,14 @@ namespace Unity.MemoryProfiler.Editor.Format
     [StructLayout(LayoutKind.Sequential, Size = 512)]
     internal unsafe struct ProfileTargetInfo : IEquatable<ProfileTargetInfo>
     {
+#if UNITY_6000_7_OR_NEWER
+        public const ScriptingImplementation CoreCLRScriptingImplementation = ScriptingImplementation.CoreCLR;
+#else
+#pragma warning disable CS0618 // Type or member is obsolete
+        public const ScriptingImplementation CoreCLRScriptingImplementation = ScriptingImplementation.CoreCLR;
+#pragma warning restore CS0618 // Type or member is obsolete
+#endif
+
         const int k_UnityVersionBufferSize = 16;
         const int k_ProductNameBufferSize = 256;
         // decrease value when adding new members to target info

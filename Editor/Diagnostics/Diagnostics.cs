@@ -49,6 +49,13 @@ namespace Unity.MemoryProfiler.Editor.Diagnostics
         }
 
         [Conditional("ENABLE_MEMORY_PROFILER_DEBUG"), MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static void CheckCountNotNegative(long count)
+        {
+            if (count < 0)
+                throw new ArgumentOutOfRangeException(nameof(count), count, "Count must not be negative.");
+        }
+
+        [Conditional("ENABLE_MEMORY_PROFILER_DEBUG"), MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static void CheckCountWithinReasonAndThrowArgumentException(long count, long capacity)
         {
             CheckCountGreaterZeroAndThrowArgumentException(count);

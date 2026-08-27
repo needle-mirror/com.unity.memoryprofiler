@@ -15,9 +15,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
 
-        public IScopedFilter<TType>.IFilterScope<TType> OpenScope(TType scopeFilterValue, CachedSnapshot cachedSnapshot = null)
+        public IScopedFilter<TType>.IFilterScope<TType> OpenScope(TType scopeFilterValue)
         {
-            return new FilterScope(this, scopeFilterValue, cachedSnapshot);
+            return new FilterScope(this, scopeFilterValue);
+        }
+
+        public IScopedFilter<TType>.IFilterScope<TType> OpenEmptyScope()
+        {
+            return FilterScope.OpenEmptyScope(this);
         }
 
         struct FilterScope : IScopedFilter<TType>.IFilterScope<TType>
@@ -29,19 +34,28 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             public TType Value => m_ScopedFilter.FilterValue;
 
-            public FilterScope(ScopedFilter<TFilter, TType> scopedFilter, TType scopeFilterValue, CachedSnapshot cachedSnapshot = null)
+            public FilterScope(ScopedFilter<TFilter, TType> scopedFilter, TType scopeFilterValue)
             {
                 m_ScopedFilter = scopedFilter;
                 m_ParentScopePasses = m_ScopedFilter.m_CurrentScopePasses;
                 ScopePasses = m_ScopedFilter.m_CurrentScopePasses;
-                m_ScopedFilter.m_CurrentScopePasses = ScopePasses = Passes(scopeFilterValue, cachedSnapshot);
+                m_ScopedFilter.m_CurrentScopePasses = ScopePasses = Passes(scopeFilterValue);
             }
 
-            public bool Passes(TType value, CachedSnapshot cachedSnapshot = null)
+            FilterScope(ScopedFilter<TFilter, TType> scopedFilter)
+            {
+                m_ScopedFilter = scopedFilter;
+                m_ParentScopePasses = m_ScopedFilter.m_CurrentScopePasses;
+                ScopePasses = m_ScopedFilter.m_CurrentScopePasses;
+                m_ScopedFilter.m_CurrentScopePasses = ScopePasses;
+            }
+            public static FilterScope OpenEmptyScope(ScopedFilter<TFilter, TType> scopedFilter) => new FilterScope(scopedFilter);
+
+            public bool Passes(TType value)
             {
                 if (ScopePasses)
                     return true;
-                return m_ScopedFilter.m_Filter.Passes(value, cachedSnapshot);
+                return m_ScopedFilter.m_Filter.Passes(value);
             }
 
             public void Dispose()

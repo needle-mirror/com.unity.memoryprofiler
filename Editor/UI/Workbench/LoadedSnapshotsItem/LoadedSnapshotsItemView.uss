@@ -53,6 +53,8 @@
     width: 153px;
     height: 86px;
     min-width: 153px;
+    flex-shrink: 0;
+    flex-grow: 0;
     background-color: rgb(2, 2, 2);
 }
 
@@ -62,6 +64,8 @@
     width: 153px;
     height: 86px;
     min-width: 153px;
+    flex-shrink: 0;
+    flex-grow: 0;
 }
 
 

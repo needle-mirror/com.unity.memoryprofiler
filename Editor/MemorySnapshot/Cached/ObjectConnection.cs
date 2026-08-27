@@ -271,6 +271,7 @@ namespace Unity.MemoryProfiler.Editor
                 SourceIndex.SourceId.ManagedObject => true,
                 SourceIndex.SourceId.NativeAllocation => true,
                 SourceIndex.SourceId.NativeObject => true,
+                SourceIndex.SourceId.Prefab => true,
                 _ => false
             };
             if (!targetTypeValid)
@@ -539,6 +540,28 @@ namespace Unity.MemoryProfiler.Editor
             foundSourceIndices?.Clear();
             if (!objIndex.Valid)
                 return;
+
+            // Scenes are book-keeping units with no connections of their own in the crawled graph
+            // (nothing can reference a Scene); show their root Transforms as References To instead.
+            if (objIndex.Id == SourceIndex.SourceId.Scene)
+            {
+                foreach (var rootTransform in snapshot.SceneRoots.SceneIndexedRootTransformInstanceIds[objIndex.Index])
+                {
+                    allReferencedObjects?.Add(ObjectData.FromSourceLink(snapshot, rootTransform));
+                    foundSourceIndices?.Add(rootTransform);
+                }
+                return;
+            }
+
+            // Prefab entries are likewise book-keeping units with no connections of their own; show their
+            // root Transform as References To instead, same as Scene above.
+            if (objIndex.Id == SourceIndex.SourceId.Prefab)
+            {
+                var rootTransform = snapshot.SceneRoots.AllPrefabRootTransformSourceIndices[objIndex.Index];
+                allReferencedObjects?.Add(ObjectData.FromSourceLink(snapshot, rootTransform));
+                foundSourceIndices?.Add(rootTransform);
+                return;
+            }
 
             // this hashset helps avoid double reported connections for Unity Objects, either reported via the CachedSnapshots.Connections
             // or by the crawler. For the latter, connections are only ignored if they originate from the NativeObject <-> Managed Shell connection

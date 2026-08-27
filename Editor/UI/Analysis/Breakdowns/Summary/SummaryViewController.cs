@@ -105,7 +105,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var allOfMemoryInspectAction = TabController.MakePageSelector(TextContent.AllOfMemoryViewName);
             var committedMemoryController = new GenericMemorySummaryViewController(new AllMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), HasDetailedResidentMemoryInformation())
             {
-                TotalLabelFormat = "Total Allocated: {0}",
+                TotalLabelFormat = TextContent.TotalAllocatedFormat,
                 InspectAction = compareMode ? null : () =>
                 {
                     MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectAllocatedMemoryClickCount);
@@ -132,7 +132,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var managedMemoryController = new GenericMemorySummaryViewController(new ManagedMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), HasDetailedResidentMemoryInformation())
             {
-                TotalLabelFormat = "Total: {0}",
+                TotalLabelFormat = TextContent.TotalFormat,
                 InspectAction = () =>
                 {
                     MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectManagedMemoryClickCount);
@@ -147,7 +147,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var unityObjectInspectAction = TabController.MakePageSelector(TextContent.UnityObjectsViewName);
             var unityObjectController = new GenericMemorySummaryViewController(new UnityObjectsMemorySummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), false)
             {
-                TotalLabelFormat = "Total: {0}",
+                TotalLabelFormat = TextContent.TotalFormat,
                 InspectAction = () =>
                 {
                     MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectUnityObjectsClickCount);

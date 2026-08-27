@@ -19,6 +19,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         /// <param name="text"></param>
         /// <returns>true</returns>
-        public bool Passes(string text, CachedSnapshot cachedSnapshot = null) => true;
+        public bool Passes(string text) => true;
     }
 }

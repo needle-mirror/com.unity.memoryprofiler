@@ -6,7 +6,7 @@ using Unity.MemoryProfiler.Editor;
 #if !MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE
 using Unity.MemoryProfiler.Editor.MemoryProfilerModule;
 #endif
-#if LIVECYCLE_APIS_AVAILABLE
+#if LIFECYCLE_APIS_AVAILABLE
 using Unity.Scripting.LifecycleManagement;
 #endif
 
@@ -18,9 +18,9 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
         Detailed = 1
     }
     [Serializable]
-    class MemoryProfilerModuleOverride
+    partial class MemoryProfilerModuleOverride
     {
-        // This is an Editor Only class and handled via its InitializeOnLoadMethod.
+        // This is an Editor Only class and handled via its InitializeOnLoadMethod, or via lifecycle attributes
 #pragma warning disable UDR0001 // Domain Reload Analyzer
         static MemoryProfilerModuleOverride s_Instance;
         // Only used from tests.
@@ -33,8 +33,8 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
         [SerializeField]
         public bool Normalized = false;
 
-#if LIVECYCLE_APIS_AVAILABLE
-        [AfterAssemblyLoaded]
+#if LIFECYCLE_APIS_AVAILABLE
+        [OnCodeLoaded]
 #else
         [InitializeOnLoadMethod]
 #endif
@@ -50,8 +50,8 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 #pragma warning restore UDR0001 // Domain Reload Analyzer
         }
 
-#if LIVECYCLE_APIS_AVAILABLE
-        [BeforeCodeUnloading]
+#if LIFECYCLE_APIS_AVAILABLE
+        [OnCodeUnloading]
 #endif
         static void UnloadOverride()
         {

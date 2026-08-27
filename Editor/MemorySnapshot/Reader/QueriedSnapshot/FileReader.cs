@@ -1,22 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.IO.LowLevel.Unsafe;
+using Unity.MemoryProfiler.Editor.Containers;
+using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Format.LowLevel.IO;
 using Unity.Profiling;
-using Unity.MemoryProfiler.Editor.Diagnostics;
-using Unity.MemoryProfiler.Editor.Containers;
-using System.Collections.Generic;
-#if ENABLE_CORECLR
-using Allocator = Unity.Collections.AllocatorManager;
-using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
-using static Unity.Collections.AllocatorManager;
-#else
-using Allocator = Unity.Collections.Allocator;
-using AllocatorType = Unity.Collections.Allocator;
-#endif
-
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
@@ -212,7 +203,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public GenericReadOperation Read(EntryType entry, long offset, long count, AllocatorType allocator, bool includeOffsets = true)
+        public GenericReadOperation Read(EntryType entry, long offset, long count, Allocator allocator, bool includeOffsets = true)
         {
             unsafe
             {
@@ -237,7 +228,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public GenericReadOperation AsyncRead(EntryType entry, long offset, long count, AllocatorType allocator, bool includeOffsets = true)
+        public GenericReadOperation AsyncRead(EntryType entry, long offset, long count, Allocator allocator, bool includeOffsets = true)
         {
             var readSize = GetSizeForEntryRange(entry, offset, count, includeOffsets);
             return InternalAsyncRead(entry, new DynamicArray<byte>(readSize, allocator), offset, count, true, includeOffsets);
@@ -267,7 +258,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             }
         }
 
-        public NestedDynamicSizedArrayReadOperation<T> AsyncReadDynamicSizedArray<T>(EntryType entry, long offset, long count, AllocatorType allocator) where T : unmanaged
+        public NestedDynamicSizedArrayReadOperation<T> AsyncReadDynamicSizedArray<T>(EntryType entry, long offset, long count, Allocator allocator) where T : unmanaged
         {
             Checks.CheckEntryTypeFormatIsValidAndThrow(EntryFormat.DynamicSizeElementArray, GetEntryFormat(entry));
             using (s_AsyncRead.Auto())
@@ -306,48 +297,63 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                         }
                     }
 
-                    var currentStartOffsetIndex = 0L;
-                    var remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
+                    var totalDataSize = offsets.Back() - offsets[0];
 
-                    using var blocks = new DynamicArray<NestedSectionBlock>(0, 1, Allocator.TempJob);
-
-                    while (remainingBufferSize > int.MaxValue)
+                    if (totalDataSize <= int.MaxValue)
                     {
-                        var firstOffsetIndexOfNextBlock = offsets.Count - 1;
-                        var startOffset = offsets[currentStartOffsetIndex];
+                        // Common case: data fits in a single allocation and one read.
+                        var data = new DynamicArray<byte>(totalDataSize, allocator);
+                        var readOps = new NativeArray<GenericReadOperation>(1, allocator);
+                        readOps[0] = AsyncRead(entry, data, offset, count, includeOffsets: false);
 
-                        // reduce block size until it is less than int.MaxValue but not less than one element
-                        while (offsets[firstOffsetIndexOfNextBlock] - startOffset > int.MaxValue
-                            && firstOffsetIndexOfNextBlock - 1 > currentStartOffsetIndex)
-                            --firstOffsetIndexOfNextBlock;
-                        blocks.Push(new NestedSectionBlock { StartOffsetIndex = currentStartOffsetIndex, NextOffsetStartIndexOrEndOfLastSectionOffset = firstOffsetIndexOfNextBlock });
-                        currentStartOffsetIndex = firstOffsetIndexOfNextBlock;
-                        remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
+                        NestedDynamicArray<T> smallBuffer = new NestedDynamicArray<T>(offsets, data.Reinterpret<T>());
+                        return new NestedDynamicSizedArrayReadOperation<T>(ref readOps, smallBuffer);
                     }
 
-                    if (currentStartOffsetIndex < offsets.Count - 1)
+                    // Data exceeds int.MaxValue: split at section boundaries into blocks,
+                    // one allocation and async read per block.
                     {
-                        // add remaining/last/potentially only block
-                        blocks.Push(new NestedSectionBlock { StartOffsetIndex = currentStartOffsetIndex, NextOffsetStartIndexOrEndOfLastSectionOffset = offsets.Count - 1 });
+                        var currentStartOffsetIndex = 0L;
+                        var remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
+
+                        using var blocks = new DynamicArray<NestedSectionBlock>(0, 1, Allocator.TempJob);
+
+                        while (remainingBufferSize > int.MaxValue)
+                        {
+                            var firstOffsetIndexOfNextBlock = offsets.Count - 1;
+                            var startOffset = offsets[currentStartOffsetIndex];
+
+                            // reduce block size until it is less than int.MaxValue but not less than one element
+                            while (offsets[firstOffsetIndexOfNextBlock] - startOffset > int.MaxValue
+                                && firstOffsetIndexOfNextBlock - 1 > currentStartOffsetIndex)
+                                --firstOffsetIndexOfNextBlock;
+                            blocks.Push(new NestedSectionBlock { StartOffsetIndex = currentStartOffsetIndex, NextOffsetStartIndexOrEndOfLastSectionOffset = firstOffsetIndexOfNextBlock });
+                            currentStartOffsetIndex = firstOffsetIndexOfNextBlock;
+                            remainingBufferSize = offsets.Back() - offsets[currentStartOffsetIndex];
+                        }
+
+                        if (currentStartOffsetIndex < offsets.Count - 1)
+                        {
+                            // add remaining/last/potentially only block
+                            blocks.Push(new NestedSectionBlock { StartOffsetIndex = currentStartOffsetIndex, NextOffsetStartIndexOrEndOfLastSectionOffset = offsets.Count - 1 });
+                        }
+
+                        var dataBlocks = new DynamicArray<DynamicArray<T>>(0, blocks.Count, allocator);
+                        var readOps = new NativeArray<GenericReadOperation>((int)blocks.Count, allocator);
+
+                        for (int i = 0; i < blocks.Count; i++)
+                        {
+                            var block = blocks[i];
+                            var bufferSize = offsets[block.NextOffsetStartIndexOrEndOfLastSectionOffset] - offsets[block.StartOffsetIndex];
+                            var data = new DynamicArray<byte>(bufferSize, allocator);
+                            // IMPORTANT: When reading a subset, add the original offset to read from the correct position in the file
+                            readOps[i] = AsyncRead(entry, data, block.StartOffsetIndex + offset, block.OffsetCount, includeOffsets: false);
+                            dataBlocks.Push(data.Reinterpret<T>());
+                        }
+
+                        NestedDynamicArray<T> buffer = new NestedDynamicArray<T>(offsets, dataBlocks);
+                        return new NestedDynamicSizedArrayReadOperation<T>(ref readOps, buffer);
                     }
-
-                    var dataBlocks = new DynamicArray<DynamicArray<T>>(0, blocks.Count, allocator);
-
-                    var readOps = new List<GenericReadOperation>((int)blocks.Count);
-
-                    for (int i = 0; i < blocks.Count; i++)
-                    {
-                        var block = blocks[i];
-                        var bufferSize = offsets[block.NextOffsetStartIndexOrEndOfLastSectionOffset] - offsets[block.StartOffsetIndex];
-                        var data = new DynamicArray<byte>(bufferSize, allocator);
-                        // IMPORTANT: When reading a subset, add the original offset to read from the correct position in the file
-                        var readOp = AsyncRead(entry, data, block.StartOffsetIndex + offset, block.OffsetCount, includeOffsets: false);
-                        dataBlocks.Push(data.Reinterpret<T>());
-                        readOps.Add(readOp);
-                    }
-
-                    NestedDynamicArray<T> buffer = new NestedDynamicArray<T>(offsets, dataBlocks);
-                    return new NestedDynamicSizedArrayReadOperation<T>(readOps, buffer, allocator);
                 }
             }
         }

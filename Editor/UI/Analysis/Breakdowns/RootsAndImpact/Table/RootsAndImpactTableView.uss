@@ -1,0 +1,48 @@
+/*
+ * RootsAndImpactTableView.uss
+ * Styles specific to the Roots & Impact table view.
+ * Imports common table view styles from TableViewBase.uss
+ */
+
+@import url("../../Shared/TableViewBase.uss");
+
+/* Extend base theme classes if necessary */
+.table-view-base__dark:root
+{
+}
+
+.table-view-base__light:root
+{
+}
+
+/* Toolbar styles */
+#roots-and-impact-table-view__toolbar
+{
+    border-top-width: 1px;
+    height: 32px;
+    padding-right: 12px;
+    overflow: hidden;
+}
+
+#roots-and-impact-table-view__toolbar Toggle
+{
+    padding-left: 12px;
+}
+
+#roots-and-impact-table-view__toolbar Toggle .unity-toggle__text
+{
+    padding-left: 4px;
+}
+
+/* De-emphasis for ancestor nodes that don't match a status filter */
+.roots-and-impact-table-view__filter-match-ancestor
+{
+    opacity: 0.5;
+}
+
+/* Page-flipping control for the flattened view; hidden until the controller shows it (flat mode, >1 page).
+   The generic .memory-profiler-pager* visuals live in the shared TableViewBase.uss. */
+.roots-and-impact-table-view__pager
+{
+    display: none;
+}

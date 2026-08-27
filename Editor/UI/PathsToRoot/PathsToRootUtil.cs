@@ -20,11 +20,5 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         internal const string DontUnloadUnusedAssetInfo = "DontUnloadUnusedAsset - The object will not be unloaded by 'Resources.UnloadUnusedAssets()' calls, neither by explicit calls, nor implicit ones that are triggered when a Scene is non-additively unloaded.\n\n";
         internal const string DontSaveInfo = "DontSave - The object will not be saved to the Scene. It will not be destroyed when a new Scene is loaded. It is a shortcut for HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor | HideFlags.DontUnloadUnusedAsset.\n\n";
         internal const string HideAndDontSaveInfo = "HideAndDontSave - The GameObject is not shown in the Hierarchy, not saved to to Scenes, and not unloaded by Resources.UnloadUnusedAssets.";
-
-        internal static readonly GUIContent FlagIcon = EditorGUIUtility.IconContent("console.infoicon");
-        internal static readonly GUIContent NoIconContent = new GUIContent(Icons.NoIcon, "no icon for type");
-        internal static readonly GUIContent CSScriptIconContent = EditorGUIUtility.IconContent("cs Script Icon", "");
-
-        internal static Dictionary<string, GUIContent> iconContent = new Dictionary<string, GUIContent>();
     }
 }

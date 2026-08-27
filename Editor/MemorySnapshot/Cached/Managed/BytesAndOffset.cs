@@ -12,9 +12,23 @@ namespace Unity.MemoryProfiler.Editor
         public readonly DynamicArrayRef<byte> Bytes;
         public readonly ulong Offset;
         public readonly uint PointerSize;
+
+        // second highest bit used to indicate static type vs heap section, highest bit used for invalid indices (aka -1)
+        const long k_StaticTypeFlag = 0x4000000000000000;
+        readonly long m_HeapSectionOrStaticFieldsTypeIndex;
+        public long HeapSectionIndex { get { return AreStaticTypeFields ? -1 : m_HeapSectionOrStaticFieldsTypeIndex; } }
+        public long StaticFieldsTypeIndex { get { return AreStaticTypeFields ? (m_HeapSectionOrStaticFieldsTypeIndex & ~k_StaticTypeFlag) : -1; } }
+        public bool AreStaticTypeFields { get { return m_HeapSectionOrStaticFieldsTypeIndex != -1 && (m_HeapSectionOrStaticFieldsTypeIndex & k_StaticTypeFlag) != 0; } }
+
         public bool IsValid { get { return Bytes.IsCreated; } }
         public long ByteCountFromOffset { get { return IsValid ? Bytes.Count - (long)Offset : -1; } }
-        public BytesAndOffset(DynamicArrayRef<byte> bytes, uint pointerSize, ulong offset = 0)
+
+        public BytesAndOffset(DynamicArrayRef<byte> bytes, uint pointerSize, long heapSectionOrStaticFieldsTypeIndex, bool isStaticType = false, ulong offset = 0)
+            : this(bytes, pointerSize, isStaticType ? heapSectionOrStaticFieldsTypeIndex | k_StaticTypeFlag : heapSectionOrStaticFieldsTypeIndex, offset)
+        {
+        }
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        BytesAndOffset(DynamicArrayRef<byte> bytes, uint pointerSize, long heapSectionOrStaticFieldsTypeIndex, ulong offset)
         {
             if (!bytes.IsCreated)
                 throw new ArgumentException(nameof(bytes), " does not contain any data.");
@@ -23,6 +37,7 @@ namespace Unity.MemoryProfiler.Editor
             Bytes = bytes;
             PointerSize = pointerSize;
             Offset = offset;
+            m_HeapSectionOrStaticFieldsTypeIndex = heapSectionOrStaticFieldsTypeIndex;
         }
 
         public enum PtrReadError
@@ -30,6 +45,21 @@ namespace Unity.MemoryProfiler.Editor
             Success,
             OutOfBounds,
             InvalidPtrSize
+        }
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public BytesAndOffset RefetchHeapBytes(CachedSnapshot cs, out CachedSnapshot.OnDemandHeapSectionCache.HeapSectionCacheReferenceScope referenceScope)
+        {
+            if (AreStaticTypeFields || !IsValid)
+            {
+                // static heap data is never unloaded and invalid data can't be refreshed, so just return the existing bytes and a default reference scope.
+                referenceScope = default;
+                return this;
+            }
+            var result = cs.GetHeapBytes(HeapSectionIndex, cs.ManagedHeapSections.StartAddress[HeapSectionIndex] + Offset, out var refreshedBytes, out referenceScope);
+            if (result)
+                return refreshedBytes;
+            return new BytesAndOffset();
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
@@ -136,7 +166,7 @@ namespace Unity.MemoryProfiler.Editor
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public BytesAndOffset Add(ulong add)
         {
-            return new BytesAndOffset(Bytes, PointerSize, Offset + add);
+            return new BytesAndOffset(Bytes, PointerSize, m_HeapSectionOrStaticFieldsTypeIndex, Offset + add);
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]

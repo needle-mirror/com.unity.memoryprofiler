@@ -1,13 +1,19 @@
 using System;
+using Unity.MemoryProfiler.Editor.UIContentData;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     internal class UnsupportedSnapshotVersionException : Exception
     {
-        const string k_ErrorMessage = "Memory Snapshot `{0}` is made with unsupported Unity version ({1}).";
-
         public UnsupportedSnapshotVersionException(CachedSnapshot snapshot)
-            : base(String.Format(k_ErrorMessage, snapshot.FullPath, snapshot.MetaData.UnityVersion))
+            : base(String.Format(TextContent.OutdatedSnapshotWarning, snapshot.FullPath, snapshot.MetaData.UnityVersion))
+        {
+        }
+
+        // For breakdowns that are unavailable for a more specific reason than the snapshot's Unity version
+        // (e.g. Roots & Impact data wasn't generated for this capture).
+        public UnsupportedSnapshotVersionException(string message)
+            : base(message)
         {
         }
     }

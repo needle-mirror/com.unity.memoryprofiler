@@ -1,3 +1,5 @@
+@import url("../TableViewBase.uss");
+
 .breakdown-view__dark:root
 {
   --breakdown-view__table-size-bar__background-color: #5A5A5A;
@@ -18,57 +20,32 @@
     margin: 16px;
 }
 
-#breakdown-view__search-field-container
-{
-    flex-direction: row;
-    flex-shrink: 0;
-    justify-content: space-between;
-    align-items: flex-start;
-}
-
-#breakdown-view__description-label
-{
-    flex-shrink: 1;
-    margin-right: 16px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 #breakdown-view__mode-dropdown
 {
     flex-grow: 1;
     flex-shrink: 1;
     flex-wrap: wrap;
-    max-width: 620px;
+    min-width: 0;
+    overflow: visible;
+    margin-bottom: 8px;
 }
 
 #breakdown-view__mode-dropdown > Label
 {
     white-space: normal;
+    margin-bottom: 3px;
+}
+
+#breakdown-view__mode-dropdown .unity-base-field__input
+{
+    flex-shrink: 1;
+    flex-grow: 0;
+    min-width: 100px;
 }
 
 #breakdown-view__mode-dropdown PopupTextElement
 {
     text-overflow: ellipsis;
-}
-
-#breakdown-view__search-field
-{
-    flex-shrink: 1;
-    height: 14px;
-    margin: 0px;
-    padding: 4px;
-    width: 40%;
-}
-
-#breakdown-view__search-field TextField
-{
-    padding-left: 4px;
-}
-
-#breakdown-view__search-field TextElement
-{
-    font-size: 12px;
 }
 
 #breakdown-view__table-size-bar

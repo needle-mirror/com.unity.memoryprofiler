@@ -86,6 +86,9 @@ namespace Unity.MemoryProfiler.Editor
             [Serializable]
             [StructLayout(LayoutKind.Sequential)]
             internal struct Payload
+#if UNITY_6000_0_OR_NEWER
+                : IAnalytic.IData
+#endif
             {
                 public string subtype;
                 public float duration;
@@ -132,6 +135,9 @@ namespace Unity.MemoryProfiler.Editor
             [Serializable]
             [StructLayout(LayoutKind.Sequential)]
             internal struct Payload
+#if UNITY_6000_0_OR_NEWER
+                : IAnalytic.IData
+#endif
             {
                 public string subtype;
                 public float duration;
@@ -255,6 +261,9 @@ namespace Unity.MemoryProfiler.Editor
             [Serializable]
             [StructLayout(LayoutKind.Sequential)]
             internal struct Payload
+#if UNITY_6000_0_OR_NEWER
+                : IAnalytic.IData
+#endif
             {
                 public string subtype;
                 public float duration;
@@ -294,6 +303,9 @@ namespace Unity.MemoryProfiler.Editor
             [Serializable]
             [StructLayout(LayoutKind.Sequential)]
             internal struct Payload
+#if UNITY_6000_0_OR_NEWER
+                : IAnalytic.IData
+#endif
             {
                 public string subtype;
                 public string viewname;
@@ -366,6 +378,9 @@ namespace Unity.MemoryProfiler.Editor
         [Serializable]
         [StructLayout(LayoutKind.Sequential)]
         struct InteractionViewEventPayload
+#if UNITY_6000_0_OR_NEWER
+            : IAnalytic.IData
+#endif
         {
             public string subtype;
             public string viewname;

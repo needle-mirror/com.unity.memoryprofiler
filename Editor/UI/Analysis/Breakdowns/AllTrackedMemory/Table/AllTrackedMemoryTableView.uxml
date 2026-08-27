@@ -12,9 +12,10 @@
             <engine:MultiColumnTreeView name="all-tracked-memory-table-view__tree-view" class="table-view-base__tree-view" sorting-enabled="true">
                 <engine:Columns reorderable="false">
                     <engine:Column name="all-tracked-memory-table-view__tree-view__column__description" resizable="true" stretchable="true" optional="false"/>
-                    <engine:Column name="all-tracked-memory-table-view__tree-view__column__size" resizable="true" stretchable="false"/>
-                    <engine:Column name="all-tracked-memory-table-view__tree-view__column__resident-size" resizable="true" stretchable="false"/>
+                    <engine:Column name="all-tracked-memory-table-view__tree-view__column__size" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="all-tracked-memory-table-view__tree-view__column__resident-size" resizable="true" stretchable="false" optional="false"/>
                     <engine:Column name="all-tracked-memory-table-view__tree-view__column__size-bar" resizable="true" stretchable="true"/>
+                    <engine:Column name="all-tracked-memory-table-view__tree-view__column__status" resizable="true" stretchable="true"/>
                 </engine:Columns>
                 <engine:SortColumnDescriptions>
                     <engine:SortColumnDescription column-name="all-tracked-memory-table-view__tree-view__column__size" direction="descending"/>

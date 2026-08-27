@@ -15,7 +15,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 {
     static partial class ManagedDataCrawler
     {
-        [BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
+        [BurstCompile(CompileSynchronously = true, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         struct StaticFieldsCrawlerJobChunk : ICrawlerJobChunk<StaticFieldsCrawlerJobChunk>
         {
             [ReadOnly]
@@ -68,6 +68,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #endif
             }
 
+            [BurstCompile(CompileSynchronously = true, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
             public void Process()
             {
                 for (var index = 0; index < StaticTypeData.Count; index++)

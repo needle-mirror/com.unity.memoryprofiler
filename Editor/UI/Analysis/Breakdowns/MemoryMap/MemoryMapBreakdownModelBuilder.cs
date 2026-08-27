@@ -17,16 +17,21 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Dictionary<int, IndexableTreeViewListAndIndex<MemoryMapBreakdownModel.ItemData>> m_IdToIndex;
 
-        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IEnumerable<int> treeNodeIds = null)
+        public void ClearIdToIndexCache()
+        {
+            TreeModelHelpers.ClearIdToIndexCache(ref m_IdToIndex);
+        }
+
+        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IEnumerable<int> treeNodeIdFilter = null)
         {
             var tree = new List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>();
 
             var totalMemory = new MemorySize();
 
-            if (treeNodeIds != null)
+            if (treeNodeIdFilter != null)
             {
                 var stack = new Stack<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>();
-                foreach (var id in treeNodeIds)
+                foreach (var id in treeNodeIdFilter)
                 {
                     // the only place where the base model has to be assumed as non-null.
                     var item = baseModel.RootNodes.GetItemById(ref m_IdToIndex, id);
@@ -112,9 +117,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 // Use scoped filtering for proper hierarchical search support
                 // Search across Name, Address, and Type columns
-                using var nameScope = filterArgs.SearchFilter?.OpenScope(name, snapshot);
-                using var addressScope = filterArgs.SearchFilter?.OpenScope(addressString, snapshot);
-                using var typeScope = filterArgs.SearchFilter?.OpenScope(itemType, snapshot);
+                using var nameScope = filterArgs.SearchFilter?.OpenScope(name);
+                using var addressScope = filterArgs.SearchFilter?.OpenScope(addressString);
+                using var typeScope = filterArgs.SearchFilter?.OpenScope(itemType);
 
                 // Generate nodes for all children spans (children inherit the open scope)
                 List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>> children = null;

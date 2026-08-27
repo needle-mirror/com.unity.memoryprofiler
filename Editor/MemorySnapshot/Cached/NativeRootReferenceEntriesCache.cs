@@ -31,6 +31,9 @@ namespace Unity.MemoryProfiler.Editor
             public const long FirstValidRootIndex = 1;
             public long Count;
             public DynamicArray<long> Id = default;
+            /// <summary>
+            /// The size of all allocations rooted to the same root id taken together, but excluding their <see cref="NativeObjectEntriesCache.AllocationHeaderSize"/>s, general header sizes and other overhead, including padding & alignment.
+            /// </summary>
             public DynamicArray<ulong> AccumulatedSize = default;
             public string[] AreaName;
             public string[] ObjectName;

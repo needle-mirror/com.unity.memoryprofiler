@@ -27,7 +27,7 @@ namespace Unity.MemoryProfiler.Editor
         ulong m_Id;
 
         public static EntityId None => new EntityId { m_Id = 0 };
-        public static EntityId From(ulong id) => new EntityId { m_Id = id };
+        public static EntityId FromULong(ulong id) => new EntityId { m_Id = id };
         /// <summary>
         /// This assumption might not hold for an 8byte EntityID future,
         /// and the reported Persistent flag should be relied on instead.
@@ -166,7 +166,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 UnsafeUtility.MemCpyStride(&instanceId, sizeof(EntityId), &id, sizeof(int), sizeof(int), 1);
             }
-            return EntityId.From(instanceId);
+            return EntityId.FromULong(instanceId);
         }
 
         public static bool TryConvertToEntityID(this string instanceIdStr, out EntityId instanceId)
@@ -180,16 +180,16 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 if (long.TryParse(instanceIdStr, out var instanceIDLong))
                 {
-                    instanceId = EntityId.From((ulong)instanceIDLong);
+                    instanceId = EntityId.FromULong((ulong)instanceIDLong);
                     return true;
                 }
                 if (ulong.TryParse(instanceIdStr, out var instanceIDULong))
                 {
-                    instanceId = EntityId.From(instanceIDULong);
+                    instanceId = EntityId.FromULong(instanceIDULong);
                     return true;
                 }
             }
-            instanceId = EntityId.From(0UL);
+            instanceId = EntityId.FromULong(0UL);
             return false;
         }
     }

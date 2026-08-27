@@ -9,6 +9,8 @@
 * [Inspect memory usage](inspect-memory-usage.md)
   * [Inspect assets that use the most memory](inspect-assets-that-use-most-memory.md)
   * [Find memory leaks](find-memory-leaks.md)
+  * [Attribute memory to its roots](roots-and-impact.md)
+  * [Root ownership and impact attribution](root-ownership-and-impact-attribution.md)
   * [Analyzing Unity object memory leaks](managed-shell-objects.md)
   * [Memory usage on devices](memory-on-device.md)
 * [Memory Profiler reference](memory-profiler-window-section.md)
@@ -17,3 +19,4 @@
   * [Main panel reference](main-component.md)
   * [References panel reference](references-component.md)
   * [Selection Details panel reference](selection-details-component.md)
+  * [Memory Profiler preferences reference](memory-profiler-preferences.md)

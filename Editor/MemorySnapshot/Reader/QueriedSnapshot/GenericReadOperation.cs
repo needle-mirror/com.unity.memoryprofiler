@@ -1,22 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using NUnit.Framework;
 using Unity.Collections;
 using Unity.IO.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
-
-#if ENABLE_CORECLR
-using Allocator = Unity.Collections.AllocatorManager;
-using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
-using static Unity.Collections.AllocatorManager;
-#else
-using Allocator = Unity.Collections.Allocator;
-using AllocatorType = Unity.Collections.Allocator;
-#endif
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
@@ -42,11 +31,15 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
                 {
                     switch (m_Handle.Status)
                     {
+                        case ReadStatus.Truncated:
                         case ReadStatus.Failed:
                             m_Err = ReadError.FileReadFailed;
                             break;
                         case ReadStatus.Complete:
                             m_Err = ReadError.Success;
+                            break;
+                        case ReadStatus.Canceled:
+                            m_Err = ReadError.ReadingAborted;
                             break;
                     }
                 }
@@ -75,22 +68,27 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             // Update Error state
             m_Err = Error;
             m_Handle.Dispose();
-            m_Handle = new ReadHandle();
+            m_Handle = default;
         }
 
         public bool IsDone { get { return m_Handle.IsValid() ? m_Handle.JobHandle.IsCompleted : true; } }
+        public bool IsValid { get { return m_Handle.IsValid(); } }
 
         public void Dispose()
         {
-            if (!m_Handle.IsValid())
+            if (!IsValid)
                 return;
 
             // Update Error state
             m_Err = Error;
             if (m_Err == ReadError.InProgress)
+            {
                 m_Err = ReadError.ReadingAborted;
+                m_Handle.Cancel();
+            }
+
             m_Handle.Dispose();
-            m_Handle = new ReadHandle();
+            m_Handle = default;
         }
     }
 
@@ -99,7 +97,9 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         ReadError Error { get; }
         DynamicArray<byte> Result { get; }
         void Complete();
+        public JobHandle JobHandle { get; }
         bool IsDone { get; }
+        bool IsValid { get; }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -117,8 +117,10 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         public DynamicArray<byte> Result => ReadOperation.Result;
 
         public void Complete() => ReadOperation.Complete();
+        public JobHandle JobHandle => ReadOperation.JobHandle;
 
         public bool IsDone => ReadOperation.IsDone;
+        public bool IsValid => ReadOperation.IsValid;
 
         public void Dispose() => ReadOperation.Dispose();
     }
@@ -181,60 +183,120 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
             {
                 if (!IsCreated || m_DoneReading == BurstableBool.TRUE)
                     return true;
-                foreach (var readOp in m_ReadOperations)
-                {
-                    if (!readOp.IsDone)
-                    {
-                        return false;
-                    }
-                }
+                if (!JobHandle.IsCompleted)
+                    return false;
                 if (IsCreated)
-                    Dispose();
+                    // finalize the reading ops
+                    Complete(false);
                 return true;
             }
         }
 
+        public bool IsValid => m_NestedArrayStructure.IsCreated && m_ReadOperations.IsCreated && m_ReadOperations.Length > 0;
+
         public bool IsCreated => m_NestedArrayStructure.IsCreated;
 
-        internal NestedDynamicSizedArrayReadOperation(List<GenericReadOperation> genericReadOperations, NestedDynamicArray<T> nestedArrayStructure, AllocatorType allocator)
+        public JobHandle JobHandle { get; }
+
+        internal NestedDynamicSizedArrayReadOperation(ref NativeArray<GenericReadOperation> genericReadOperations, NestedDynamicArray<T> nestedArrayStructure)
         {
-            m_ReadOperations = new NativeArray<GenericReadOperation>(genericReadOperations.ToArray(), allocator);
+            m_ReadOperations = genericReadOperations;
+            switch (genericReadOperations.Length)
+            {
+                case 0:
+                    JobHandle = default;
+                    break;
+                case 1:
+                    JobHandle = m_ReadOperations[0].IsValid ? genericReadOperations[0].JobHandle : default;
+                    break;
+                default:
+                {
+                    var handles = new NativeArray<JobHandle>(genericReadOperations.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+                    for (int i = 0; i < m_ReadOperations.Length; i++)
+                    {
+                        handles[i] = m_ReadOperations[i].IsValid ? m_ReadOperations[i].JobHandle : default;
+                    }
+                    JobHandle = JobHandle.CombineDependencies(handles);
+                    handles.Dispose();
+                    break;
+                }
+            }
             m_NestedArrayStructure = nestedArrayStructure;
             m_DoneReading = BurstableBool.FALSE;
             m_AbortedReading = BurstableBool.FALSE;
         }
 
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         internal NestedDynamicArray<T> CompleteReadAndGetNestedResults()
         {
-            if (m_DoneReading == BurstableBool.FALSE)
-            {
-                if (IsCreated && !IsDone)
-                {
-                    foreach (var readOp in m_ReadOperations)
-                    {
-                        readOp.Complete();
-                        Checks.CheckEquals(true, readOp.Result.IsCreated);
-                    }
-                    Dispose();
-                }
-            }
+            Complete(false);
             return m_NestedArrayStructure;
         }
 
-        public void Complete() => CompleteReadAndGetNestedResults();
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public void Complete() => Complete(false);
+
+        void Complete(bool cancel)
+        {
+            if (m_DoneReading == BurstableBool.FALSE)
+            {
+                if (IsCreated)
+                {
+                    if (cancel)
+                    {
+                        for (int i = 0; i < m_ReadOperations.Length; i++)
+                        {
+                            var readOp = m_ReadOperations[i];
+                            readOp.Dispose();
+                            m_ReadOperations[i] = readOp;
+                        }
+                        // Cancelation only happens from within Dispose, so don't call it again
+                    }
+                    else
+                    {
+                        JobHandle.Complete();
+                        for (int i = 0; i < m_ReadOperations.Length; i++)
+                        {
+                            var readOp = m_ReadOperations[i];
+                            readOp.Complete();
+                            m_ReadOperations[i] = readOp;
+                            Checks.CheckEquals(true, readOp.Result.IsCreated);
+                        }
+                        Dispose();
+                    }
+                }
+            }
+        }
 
         public void Dispose()
         {
             if (m_DoneReading == BurstableBool.TRUE)
                 return;
             var aborted = false;
-            foreach (var readOp in m_ReadOperations)
+
+            if (!JobHandle.IsCompleted)
             {
-                if (!readOp.IsDone)
-                    aborted = true;
-                readOp.Dispose();
+                aborted = true;
+                Complete(cancel: true);
             }
-            m_ReadOperations.Dispose();
+
+            if (m_ReadOperations.IsCreated)
+            {
+                for (int i = 0; i < m_ReadOperations.Length; i++)
+                {
+                    var readOp = m_ReadOperations[i];
+                    if (!readOp.IsDone)
+                        aborted = true;
+                    if (readOp.IsValid)
+                        readOp.Dispose();
+                    m_ReadOperations[i] = readOp;
+                }
+                m_ReadOperations.Dispose();
+            }
+            else
+            {
+                aborted = true;
+            }
             // While reading hasn't necessarily finished succesfully, it is no longer happening.
             m_DoneReading = BurstableBool.TRUE;
             if (aborted)

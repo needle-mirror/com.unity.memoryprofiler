@@ -223,10 +223,35 @@ namespace Unity.MemoryProfiler.Editor
             Metrics.MemoryMapEntryCount = snapshot.EntriesMemoryMap.Count;
         }
 
+        /// <summary>
+        /// Record a loading phase marker. When the watchdog fires, <see cref="SnapshotMetrics.LoadingDiagnosticsMetrics.LastCompletedLoadingPhase"/>
+        /// shows the last completed phase, identifying where loading stalled.
+        /// </summary>
         [Conditional("MEMORY_PROFILER_METRICS")]
-        public void LogMetrics()
+        public void RecordLoadingPhase(string phase)
         {
-            Metrics.LogToConsole();
+            Metrics.LoadingDiagnostics.LastCompletedLoadingPhase = phase;
+        }
+
+        [Conditional("MEMORY_PROFILER_METRICS")]
+        public void RecordManagedSectionDiagnostics(bool isHeap, long sectionCount, long totalBytes)
+        {
+            if (isHeap)
+            {
+                Metrics.LoadingDiagnostics.ManagedHeapSectionCount = sectionCount;
+                Metrics.LoadingDiagnostics.ManagedHeapTotalBytes = totalBytes;
+            }
+            else
+            {
+                Metrics.LoadingDiagnostics.ManagedStackSectionCount = sectionCount;
+                Metrics.LoadingDiagnostics.ManagedStackTotalBytes = totalBytes;
+            }
+        }
+
+        [Conditional("MEMORY_PROFILER_METRICS")]
+        public void LogMetrics(bool asError = false)
+        {
+            Metrics.LogToConsole(asError);
         }
 
         public void Dispose()

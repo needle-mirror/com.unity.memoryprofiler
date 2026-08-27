@@ -8,7 +8,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         where TModel : class
     {
         TModel Build(CachedSnapshot snapshot, TBuildArgs args);
-        TModel Build(TModel baseModel, List<int> treeNodeIdFilter);
+        TModel Build(TModel baseModel, IList<int> treeNodeIdFilter);
+        TModel EmptyModel { get; }
+        void ClearIdToIndexCache();
     }
 
     class ModelBuildOrchestrator<TModel, TBuildArgs>
@@ -28,23 +30,30 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ModelTypeName = modelTypeName;
         }
 
+        public void ClearIdToIndexCache()
+        {
+            m_Builder.ClearIdToIndexCache();
+        }
+
         public Func<TModel> CreateBuildTask(
             TBuildArgs args,
             TModel baseModel,
-            List<int> treeNodeIdFilter,
+            IList<int> treeNodeIdFilter,
             CancellationToken cancellationToken)
         {
             if (treeNodeIdFilter != null)
             {
-                return () => BuildDerivedModel(baseModel, treeNodeIdFilter, cancellationToken);
+                if (baseModel != null)
+                    return () => BuildDerivedModel(baseModel, treeNodeIdFilter, cancellationToken);
+                return () => m_Builder.EmptyModel;
             }
-
+            ClearIdToIndexCache();
             return () => BuildFullModel(args, cancellationToken);
         }
 
         TModel BuildDerivedModel(
             TModel baseModel,
-            List<int> treeNodeIdFilter,
+            IList<int> treeNodeIdFilter,
             CancellationToken cancellationToken)
         {
             AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived)                 " + m_ModelTypeName);

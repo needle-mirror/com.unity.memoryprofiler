@@ -7,6 +7,45 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.2.0-pre.1] - 2026-08-27
+
+### Added
+- Added a new "Roots & Impact" view to the Memory Profiler window. It breaks down the entire memory usage of a snapshot by what *roots* it to memory, grouped by the kind of root (e.g. static fields, `DontDestroyOnLoad` objects, Scenes, Asset Bundles, native subsystem allocations, and unrooted memory), and shows the memory *Impact* of each entry: the memory it owns exclusively plus its proportional share of any memory it keeps alive together with other roots. This builds on the "Shortest Path To Root" and per-object "Impact" information added to the Selection Details in 1.1.10, now aggregated into a top-level table so you can see at a glance which roots are responsible for the most memory. The view supports the Allocated, Allocated and Resident, and Resident table modes, the configurable columns and Status column described below, and a toggle to hide memory that isn't attributable to a specific object (such as reserved or untracked regions) so you can focus on object-attributable usage. The table's total reconciles against the total memory in the snapshot.
+- Added the ability to enable or disable optional columns by using the context menu of the table header.
+- Added status column to Unity Objects and All Of Memory table, including their comparison tables (invisible by default, see note above) with "Status in A" and "Status in B" columns and optional comparison based on status change (which also toggles the column visibility for these). The status columns are searchable so while the Description columns no longer add the `(Leaked Managed Shell)` suffix, the tables can still be searched for these via their name, as well as any other status. A drop-down menu also allows for explicitly filtering the table for entries of one or more specific statuses. Note: When a table entry groups objects with a mix of statuses, it will show as "Mixed" with the different statuses in the tool-tip. Since search filtering applies to the state of individual objects in each of the snapshot, "Mixed" is the only status column value that can't be found via search or filtering by status.
+- Added pagination to the flattened mode of the Roots & Impact and Unity Objects tables. Flattening these tables on a very large snapshot previously could run out of memory or stall the UI; the rows are now held outside the managed heap and only one page is shown at a time, with a page control below the table to step through them. Sorting by any size or status column sorts across the entire flattened set. Sorting by the Description (name) column does too, but has to resolve every row's name from the snapshot, so above a large row count its column header warns that the sort may take a moment.
+- Added object statuses for assets that are only kept loaded because a loaded AssetBundle references them ("Unused Asset (AssetBundle)"), and for AssetBundle objects themselves ("AssetBundle", "Unused AssetBundle", and "Leaked AssetBundle", the latter counted among the leaked statuses). These appear in the Status column and the status filter across the Roots & Impact, Unity Objects, and All Of Memory tables.
+
+### Changed
+- Removed the preference to disable the Roots & Impact / Impact & Root calculations that was added in 1.1.10. With the previously known edge cases addressed and the processing stabilized, these calculations now always run when opening a snapshot that supports them.
+- Reduced memory usage while having a snapshot open by unloading the managed heap bytes after it was crawled during the opening process, loading individual sections back in on demand when e.g. inspecting managed objects.
+- The selected item details no longer use the sign of the ID part of the EntityId value to influence search availability or the status of Assets as "Runtime Created" for snapshots taken from Unity 6000.5 or newer. This has always been more of a probabilistic nudge than a hard and fast rule even before EntityIds switched to 8 bytes, but definitely stopped being true for Unity 6000.6.0a3 or newer.
+- Switched to using the `Unity.Scripting.LifecycleManagement` API instead of `*InitializeOnLoad` on Unity 6000.5.0a9 and newer.
+- Improved the performance of selecting entries and filtering the Base and Compared tables in comparison mode significantly.
+- Unity Objects are now listed with *both* their `InstanceId`/`EntityId` and their name when comparing snapshots from the same session, instead of just their id.
+- When comparing, the All Of Memory table now shows results for the Base and Compared table when selecting at type, not just first when selecting a sub-group under the type.
+- Set the UI texts up for translation. The UI may be translated based on availability and your Editor preferences.
+- The All Of Memory and Memory Map tables now shows Unity asset types and their objects with the corresponding icons.
+- The Base and Compared table in the Unity Objects view when comparing snapshots now has the Native, Graphics and Managed Memory columns visible by default in order to make the best use of limited space. They can be turned back on when needed via the context menu of the column headers.
+- The state for the toggles at the bottom of the tables is now retained for the duration of the current Editor session.
+
+### Fixed
+- Improved the accuracy of the "Impact" figures shown in the Selection Details (introduced in 1.1.10) and the new Roots & Impact view, by fixing several cases where memory could be double-counted or attributed to the wrong owner: static field storage being counted both on its managed type and inside the managed virtual machine's native allocations, GCHandles stranding a proportional share of the memory they co-reference alongside a real owner, scene-hierarchy objects, unrooted native allocations, and hard-rooted native objects (e.g. non-scene `DontDestroyOnLoad` objects) that are also referenced from elsewhere having their impact attributed away instead of retained.
+- Fixed "InvalidOperationException" on opening snapshots where prefabs have been added to the delayed deletion queue but their name is not yet deleted.
+- Fixed that the Base and Compared tables for the Unity Objects in comparison mode would list unchanged objects with the same name, regardless of the "Show Unchanged" toggle.
+- Fixed objects getting mixed into the same groups in the All Of Memory table in compare mode just because they share a type name and namespace, even though they come from different assemblies.
+- Fixed Native Objects appearing within Native Allocations in the Memory Map. Their address is reported as the start of the user data of their core allocation, i.e. after the allocation header, so the hierarchy of these entries was the wrong way around. 
+- Fixed a native memory leak in SceneRootEntriesCache for snapshots without scene roots.
+- Fixed an issue when contiguous system regions are reported as separate back to back regions (of the same type and name), thereby introducing fake address boundaries between them. This fake boundary will then cut allocator regions or objects that sit across that boundary short, leading to the continuation of them in the next system region to be counted as untracked. This showed up as large managed arrays where the All Of Memory table showed a smaller size for them than the selected object details panel, but could have affected any number of objects.
+- Fixed table searching spinning up a search task per character by switching on delayed input for the search input field. Search now only starts on return or focus loss of the field.
+- Fixed scene object types showing up in the UI as derived from "Component" and asset types showing up as derived from "Object". While that is technically correct, in nearly all cases a higher level native base type should be found that matches the managed type name and would therefore not be displayed in the UI due to the redundancy of it.
+- The UI no longer indiscriminately claims that errors while opening a view are down to an older snapshot version, but shows the actual message of any thrown exceptions, including those for trying to use an unsupported snapshot version.
+- Fixed issues with UI layout on latest Unity builds.
+- Fixed multi-dimensional (rank 2 or higher) managed arrays on captures from 64-bit IL2CPP players always being crawled as length 0, making their elements invisible to the managed object graph and under-reporting the array's size. The array bounds block was read with a stride sized for Mono's runtime layout, which happens to differ from 64-bit IL2CPP's (32-bit IL2CPP captures were unaffected, as their layout happens to match Mono's). This fix applies to captures that report their scripting backend (Unity 2019.4.29f1, 2020.3.12f1, 2021.1.9f1, 2021.2.0a12, or newer); older captures cannot be identified as IL2CPP and are unaffected by this change.
+
+### Removed
+- Deprecated the Unity.MemoryProfiler.Editor.MemoryProfilerModule.ProfilerMemoryView enum, which didn't have any use as part of the public API anyways.
+
 ## [1.1.12] - 2026-03-10
 
 ### Changed
@@ -113,7 +152,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Native Allocations (e.g. those listed in `Native > Unity Subsystems > UnsafeUtility` in the All Of Memory table) are now named based on the field and object information of the first managed reference to them, making them easier to parse than address values and stand out from the list as having reference information.
 
 ### Fixed
-- The Boehm GC treats any pointer sized field as potential managed pointer. So far the Memory Profiler only examined reference fields to find referenced objects (outside of those directly held by static fields or GCHandles). The Memory Profiler does not yet follow this logic as it would end up finding invalid Managed objects, but it now finds references from unsafe pointer fields to Managed Objects that are also held by a GC Handle.
+- The Memory Profiler now finds references from unsafe pointer fields to Managed Objects **IF** they are also held by a GC Handle. The extra condition is there to avoid false positives while adding more detailed reference info for those GCHandle held objects.
 - The Managed Fields table now shows any pointer sized fields that might be holding managed objects as referencing these managed objects (Note: if they are not referenced otherwise, they won't sho up in the other tables).
 
 ### Changed

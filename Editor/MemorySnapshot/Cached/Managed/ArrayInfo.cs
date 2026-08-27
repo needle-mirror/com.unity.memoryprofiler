@@ -15,7 +15,7 @@ namespace Unity.MemoryProfiler.Editor
             return Data.Add(ElementSize * index);
         }
 
-        public ulong GetArrayElementAddress(long index)
+        public ulong GetArrayElementAddressOffset(long index)
         {
             return BaseAddress + (ulong)(ElementSize * index);
         }

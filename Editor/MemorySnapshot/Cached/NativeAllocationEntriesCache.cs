@@ -16,9 +16,27 @@ namespace Unity.MemoryProfiler.Editor
             /// Note: Reference ID 0 means the allocation was not rooted to anything, not that it was rooted to "System : ExecutableAndDlls"
             /// </summary>
             public DynamicArray<long> RootReferenceId = default;
+            /// <summary>
+            /// The address of the full allocation as reported by the allocator, pointing to the very start of the allocation
+            /// — before any padding or allocation headers. The user data starts at an offset from this address determined by
+            /// the <see cref="PaddingSize"/> and the allocation header (see <see cref="NativeObjectEntriesCache.AllocationHeaderSize"/>).
+            /// The header type and size vary by Unity version, platform (32/64-bit), and build configuration.
+            /// </summary>
             public DynamicArray<ulong> Address = default;
+            /// <summary>
+            /// The size of just the user data of the allocation, excluding padding, allocation headers, and overhead (e.g. rounding up to bucket size).
+            /// </summary>
             public DynamicArray<ulong> Size = default;
+            /// <summary>
+            /// Allocator-specific bookkeeping beyond the user data and padding. What this includes varies by allocator type:
+            /// for the Bucket allocator, it is the difference between <see cref="Size"/> and the bucket size the allocation was rounded up to;
+            /// for the Dynamic Heap (TLSF) allocator, it is the difference between the full allocation size (minus padding) and <see cref="Size"/>;
+            /// for other allocators, it may include allocation header sizes, footers, or other tracking overhead.
+            /// </summary>
             public DynamicArray<int> OverheadSize = default;
+            /// <summary>
+            /// Padding based on the alignment required when the allocation was made. Default alignment (4 bytes) results in 0 padding.
+            /// </summary>
             public DynamicArray<int> PaddingSize = default;
             public DynamicArray<ulong> AllocationSiteId = default;
 

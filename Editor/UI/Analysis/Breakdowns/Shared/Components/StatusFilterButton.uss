@@ -1,0 +1,19 @@
+/* StatusFilterButton: enable toggle (reversed) + dropdown button in a horizontal row. */
+
+.status-filter-button__enable-toggle
+{
+    flex-shrink: 0;
+    padding-right: 3px;
+}
+
+/* Reverse the toggle layout so the checkbox sits between the label and the dropdown button. */
+.status-filter-button__enable-toggle .unity-toggle__input
+{
+    flex-direction: row-reverse;
+}
+
+.status-filter-button__dropdown-button
+{
+    flex-grow: 1;
+    flex-shrink: 1;
+}

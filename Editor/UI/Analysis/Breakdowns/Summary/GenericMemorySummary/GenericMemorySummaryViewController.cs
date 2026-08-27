@@ -1,4 +1,5 @@
 using System;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -17,7 +18,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlBreakdownBar = "memory-summary__bars";
         const string k_UxmlLegendTable = "memory-summary__legend";
 
-        const string k_BreakdownTotalFormatString = "Total: {0}";
+        static readonly string k_BreakdownTotalFormatString = TextContent.TotalFormat;
 
         // Model
         readonly IMemorySummaryModelBuilder<MemorySummaryModel> m_Builder;

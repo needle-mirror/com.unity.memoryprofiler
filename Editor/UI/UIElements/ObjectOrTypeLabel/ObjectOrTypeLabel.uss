@@ -29,9 +29,82 @@
     flex-shrink: 0;
 }
 
+.object-or-type-label__secondary-text
+{
+    display: none;
+    color: rgba(136, 136, 136, 1);
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -unity-text-overflow-position: end;
+    margin-left: 3px;
+}
+
 .type-icon
 {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
+}
+
+/* Data type icons — light theme */
+.memory-profiler__light .data-type-icon__native
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/CPlusPlusIcon.png');
+}
+
+.memory-profiler__light .data-type-icon__managed
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/CSharpIcon.png');
+}
+
+.memory-profiler__light .data-type-icon__unified
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/UnityObjectIcon.png');
+}
+
+.memory-profiler__light .data-type-icon__leaked-shell
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/LeakedShellErrorIcon.png');
+}
+
+.memory-profiler__light .data-type-icon__leaked-dynamic-asset
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/LeakedDynamicAssetErrorIcon.png');
+}
+
+.memory-profiler__light .no-icon__icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/NoIconIcon.png');
+}
+
+/* Data type icons — dark theme */
+.memory-profiler__dark .data-type-icon__native
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_CPlusPlusIcon.png');
+}
+
+.memory-profiler__dark .data-type-icon__managed
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_CSharpIcon.png');
+}
+
+.memory-profiler__dark .data-type-icon__unified
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_UnityObjectIcon.png');
+}
+
+.memory-profiler__dark .data-type-icon__leaked-shell
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_LeakedShellErrorIcon.png');
+}
+
+.memory-profiler__dark .data-type-icon__leaked-dynamic-asset
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_LeakedDynamicAssetErrorIcon.png');
+}
+
+.memory-profiler__dark .no-icon__icon
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_NoIconIcon.png');
 }

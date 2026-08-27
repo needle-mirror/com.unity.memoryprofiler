@@ -15,11 +15,17 @@ namespace Unity.MemoryProfiler.Editor.UI
     class AsyncModelBuildCoordinator<TModel> where TModel : class
     {
         Task<TModel> m_LastBuildModelTask;
+        Task<TModel> m_LastSortTask;
         Task<TModel> m_LastFinalizedModelTask;
         List<Task<TModel>> m_CanceledTasks = new List<Task<TModel>>();
         CancellationTokenSource m_BuildModelCTS;
         Func<Task<TModel>, TModel> m_PendingModelSorting;
         CancellationTokenSource m_BuildModelSortingCTS;
+        /// <summary>
+        /// Incremented by every <see cref="BuildModelAsync"/> call, so that one which has since been superseded
+        /// can tell that the loading overlay it put up now belongs to a newer build and must be left alone.
+        /// </summary>
+        int m_LatestBuildGeneration;
 
         /// <summary>
         /// Gets whether a model is currently being built or if a completed model exists.
@@ -48,14 +54,23 @@ namespace Unity.MemoryProfiler.Editor.UI
         public async Task<TModel> BuildModelAsync(
             Func<CancellationToken, Func<TModel>> getBuilderTask,
             Func<CancellationToken, Func<Task<TModel>, TModel>> getSorterTask,
-            Action<TModel, bool> onModelRebuild,
+            Action<TModel, bool, bool, Exception> onModelRebuild,
             Action<bool> onViewReloaded,
             Action showLoading,
             Action hideLoading,
             bool justSort = false)
         {
-            // Show loading UI
+            // Show loading UI. A superseded build must not take it back down: the newer build that replaced it
+            // is still running behind it, and hiding it early exposes a half-built view to interaction until
+            // that build lands.
+            var buildGeneration = Interlocked.Increment(ref m_LatestBuildGeneration);
             showLoading();
+
+            void HideLoadingUnlessSuperseded()
+            {
+                if (buildGeneration == Volatile.Read(ref m_LatestBuildGeneration))
+                    hideLoading();
+            }
 
             // Cleanup previously canceled builds
             CleanupCanceledTasks();
@@ -63,6 +78,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Grab the main thread scheduler before any 'await' can move this method off the main thread
             var mainThreadScheduler = TaskScheduler.FromCurrentSynchronizationContext();
             CancellationTokenSource buildCTS = null;
+            var modelHasNewTreeViewIds = false;
 
             var modelTypeName = typeof(TModel).ToString();
 
@@ -75,6 +91,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     // If we don't just sort or have no previous model builder task to continue on, we need to do a full (re)build
                     buildCTS = SetupBuilderTask(getBuilderTask, modelTypeName);
+                    modelHasNewTreeViewIds = true;
                 }
                 else
                 {
@@ -98,10 +115,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_LastFinalizedModelTask = Task.FromResult(model);
 
                     var success = model != null;
-                    onModelRebuild(model, success);
+                    onModelRebuild(model, success, modelHasNewTreeViewIds, null);
 
                     // Hide loading UI
-                    hideLoading();
+                    HideLoadingUnlessSuperseded();
 
                     // Notify responder
                     onViewReloaded(success);
@@ -121,7 +138,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             catch (OperationCanceledException)
             {
                 AsyncTaskHelper.DebugLogAsyncStep("Async Building - Canceled                 " + modelTypeName);
-                hideLoading();
+                HideLoadingUnlessSuperseded();
                 return null;
             }
             catch (Exception e)
@@ -129,9 +146,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Update the UI even if an exception happens
                 try
                 {
-                    onModelRebuild(null, false);
-                    hideLoading();
+                    onModelRebuild(null, false, modelHasNewTreeViewIds, e);
                     onViewReloaded(false);
+                    HideLoadingUnlessSuperseded();
                 }
                 catch (OperationCanceledException) { }
                 Debug.LogException(e);
@@ -154,6 +171,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         /// <summary>
         /// Disposes all managed resources and cancels any in-progress operations.
+        /// Blocks synchronously until all in-flight background work (the build task and the sort task)
+        /// has stopped. This is required because those steps run on background threads and process model
+        /// data that references CachedSnapshot memory (DynamicArrays), which will be freed by the caller
+        /// once Dispose returns. Making this async would allow the snapshot to be freed while a background
+        /// step is still reading its data, causing use-after-free.
+        /// The UI-integration continuation runs on the main thread and is intentionally NOT awaited here:
+        /// it cannot execute while Dispose holds the main thread (and is canceled via the sort token), so
+        /// awaiting it synchronously would deadlock.
         /// </summary>
         public void Dispose()
         {
@@ -163,7 +188,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             DisposeTaskAsync(m_LastBuildModelTask).Wait();
 
-            if (m_LastBuildModelTask != m_LastFinalizedModelTask)
+            // The sort task is a background-thread continuation of the build task (TaskScheduler.Default).
+            // It can still be running model.Sort() after the build completed, so wait for it as well.
+            if (m_LastSortTask != m_LastBuildModelTask)
+                DisposeTaskAsync(m_LastSortTask).Wait();
+
+            if (m_LastFinalizedModelTask != m_LastBuildModelTask && m_LastFinalizedModelTask != m_LastSortTask)
                 DisposeTaskAsync(m_LastFinalizedModelTask).Wait();
 
             foreach (var canceledTask in m_CanceledTasks)
@@ -171,18 +201,36 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (!canceledTask.IsCompleted)
                     DisposeTaskAsync(canceledTask).Wait();
             }
+            // The waits above leave every canceled task completed, so this also releases the models any of them
+            // produced after being superseded. Without it those models, and their native stores, would outlive
+            // this coordinator with nothing left holding a reference to them.
+            CleanupCanceledTasks();
             m_CanceledTasks.Clear();
 
             m_LastFinalizedModelTask = null;
             m_LastBuildModelTask = null;
+            m_LastSortTask = null;
         }
 
         void CleanupCanceledTasks()
         {
             for (var i = m_CanceledTasks.Count - 1; i >= 0; i--)
             {
-                if (!m_CanceledTasks[i].IsCompleted) continue;
-                m_CanceledTasks[i].Dispose();
+                var task = m_CanceledTasks[i];
+                if (!task.IsCompleted) continue;
+
+                // A build superseded before it finished (its CTS canceled) can still have run to completion on a
+                // background thread and produced a real model holding unmanaged resources, such as
+                // RootsAndImpactModel's native row source. That model was never applied to the view, so nothing
+                // else will dispose it. The CurrentModel check covers a justSort, which re-uses the same task
+                // instance as m_LastFinalizedModelTask.
+                if (task.Status == TaskStatus.RanToCompletion && task.Result is IDisposable disposableModel
+                    && !ReferenceEquals(task.Result, CurrentModel))
+                {
+                    disposableModel.Dispose();
+                }
+
+                task.Dispose();
                 m_CanceledTasks.RemoveAt(i);
             }
         }
@@ -191,9 +239,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             Func<CancellationToken, Func<TModel>> getBuilderTask,
             string modelTypeName)
         {
-            // Cancel previous build, if any. This will also cancel the current sort task
+            // Cancel previous build, if any. This will also cancel the current sort task.
+            // Track both still-running tasks so Dispose can wait for them to stop touching model data.
             if (m_LastBuildModelTask is { IsCompleted: false })
                 m_CanceledTasks.Add(m_LastBuildModelTask);
+            if (m_LastSortTask is { IsCompleted: false })
+                m_CanceledTasks.Add(m_LastSortTask);
 
             m_BuildModelCTS?.Cancel();
             var buildCTS = m_BuildModelCTS = new CancellationTokenSource();
@@ -219,15 +270,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // the UI needs to get updated (by the last task in the queue) no matter the exception.
                     return null;
                 }
-                catch (UnsupportedSnapshotVersionException)
-                {
-                    return null;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogException(e);
-                    return null;
-                }
+                // Any other exception (e.g. UnsupportedSnapshotVersionException) is intentionally left to fault the
+                // task so it propagates through the awaited build task in ExecuteBuildPipeline up to BuildModelAsync's
+                // outer catch, which forwards it to onModelRebuild (to show its message in the UI) and logs it.
             }, buildCTS.Token);
 
             return buildCTS;
@@ -275,7 +320,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             buildCTS.Token.ThrowIfCancellationRequested();
             sortCTS.Token.ThrowIfCancellationRequested();
 
-            var sortTask = m_LastBuildModelTask.ContinueWith(
+            var sortTask = m_LastSortTask = m_LastBuildModelTask.ContinueWith(
                 t => sortTaskFunc(t),
                 sortCTS.Token,
                 // Option None instead of OnlyOnRanToCompletion because with the latter it's unclear if cancellation ripples through and all tasks will end
@@ -341,10 +386,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // Meh, expected. Ignore.
                     AsyncTaskHelper.DebugLogAsyncStep("Async Building canceled - DisposeTaskAsync");
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
-                    // Log the exception but finish up without rethrowing
-                    Debug.LogException(e);
+                    // The build pipeline already surfaced and logged this exception when it first awaited the
+                    // task (see BuildModelAsync's catch, which also routes it to the view's error label).
+                    // Awaiting it again here only observes the now-faulted task so it can't resurface as an
+                    // unobserved task exception — it must NOT be logged a second time.
+                    AsyncTaskHelper.DebugLogAsyncStep("Async Building - DisposeTaskAsync observed an already-logged faulted task");
                 }
                 finally
                 {

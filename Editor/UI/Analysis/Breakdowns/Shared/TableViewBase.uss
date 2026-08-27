@@ -56,6 +56,11 @@
     margin: 0px 8px;
 }
 
+.table-view-base__tree-view .unity-tree-view__item-content
+{
+	justify-content: center;
+}
+
 /* ========================================
    Error Label Styles
    ======================================== */
@@ -63,11 +68,215 @@
 .table-view-base__error-label
 {
     -unity-text-align: middle-center;
+    white-space: normal;
     bottom: 0px;
     display: none;
     left: 0px;
+    padding-left: 8px;
+    padding-right: 8px;
     position: absolute;
     right: 0px;
     top: 0px;
     visibility: hidden;
+}
+
+
+/* ========================================
+   Search and Filtering Styles
+   ======================================== */
+   
+.table-view__search-and-filter-group
+{
+    flex-direction: row;
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-wrap: wrap;
+	min-width: 60px;
+}
+
+.table-view__filter-group
+{
+    flex-direction: row;
+    flex-wrap: nowrap;
+}
+
+.table-view__filter-button-prefix-label
+{
+    padding-top: 2px;
+}
+
+.table-view__filter-button
+{
+    padding-top: 0px;
+    flex-direction: row;
+    padding-top: 0px;
+    padding-left: 3px;
+    margin-left: 0px;
+    flex-grow: 1;
+    flex-shrink: 1;
+    -unity-text-align: middle-left;
+}
+
+.table-view__filter-button-label
+{
+    padding-top: 0px;
+    margin-right: 10px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.table-view__filter-button > .unity-base-popup-field__arrow
+{
+    position: absolute;
+    right: 3px;
+    top: 1px;
+}
+
+.table-view__search-field
+{
+    height: 14px;
+    margin: 0px;
+    padding: 4px;
+    flex-grow: 2;
+    flex-shrink: 1;
+    min-height: 18px;
+    margin-top: 2px;
+    margin-right: 3px;
+}
+
+.table-view__search-field TextField
+{
+    padding-left: 4px;
+}
+
+.table-view__search-field TextElement
+{
+    font-size: 12px;
+}
+
+.table-view__config-top-container
+{
+    flex-direction: column;
+    flex-shrink: 0;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+/* ========================================
+   Status Cell
+   ======================================== */
+
+.status-cell
+{
+    flex-direction: row;
+    align-items: center;
+    overflow: hidden;
+    padding-top: 4px;
+    padding-left: 6px;
+}
+
+.status-cell__warning-icon
+{
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    margin-right: 2px;
+}
+
+.status-cell__label
+{
+    /* Primary label (status name / "Mixed") hugs its content and is not shrunk, so it stays readable
+       and the secondary count label sits directly after it instead of being pushed to the right. */
+    flex-grow: 0;
+    flex-shrink: 0;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.memory-profiler__light .status-cell__warning-icon
+{
+    background-image: resource('console.warnicon.sml');
+}
+
+.memory-profiler__dark .status-cell__warning-icon
+{
+    background-image: resource('d_console.warnicon.sml');
+}
+
+.status-cell__label--secondary
+{
+    color: gray;
+    /* The secondary label (counts / warnings) sits right after the primary label and is the part
+       that shrinks and ellipses when the column is too narrow, keeping the primary status readable. */
+    flex-shrink: 1;
+    margin-left: 4px;
+}
+
+.unity-base-popup-field__input
+{
+	max-height: 20px;
+}
+
+.unity-multi-column-header__column__title
+{
+	-unity-text-align: middle-left;
+	flex-grow: 1;
+	text-overflow: ellipsis;
+}
+
+/* Page-flipping control (PaginationControl) for flattened, paginated table views. Class names are view-neutral
+   so any breakdown can host the control; each view hides its own pager element until the controller shows it. */
+.memory-profiler-pager
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    justify-content: center;
+    align-items: center;
+    padding: 2px 8px;
+    border-top-width: 1px;
+}
+
+.memory-profiler-pager__pages
+{
+    flex-direction: row;
+    flex-shrink: 0;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Every block in the page-number window (page buttons and "…" labels alike) shares this min-width, and
+   PaginationControl.BuildPageItems always returns the same block count — together that keeps the window's,
+   and so the whole control's, width constant as the prev/next arrows and pages are flipped through. */
+.memory-profiler-pager__button
+{
+    min-width: 22px;
+    margin: 1px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.memory-profiler__dark .memory-profiler-pager__button--current
+{
+    -unity-font-style: bold;
+    opacity: 1;
+    background-color: #4C7EBF;
+    border-color: #5A8FD4;
+    border-width: 1px;
+    color: #FFFFFF;
+}
+
+.memory-profiler__light .memory-profiler-pager__button--current
+{
+    -unity-font-style: bold;
+    opacity: 1;
+    background-color: #3B75C4;
+    border-color: #2B65B4;
+    border-width: 1px;
+    color: #FFFFFF;
+}
+
+.memory-profiler-pager__ellipsis
+{
+    min-width: 22px;
+    -unity-text-align: middle-center;
+    opacity: 0.7;
 }

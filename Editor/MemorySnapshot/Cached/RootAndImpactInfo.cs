@@ -356,6 +356,33 @@ namespace Unity.MemoryProfiler.Editor
             return offsets;
         }
 
+        /// <summary>
+        /// Returns true when <paramref name="sourceId"/> is handled by <see cref="GetNestedArray"/> without
+        /// throwing. The most important case is <see cref="SourceIndex.SourceId.None"/>, which is e.g. used
+        /// for virtual group/structural nodes inside <see cref="RootAndImpactInfo"/> that don't correspond
+        /// to tracked memory objects and therefore have no entry in any nested array.
+        /// Callers that iterate arbitrary child references should guard with this check before constructing
+        /// a <see cref="ReferencesIterator"/> or accessing impact data for a node.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static bool IsSourceIdSupported(SourceIndex.SourceId sourceId)
+        {
+            switch (sourceId)
+            {
+                case SourceIndex.SourceId.NativeAllocation:
+                case SourceIndex.SourceId.NativeObject:
+                case SourceIndex.SourceId.ManagedObject:
+                case SourceIndex.SourceId.ManagedType:
+                case SourceIndex.SourceId.NativeRootReference:
+                case SourceIndex.SourceId.GCHandleIndex:
+                case SourceIndex.SourceId.Scene:
+                case SourceIndex.SourceId.Prefab:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public static ref T GetNestedElement<T>(in NestedDynamicArray<T> data, SourceIndex index)
             where T : unmanaged
@@ -511,6 +538,15 @@ namespace Unity.MemoryProfiler.Editor
         public ref NestedDynamicArray<SourceIndex> Roots => ref m_Roots;
         NestedDynamicArray<SourceIndex> m_Roots;
 
+        /// <summary>
+        /// The number of distinct nodes in the rooted ownership forest: every root plus every owned
+        /// descendant reached while building the path-to-root info. Each such node maps to exactly one
+        /// row when the Roots &amp; Impact tree is flattened, so this is an exact size for pre-allocating
+        /// that row list. It excludes unrooted-and-unreferenced allocations (which never enter the forest).
+        /// </summary>
+        public long OwnershipForestNodeCount => m_OwnershipForestNodeCount;
+        long m_OwnershipForestNodeCount;
+
         public readonly SourceIndexToRootAndImpactInfoMapper SourceIndexToRootAndImpactInfo;
 
         public NativeRootSize ReferencedUnrootedMemory;
@@ -536,9 +572,176 @@ namespace Unity.MemoryProfiler.Editor
             public bool FoundForImpact;
             public bool FullyDistributedImpact;
         }
+
+        /// <summary>Initial capacity for the delayed-deletion-queue set; this count is usually small or zero, so a modest reservation avoids early reallocation without over-committing.</summary>
+        const int k_PersistentSceneObjectsInDelayedDeletionQueueDefaultCount = 16;
+
         NestedDynamicArray<Marker> m_Marker;
         NativeHashSet<SourceIndex> m_PersistentSceneObjectsInDelayedDeletionQueue;
         public bool IsPersistentSceneObjectInDelayedDeletionQueue(SourceIndex index) => m_PersistentSceneObjectsInDelayedDeletionQueue.Contains(index);
+
+        /// <summary>Initial capacity for the broken-script-reference set; missing-script objects are usually few, so a modest reservation suffices.</summary>
+        const int k_BrokenScriptReferenceObjectsDefaultCount = 16;
+        // The exact native objects collected into the BrokenScriptReferences bucket (missing-script
+        // MonoBehaviour/ScriptableObject instances). Recorded here so ObjectStatusComputation can flag
+        // them precisely, without re-running the reference scan or mistaking a legitimately-rooted
+        // missing-script object (e.g. a DontDestroyOnLoad one claimed by an earlier bucket) for a leak.
+        NativeHashSet<SourceIndex> m_BrokenScriptReferenceObjects;
+        public bool IsBrokenScriptReference(SourceIndex index) => m_BrokenScriptReferenceObjects.IsCreated && m_BrokenScriptReferenceObjects.Contains(index);
+
+        /// <summary>Initial capacity for the referenced-unrooted-allocations set, sized to typical observed counts (which peak around 2k) to limit reallocation.</summary>
+        const int k_ReferencedUnrootedNativeAllocationsDefaultCount = 512;
+        // Unrooted native allocations (no native root reference) that were nonetheless reached via a
+        // reference during the crawl — i.e. the ones counted into ReferencedUnrootedMemory rather than
+        // UnreferencedUnrootedMemory. Stored sparsely (the overwhelming majority are unreferenced) so
+        // ObjectStatusComputation can classify them as ReferencedUnrooted vs Unrooted post-build.
+        NativeHashSet<SourceIndex> m_ReferencedUnrootedNativeAllocations;
+        public bool IsReferencedUnrootedAllocation(SourceIndex index) =>
+            m_ReferencedUnrootedNativeAllocations.IsCreated && m_ReferencedUnrootedNativeAllocations.Contains(index);
+
+        /// <summary>
+        /// The own-size of a managed type's static fields: committed = captured StaticFieldBytes (or,
+        /// on format v20+, the resolved <see cref="TypeDescriptionEntriesCache.StaticFieldSlots"/> total
+        /// via <see cref="TypeDescriptionEntriesCache.GetStaticFieldOwnByteSize"/>), and resident deduced
+        /// by mapping <see cref="TypeDescriptionEntriesCache.TypeInfoAddress"/> to its SystemMemoryRegion
+        /// (via the address-sorted <see cref="CachedSnapshot.SortedSystemMemoryRegions"/>) and querying the
+        /// resident-page bitset. When the snapshot has no resident page info, residency is unknown so we
+        /// assume fully resident (matching the rest of the tool).
+        /// </summary>
+        public MemorySize GetStaticFieldOwnSize(CachedSnapshot snapshot, long typeIndex)
+        {
+            var committed = (ulong)snapshot.TypeDescriptions.GetStaticFieldOwnByteSize(snapshot, typeIndex);
+            if (committed == 0)
+                return default;
+            // No resident-page info: residency unknown, assume resident (committed == resident).
+            if (!snapshot.HasSystemMemoryResidentPages)
+                return new MemorySize(committed, committed);
+
+            var address = snapshot.TypeDescriptions.TypeInfoAddress[typeIndex];
+            // Fallback to fully-resident if the address can't be resolved to a region (not observed in
+            // practice — the probe resolved 100% of static-bearing types — but avoids under-counting).
+            var resident = committed;
+            if (address != 0)
+            {
+                var sortedRegionIndex = snapshot.SortedSystemMemoryRegions.Find(address, onlyDirectAddressMatches: false);
+                if (sortedRegionIndex >= 0)
+                {
+                    // Find returns an index into the sorted view; map it back to the original region index.
+                    var regionIndex = snapshot.SortedSystemMemoryRegions[sortedRegionIndex];
+                    resident = snapshot.SystemMemoryResidentPages.CalculateResidentMemory(
+                        snapshot, regionIndex, address, committed, SourceIndex.SourceId.ManagedType);
+                }
+            }
+            return new MemorySize(committed, resident);
+        }
+
+        // Maps a native-allocation index → the static-field storage (committed+resident) physically
+        // contained in it. Static-field storage lives inside native allocations (the "occupied" VM heap;
+        // confirmed by the reconciliation diagnostic — 100% of static bytes resolve to a VM-root allocation).
+        // Those bytes are attributed as Managed to their ManagedType root, so they must not ALSO count as
+        // Native on the allocation. AttributeImpact subtracts this per-allocation (precise + flatten-correct,
+        // unlike a bulk subtraction from the VM root node which would leave child allocations over-sized in
+        // a flattened view). Lazily built; small (one entry per static-bearing type) and GC-cleaned.
+        Dictionary<long, MemorySize> m_StaticBytesPerNativeAllocation;
+
+        /// <summary>
+        /// The static-field storage that was ACTUALLY subtracted, per-allocation, from a crawled native
+        /// allocation's own-size in <see cref="AttributeImpact"/>. <see cref="DeductStaticFieldNativeRemainder"/>
+        /// uses it (against <see cref="StaticBytesMappedToVMRoot"/>) to remove the remainder that the precise
+        /// per-allocation deduction couldn't reach.
+        /// </summary>
+        public MemorySize StaticBytesActuallyDeductedFromNative;
+
+        /// <summary>
+        /// Total static-field storage whose containing native allocation is rooted to the VM root. The static
+        /// is also attributed as Managed to its ManagedType root, so <see cref="DeductStaticFieldNativeRemainder"/>
+        /// removes the part not already removed per-allocation (this minus <see cref="StaticBytesActuallyDeductedFromNative"/>)
+        /// from the VM root's managed impact to avoid double-counting.
+        /// </summary>
+        public MemorySize StaticBytesMappedToVMRoot;
+
+        /// <summary>
+        /// Static-field bytes whose storage does NOT resolve to a tracked native allocation but DOES fall
+        /// inside an "untracked"-type <see cref="SourceIndex.SourceId.SystemMemoryRegion"/> (the case for
+        /// IL2CPP captures that predate routing the VM through Unity's native allocators — the VM, including
+        /// static storage, is reported as untracked OS memory). Keyed by the region's display name to match
+        /// the model builder's per-name untracked grouping, so the builder can subtract each amount from the
+        /// SPECIFIC untracked section it physically sits in (the static is attributed as Managed to its
+        /// ManagedType root, so it must be removed from that untracked region to avoid double-counting).
+        /// Null when no such static exists (e.g. modern captures, where static resolves to the VM root).
+        /// </summary>
+        public Dictionary<string, MemorySize> StaticBytesByUntrackedRegionName;
+
+        void EnsureStaticBytesPerNativeAllocation(CachedSnapshot snapshot)
+        {
+            if (m_StaticBytesPerNativeAllocation != null)
+                return;
+            m_StaticBytesPerNativeAllocation = new Dictionary<long, MemorySize>();
+            var types = snapshot.TypeDescriptions;
+            var count = types.Count;
+            for (long i = 0; i < count; i++)
+            {
+                var staticSize = GetStaticFieldOwnSize(snapshot, i);
+                if (staticSize.Committed == 0)
+                    continue;
+                var address = types.TypeInfoAddress[i];
+                if (address == 0)
+                    continue;
+                var sortedIndex = snapshot.SortedNativeAllocations.Find(address, onlyDirectAddressMatches: false);
+                if (sortedIndex < 0)
+                {
+                    // Not in a tracked native allocation. On older captures the VM (and its static storage)
+                    // is reported as untracked OS memory (IL2CPP pre-allocator-routing), not a native
+                    // allocation. Resolve to the containing SystemMemoryRegion and, if it's an untracked-type
+                    // region, record the static against that specific region so the model builder can subtract
+                    // it from that exact untracked section.
+                    RouteStaticToContainingRegion(snapshot, address, staticSize);
+                    continue;
+                }
+                var allocationIndex = snapshot.SortedNativeAllocations[sortedIndex];
+                m_StaticBytesPerNativeAllocation.TryGetValue(allocationIndex, out var existing);
+                m_StaticBytesPerNativeAllocation[allocationIndex] = existing + staticSize;
+
+                // Track static that maps to a VM-root allocation: DeductStaticFieldNativeRemainder removes the
+                // remainder (static not reached by the precise per-allocation deduction) from the VM root's
+                // managed impact, so the same bytes aren't counted as both Managed (on their ManagedType root)
+                // and inside the VM allocation.
+                var allocRootId = snapshot.NativeAllocations.RootReferenceId[allocationIndex];
+                if (snapshot.NativeRootReferences.VMRootReferenceIndex.Valid
+                    && snapshot.NativeRootReferences.IdToIndex.TryGetValue(allocRootId, out var nrrIdx)
+                    && nrrIdx == snapshot.NativeRootReferences.VMRootReferenceIndex.Index)
+                    StaticBytesMappedToVMRoot += staticSize;
+            }
+        }
+
+        // Resolves a static-field storage address that is NOT inside a tracked native allocation to its
+        // containing SystemMemoryRegion. If that region is an "untracked"-type region, accumulates the static
+        // against the region's display name (matching the model builder's per-name untracked grouping) so the
+        // builder can subtract it from that specific section. Otherwise it is only counted diagnostically.
+        void RouteStaticToContainingRegion(CachedSnapshot snapshot, ulong address, MemorySize staticSize)
+        {
+            var sortedRegion = snapshot.SortedSystemMemoryRegions.Find(address, onlyDirectAddressMatches: false);
+            if (sortedRegion < 0)
+                return;
+            var regionIndex = snapshot.SortedSystemMemoryRegions[sortedRegion];
+            var regionSource = new SourceIndex(SourceIndex.SourceId.SystemMemoryRegion, regionIndex);
+            switch (snapshot.EntriesMemoryMap.GetPointType(regionSource))
+            {
+                case EntriesMemoryMapCache.PointType.Untracked:
+                case EntriesMemoryMapCache.PointType.Shared:
+                case EntriesMemoryMapCache.PointType.Device:
+                case EntriesMemoryMapCache.PointType.AndroidRuntime:
+                {
+                    var name = regionSource.GetName(snapshot);
+                    StaticBytesByUntrackedRegionName ??= new Dictionary<string, MemorySize>();
+                    StaticBytesByUntrackedRegionName.TryGetValue(name, out var existing);
+                    StaticBytesByUntrackedRegionName[name] = existing + staticSize;
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
 
         CachedProcessingData m_ProcessingData;
 
@@ -566,11 +769,23 @@ namespace Unity.MemoryProfiler.Editor
             var markerInfo = new DynamicArray<Marker>(initialCount, initialCount, Allocator.Persistent, true);
             m_Marker = new NestedDynamicArray<Marker>(offsetsForMarkers, markerInfo);
 
-            m_PersistentSceneObjectsInDelayedDeletionQueue = new NativeHashSet<SourceIndex>(100, Allocator.Persistent);
+            m_PersistentSceneObjectsInDelayedDeletionQueue = new NativeHashSet<SourceIndex>(k_PersistentSceneObjectsInDelayedDeletionQueueDefaultCount, Allocator.Persistent);
 
+            m_ReferencedUnrootedNativeAllocations = new NativeHashSet<SourceIndex>(k_ReferencedUnrootedNativeAllocationsDefaultCount, Allocator.Persistent);
+
+            m_BrokenScriptReferenceObjects = new NativeHashSet<SourceIndex>(k_BrokenScriptReferenceObjectsDefaultCount, Allocator.Persistent);
+
+            // Owned reference edges. Measured Count/TotalCount across representative snapshots tops out around
+            // 0.70, so reserving the full TotalCount guarantees no grow-and-copy (the over-reservation is
+            // modest and this is the larger of the two edge lists, where a late reallocation would be costly).
             m_OwnedChildList = new DynamicArray<SourceIndex>(0, initialCount, Allocator.Persistent, true);
 
-            m_UnownedChildList = new DynamicArray<SourceIndex>(0, 3000, Allocator.Persistent, true);
+            // Unowned reference edges. Measured Count/TotalCount: ~0.10 on sparse player captures, ~0.33–0.46
+            // on dense editor captures. Reserve half of TotalCount so even the densest observed case fits
+            // without a reallocation — on huge snapshots (millions of edges) a late grow-and-copy duplicates
+            // the whole list and risks a transient 2x spike near the memory ceiling. Over-reserves sparse
+            // captures somewhat, an acceptable editor-side cost versus repeated grow-and-copy.
+            m_UnownedChildList = new DynamicArray<SourceIndex>(0, initialCount / 2, Allocator.Persistent, true);
         }
 
         public void Dispose()
@@ -580,6 +795,10 @@ namespace Unity.MemoryProfiler.Editor
             m_UnownedReferencesLookup.Dispose();
             m_Impact.Dispose();
             m_PersistentSceneObjectsInDelayedDeletionQueue.Dispose();
+            if (m_ReferencedUnrootedNativeAllocations.IsCreated)
+                m_ReferencedUnrootedNativeAllocations.Dispose();
+            if (m_BrokenScriptReferenceObjects.IsCreated)
+                m_BrokenScriptReferenceObjects.Dispose();
             if (m_Marker.IsCreated) // gets disposed after ReadOrProcess is done
                 m_Marker.Dispose();
             m_OwnedChildList.Dispose();
@@ -693,22 +912,18 @@ namespace Unity.MemoryProfiler.Editor
         static readonly ProfilerMarker k_ProcessAssetBundlesMarker = new ProfilerMarker(ProcessAssetBundlesMarkerName);
         public const string ProcessNativeObjectRootsMarkerName = "RootAndImpactInfo: Processing Native Object Roots";
         static readonly ProfilerMarker k_ProcessNativeObjectRootsMarker = new ProfilerMarker(ProcessNativeObjectRootsMarkerName);
-        // Processing Unreferenced Prefabs
         public const string ProcessUnreferencedPrefabsMarkerName = "RootAndImpactInfo: Processing Unreferenced Prefabs";
         static readonly ProfilerMarker k_ProcessUnreferencedPrefabsMarker = new ProfilerMarker(ProcessUnreferencedPrefabsMarkerName);
-        // Processing Non-Unity-Object Referencing GC Handles
         public const string ProcessGCHandleRootsMarkerName = "RootAndImpactInfo: Non-Unity-Object Referencing GC Handles";
         static readonly ProfilerMarker k_ProcessGCHandleRootsMarker = new ProfilerMarker(ProcessGCHandleRootsMarkerName);
-        // Processing Native Root Allocations
         public const string ProcessNativeRootAllocationsMarkerName = "RootAndImpactInfo: Processing Native Root Allocations";
         static readonly ProfilerMarker k_ProcessNativeRootAllocationsMarker = new ProfilerMarker(ProcessNativeRootAllocationsMarkerName);
-        // Validating and Finalizing
         public const string ValidatingAndFinalizingMarkerName = "RootAndImpactInfo: Validating and Finalizing";
         static readonly ProfilerMarker k_ValidatingAndFinalizingMarker = new ProfilerMarker(ValidatingAndFinalizingMarkerName);
 
         public IEnumerator<EnumerationStatus> ReadOrProcess(CachedSnapshot snapshot, EnumerationStatus status)
         {
-            if (m_Processed || !MemoryProfilerSettings.EnableRootsAndImpact || !snapshot.HasSceneRootsAndAssetbundles)
+            if (m_Processed || !snapshot.HasSceneRootsAndAssetbundles)
             {
                 for (int i = 0; i < ProcessStepCount; i++)
                 {
@@ -820,7 +1035,7 @@ namespace Unity.MemoryProfiler.Editor
             {
                 using var _ = k_ProcessNativeRootAllocationsMarker.Auto();
                 CrawlNativeRootAllocations(snapshot, ref m_ProcessingData);
-                CrawlUnrootedNativeObjects(snapshot, ref m_ProcessingData);
+                CrawlBrokenScriptReferenceObjects(snapshot, ref m_ProcessingData);
             }
             finally
             {
@@ -834,6 +1049,7 @@ namespace Unity.MemoryProfiler.Editor
             RootNativeObjectAssociatedAllocations(snapshot);
             HandleUnreferenceUnrootedAllocations(snapshot);
             Validate(snapshot);
+            DeductStaticFieldNativeRemainder(snapshot);
             // dispose of the marker array data here as we are done processing and have no further use for it.
             // If processing failed it will get cleaned up on Dispose instead.
             m_Marker.Dispose();
@@ -849,7 +1065,13 @@ namespace Unity.MemoryProfiler.Editor
             var count = types.Count;
             for (int i = 0; i < count; i++)
             {
-                if (types.HasAnyStaticField(i))
+                // Use HasStaticFieldData (static byte data present), not HasAnyStaticField (static
+                // field-index info present): a type can have captured static bytes without field-index
+                // info, and AttributeImpact sizes by StaticFieldBytes — so gating on field indices
+                // would drop those bytes from attribution. Matches ManagedDataCrawler's predicate.
+                // Format v20+ never populates StaticFieldBytes - HasStaticFieldSlotData is the
+                // equivalent presence check against the resolved-address TypeDescriptions_StaticFieldSlots.
+                if (types.HasStaticFieldData(i) || types.HasStaticFieldSlotData(snapshot, i))
                 {
                     var rootSource = new SourceIndex(SourceIndex.SourceId.ManagedType, i);
                     rootStepsTypes[i] = new ShortestRootPathInfo(root: rootSource, parent: default, depth: 0);
@@ -870,6 +1092,12 @@ namespace Unity.MemoryProfiler.Editor
             var nativeObjects = snapshot.NativeObjects;
             var unifiedNativeTypes = snapshot.TypeDescriptions.UnifiedTypeInfoNative;
             using var prefabComponentsInDeletionQueue = new DynamicArray<SourceIndex>(0, 100, Allocator.Temp);
+            // Collected only - SeedAndClaimOwnershipBucket decides which of these are genuine roots vs.
+            // children of a same-bucket sibling, so none of them is marked FoundForRoot here.
+            using var candidates = new DynamicArray<SourceIndex>(0, 2000, Allocator.Temp);
+            // Dedups multiple DontDestroyOnLoad scene-object components that redirect to the same prefab
+            // within this pass - distinct from FoundForRoot, which here only means "rooted by an earlier phase".
+            using var collectedPrefabsThisPass = new NativeHashSet<SourceIndex>(16, Allocator.Temp);
 
             var count = nativeObjects.Count;
             for (long i = 0; i < count; i++)
@@ -903,10 +1131,10 @@ namespace Unity.MemoryProfiler.Editor
                                 continue;
                             }
                             ref var prefabMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, prefabIndex);
-                            // We only care about these if they are not yet marked as found so that we don't parse them multiple times
-                            if (prefabMarker.FoundForRoot)
+                            // Skip if rooted by an earlier phase, or if a previous component of this same prefab
+                            // was already collected as a candidate in this pass (so we don't parse it multiple times).
+                            if (prefabMarker.FoundForRoot || !collectedPrefabsThisPass.Add(prefabIndex))
                                 continue;
-                            prefabMarker.FoundForRoot = true;
                             // process the prefab itself, not one of its Scene Objects
                             dontDestroyOnLoadObjectIndex = prefabIndex;
                         }
@@ -937,14 +1165,10 @@ namespace Unity.MemoryProfiler.Editor
                             }
                         }
                     }
-                    ref var rootStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, dontDestroyOnLoadObjectIndex);
-                    rootStep = new ShortestRootPathInfo(root: dontDestroyOnLoadObjectIndex, parent: default, 0);
-                    data.RootsInCurrentOwnershipBucket.Push(dontDestroyOnLoadObjectIndex);
-                    ref var marker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, dontDestroyOnLoadObjectIndex);
-                    marker.FoundForRoot = true;
+                    candidates.Push(dontDestroyOnLoadObjectIndex);
                 }
             }
-            Crawl(snapshot, ref data, OwnershipBucket.DontDestroyOnLoadObjects);
+            SeedAndClaimOwnershipBucket(snapshot, ref data, OwnershipBucket.DontDestroyOnLoadObjects, candidates);
 
             foreach (var objectInDeletionQueue in prefabComponentsInDeletionQueue)
             {
@@ -1032,7 +1256,8 @@ namespace Unity.MemoryProfiler.Editor
             // The solution chosen here for that scenario was to mark all AssetBundles as "found" before crawling anything else and
             // then crawling them here regardless of that flag.
             // That leaves the AssetBundle roots to be floating on their own and owning any assets in them that are not otherwise used.
-            // The impact for their assets that ARE used would then be shared with all rooting references to them,
+            // The impact for their assets that ARE used would be shared with all rooting references to them
+            // (if k_AssetBundlesOnlyOwnUnreferencedContents is false, which it currently isn't),
             // UNLESS their root within the AssetBundle was not found in the same root bucket.
 
             foreach (var assetBundle in snapshot.NativeObjects.AssetBundles)
@@ -1058,7 +1283,10 @@ namespace Unity.MemoryProfiler.Editor
         void CrawlNativeObjectRoots(CachedSnapshot snapshot, ref CachedProcessingData data)
         {
             ref readonly var markerNativeObjects = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.NativeObject);
-            ref readonly var rootStepsNativeObject = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_ShortestPathInfo, SourceIndex.SourceId.NativeObject);
+
+            // Collected only - SeedAndClaimOwnershipBucket decides which of these are genuine roots vs.
+            // children of a same-bucket sibling, so none of them is marked FoundForRoot here.
+            using var candidates = new DynamicArray<SourceIndex>(0, 2000, Allocator.Temp);
 
             foreach (var nativeRoot in snapshot.ProcessedNativeRoots.Data)
             {
@@ -1076,9 +1304,7 @@ namespace Unity.MemoryProfiler.Editor
                             if (typeInfo.IsSceneObjectType && snapshot.NativeObjects.Flags[index].HasFlag(ObjectFlags.IsPersistent))
                                 continue;
 
-                            markerNativeObjects[index].FoundForRoot = true;
-                            rootStepsNativeObject[index] = new ShortestRootPathInfo(nativeRoot.NativeObjectOrRootIndex, default, 0);
-                            data.RootsInCurrentOwnershipBucket.Push(nativeRoot.NativeObjectOrRootIndex);
+                            candidates.Push(nativeRoot.NativeObjectOrRootIndex);
 
                             // TODO: Move this to Native Object processing on attributing sizes, or delete it if it's not needed there.
                             //if (snapshot.NativeRootReferences.Count > 0)
@@ -1099,7 +1325,7 @@ namespace Unity.MemoryProfiler.Editor
                         throw new NotImplementedException($"{nativeRoot.NativeObjectOrRootIndex.Id}");
                 }
             }
-            Crawl(snapshot, ref data, OwnershipBucket.NativeObjectRoots);
+            SeedAndClaimOwnershipBucket(snapshot, ref data, OwnershipBucket.NativeObjectRoots, candidates);
         }
 
         void CrawlUnreferencedPrefabs(CachedSnapshot snapshot, ref CachedProcessingData data)
@@ -1126,30 +1352,132 @@ namespace Unity.MemoryProfiler.Editor
             ref readonly var markerGCHandles = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.GCHandleIndex);
             ref readonly var markerManagedObjects = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.ManagedObject);
 
-            ref readonly var rootStepsGCHandles = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_ShortestPathInfo, SourceIndex.SourceId.GCHandleIndex);
-
             var count = snapshot.GcHandles.UniqueCount;
+            var crawled = snapshot.CrawledData.Crawled;
+
+            // Collected only - SeedAndClaimGCHandleOwnershipBucket decides which of these are genuine
+            // roots vs. children of a same-bucket sibling's managed object graph, so none of them is
+            // marked FoundForRoot here.
+            using var candidateHandles = new DynamicArray<SourceIndex>(0, 2000, Allocator.Temp);
+            using var candidateTargets = new NativeHashSet<SourceIndex>(2000, Allocator.Temp);
+
             for (int i = 0; i < count; i++)
             {
-                var gcHandleIndex = new SourceIndex(SourceIndex.SourceId.GCHandleIndex, i);
-                // GCHandle index maps to the first managed object indices
-                if (!markerManagedObjects[gcHandleIndex.Index].FoundForRoot)
-                {
-                    // temporarily mark managed object as found so other GCHandle roots don't try to own it
-                    markerManagedObjects[gcHandleIndex.Index].FoundForRoot = true;
+                // GCHandle index maps to the managed object index it targets — see ManagedData.
+                // ResolveManagedObjectIndexForGCHandle for why this isn't always index i itself.
+                var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForGCHandle(i);
+                if (managedObjectIndex == ManagedData.InvalidObjectIndex)
+                    continue; // handle target has no ManagedObjectInfo row (e.g. collected mid-capture)
 
-                    // This is a floating GCHandle, i.e. no one has claimed this object
-                    rootStepsGCHandles[i] = new ShortestRootPathInfo(root: gcHandleIndex, parent: default, depth: 0);
-                    data.RootsInCurrentOwnershipBucket.Push(gcHandleIndex);
-                    markerGCHandles[gcHandleIndex.Index].FoundForRoot = true;
-                }
-                else
+                var managedTarget = new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex);
+                // If the snapshot is not crawled, the managed objects data is not populated, even for the
+                // GCHandle held ones, so this is important to check before indexing into their marker or
+                // root path data. candidateTargets.Add failing means another handle already iterated in
+                // this same sweep resolves to the identical managed object.
+                if (!crawled || markerManagedObjects[managedObjectIndex].FoundForRoot || !candidateTargets.Add(managedTarget))
                 {
-                    markerGCHandles[gcHandleIndex.Index].FoundForImpact = true;
-                    markerGCHandles[gcHandleIndex.Index].FullyDistributedImpact = true;
+                    // The handle's target object is already rooted (elsewhere, or by another handle in
+                    // this same sweep pointing at the same object), so this GCHandle is NOT a rooting
+                    // owner; mark it done without processing. It will never receive impact: AttributeImpact
+                    // strikes GCHandles from any referee list that also contains a real (non-GCHandle) owner,
+                    // so a co-referencing GCHandle never gets a pro-rata share that would strand here.
+                    ref var gcHandleMarker = ref markerGCHandles[i];
+                    gcHandleMarker.FoundForImpact = true;
+                    gcHandleMarker.FullyDistributedImpact = true;
+                    continue;
                 }
+
+                candidateHandles.Push(new SourceIndex(SourceIndex.SourceId.GCHandleIndex, i));
             }
-            Crawl(snapshot, ref data, OwnershipBucket.GCHandleRoots);
+            SeedAndClaimGCHandleOwnershipBucket(snapshot, ref data, candidateHandles, candidateTargets);
+        }
+
+        /// <summary>
+        /// GCHandle counterpart of <see cref="SeedAndClaimOwnershipBucket"/>: computes which GCHandle
+        /// targets in this same-bucket sweep have no in-bucket owner in the crawled managed reference
+        /// graph before marking any of them FoundForRoot, so a same-bucket sibling's managed object graph
+        /// can still claim a GCHandle's target as its child.
+        /// </summary>
+        /// <param name="candidateHandlesInDiscoveryOrder">Must not yet be marked FoundForRoot by the caller.</param>
+        void SeedAndClaimGCHandleOwnershipBucket(CachedSnapshot snapshot, ref CachedProcessingData data,
+            in DynamicArray<SourceIndex> candidateHandlesInDiscoveryOrder, in NativeHashSet<SourceIndex> candidateTargets)
+        {
+            ref readonly var markerGCHandles = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.GCHandleIndex);
+            ref readonly var markerManagedObjects = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.ManagedObject);
+            ref readonly var rootStepsGCHandles = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_ShortestPathInfo, SourceIndex.SourceId.GCHandleIndex);
+
+            var seedStart = data.RootsInCurrentOwnershipBucket.Count;
+            foreach (var gcHandleIndex in candidateHandlesInDiscoveryOrder)
+            {
+                var managedTarget = new SourceIndex(SourceIndex.SourceId.ManagedObject, snapshot.CrawledData.ResolveManagedObjectIndexForGCHandle(gcHandleIndex.Index));
+                if (HasInBucketManagedOwner(snapshot, managedTarget, candidateTargets))
+                    continue;
+
+                markerManagedObjects[managedTarget.Index].FoundForRoot = true;
+                rootStepsGCHandles[gcHandleIndex.Index] = new ShortestRootPathInfo(root: gcHandleIndex, parent: default, depth: 0);
+                data.RootsInCurrentOwnershipBucket.Push(gcHandleIndex);
+                markerGCHandles[gcHandleIndex.Index].FoundForRoot = true;
+            }
+            BuildPathFromRootInfo(snapshot, ref data, OwnershipBucket.GCHandleRoots, seedStart);
+
+            // A candidate skipped above either had its target claimed by the walk from a sibling's root
+            // (a real owner, exactly like a handle whose target was already rooted before this sweep -
+            // see the identical handling in CrawlGCHandleRoots), or its target is still unclaimed because
+            // it sits on a cycle entirely inside this bucket's induced managed reference graph. Break
+            // each such cycle deterministically: the first remaining candidate in discovery order becomes
+            // that cycle's root. Each round claims at least one node, so this always terminates.
+            foreach (var gcHandleIndex in candidateHandlesInDiscoveryOrder)
+            {
+                if (markerGCHandles[gcHandleIndex.Index].FoundForRoot)
+                    continue;
+
+                var managedTarget = new SourceIndex(SourceIndex.SourceId.ManagedObject, snapshot.CrawledData.ResolveManagedObjectIndexForGCHandle(gcHandleIndex.Index));
+                if (markerManagedObjects[managedTarget.Index].FoundForRoot)
+                {
+                    ref var gcHandleMarker = ref markerGCHandles[gcHandleIndex.Index];
+                    gcHandleMarker.FoundForImpact = true;
+                    gcHandleMarker.FullyDistributedImpact = true;
+                    continue;
+                }
+
+                var tailStart = data.RootsInCurrentOwnershipBucket.Count;
+                markerManagedObjects[managedTarget.Index].FoundForRoot = true;
+                rootStepsGCHandles[gcHandleIndex.Index] = new ShortestRootPathInfo(root: gcHandleIndex, parent: default, depth: 0);
+                data.RootsInCurrentOwnershipBucket.Push(gcHandleIndex);
+                markerGCHandles[gcHandleIndex.Index].FoundForRoot = true;
+                BuildPathFromRootInfo(snapshot, ref data, OwnershipBucket.GCHandleRoots, tailStart);
+            }
+
+#if DEBUG_VALIDATION
+            foreach (var gcHandleIndex in candidateHandlesInDiscoveryOrder)
+            {
+                var managedTarget = new SourceIndex(SourceIndex.SourceId.ManagedObject, snapshot.CrawledData.ResolveManagedObjectIndexForGCHandle(gcHandleIndex.Index));
+                Debug.Assert(markerManagedObjects[managedTarget.Index].FoundForRoot,
+                    $"{managedTarget} (target of {gcHandleIndex}) was neither seeded nor claimed while seeding the GCHandle ownership bucket.");
+            }
+#endif
+
+            FinishCrawl(snapshot, ref data, OwnershipBucket.GCHandleRoots);
+        }
+
+        /// <summary>
+        /// True if some other candidate's target in the same GCHandle-roots sweep would claim
+        /// <paramref name="managedTarget"/> as a child via a genuine field reference, i.e. it has
+        /// in-degree > 0 in the induced subgraph over <paramref name="candidateTargets"/> within the
+        /// crawled managed reference graph. Managed-object counterpart to <see cref="HasInBucketOwner"/>.
+        /// </summary>
+        bool HasInBucketManagedOwner(CachedSnapshot snapshot, in SourceIndex managedTarget, in NativeHashSet<SourceIndex> candidateTargets)
+        {
+            if (!snapshot.CrawledData.ConnectionsToMappedToSourceIndex.TryGetValue(managedTarget, out var connectionIndices))
+                return false;
+
+            foreach (var connectionIndex in connectionIndices)
+            {
+                var referrer = snapshot.CrawledData.Connections[connectionIndex].IndexFrom;
+                if (!referrer.Equals(managedTarget) && candidateTargets.Contains(referrer))
+                    return true;
+            }
+            return false;
         }
 
         void CrawlNativeRootAllocations(CachedSnapshot snapshot, ref CachedProcessingData data)
@@ -1179,7 +1507,14 @@ namespace Unity.MemoryProfiler.Editor
             Crawl(snapshot, ref data, OwnershipBucket.NativeRootAllocations);
         }
 
-        void CrawlUnrootedNativeObjects(CachedSnapshot snapshot, ref CachedProcessingData data)
+        /// <summary>
+        /// Collects what should be the only unrooted native objects that remain, and therefore
+        /// end up in the <see cref="OwnershipBucket.BrokenScriptReferences"/> bucket:
+        /// native MonoBehaviour/ScriptableObject instances that are unreferenced and unrooted because their backing
+        /// <c>MonoScript</c> is missing (see <see cref="UnreferencedNativeObjectIsBrokenScriptingTypeObject"/>). They
+        /// have no real root, so they are rooted to themselves here to surface them as the actionable leak they are.
+        /// </summary>
+        void CrawlBrokenScriptReferenceObjects(CachedSnapshot snapshot, ref CachedProcessingData data)
         {
             ref readonly var rootStepInfoForNativeObjects = ref
                 SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_ShortestPathInfo,
@@ -1195,26 +1530,72 @@ namespace Unity.MemoryProfiler.Editor
                         rootStepInfoForNativeObjects[nativeObjectIndex] =
                             new ShortestRootPathInfo(sourceIndex, default, 0);
                         data.RootsInCurrentOwnershipBucket.Push(sourceIndex);
+                        m_BrokenScriptReferenceObjects.Add(sourceIndex);
                     }
                 }
                 ++nativeObjectIndex;
             }
-            Crawl(snapshot, ref data, OwnershipBucket.UnrootedNativeObjects);
+            Crawl(snapshot, ref data, OwnershipBucket.BrokenScriptReferences);
+        }
+
+        /// <summary>
+        /// Static-field bytes are attributed as Managed to their ManagedType roots, but the same bytes also
+        /// physically reside in native memory: on modern captures inside the VM root's native allocations, on
+        /// older captures in Untracked system regions (IL2CPP without Unity's allocator) or the managed VM heap
+        /// (Mono). The per-allocation deduction in <see cref="AttributeImpact"/> removes the part that resolves
+        /// to a CRAWLED native allocation (<see cref="StaticBytesActuallyDeductedFromNative"/>), which keeps the
+        /// flattened per-allocation view correct, but <see cref="TypeInfoAddress"/> usually points at the small
+        /// type-info struct rather than the (larger) static storage, so most static is left double-counted.
+        /// This removes the REMAINDER in bulk from the native side so the table reconciles:
+        ///  • VM-root remainder → subtracted from the VM root's native impact (modern).
+        ///  • Untracked / managed-heap remainders are exposed for the model builder to subtract from those
+        ///    region nodes (older captures), since those are not part of the ownership tree.
+        /// </summary>
+        void DeductStaticFieldNativeRemainder(CachedSnapshot snapshot)
+        {
+            var vmRoot = snapshot.NativeRootReferences.VMRootReferenceIndex;
+            if (vmRoot.Valid && StaticBytesMappedToVMRoot.Committed > StaticBytesActuallyDeductedFromNative.Committed)
+            {
+                var remainder = StaticBytesMappedToVMRoot - StaticBytesActuallyDeductedFromNative;
+                ref var vmImpact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, vmRoot);
+                // VM-root allocations are reported as Managed (see the NativeAllocation case in
+                // AttributeImpact), so they bubble into the VM root's Exclusive.ManagedSize. The static
+                // remainder this removes (static double-counted as Managed on its ManagedType root) must
+                // therefore be subtracted from the managed side, not the native side.
+                var deduct = MemorySize.Min(remainder, vmImpact.Exclusive.ManagedSize);
+                vmImpact.Exclusive.ManagedSize -= deduct;
+            }
         }
 
         void HandleUnreferenceUnrootedAllocations(CachedSnapshot snapshot)
         {
             ref readonly var markerNativeAllocations = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.NativeAllocation);
 
-            // Process all unrooted allocations that haven't been found yet.
-            // They don't reference anything so its just a process of adding their size to the unrooted and unreferenced tracking value
+            // A native allocation that spans multiple system memory regions is reported as multiple flat
+            // entries, so ProcessNativeAllocation pushes its index to UnrootedNativeAllocationIndices once
+            // PER REGION (and accumulates the per-region portions into AllocationSizes[i], which therefore
+            // already holds the allocation's FULL size). We must add that full size exactly ONCE per
+            // allocation here; counting it per-pushed-entry over-reports multi-region unrooted allocations
+            // N-fold (a ~8.5 MB over-count on large snapshots, enough to make UnreferencedUnrootedMemory
+            // exceed ProcessedNativeRoots.UnrootedMemory — the true total of ALL unrooted allocations).
+            // Dedup by allocation index. (The referenced-unrooted set below is already idempotent, but
+            // guarding the whole loop keeps both branches correct and cheap.)
+            var countedAllocations = new HashSet<long>();
             foreach (var unrootedAllocation in snapshot.ProcessedNativeRoots.UnrootedNativeAllocationIndices)
             {
+                if (!countedAllocations.Add(unrootedAllocation.Index))
+                    continue;
                 if (!markerNativeAllocations[unrootedAllocation.Index].FoundForRoot)
                 {
                     UnreferencedUnrootedMemory.NativeSize += snapshot.ProcessedNativeRoots.AllocationSizes[unrootedAllocation.Index];
                     // This happens as a last step and unrooted allocations are ignored in Validate() so their roots staying invalid
                     // and their markers unset is fine, no need to incure extra computations for this.
+                }
+                else
+                {
+                    // Reached via a reference during the crawl — record it so ObjectStatusComputation
+                    // can distinguish ReferencedUnrooted from Unrooted (the unreferenced majority).
+                    m_ReferencedUnrootedNativeAllocations.Add(unrootedAllocation);
                 }
             }
         }
@@ -1262,7 +1643,7 @@ namespace Unity.MemoryProfiler.Editor
             UnreferencedPrefabs,
             GCHandleRoots,
             NativeRootAllocations,
-            UnrootedNativeObjects,
+            BrokenScriptReferences,
             Count
         }
 
@@ -1270,6 +1651,11 @@ namespace Unity.MemoryProfiler.Editor
         {
             // go up the reference tree
             BuildPathFromRootInfo(snapshot, ref data, ownershipBucket);
+            FinishCrawl(snapshot, ref data, ownershipBucket);
+        }
+
+        void FinishCrawl(CachedSnapshot snapshot, ref CachedProcessingData data, OwnershipBucket ownershipBucket)
+        {
             // and back down the reference tree
             CalculateImpact(snapshot, ref data, ownershipBucket);
 
@@ -1281,6 +1667,95 @@ namespace Unity.MemoryProfiler.Editor
             data.AlternativeStack.Clear(false);
         }
 
+        /// <summary>
+        /// Computes which candidates in the same ownership-bucket sweep are genuine roots (in-degree 0 in the
+        /// induced subgraph over <paramref name="candidatesInDiscoveryOrder"/>) before marking anything FoundForRoot,
+        /// so that a same-bucket sibling can still claim a candidate as its child.
+        /// </summary>
+        /// <param name="candidatesInDiscoveryOrder">Must not yet be marked FoundForRoot by the caller.</param>
+        void SeedAndClaimOwnershipBucket(CachedSnapshot snapshot, ref CachedProcessingData data, OwnershipBucket bucket,
+            in DynamicArray<SourceIndex> candidatesInDiscoveryOrder)
+        {
+            using var candidateSet = new NativeHashSet<SourceIndex>((int)candidatesInDiscoveryOrder.Count, Allocator.Temp);
+            foreach (var candidate in candidatesInDiscoveryOrder)
+                candidateSet.Add(candidate);
+
+            var seedStart = data.RootsInCurrentOwnershipBucket.Count;
+            foreach (var candidate in candidatesInDiscoveryOrder)
+            {
+                if (HasInBucketOwner(snapshot, candidate, candidateSet))
+                    continue;
+                ref var marker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, candidate);
+                marker.FoundForRoot = true;
+                ref var rootStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, candidate);
+                rootStep = new ShortestRootPathInfo(root: candidate, parent: default, depth: 0);
+                data.RootsInCurrentOwnershipBucket.Push(candidate);
+            }
+            BuildPathFromRootInfo(snapshot, ref data, bucket, seedStart);
+
+            // Anything still unclaimed here has only in-bucket owners that are themselves unclaimed,
+            // i.e. it sits on a cycle entirely inside this bucket. Break each cycle deterministically:
+            // the first remaining candidate in discovery order becomes that cycle's root. Each round
+            // claims at least one node, so this always terminates with every candidate placed.
+            foreach (var candidate in candidatesInDiscoveryOrder)
+            {
+                ref var marker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, candidate);
+                if (marker.FoundForRoot)
+                    continue;
+                var tailStart = data.RootsInCurrentOwnershipBucket.Count;
+                marker.FoundForRoot = true;
+                ref var rootStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, candidate);
+                rootStep = new ShortestRootPathInfo(root: candidate, parent: default, depth: 0);
+                data.RootsInCurrentOwnershipBucket.Push(candidate);
+                BuildPathFromRootInfo(snapshot, ref data, bucket, tailStart);
+            }
+
+#if DEBUG_VALIDATION
+            foreach (var candidate in candidatesInDiscoveryOrder)
+                Debug.Assert(SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, candidate).FoundForRoot,
+                    $"{candidate} was neither seeded nor claimed while seeding ownership bucket {bucket}.");
+#endif
+
+            FinishCrawl(snapshot, ref data, bucket);
+        }
+
+        /// <summary>
+        /// True if some other member of the same candidate set would claim <paramref name="candidate"/> as a child,
+        /// i.e. it has in-degree > 0 in the induced subgraph over <paramref name="candidateSet"/>. Uses the exact
+        /// same <see cref="DetermineSceneObjectOwnership"/> decision that <see cref="BuildPathFromRootInfo"/> uses
+        /// when walking references, so a candidate can never be counted as owned here without also being claimable there.
+        /// </summary>
+        bool HasInBucketOwner(CachedSnapshot snapshot, in SourceIndex candidate, in NativeHashSet<SourceIndex> candidateSet)
+        {
+            if (!snapshot.Connections.ReferencedBy.TryGetValue(candidate, out var referrers))
+                return false;
+
+            var candidateTypeInfo = GetTypeInfo(snapshot, in candidate);
+            var candidateIsSceneObject = candidate.Id is SourceIndex.SourceId.NativeObject && candidateTypeInfo.IsSceneObjectType;
+
+            foreach (var referrer in referrers)
+            {
+                if (referrer.Id != SourceIndex.SourceId.NativeObject || referrer.Equals(candidate) || !candidateSet.Contains(referrer))
+                    continue;
+
+                if (!candidateIsSceneObject)
+                    return true; // matches the isOwned = true default BuildPathFromRootInfo uses for non-scene-object referencedItems
+
+                var referrerTypeInfo = GetTypeInfo(snapshot, in referrer);
+                var decision = DetermineSceneObjectOwnership(snapshot, referrer, in referrerTypeInfo, candidate, in candidateTypeInfo, out var redirectPrefabIndex);
+#if DEBUG_VALIDATION
+                // Both candidate and referrer are drawn from a same-bucket candidate set that already
+                // excludes persistent scene objects, so referencedIsPersistent is always false here and
+                // neither redirect branch of DetermineSceneObjectOwnership can trigger.
+                Debug.Assert(decision != SceneObjectOwnershipDecision.RedirectToPrefab,
+                    $"Unexpected prefab redirect while seeding: {referrer} -> {candidate}");
+#endif
+                if (decision == SceneObjectOwnershipDecision.Owned)
+                    return true;
+            }
+            return false;
+        }
+
         static SourceIndex GetPrefabIndexForNativeSceneObject(CachedSnapshot snapshot, SourceIndex sceneObject, in UnifiedType typeInfo)
         {
             var gameObjectOrTransform = (typeInfo.IsTransformType || typeInfo.IsGameObjectType) ?
@@ -1288,14 +1763,14 @@ namespace Unity.MemoryProfiler.Editor
 
             if (gameObjectOrTransform.Valid && snapshot.SceneRoots.NativeObjectIndexToPrefabRootIndex.TryGetValue(gameObjectOrTransform.Index, out var prefabIndex))
                 return new SourceIndex(SourceIndex.SourceId.Prefab, prefabIndex);
-            var objectName = snapshot.NativeObjects.ObjectName[sceneObject.Index];
             var transform = typeInfo.IsTransformType ? sceneObject : ObjectConnection.GetTransformIndexFromGameObject(snapshot, gameObjectOrTransform, true);
-            if ((!transform.Valid || !gameObjectOrTransform.Valid) && string.IsNullOrEmpty(objectName))
+            if ((!transform.Valid || !gameObjectOrTransform.Valid))
             {
                 // This scene object is detatched from its GameObject and/or Transform and has no name anymore
                 // It is probably waiting for deletion on the main thread.
                 return default;
             }
+            var objectName = snapshot.NativeObjects.ObjectName[sceneObject.Index];
             var managedObjectIndex = snapshot.NativeObjects.ManagedObjectIndex[sceneObject.Index];
             var managedTypeIndex = managedObjectIndex != ManagedData.InvalidObjectIndex ? snapshot.CrawledData.ManagedObjects[managedObjectIndex].ITypeDescription : -1;
             var typeName = typeInfo.IsTransformType ? "Transform" : (managedTypeIndex != TypeDescriptionEntriesCache.ITypeInvalid ? snapshot.TypeDescriptions.TypeDescriptionName[managedTypeIndex] : snapshot.NativeTypes.TypeName[typeInfo.NativeTypeIndex]);
@@ -1347,9 +1822,138 @@ namespace Unity.MemoryProfiler.Editor
             return default;
         }
 
-        void BuildPathFromRootInfo(CachedSnapshot snapshot, ref CachedProcessingData data, OwnershipBucket ownershipBucket)
+        enum SceneObjectOwnershipDecision
         {
-            data.Stack.PushRange(data.RootsInCurrentOwnershipBucket);
+            Owned,
+            Unowned,
+            RedirectToPrefab,
+            Ignore
+        }
+
+        /// <summary>
+        /// Shared by <see cref="BuildPathFromRootInfo"/>'s reference walk and <see cref="SeedAndClaimOwnershipBucket"/>'s
+        /// same-bucket seed selection so both agree on exactly which references count as ownership - a second,
+        /// hand-derived predicate would risk drifting out of sync with this one.
+        /// </summary>
+        SceneObjectOwnershipDecision DetermineSceneObjectOwnership(CachedSnapshot snapshot,
+            in SourceIndex current, in UnifiedType currentTypeInfo, in SourceIndex referencedItem, in UnifiedType referencedTypeInfo,
+            out SourceIndex redirectPrefabIndex)
+        {
+            redirectPrefabIndex = default;
+
+            var referencedIsPersistent = snapshot.NativeObjects.Flags[referencedItem.Index].HasFlag(ObjectFlags.IsPersistent);
+            var currentIsNativeObject = current.Id is SourceIndex.SourceId.NativeObject;
+            var currentIsPersistent = current.Id is SourceIndex.SourceId.Prefab
+                || currentIsNativeObject && snapshot.NativeObjects.Flags[current.Index].HasFlag(ObjectFlags.IsPersistent);
+
+            if (referencedIsPersistent && !currentIsPersistent)
+            {
+                // This is a reference from a managed or non-persistent native object to a prefab.
+                // This reference and the prefab needs special parsing, as in:
+                // 1. The reference gets redirected to the Prefab index.
+                // 2. This only owns the prefab if this is the first time any part of that prefab was referenced
+                //    as 2 references to different sub-GameObjects or components are treated as the same reference,
+                //    i.e. a reference to a prefab.
+                //    As this would usually mean that a non-prefab first referenced a managed shell,
+                //    and the managed shell reference to its native object is now getting redirected to point at the prefab index/root
+
+                var prefabIndex = GetPrefabIndexForNativeSceneObject(snapshot, referencedItem, in referencedTypeInfo);
+                if (prefabIndex.Valid)
+                {
+                    redirectPrefabIndex = prefabIndex;
+                    return SceneObjectOwnershipDecision.RedirectToPrefab;
+                }
+                else
+                {
+                    // With the prefeb being returned as invalid, this object is highly likely in the delayed deletion queue
+                    // Add it to this hashset (so it can be excluded as problematic for referencing a Transform)
+                    // but continue procesing as if it weren't an asset.
+                    m_PersistentSceneObjectsInDelayedDeletionQueue.Add(referencedItem);
+                }
+            }
+            else if (current.Id is SourceIndex.SourceId.ManagedObject)
+            {
+                // This is practically guaranteed to be a Scene Object's managed shell referencing back to its native object,
+                // (unless someone felt hacky and got their hands on the pointer to a native object).
+
+                // Managed references to non-persistent SceneObjects are non-owning, as the Scene Objects are more strongly
+                // bound to the scene.
+                // Scene and Prefab indexes are handled above if the referencedTypeInfo indicates this is a root Transform.
+
+                // Further, it should be ignored for impact attribution, so don't add it as unowned reference.
+                return SceneObjectOwnershipDecision.Ignore;
+            }
+            else if (referencedTypeInfo.IsTransformType)
+            {
+                // References to Transforms are only owned if they originate in another Transform, Scene, or Prefab
+                if (currentIsNativeObject && currentTypeInfo.IsTransformType)
+                {
+                    if (referencedIsPersistent && currentIsPersistent)
+                    {
+                        // For references within Prefab hierarchies, ensure that the transforms
+                        // belong to the same prefab, to avoid including already owned nested prefab hierarchies as owned
+                        if (!snapshot.SceneRoots.NativeObjectIndexToPrefabRootIndex.TryGetValue(
+                                current.Index, out var currentPrefabIndex))
+                            currentPrefabIndex = -1;
+                        if (!snapshot.SceneRoots.NativeObjectIndexToPrefabRootIndex.TryGetValue(
+                                referencedItem.Index, out var referencedPrefabIndex))
+                            referencedPrefabIndex = -1;
+                        if (currentPrefabIndex != referencedPrefabIndex)
+                        {
+                            redirectPrefabIndex = new SourceIndex(SourceIndex.SourceId.Prefab, referencedPrefabIndex);
+                            return SceneObjectOwnershipDecision.RedirectToPrefab;
+                        }
+                    }
+                    return SceneObjectOwnershipDecision.Owned;
+                }
+                else
+                    return (snapshot.NativeObjects.Flags[referencedItem.Index].HasFlag(ObjectFlags.IsRoot) && current.Id is SourceIndex.SourceId.Scene or SourceIndex.SourceId.Prefab)
+                        ? SceneObjectOwnershipDecision.Owned : SceneObjectOwnershipDecision.Unowned;
+            }
+            else if (referencedTypeInfo.IsGameObjectType)
+            {
+                // References to GameObjects are only owned if they originate in their Transform
+                return currentIsNativeObject && currentTypeInfo.IsTransformType ? SceneObjectOwnershipDecision.Owned : SceneObjectOwnershipDecision.Unowned;
+            }
+            else if (referencedTypeInfo.IsComponentType)
+            {
+                // References to Components are only owned if they originate in their GameObject
+                return currentIsNativeObject && (currentTypeInfo.IsGameObjectType
+                        // Sometimes AssetBundles hold references to a MonoBehaviour without a ManagedShell or GameObject
+                        // (the only connection being to the asset bundle).
+                        // In those cases, do root them to the Asset Bundle.
+                        || currentTypeInfo.NativeTypeIndex == snapshot.NativeTypes.AssetBundleIdx
+                        && referencedIsPersistent && referencedTypeInfo.IsMonoBehaviourType
+                        && snapshot.NativeObjects.ManagedObjectIndex[referencedItem.Index] == CachedSnapshot.NativeObjectEntriesCache.InvalidObjectIndex
+                        && snapshot.Connections.ReferencedBy.TryGetValue(referencedItem, out var monoBehaviourReferencedItems)
+                        && monoBehaviourReferencedItems.Count == 1)
+                    ? SceneObjectOwnershipDecision.Owned : SceneObjectOwnershipDecision.Unowned;
+            }
+            else
+            {
+                // Reached only by a scene object that is neither a Transform, GameObject, nor
+                // Component. Every scene object is a GameObject or a Component (Transforms are
+                // Components), so all hierarchy references are classified above. A Scene can
+                // legitimately reference its scene objects, so that referrer keeps owning;
+                // any other referrer here is unexpected.
+                Checks.IsTrue(current.Id is SourceIndex.SourceId.Scene,
+                    $"Found a reference from a {current.Id} to a scene object {referencedItem} that is neither a Transform, GameObject, nor Component, which is not supposed to happen.");
+                // Where the assertion is compiled out (release), fail safe to non-owning for an
+                // unexpected referrer rather than silently claiming ownership of the scene object.
+                return current.Id is SourceIndex.SourceId.Scene ? SceneObjectOwnershipDecision.Owned : SceneObjectOwnershipDecision.Unowned;
+            }
+            // referencedIsPersistent && !currentIsPersistent, but the prefab lookup came back invalid: fall
+            // back to the pre-chain default of owned, same as the original inline isOwned = true default.
+            return SceneObjectOwnershipDecision.Owned;
+        }
+
+        void BuildPathFromRootInfo(CachedSnapshot snapshot, ref CachedProcessingData data, OwnershipBucket ownershipBucket, long seedStartIndex = 0)
+        {
+            if (seedStartIndex == 0)
+                data.Stack.PushRange(data.RootsInCurrentOwnershipBucket);
+            else
+                for (long i = seedStartIndex; i < data.RootsInCurrentOwnershipBucket.Count; i++)
+                    data.Stack.Push(data.RootsInCurrentOwnershipBucket[i]);
 
             while (data.Count > 0)
             {
@@ -1357,6 +1961,9 @@ namespace Unity.MemoryProfiler.Editor
 
                 ref var currentMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, current);
                 currentMarker.FoundForRoot = true;
+                // Each node is popped (and marked) exactly once across all buckets, so this tallies the
+                // full ownership forest for callers that need to size per-node collections.
+                m_OwnershipForestNodeCount++;
 
                 var currentTypeInfo = GetTypeInfo(snapshot, in current);
 
@@ -1395,7 +2002,7 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     data.Connections.References.Clear();
 
-                    // remove temporarily added "found" marker on the managed object do that this GCHandle can take its ownership
+                    // remove temporarily added "found" marker on the managed object so that this GCHandle can take its ownership
                     ref var managedObjectMark = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, new SourceIndex(SourceIndex.SourceId.ManagedObject, current.Index));
                     managedObjectMark.FoundForRoot = false;
 
@@ -1470,6 +2077,11 @@ namespace Unity.MemoryProfiler.Editor
 
                     foreach (var referencedItem in data.Connections.References)
                     {
+                        if (!snapshot.CrawledData.Crawled && referencedItem.Id is SourceIndex.SourceId.ManagedObject)
+                            // When the snapshot is not crawled, the managed objects are not known,
+                            // even for those referenced by native objects and held via GCHandles, so skip them.
+                            continue;
+
                         ref var referencedItemMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, referencedItem);
                         if (!referencedItemMarker.FoundForRoot)
                         {
@@ -1481,102 +2093,23 @@ namespace Unity.MemoryProfiler.Editor
                                 if (referencedTypeInfo.IsSceneObjectType)
                                 {
                                     // Native Scene objects need special parsing to ensure that the Scene Object Hierarchy is build and rooted correctly
-
-                                    var referencedIsPersistent = snapshot.NativeObjects.Flags[referencedItem.Index].HasFlag(ObjectFlags.IsPersistent);
-                                    var currentIsNativeObject = current.Id is SourceIndex.SourceId.NativeObject;
-                                    var currentIsPersistent = current.Id is SourceIndex.SourceId.Prefab
-                                        || currentIsNativeObject && snapshot.NativeObjects.Flags[current.Index].HasFlag(ObjectFlags.IsPersistent);
-
-                                    if (referencedIsPersistent && !currentIsPersistent)
+                                    var decision = DetermineSceneObjectOwnership(snapshot, current, in currentTypeInfo, referencedItem, in referencedTypeInfo, out var redirectPrefabIndex);
+                                    switch (decision)
                                     {
-                                        // This is a reference from a managed or non-persistent native object to a prefab.
-                                        // This reference and the prefab needs special parsing, as in:
-                                        // 1. The reference gets redirected to the Prefab index.
-                                        // 2. This only owns the prefab if this is the first time any part of that prefab was referenced
-                                        //    as 2 references to different sub-GameObjects or components are treated as the same reference,
-                                        //    i.e. a reference to a prefab.
-                                        //    As this would usually mean that a non-prefab first referenced a managed shell,
-                                        //    and the managed shell reference to its native object is now getting redirected to point at the prefab index/root
-
-                                        var prefabIndex = GetPrefabIndexForNativeSceneObject(snapshot, referencedItem, in referencedTypeInfo);
-                                        if (prefabIndex.Valid)
-                                        {
-                                            ProcessReferenceToPrefab(snapshot, prefabIndex, current, ref data, in m_Marker);
+                                        case SceneObjectOwnershipDecision.RedirectToPrefab:
+                                            ProcessReferenceToPrefab(snapshot, redirectPrefabIndex, current, ref data, in m_Marker);
                                             continue;
-                                            // Yes, at this point we abandoned the referencedItem as a reference to be put on the stack.
-                                            // Not to worry, it will be found while processing the Hierarchy of the prefab.
-                                        }
-                                        else
-                                        {
-                                            // With the prefeb being returned as invalid, this object is highly likely in the delayed deletion queue
-                                            // Add it to this hashset (so it can be excluded as problematic for referencing a Transform)
-                                            // but continue procesing as if it weren't an asset.
-                                            m_PersistentSceneObjectsInDelayedDeletionQueue.Add(referencedItem);
-                                        }
-                                    }
-                                    else if (current.Id is SourceIndex.SourceId.ManagedObject)
-                                    {
-                                        // This is practically guaranteed to be a Scene Object's managed shell referencing back to its native object,
-                                        // (unless someone felt hacky and got their hands on the pointer to a native object).
-
-                                        // Managed references to non-persistent SceneObjects are non-owning, as the Scene Objects are more strongly
-                                        // bound to the scene.
-                                        // Scene and Prefab indexes are handled above if the referencedTypeInfo indicates this is a root Transform.
-
-                                        // Further, it should be ignored for impact attribution, so don't add it as unowned reference.
-                                        continue;
-                                    }
-                                    else if (referencedTypeInfo.IsTransformType)
-                                    {
-                                        // References to Transforms are only owned if they originate in another Transform, Scene, or Prefab
-                                        if (currentIsNativeObject && currentTypeInfo.IsTransformType)
-                                        {
-                                            if (referencedIsPersistent && currentIsPersistent)
-                                            {
-                                                // For references within Prefab hierarchies, ensure that the transforms
-                                                // belong to the same prefab, to avoid including already owned nested prefab hierarchies as owned
-                                                if (!snapshot.SceneRoots.NativeObjectIndexToPrefabRootIndex.TryGetValue(
-                                                        current.Index, out var currentPrefabIndex))
-                                                    currentPrefabIndex = -1;
-                                                if (!snapshot.SceneRoots.NativeObjectIndexToPrefabRootIndex.TryGetValue(
-                                                        referencedItem.Index, out var referencedPrefabIndex))
-                                                    referencedPrefabIndex = -1;
-                                                if (currentPrefabIndex != referencedPrefabIndex)
-                                                {
-                                                    ProcessReferenceToPrefab(snapshot, new SourceIndex(
-                                                        SourceIndex.SourceId.Prefab, referencedPrefabIndex),
-                                                        current, ref data, in m_Marker);
-                                                    continue;
-                                                }
-                                            }
+                                        // Yes, at this point we abandoned the referencedItem as a reference to be put on the stack.
+                                        // Not to worry, it will be found while processing the Hierarchy of the prefab.
+                                        case SceneObjectOwnershipDecision.Ignore:
+                                            // Further, it should be ignored for impact attribution, so don't add it as unowned reference.
+                                            continue;
+                                        case SceneObjectOwnershipDecision.Owned:
                                             isOwned = true;
-                                        }
-                                        else
-                                            isOwned = (snapshot.NativeObjects.Flags[referencedItem.Index].HasFlag(ObjectFlags.IsRoot) && current.Id is SourceIndex.SourceId.Scene or SourceIndex.SourceId.Prefab);
-                                    }
-                                    else if (referencedTypeInfo.IsGameObjectType)
-                                    {
-                                        // References to GameObjects are only owned if they originate in their Transform
-                                        isOwned = currentIsNativeObject && currentTypeInfo.IsTransformType;
-                                    }
-                                    else if (referencedTypeInfo.IsComponentType)
-                                    {
-                                        // References to Components are only owned if they originate in their GameObject
-                                        isOwned = currentIsNativeObject && (currentTypeInfo.IsGameObjectType
-                                                // Sometimes AssetBundles hold references to a MonoBehaviour without a ManagedShell or GameObject
-                                                // (the only connection being to the asset bundle).
-                                                // In those cases, do root them to the Asset Bundle.
-                                                || currentTypeInfo.NativeTypeIndex == snapshot.NativeTypes.AssetBundleIdx
-                                                && referencedIsPersistent && referencedTypeInfo.IsMonoBehaviourType
-                                                && snapshot.NativeObjects.ManagedObjectIndex[referencedItem.Index] == CachedSnapshot.NativeObjectEntriesCache.InvalidObjectIndex
-                                                && snapshot.Connections.ReferencedBy.TryGetValue(referencedItem, out var monoBehaviourReferencedItems)
-                                                && monoBehaviourReferencedItems.Count == 1);
-                                    }
-                                    else if (currentIsNativeObject)
-                                    {
-#if VALIDATE_ROOT_AND_IMPACT
-                                        Debug.LogWarning($"Found a reference from a {current.Id} to a SceneObject {referencedItem} that might not be valid?");
-#endif
+                                            break;
+                                        case SceneObjectOwnershipDecision.Unowned:
+                                            isOwned = false;
+                                            break;
                                     }
                                 }
                             }
@@ -1681,12 +2214,18 @@ namespace Unity.MemoryProfiler.Editor
                     AddNextToImpactStack(ref data, root, ref rootMarker);
                     while (data.ImpactStack.Count > 0)
                     {
-                        var currentStep = data.ImpactStack.Peek();
+                        // Mutate the top step in place instead of Peek + Pop + Push: the previous pattern copied
+                        // the ~60-byte ImpactProcessingStackStep struct out and back on every child just to persist
+                        // an incremented counter. The ref must be re-acquired each iteration and never read after a
+                        // call that can Push (AddNextToImpactStack), since a Push may reallocate the backing array;
+                        // a realloc copies the (already-mutated) element across, so the increment is preserved.
+                        ref var currentStep = ref data.ImpactStack[data.ImpactStack.Count - 1];
                         if (currentStep.ProcessedChildren)
                         {
                             // all children processed, attribute impact and pop
+                            var current = currentStep.Current;
                             data.ImpactStack.Pop();
-                            AttributeImpact(snapshot, ref data, currentStep.Current, ownershipBucket);
+                            AttributeImpact(snapshot, ref data, current, ownershipBucket);
                         }
                         else
                         {
@@ -1697,11 +2236,9 @@ namespace Unity.MemoryProfiler.Editor
                                     currentStep.OwnedReferencesListInfo.SingleChild :
                                     m_OwnedChildList[currentStep.OwnedReferencesListInfo.IndexInChildList + 1 + currentStep.OwnedChildrenProcessed];
                                 currentStep.OwnedChildrenProcessed++;
-                                data.ImpactStack.Pop();
-                                data.ImpactStack.Push(currentStep);
                                 ref var marker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, ownedChildIndex);
                                 if (marker.FoundForRoot && !marker.FoundForImpact)
-                                    AddNextToImpactStack(ref data, ownedChildIndex, ref marker);
+                                    AddNextToImpactStack(ref data, ownedChildIndex, ref marker); // may reallocate ImpactStack; do not read currentStep after this
                             }
                             else if (currentStep.UnownedChildrenProcessed < currentStep.UnownedChildListCount)
                             {
@@ -1709,11 +2246,23 @@ namespace Unity.MemoryProfiler.Editor
                                     currentStep.UnownedReferencesListInfo.SingleChild :
                                     m_UnownedChildList[currentStep.UnownedReferencesListInfo.IndexInChildList + 1 + currentStep.UnownedChildrenProcessed];
                                 currentStep.UnownedChildrenProcessed++;
-                                data.ImpactStack.Pop();
-                                data.ImpactStack.Push(currentStep);
                                 ref var marker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, unownedChildIndex);
                                 if (marker.FoundForRoot && !marker.FoundForImpact)
-                                    AddNextToImpactStack(ref data, unownedChildIndex, ref marker);
+                                {
+                                    // Handle references to unowned scene objects differently to avoid having to reattribute them.
+                                    if (unownedChildIndex.Id is SourceIndex.SourceId.NativeObject)
+                                    {
+                                        ref readonly var typeData = ref snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[unownedChildIndex.Index]];
+                                        if (typeData.IsSceneObjectType)
+                                        {
+                                            // Scene Objects have a very clear ownership structure, so an unowned reference to a Scene Object can be safely ignored for impact attribution,
+                                            // as it will be fully attributed when processing the owning hierarchy of the scene object itself.
+                                            continue;
+                                        }
+                                    }
+
+                                    AddNextToImpactStack(ref data, unownedChildIndex, ref marker); // may reallocate ImpactStack; do not read currentStep after this
+                                }
                             }
                             else
                             {
@@ -1776,10 +2325,11 @@ namespace Unity.MemoryProfiler.Editor
                     // Not handled for impact
                     break;
                 case SourceIndex.SourceId.ManagedType:
-                    var staticFieldByteCount = (ulong)snapshot.TypeDescriptions.StaticFieldBytes[current.Index].Count;
+                    // Committed = captured static field bytes; resident is deduced from the type's
+                    // static-storage address against the resident-page bitset (see GetStaticFieldOwnSize).
                     ownSize = new NativeRootSize
                     {
-                        ManagedSize = new MemorySize(staticFieldByteCount, staticFieldByteCount)
+                        ManagedSize = GetStaticFieldOwnSize(snapshot, current.Index)
                     };
                     break;
                 case SourceIndex.SourceId.NativeRootReference:
@@ -1819,10 +2369,33 @@ namespace Unity.MemoryProfiler.Editor
                     // TODO: attribute managed heap page utilization up
                     break;
                 case SourceIndex.SourceId.NativeAllocation:
-                    ownSize = new NativeRootSize
+                    var allocationNative = snapshot.ProcessedNativeRoots.AllocationSizes[current.Index];
+                    // Subtract any static-field storage physically contained in this allocation: those bytes
+                    // are attributed as Managed to their ManagedType root (see the ManagedType case above /
+                    // GetStaticFieldOwnSize), so counting them here too would double-count. Done per-allocation
+                    // (not as a bulk subtraction from the VM root) so the reduced size is correct in BOTH the
+                    // hierarchical and flattened views.
+                    EnsureStaticBytesPerNativeAllocation(snapshot);
+                    if (m_StaticBytesPerNativeAllocation.TryGetValue(current.Index, out var staticInAllocation))
                     {
-                        NativeSize = snapshot.ProcessedNativeRoots.AllocationSizes[current.Index]
-                    };
+                        var actuallyDeducted = MemorySize.Min(staticInAllocation, allocationNative);
+                        allocationNative -= actuallyDeducted;
+                        StaticBytesActuallyDeductedFromNative += actuallyDeducted;
+                    }
+                    // The Mono/IL2CPP VM heap is allocated through Unity's native allocators, so its blocks
+                    // surface as NativeAllocations rooted to the VM root, but logically they ARE the managed
+                    // runtime's backing store. Report them as Managed (consistent with
+                    // EntriesMemoryMapCache.GetPointType and the Summary / All Of Memory views) so the Roots &
+                    // Impact VM bucket shows as managed. Channel-only: the snapshot total is unchanged. Static
+                    // storage lives inside these VM allocations and is also attributed as Managed to its
+                    // ManagedType root, so the per-allocation deduction above — and the bulk remainder in
+                    // DeductStaticFieldNativeRemainder — remove it from the managed side for them.
+                    var vmRootReference = snapshot.NativeRootReferences.VMRootReferenceIndex;
+                    if (vmRootReference.Valid
+                        && snapshot.NativeAllocations.RootReferenceId[current.Index] == snapshot.NativeRootReferences.Id[vmRootReference.Index])
+                        ownSize = new NativeRootSize { ManagedSize = allocationNative };
+                    else
+                        ownSize = new NativeRootSize { NativeSize = allocationNative };
                     // TODO: attribute native allocator utilization up, calculated in ProcessedNativeRoots
                     break;
                 case SourceIndex.SourceId.Prefab:
@@ -1859,7 +2432,7 @@ namespace Unity.MemoryProfiler.Editor
                         // which acts as the root. None of these should be roots in and off themselves
                         if (currentPathStep.IsRoot)
                         {
-                            if (ownershipBucket is not OwnershipBucket.UnrootedNativeObjects)
+                            if (ownershipBucket is not OwnershipBucket.BrokenScriptReferences)
                                 Checks.IsTrue(snapshot.NativeObjects.Flags[current.Index].HasFlag(ObjectFlags.IsDontDestroyOnLoad), "Scene Objects should never be roots in and of themselves, unless they are marked as DontDestroyOnLoad.");
                         }
                         else if (currentPathStep.Parent.Id is SourceIndex.SourceId.Scene)
@@ -1901,6 +2474,15 @@ namespace Unity.MemoryProfiler.Editor
                             else
                                 throw new InvalidOperationException($"For bucket {ownershipBucket}: Found a {currentPathStep.Parent.Id} as a parent to a Transform ({current} named \"{transformName}\"), which is not supposed to happen!");
                         }
+                    }
+                    else if (currentPathStep.IsRoot)
+                    {
+                        // Hard-rooted native objects keep their accumulated impact: attributing it to referees
+                        // would skip the terminal data.Roots registration below and hide their whole owned
+                        // subtree from the Roots & Impact table (referee edges are not display edges).
+                        // This means that e.g. any Non-SceneObject DontDestroyOnLoad native object that IS
+                        // referenced by anything else than a statically rooted chain, including other objects
+                        // in the same bucket will be attributed to the DoNotDestroyOnLoad bucket as a root.
                     }
                     else
                     {
@@ -1986,7 +2568,131 @@ namespace Unity.MemoryProfiler.Editor
 
             if (data.UnownedReferences.Count > 0)
             {
-                if (data.UnownedReferences.Count == 1)
+                // Strike any would-be referees whose impact has already been fully distributed: adding to
+                // them now would never re-bubble to a summed root and would be silently lost. The
+                // direct-push paths above (scene→parent, native-allocation→root, managed→GCHandle) do not
+                // filter these, unlike FindRefereesForImpactAttribution which already skips them.
+                long liveReferees = 0;
+                long liveGcHandleReferees = 0; // how many survivors are GCHandles (counted in the same pass)
+#if DEBUG_VALIDATION
+                var firstStruckReferee = default(SourceIndex);
+#endif
+                for (long u = 0; u < data.UnownedReferences.Count; u++)
+                {
+                    var candidate = data.UnownedReferences[u];
+                    if (!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, candidate).FullyDistributedImpact)
+                    {
+                        if (candidate.Id == SourceIndex.SourceId.GCHandleIndex)
+                            liveGcHandleReferees++;
+                        data.UnownedReferences[liveReferees++] = candidate;
+                    }
+#if DEBUG_VALIDATION
+                    else if (!firstStruckReferee.Valid)
+                        firstStruckReferee = candidate;
+#endif
+                }
+                data.UnownedReferences.Resize(liveReferees, false);
+
+                // If the surviving referees mix GCHandle(s) with non-GCHandle referees, strike the GCHandle(s).
+                // A GCHandle that holds an object which is ALSO referenced by a real owner is runtime
+                // bookkeeping, not a memory owner: attributing a pro-rata share to it would dilute the real
+                // owner's ownership and — because such a GCHandle is non-floating and never processed for impact
+                // (see CrawlGCHandleRoots) — that share would strand, never bubbling to a summed root. Removing
+                // the GCHandle lets the impact bubble fully to the real owner(s), and be Exclusive when there is
+                // exactly one. A GCHandle that is the SOLE referee is left intact — it is the legitimate
+                // (floating) root of an object nothing else holds. The GCHandle count is gathered in the strike
+                // loop above, so this extra compaction only runs in the (uncommon) mixed case — a referee list
+                // with no GCHandle (the common case, e.g. a manager with many referrers) skips it entirely.
+                if (liveGcHandleReferees > 0 && liveGcHandleReferees < liveReferees)
+                {
+                    long kept = 0;
+                    for (long u = 0; u < liveReferees; u++)
+                    {
+                        var candidate = data.UnownedReferences[u];
+                        if (candidate.Id != SourceIndex.SourceId.GCHandleIndex)
+                            data.UnownedReferences[kept++] = candidate;
+                    }
+                    data.UnownedReferences.Resize(kept, false);
+                }
+
+                if (data.UnownedReferences.Count == 0)
+                {
+                    // Defensive fallback: every would-be referee was already fully distributed. This can
+                    // only happen to scene/prefab hierarchy items (Transforms/GameObjects/Components),
+                    // which attribute to their BFS shortest-path parent. Because the impact DFS skips
+                    // unowned references into scene objects (see CalculateImpact), such an item is reached
+                    // only via its owned hierarchy and is finalized in post-order, before its parent — so
+                    // this path is not normally taken. It is retained for conservation safety: were a
+                    // referee ever finalized out of order, dropping the impact here would lose bytes from
+                    // the snapshot total. Rather than jumping straight to the DFS root, walk UP the
+                    // path-parent chain to the nearest ancestor that is still ON THE STACK (FoundForImpact
+                    // && !FullyDistributedImpact, so it WILL re-bubble this impact), falling back to the DFS
+                    // root (always on the stack, since current is in its subtree). This preserves the
+                    // hierarchy; it is conservation-neutral (same root) either way. Handled here, inside the
+                    // Count > 0 block, so the else branch below need not treat these now virtually-
+                    // unreferenced items as roots.
+#if DEBUG_VALIDATION
+                    // Only scene/prefab hierarchy items should ever need this redirect, and the redirected
+                    // item must share the EXACT same root as the finalized referee it pointed at. Anything
+                    // else indicates a NEW upstream ordering/attribution bug — alert so it isn't silently
+                    // masked by the redirect.
+                    Checks.IsTrue(
+                        current.Id is SourceIndex.SourceId.NativeObject
+                        && snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[current.Index]].IsSceneObjectType,
+                        $"Unexpected impact redirect for non-scene-object {current} (finalized referee {firstStruckReferee}); only scene/prefab hierarchy items are expected to redirect.");
+                    if (firstStruckReferee.Valid)
+                        Checks.IsTrue(
+                            SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, firstStruckReferee).Root == currentPathStep.Root,
+                            $"Impact redirect: {current} and its finalized referee {firstStruckReferee} do not share the same root.");
+#endif
+                    // Find the nearest ancestor that is still on the stack; default to the DFS root.
+                    var attributeTo = currentPathStep.Root;
+                    var ancestor = currentPathStep.Parent;
+                    while (ancestor.Valid)
+                    {
+                        ref readonly var ancestorMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, ancestor);
+                        if (ancestorMarker.FoundForImpact && !ancestorMarker.FullyDistributedImpact)
+                        {
+                            attributeTo = ancestor;
+                            break;
+                        }
+                        ref readonly var ancestorStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, ancestor);
+                        if (!ancestorStep.Parent.Valid)
+                            break;
+                        ancestor = ancestorStep.Parent;
+                    }
+#if DEBUG_VALIDATION
+                    static void GetTypeAndName(CachedSnapshot snapshot, SourceIndex sourceIndex, out string typeName, out string objectName)
+                    {
+                        objectName = sourceIndex.GetName(snapshot);
+                        typeName = sourceIndex.Id switch {
+                            SourceIndex.SourceId.NativeObject => snapshot.NativeTypes.TypeName[snapshot.NativeObjects.NativeTypeArrayIndex[sourceIndex.Index]],
+                            SourceIndex.SourceId.Scene => "Scene",
+                            SourceIndex.SourceId.Prefab => "Prefab",
+                            SourceIndex.SourceId.GCHandleIndex => "GCHandle",
+                            SourceIndex.SourceId.ManagedType => "ManagedType",
+                            SourceIndex.SourceId.ManagedObject => snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[sourceIndex.Index].ITypeDescription],
+                            _ => sourceIndex.Id.ToString()
+                            };
+                    }
+                    GetTypeAndName(snapshot, current, out var typeName, out var objectName);
+                    GetTypeAndName(snapshot, attributeTo, out var attributeToTypeName, out var attributeToObjectName);
+                    var mainMessage = $"Scene Object Impact reattribution: the {typeName} named \"{objectName}\" Index {current} had no referees and its impact went to -> {attributeToTypeName} named \"{attributeToObjectName}\" Index {attributeTo}";
+                    // add one line per parent in the path for easier debugging of the hierarchy in the log
+                    var pathParent = currentPathStep.Parent;
+                    while (pathParent.Valid)
+                    {
+                        GetTypeAndName(snapshot, pathParent, out var parentTypeName, out var parentObjectName);
+                        mainMessage += $"\n    Parent: {parentTypeName} named \"{parentObjectName}\" Index {pathParent}";
+                        ref readonly var parentStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, pathParent);
+                        pathParent = parentStep.Parent;
+                    }
+                    Debug.Log(mainMessage);
+#endif
+                    ref var attributeToImpact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, attributeTo);
+                    attributeToImpact += currentImpact;
+                }
+                else if (data.UnownedReferences.Count == 1)
                 {
                     var referee = data.UnownedReferences[0];
                     ref var fullyOwningRefereeImpact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, referee);
@@ -2058,9 +2764,9 @@ namespace Unity.MemoryProfiler.Editor
                     data.Roots.Push(current);
                 }
                 else if (current.Id is SourceIndex.SourceId.NativeObject &&
-                         ownershipBucket is OwnershipBucket.UnrootedNativeObjects)
+                         ownershipBucket is OwnershipBucket.BrokenScriptReferences)
                 {
-                    // This is an otherwise unrooted native object but that is to be expected for this bucket.
+                    // A native object with a broken script reference, rooted to itself; expected for this bucket.
                     data.Roots.Push(current);
                 }
                 else
@@ -2328,23 +3034,81 @@ namespace Unity.MemoryProfiler.Editor
                                 // Ignore here.
                                 continue;
                             }
-                            Debug.Assert(rootStep.Valid, "Native allocation root information should be valid");
-                            Debug.Assert(!rootStep.IsRoot, "Native allocation should not be a root itself");
-                            Debug.Assert(rootStep.Root.Valid && rootStep.Parent.Valid, "Native allocation should have a root and a parent");
-                            Debug.Assert(mark.FoundForRoot, "Native allocation should be marked as found for root");
-                            Debug.Assert(mark.FoundForImpact, "Native allocation should be marked as found for impact");
-                            Debug.Assert(mark.FullyDistributedImpact, "Native allocation impact should be fully distributed");
 
-                            if (!rootStep.Valid
-                                || !(rootStep.IsRoot || (rootStep.Root.Valid && rootStep.Parent.Valid))
+                            if (!rootStep.Valid && snapshot.HasSystemMemoryRegionsInfo)
+                            {
+                                // No root step was computed for this rooted allocation. When capturing system
+                                // regions an allocation can fall outside all of them and so be excluded from the
+                                // memory map, in which case a missing root step is expected (a timing mismatch).
+                                // Verify that by checking whether the address actually falls inside a reported
+                                // system region — if it does NOT, this is the benign outside-regions case.
+                                var address = snapshot.NativeAllocations.Address[i];
+                                // Binary search finds the region whose start address is the largest that is still
+                                // <= the allocation address; that region (if any) is the only candidate to contain it.
+                                var searchIndex = DynamicArrayAlgorithms.BinarySearch(snapshot.SystemMemoryRegions.RegionAddress, address);
+                                bool isInSystemRegion;
+                                if (searchIndex >= 0)
+                                {
+                                    isInSystemRegion = true; // exact match on a region start address
+                                }
+                                else
+                                {
+                                    var insertionPoint = ~searchIndex;
+                                    if (insertionPoint > 0)
+                                    {
+                                        var prevRegion = insertionPoint - 1;
+                                        var regionStart = snapshot.SystemMemoryRegions.RegionAddress[prevRegion];
+                                        var regionSize = snapshot.SystemMemoryRegions.RegionSize[prevRegion];
+                                        isInSystemRegion = address < regionStart + regionSize;
+                                    }
+                                    else
+                                    {
+                                        isInSystemRegion = false; // address is before all known regions
+                                    }
+                                }
+
+                                if (isInSystemRegion)
+                                {
+                                    // The allocation IS inside a reported system region, so it would normally have
+                                    // produced a memory-map entry and a root step. There is ONE known-benign
+                                    // exception: the profiler's OWN allocations during a live self-capture. The
+                                    // capture is not atomic, so a profiler buffer created/resized while the snapshot
+                                    // is being taken can sit inside a region yet never surface as its own entry in
+                                    // the (non-overlapping) memory map — ProcessNativeAllocation never accumulates it
+                                    // (its AllocationSizes stays 0) and it gets no root step. Ignore ONLY that exact
+                                    // case: not in the memory map AND owned by a profiling-area root. Anything else —
+                                    // an allocation that WAS in the map yet lacks a root step (a real consumption
+                                    // bug), or a non-profiling allocation missing from the map (unexplained) — keeps
+                                    // the error so genuine processing bugs are not masked.
+                                    if (!snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootId, out var rootIdx))
+                                        rootIdx = NativeRootReferenceEntriesCache.InvalidRootIndex;
+                                    var areaName = rootIdx >= NativeRootReferenceEntriesCache.FirstValidRootIndex ? snapshot.NativeRootReferences.AreaName[rootIdx] : "Unknown";
+                                    var objectName = rootIdx >= NativeRootReferenceEntriesCache.FirstValidRootIndex ? snapshot.NativeRootReferences.ObjectName[rootIdx] : "Unknown";
+
+                                    var notInMemoryMap = snapshot.ProcessedNativeRoots.AllocationSizes[i].Committed == 0;
+                                    var isProfilingAreaAllocation = areaName != null && areaName.Contains("Profiling");
+                                    if (!(notInMemoryMap && isProfilingAreaAllocation))
+                                    {
+                                        Debug.LogError($"Native Allocation in a reported system region has invalid root step: (index: {i}, rootId: {rootId}, AreaName: {areaName}, ObjectName: {objectName}, inMemoryMap: {!notInMemoryMap}, address: 0x{string.Format("{0:X16}", address)})");
+                                    }
+                                }
+                                // else: address outside all known system regions — confirmed timing mismatch, silently skip.
+                                continue;
+                            }
+
+                            // Root step is valid; all remaining properties must hold.
+                            // Log an error only for genuinely unexpected validation failures.
+                            if (rootStep.IsRoot
+                                || !rootStep.Root.Valid
+                                || !rootStep.Parent.Valid
                                 || !mark.FoundForRoot
                                 || !mark.FoundForImpact
                                 || !mark.FullyDistributedImpact)
                             {
-                                // Only build this string if it actually failed.
                                 if (!snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootId, out var rootIndex))
                                     rootIndex = NativeRootReferenceEntriesCache.InvalidRootIndex;
-                                Debug.LogError($"Native Allocation failed validation: (index: {i}, rootId: {rootId}, AreaName: {(rootIndex >= NativeRootReferenceEntriesCache.FirstValidRootIndex ? snapshot.NativeRootReferences.AreaName[rootIndex] : "Unknown")}, ObjectName: {(rootIndex >= NativeRootReferenceEntriesCache.FirstValidRootIndex ? snapshot.NativeRootReferences.ObjectName[rootIndex] : "Unknown")}");
+                                Debug.LogError($"Native Allocation failed validation: (index: {i}, rootId: {rootId}, AreaName: {(rootIndex >= NativeRootReferenceEntriesCache.FirstValidRootIndex ? snapshot.NativeRootReferences.AreaName[rootIndex] : "Unknown")}, ObjectName: {(rootIndex >= NativeRootReferenceEntriesCache.FirstValidRootIndex ? snapshot.NativeRootReferences.ObjectName[rootIndex] : "Unknown")}, address: 0x{string.Format("{0:X16}", snapshot.NativeAllocations.Address[i])})");
+                                continue;
                             }
                         }
                         break;
@@ -2369,6 +3133,8 @@ namespace Unity.MemoryProfiler.Editor
                         ref readonly var markerInfoForGCHandles = ref m_Marker[rootGroupIndex];
                         ref readonly var rootStepInfoForGCHandleHeldObjects = ref m_ShortestPathInfo[SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects];
                         ref readonly var markerInfoForGCHandleHeldObjects = ref m_Marker[SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects];
+
+                        var crawled = snapshot.CrawledData.Crawled;
                         for (long i = 0; i < snapshot.GcHandles.UniqueCount; i++)
                         {
                             ref readonly var gcRootStep = ref rootStepInfoForGCHandles[i];
@@ -2381,8 +3147,11 @@ namespace Unity.MemoryProfiler.Editor
                                 Debug.Assert(gcMark.FoundForImpact, "GCHandle should be marked as found for impact");
                                 Debug.Assert(gcMark.FullyDistributedImpact, "GCHandle impact should be fully distributed");
 
-                                ref readonly var manageObjectMark = ref markerInfoForGCHandleHeldObjects[i];
-                                ref readonly var manageObjectRootStep = ref rootStepInfoForGCHandleHeldObjects[i];
+                                var managedObjectIndexForValidation = snapshot.CrawledData.ResolveManagedObjectIndexForGCHandle(i);
+                                if (managedObjectIndexForValidation == ManagedData.InvalidObjectIndex || !crawled)
+                                    continue;
+                                ref readonly var manageObjectMark = ref markerInfoForGCHandleHeldObjects[managedObjectIndexForValidation];
+                                ref readonly var manageObjectRootStep = ref rootStepInfoForGCHandleHeldObjects[managedObjectIndexForValidation];
                                 Debug.Assert(manageObjectRootStep.Valid, "Managed object root information should be valid");
                                 Debug.Assert(!manageObjectRootStep.IsRoot, "Managed object should not be a root, the GCHandle is the root");
                                 Debug.Assert(manageObjectMark.FoundForRoot, "Managed object should be marked as found for root");

@@ -9,6 +9,7 @@ This section describes the user interface for the Memory Profiler package window
 |[Snapshots panel reference](snapshots-component.md)|Reference for the snapshots in your project.|
 |[Selection Details panel](selection-details-component.md)| Describes the Selection Details panel, which displays more information about a selected object. |
 |[References panel](references-component.md)| Describes the References panel, which lists references to and from a selected object. |
+|[Memory Profiler preferences reference](memory-profiler-preferences.md)| Reference for settings in **Edit** &gt; **Preferences** &gt; **Analysis** &gt; **Memory Profiler**. |
 
 ## Additional resources
 

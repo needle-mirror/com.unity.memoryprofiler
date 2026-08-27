@@ -23,6 +23,7 @@
     flex-grow: 1;
     flex-shrink: 1;
     margin-left: 8px;
+	padding-top: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -70,4 +71,9 @@
 .comparison-view__snapshot-size-bar .memory-bar-element__committed-bar
 {
     background-color: #D6D6D6;
+}
+
+.comparison-view__pager
+{
+    display: none;
 }

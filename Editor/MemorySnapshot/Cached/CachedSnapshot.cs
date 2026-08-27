@@ -47,6 +47,7 @@ namespace Unity.MemoryProfiler.Editor
 
         SnapshotMetricsCollector m_MetricsCollector;
 
+
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
         static CachedSnapshot()
         {
@@ -104,13 +105,39 @@ namespace Unity.MemoryProfiler.Editor
             get { return (m_SnapshotVersion >= FormatVersion.EntityIDAs8ByteStructs); }
         }
 
+        /// <summary>
+        /// True when the file carries a non-empty backend-provided managed object graph (format v19+,
+        /// populated by CoreCLR; false on Mono / IL2CPP and pre-v19 files). When true, the crawler
+        /// prepopulates its object set from <see cref="ManagedObjects"/> instead of discovering objects
+        /// byte-by-byte, and, when heap bytes are also absent, builds the reference graph from
+        /// <see cref="ManagedReferences"/> instead of walking field bytes. Only valid once
+        /// <see cref="ManagedObjects"/> is constructed. <see cref="ManagedRoots"/> is parsed but not yet
+        /// consumed by the crawler.
+        /// </summary>
+        public bool HasBackendManagedGraph
+        {
+            get { return m_SnapshotVersion >= FormatVersion.ManagedConnectionsVersion && ManagedObjects != null && ManagedObjects.Count > 0; }
+        }
+
+        /// <summary>
+        /// True when the file carries resolved GC-static field slots, per-field attribute flags, and
+        /// heap-section chunk-type flags (format v20+). Populated by all backends; only CoreCLR resolves
+        /// thread-static slots and the static-flavor bits (AppDomain/Thread/Context/RVA) — Mono / IL2CPP
+        /// populate ordinary-static slots and the attribute bits (InitOnly/Literal/Visibility/SpecialName)
+        /// but leave the static-flavor bits at 0.
+        /// </summary>
+        public bool HasStaticFieldSlotsAndFlags
+        {
+            get { return m_SnapshotVersion >= FormatVersion.StaticFieldAndNonGCHeapVersion; }
+        }
+
         bool m_HasPrefabRootInfo;
         public bool HasPrefabRootInfo => m_HasPrefabRootInfo;
 
         public ManagedData CrawledData { internal set; get; }
 
         IFileReader m_Reader;
-        public MetaData MetaData { get; private set; }
+        public readonly MetaData MetaData;
         public DateTime TimeStamp { get; private set; }
         public ref readonly VirtualMachineInformation VirtualMachineInformation => ref m_VirtualMachineInformation;
         readonly VirtualMachineInformation m_VirtualMachineInformation;
@@ -125,11 +152,21 @@ namespace Unity.MemoryProfiler.Editor
         public NativeAllocationEntriesCache NativeAllocations;
         public ManagedMemorySectionEntriesCache ManagedStacks;
         public ManagedMemorySectionEntriesCache ManagedHeapSections;
+        public OnDemandHeapSectionCache OnDemandHeapCache;
+
         public GCHandleEntriesCache GcHandles;
         public FieldDescriptionEntriesCache FieldDescriptions;
         public ConnectionEntriesCache Connections;
 
+        /// <summary>Every managed object from the backend-provided graph (format v19+). Empty on Mono / IL2CPP and on older files; populated by CoreCLR. See <see cref="HasBackendManagedGraph"/>.</summary>
+        public ManagedObjectsEntriesCache ManagedObjects;
+        /// <summary>Object→object edges from the backend-provided graph (format v19+). Empty on Mono / IL2CPP and on older files; populated by CoreCLR. See <see cref="HasBackendManagedGraph"/>.</summary>
+        public ManagedReferencesEntriesCache ManagedReferences;
+        /// <summary>Roots from the backend-provided graph (format v19+). Empty on Mono / IL2CPP and on older files; populated by CoreCLR. See <see cref="HasBackendManagedGraph"/>.</summary>
+        public ManagedRootsEntriesCache ManagedRoots;
+
         public SortedNativeMemoryRegionEntriesCache SortedNativeRegionsEntries;
+        public SortedSystemMemoryRegionEntriesCache SortedSystemMemoryRegions;
         public SortedManagedObjectsCache SortedManagedObjects;
         public SortedNativeAllocationsCache SortedNativeAllocations;
         public SortedNativeObjectsCache SortedNativeObjects;
@@ -143,6 +180,7 @@ namespace Unity.MemoryProfiler.Editor
         public EntriesMemoryMapCache EntriesMemoryMap;
         public ProcessedNativeRoots ProcessedNativeRoots;
         public RootAndImpactInfo RootAndImpactInfo;
+        public ObjectStatusComputation ObjectStatusComputation;
 
         /// <summary>
         /// Cache of table entry names that require heap bytes access.
@@ -151,37 +189,51 @@ namespace Unity.MemoryProfiler.Editor
         /// </summary>
         public TableEntryNameCache TableEntryNames { get; private set; }
 
-        public CachedSnapshot(IFileReader reader)
+        public CachedSnapshot(IFileReader reader, bool loadFully = true)
         {
             m_MetricsCollector = new SnapshotMetricsCollector();
             m_MetricsCollector.StartTiming();
-
+            m_Reader = reader;
             unsafe
             {
-                VirtualMachineInformation vmInfo;
-                reader.ReadUnsafe(EntryType.Metadata_VirtualMachineInformation, &vmInfo, sizeof(VirtualMachineInformation), 0, 1);
+                VirtualMachineInformationFileData vmInfoRaw;
+                reader.ReadUnsafe(EntryType.Metadata_VirtualMachineInformation, &vmInfoRaw, sizeof(VirtualMachineInformationFileData), 0, 1);
 
-                // Re-enable this check once we add capture of the VM memory on CoreCLR. It is disabled currently to allow us to have snapshot tests running that are unrelated to VM memory. https://jira.unity3d.com/browse/VM-1768
-#if !ENABLE_CORECLR
-                if (!VMTools.ValidateVirtualMachineInfo(vmInfo))
+                if (!VMTools.ValidateVirtualMachineInfo(vmInfoRaw))
                 {
                     throw new UnityException("Invalid VM info. Snapshot file is corrupted.");
                 }
-#endif
 
-                m_Reader = reader;
                 long ticks;
                 reader.ReadUnsafe(EntryType.Metadata_RecordDate, &ticks, sizeof(long), 0, 1);
                 TimeStamp = new DateTime(ticks);
 
-                m_VirtualMachineInformation = vmInfo;
+                MetaData = new MetaData(reader);
+
+                m_VirtualMachineInformation = new VirtualMachineInformation(vmInfoRaw, MetaData.TargetInfo?.ScriptingBackend);
+            }
+            if (loadFully)
+                Load();
+        }
+
+        public CachedSnapshot Load()
+        {
+            var reader = m_Reader;
+            if (m_SnapshotVersion != (FormatVersion)0)
+                return this; // don't load twice.
+            unsafe
+            {
                 m_SnapshotVersion = reader.FormatVersion;
 
-                MetaData = new MetaData(reader);
                 SetUnityVersionSpecificFlags();
 
                 m_MetricsCollector.StartFirstConstructorTiming(SnapshotMetrics.TimingStep.NativeAllocationSitesCache);
                 NativeAllocationSites = new NativeAllocationSiteEntriesCache(ref reader);
+#if MEMORY_PROFILER_METRICS
+                // Sync async reads to get accurate timing and prevent concurrent file reads
+                NativeAllocationSites.CompleteAsyncReadOperations();
+#endif
+                m_MetricsCollector.RecordLoadingPhase($"NativeAllocationSites done (Count={NativeAllocationSites.Count})");
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocationSitesCache);
 
                 FieldDescriptions = new FieldDescriptionEntriesCache(ref reader);
@@ -190,21 +242,26 @@ namespace Unity.MemoryProfiler.Editor
                 NativeTypes = new NativeTypeEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeTypesCache);
 
-                TypeDescriptions = new TypeDescriptionEntriesCache(ref reader, FieldDescriptions, NativeTypes, vmInfo);
+                TypeDescriptions = new TypeDescriptionEntriesCache(ref reader, FieldDescriptions, NativeTypes, m_VirtualMachineInformation);
 #if MEMORY_PROFILER_METRICS
                 // Sync async reads to get accurate timing for this cache
                 TypeDescriptions.CompleteAsyncReadOperations();
 #endif
+                m_MetricsCollector.RecordLoadingPhase($"TypeDescriptions done (Count={TypeDescriptions.Count})");
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.TypeDescriptionsCache);
 
                 NativeRootReferences = new NativeRootReferenceEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeRootReferencesCache);
 
-                NativeObjects = new NativeObjectEntriesCache(ref reader, NativeTypes.AssetBundleIdx);
+                NativeAllocations = new NativeAllocationEntriesCache(ref reader, NativeAllocationSites.Count != 0);
+                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocationsCache);
+
+                NativeObjects = new NativeObjectEntriesCache(ref reader, NativeTypes.AssetBundleIdx, NativeAllocations);
 #if MEMORY_PROFILER_METRICS
                 // Sync async reads to get accurate timing for this cache
                 NativeObjects.CompleteAsyncReadOperations();
 #endif
+                m_MetricsCollector.RecordLoadingPhase($"NativeObjects done (Count={NativeObjects.Count})");
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeObjectsCache);
 
                 NativeMemoryRegions = new NativeMemoryRegionEntriesCache(ref reader);
@@ -216,28 +273,43 @@ namespace Unity.MemoryProfiler.Editor
                 NativeCallstackSymbols = new NativeCallstackSymbolEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeCallstackSymbolsCache);
 
-                NativeAllocations = new NativeAllocationEntriesCache(ref reader, NativeAllocationSites.Count != 0);
-                m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocationsCache);
 
-                ManagedStacks = new ManagedMemorySectionEntriesCache(ref reader, false, true);
+                m_MetricsCollector.RecordLoadingPhase("ManagedStacks: starting constructor");
+                ManagedStacks = new ManagedMemorySectionEntriesCache(ref reader, false, true, ref m_MetricsCollector);
+                m_MetricsCollector.RecordManagedSectionDiagnostics(isHeap: false, ManagedStacks.Count, (long)ManagedStacks.StackMemoryReserved);
+                m_MetricsCollector.RecordLoadingPhase($"ManagedStacks: constructor done (Count={ManagedStacks.Count}, Bytes={ManagedStacks.StackMemoryReserved})");
 #if MEMORY_PROFILER_METRICS
                 // Sync async reads to get accurate timing for this cache
+                m_MetricsCollector.RecordLoadingPhase("ManagedStacks: starting CompleteHeapBytesRead");
                 ManagedStacks.CompleteHeapBytesRead();
+                m_MetricsCollector.RecordLoadingPhase("ManagedStacks: CompleteHeapBytesRead done");
 #endif
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ManagedStacksCache);
 
-                ManagedHeapSections = new ManagedMemorySectionEntriesCache(ref reader, HasMemoryLabelSizesAndGCHeapTypes, false);
+                m_MetricsCollector.RecordLoadingPhase("ManagedHeapSections: starting constructor");
+                ManagedHeapSections = new ManagedMemorySectionEntriesCache(ref reader, HasMemoryLabelSizesAndGCHeapTypes, false, ref m_MetricsCollector);
+                m_MetricsCollector.RecordManagedSectionDiagnostics(isHeap: true, ManagedHeapSections.Count,
+                    (long)(ManagedHeapSections.ManagedHeapMemoryReserved + ManagedHeapSections.VirtualMachineMemoryReserved));
+                m_MetricsCollector.RecordLoadingPhase($"ManagedHeapSections: constructor done (Count={ManagedHeapSections.Count}, HeapBytes={ManagedHeapSections.ManagedHeapMemoryReserved}, VMBytes={ManagedHeapSections.VirtualMachineMemoryReserved})");
 #if MEMORY_PROFILER_METRICS
                 // Sync async reads to get accurate timing for this cache
+                m_MetricsCollector.RecordLoadingPhase("ManagedHeapSections: starting CompleteHeapBytesRead");
                 ManagedHeapSections.CompleteHeapBytesRead();
+                m_MetricsCollector.RecordLoadingPhase("ManagedHeapSections: CompleteHeapBytesRead done");
 #endif
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ManagedHeapSectionsCache);
 
                 GcHandles = new GCHandleEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.GcHandlesCache);
 
-                Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.Count, HasConnectionOverhaul);
+                Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.Count);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ConnectionsCache);
+
+                // Backend-provided managed object graph (format v19+). Empty on Mono / IL2CPP and older files.
+                // Constructed before CrawledData so HasBackendManagedGraph can steer the crawl.
+                ManagedObjects = new ManagedObjectsEntriesCache(ref reader);
+                ManagedReferences = new ManagedReferencesEntriesCache(ref reader);
+                ManagedRoots = new ManagedRootsEntriesCache(ref reader);
 
                 SceneRoots = new SceneRootEntriesCache(ref reader);
                 // TODO: Jobifiy GenerateBaseData and sync at end
@@ -251,11 +323,12 @@ namespace Unity.MemoryProfiler.Editor
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocatorsCache);
 
                 SystemMemoryRegions = new SystemMemoryRegionEntriesCache(ref reader);
-                SystemMemoryResidentPages = new SystemMemoryResidentPagesEntriesCache(ref reader);
+                SystemMemoryResidentPages = new SystemMemoryResidentPagesEntriesCache(ref reader, SystemMemoryRegions);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.SystemMemoryRegionsCache);
 
                 SortedManagedObjects = new SortedManagedObjectsCache(this);
                 SortedNativeRegionsEntries = new SortedNativeMemoryRegionEntriesCache(this);
+                SortedSystemMemoryRegions = new SortedSystemMemoryRegionEntriesCache(this);
                 SortedNativeAllocations = new SortedNativeAllocationsCache(this);
                 SortedNativeObjects = new SortedNativeObjectsCache(this);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.SortedCaches, doNotStartNext: true);
@@ -271,6 +344,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ConstructorTotal, doNotStartNext: true);
+            return this;
         }
 
         void SetUnityVersionSpecificFlags()
@@ -315,15 +389,21 @@ namespace Unity.MemoryProfiler.Editor
 
         public int PostProcessStepCountWithCrawler =>
             ManagedDataCrawler.CrawlStepCount
-            + PostProcessStepCountWithoutCrawler;
+            + PostProcessStepCountWithoutCrawler
+            + 1; // heap unloading step (includes caching table entry names)
+
         public int PostProcessStepCountWithoutCrawler =>
             +EntriesMemoryMapCache.BuildStepCount
             + ProcessedNativeRoots.ProcessStepCount
             + RootAndImpactInfo.ProcessStepCount
+            + ObjectStatusComputation.ProcessStepCount
             + 1; //final step
 
         public IEnumerator<EnumerationStatus> PostProcess(bool crawlManaged = true)
         {
+            if (RootAndImpactInfo != null || ObjectStatusComputation != null)
+                throw new InvalidOperationException("PostProcess has already been called.");
+
             var status = new EnumerationStatus(crawlManaged ? PostProcessStepCountWithCrawler : PostProcessStepCountWithoutCrawler);
             m_MetricsCollector.StartPostProcessTiming();
 
@@ -340,11 +420,31 @@ namespace Unity.MemoryProfiler.Editor
                     m_MetricsCollector.ResumePostProcessTiming(SnapshotMetrics.TimingStep.CrawlTime);
                 }
                 // Cache table entry names. As they are informed by the crawler results, include them in the crawl time metric.
+                m_MetricsCollector.PausePostProcessTiming(SnapshotMetrics.TimingStep.CrawlTime);
+                yield return status.IncrementStep(stepStatus: "Caching table entry names and releasing heap memory");
+                m_MetricsCollector.ResumePostProcessTiming(SnapshotMetrics.TimingStep.CrawlTime);
+
+                // Cache native allocation names before unloading heap bytes
+                // This must happen after crawling so that ConnectionsToMappedToSourceIndex is populated
                 CacheNativeAllocationNames();
+
+                ManagedHeapSections.UnloadHeapBytes();
+                ManagedStacks.UnloadHeapBytes();
                 m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.CrawlTime);
             }
+            else
+            {
+                // Unload heap bytes for managed objects.
+                // Technically we would have not needed to load them in in the first place, but the Constructor does not
+                // know if the PostProcess will be called with crawlManaged = true or false
+                ManagedHeapSections.UnloadHeapBytes();
+                ManagedStacks.UnloadHeapBytes();
+            }
+            InitializeOnDemandHeapCache();
+
             // these need the managed object count
             RootAndImpactInfo = new RootAndImpactInfo(this);
+            ObjectStatusComputation = new ObjectStatusComputation();
 
             // To populate ProcessedNativeRoots with reliable native sizes for all allocations, as well as Resident vs Committed amounts for all Native Roots,the Memory Map needs to be built
             m_MetricsCollector.StartPostProcessStep(SnapshotMetrics.TimingStep.MemoryMapBuildTime, EntriesMemoryMapCache.BuildStepCount);
@@ -379,6 +479,13 @@ namespace Unity.MemoryProfiler.Editor
             }
             m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.RootAndImpactBuildTime);
 
+            // Object status classification — uses RootAndImpactInfo when available, falls back to flag-based checks
+            processor = ObjectStatusComputation.ReadOrProcess(this, status);
+            while (processor.MoveNext())
+            {
+                yield return processor.Current;
+            }
+
             // Finalize metrics collection
             m_MetricsCollector.RecordPostProcessTiming(SnapshotMetrics.TimingStep.TotalPostProcessTime);
             m_MetricsCollector.CollectSnapshotMetadata(this);
@@ -388,69 +495,20 @@ namespace Unity.MemoryProfiler.Editor
             m_MetricsCollector.LogMetrics();
         }
 
+        /// <summary>
+        /// Logs whatever metrics have been collected so far, including steps that are still in progress.
+        /// Useful for diagnosing where <see cref="PostProcess"/> hung: completed steps show their timing,
+        /// the step that is currently running (or stuck) shows 0, and later steps are absent entirely.
+        /// No-op when MEMORY_PROFILER_METRICS is not defined.
+        /// </summary>
+        internal void LogCurrentMetrics(bool asError = false) => m_MetricsCollector.LogMetrics(asError);
+
         public string FullPath
         {
             get
             {
                 return m_Reader.FullPath;
             }
-        }
-
-        //Unified Object index are in that order: gcHandle, native object, crawled objects
-        public long ManagedObjectIndexToUnifiedObjectIndex(long i)
-        {
-            // Invalid
-            if (i < 0)
-                return -1;
-
-            // GC Handle
-            if (i < GcHandles.UniqueCount)
-                return i;
-
-            // Managed objects, but not reported through GC Handle
-            if (i < CrawledData.ManagedObjects.Count)
-                return i + NativeObjects.Count;
-
-            return -1;
-        }
-
-        public long NativeObjectIndexToUnifiedObjectIndex(long i)
-        {
-            if (i < 0)
-                return -1;
-
-            // Shift behind native objects
-            if (i < NativeObjects.Count)
-                return i + GcHandles.UniqueCount;
-
-            return -1;
-        }
-
-        public int UnifiedObjectIndexToManagedObjectIndex(long i)
-        {
-            if (i < 0)
-                return -1;
-
-            if (i < GcHandles.UniqueCount)
-                return (int)i;
-
-            // If CrawledData.ManagedObjects includes GcHandles as first GcHandles.Count
-            // than it makes sense as we want to remap only excess
-            int firstCrawled = (int)(GcHandles.UniqueCount + NativeObjects.Count);
-            int lastCrawled = (int)(NativeObjects.Count + CrawledData.ManagedObjects.Count);
-
-            if (i >= firstCrawled && i < lastCrawled)
-                return (int)(i - (int)NativeObjects.Count);
-
-            return -1;
-        }
-
-        public int UnifiedObjectIndexToNativeObjectIndex(long i)
-        {
-            if (i < GcHandles.UniqueCount) return -1;
-            int firstCrawled = (int)(GcHandles.UniqueCount + NativeObjects.Count);
-            if (i < firstCrawled) return (int)(i - (int)GcHandles.UniqueCount);
-            return -1;
         }
 
         public enum NativeAllocationOrRegionSearchResult
@@ -580,6 +638,9 @@ namespace Unity.MemoryProfiler.Editor
                 GcHandles.Dispose();
                 FieldDescriptions.Dispose();
                 Connections.Dispose();
+                ManagedObjects?.Dispose();
+                ManagedReferences?.Dispose();
+                ManagedRoots?.Dispose();
                 SceneRoots.Dispose();
                 NativeGfxResourceReferences.Dispose();
                 NativeAllocations.Dispose();
@@ -589,6 +650,7 @@ namespace Unity.MemoryProfiler.Editor
                 SystemMemoryResidentPages.Dispose();
 
                 RootAndImpactInfo.Dispose();
+                ObjectStatusComputation?.Dispose();
                 EntriesMemoryMap.Dispose();
                 CrawledData.Dispose();
                 CrawledData = null;
@@ -596,7 +658,11 @@ namespace Unity.MemoryProfiler.Editor
                 TableEntryNames?.Dispose();
                 TableEntryNames = null;
 
+                OnDemandHeapCache?.Dispose();
+                OnDemandHeapCache = null;
+
                 SortedNativeRegionsEntries.Dispose();
+                SortedSystemMemoryRegions.Dispose();
                 SortedManagedObjects.Dispose();
                 SortedNativeAllocations.Dispose();
                 SortedNativeObjects.Dispose();
@@ -691,13 +757,13 @@ namespace Unity.MemoryProfiler.Editor
                 None,
                 SystemMemoryRegion,
                 NativeMemoryRegion,
-                NativeAllocation,
                 ManagedHeapSection,
                 NativeObject,
+                NativeRootReference,
+                NativeAllocation,
                 ManagedObject,
                 NativeType,
                 ManagedType,
-                NativeRootReference,
                 GfxResource,
                 GCHandleIndex,
                 MemoryLabel,
@@ -758,7 +824,7 @@ namespace Unity.MemoryProfiler.Editor
                         var name = snapshot.SystemMemoryRegions.RegionName[Index];
                         if (string.IsNullOrEmpty(name))
                         {
-                            var regionType = (SystemMemoryRegionEntriesCache.MemoryType)snapshot.SystemMemoryRegions.RegionType[Index];
+                            var regionType = snapshot.SystemMemoryRegions.RegionType[Index];
                             if (regionType != SystemMemoryRegionEntriesCache.MemoryType.Mapped)
                                 name = regionType.ToString();
                         }

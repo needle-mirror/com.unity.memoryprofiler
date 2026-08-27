@@ -26,13 +26,8 @@
         },
         {
             "name": "Unity",
-            "expression": "7000.0.0a1",
+            "expression": "6000.5.0b1",
             "define": "ENTITY_ID_CHANGED_SIZE"
-        },
-        {
-            "name": "Unity",
-            "expression": "7000.0.0a1",
-            "define": "CSHARP_7_3_OR_NEWER"
         },
         {
             "name": "com.unity.collections",
@@ -55,11 +50,6 @@
             "define": "SELECTION_USES_ENTITY_ID"
         },
         {
-            "name": "Unity",
-            "expression": "7000.0.0a1",
-            "define": "UNITY_COLLECTIONS_CHANGED"
-        },
-        {
             "name": "com.unity.profiling.core",
             "expression": "1.0.0",
             "define": "PROFILING_CORE_AVAILABLE"
@@ -76,8 +66,8 @@
         },
         {
             "name": "Unity",
-            "expression": "7000.0.0a1",
-            "define": "LIVECYCLE_APIS_AVAILABLE"
+            "expression": "6000.5.0a9",
+            "define": "LIFECYCLE_APIS_AVAILABLE"
         }
     ],
     "noEngineReferences": false

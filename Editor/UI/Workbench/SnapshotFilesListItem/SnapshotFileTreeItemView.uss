@@ -43,6 +43,8 @@
     flex-direction: row;
     height: 54px;
     width: 96px;
+    flex-shrink: 0;
+    flex-grow: 0;
 }
 
 #memory-profile-snapshotfile__preview-image
@@ -51,6 +53,8 @@
     align-items: flex-end;
     height: 54px;
     width: 96px;
+    flex-shrink: 0;
+    flex-grow: 0;
     background-color: var(--preview-image-background-color);
 }
 

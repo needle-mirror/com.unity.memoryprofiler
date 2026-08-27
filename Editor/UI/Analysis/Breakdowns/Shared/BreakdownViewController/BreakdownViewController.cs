@@ -12,10 +12,16 @@ namespace Unity.MemoryProfiler.Editor.UI
     // Abstract base view controller for memory breakdown views, such as 'Unity Objects' and 'All Of Memory'.
     abstract class BreakdownViewController : ViewController
     {
+        protected virtual string AllocatedMemoryInTableFormatString => "Allocated Memory Impact In Table: {0}";
+        protected virtual string AllocatedMemoryInSnapshotFormatString => "Total Memory In Snapshot: {0}";
+        protected virtual string ResidentMemoryInTableFormatString => "Resident Memory Impact In Table: {0}";
+        protected virtual string ResidentMemoryInSnapshotFormatString => "Resident Memory In Snapshot: {0}";
+
         const string k_UxmlAssetGuid = "01be1ca7b1544f246b5302f05d9e8c5e";
         const string k_UssClass_Dark = "breakdown-view__dark";
         const string k_UssClass_Light = "breakdown-view__light";
         const string k_UxmlIdentifier_SearchField = "breakdown-view__search-field";
+        const string k_UxmlIdentifier_StatusFilterButton = "breakdown-view__status-filter-button";
         const string k_UxmlIdentifier_TableSizeBar = "breakdown-view__table-size-bar";
         const string k_UxmlIdentifier_TableContainer = "breakdown-view__table-container";
         const string k_UxmlIdentifier_TableModeDropdown = "breakdown-view__mode-dropdown";
@@ -23,9 +29,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Breakdown mode names for dropdown control and table context menu.
         static readonly List<(string title, AllTrackedMemoryTableMode mode, Func<CachedSnapshot, bool> available)> k_BreakdownModes = new()
         {
-            ("Allocated Memory", AllTrackedMemoryTableMode.OnlyCommitted, (x) => true),
-            ("Resident Memory on Device", AllTrackedMemoryTableMode.OnlyResident, HasResidentMemoryInfo),
-            ("Allocated and Resident Memory on Device", AllTrackedMemoryTableMode.CommittedAndResident, HasResidentMemoryInfo),
+            (TextContent.AllocatedMemoryBreakdownMode, AllTrackedMemoryTableMode.OnlyCommitted, (x) => true),
+            (TextContent.ResidentMemoryBreakdownMode, AllTrackedMemoryTableMode.OnlyResident, HasResidentMemoryInfo),
+            (TextContent.AllocatedAndResidentMemoryBreakdownMode, AllTrackedMemoryTableMode.CommittedAndResident, HasResidentMemoryInfo),
         };
 
         // Model.
@@ -65,6 +71,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // View.
         protected ToolbarSearchField SearchField { get; private set; }
+
+        protected StatusFilterButton StatusFilterButton { get; private set; }
         protected VisualElement TableContainer { get; private set; }
         protected DropdownField TableColumnsDropdown { get; private set; }
 
@@ -74,6 +82,24 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SelectionDetails?.ClearSelection();
 
             base.Dispose(disposing);
+        }
+
+        /// <summary>
+        /// Registers a table view controller as this breakdown's primary child view: adds it as a child,
+        /// inserts its <see cref="ViewController.View"/> into <see cref="TableContainer"/>, and triggers
+        /// the initial background model build. Call this after any pre-build configuration (e.g.
+        /// <see cref="SingleSnapshotTreeViewController{TModel,TTreeItemData}.SetColumnsVisibilityAsync"/>)
+        /// and before post-load event subscriptions. Bundling the three steps prevents accidentally
+        /// omitting <see cref="TreeViewController{TModel,TTreeItemData}.TriggerBuild"/>, which would
+        /// leave the view empty with the loading overlay permanently hidden.
+        /// </summary>
+        protected void AddAndBuildChildTableView<TModel, TData>(TreeViewController<TModel, TData> tableViewController)
+            where TModel : TreeModel<TData>
+            where TData : INamedTreeItemData
+        {
+            AddChild(tableViewController);
+            TableContainer.Add(tableViewController.View);
+            tableViewController.TriggerBuild();
         }
 
         protected override VisualElement LoadView()
@@ -107,6 +133,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     TableColumnsDropdown.tooltip = TextContent.NoResidentMemoryInformationNotSupported;
             }
             RefreshTableColumnsDropdown();
+            base.ViewLoaded();
         }
 
         protected void RefreshTableSizeBar(
@@ -124,8 +151,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 memoryInTable = totalMemorySize.Committed;
                 var totalMemorySizeText = EditorUtility.FormatBytes((long)memoryInTable);
                 var totalSnapshotMemorySizeText = EditorUtility.FormatBytes((long)total);
-                sizeText = $"Allocated Memory In Table: {totalMemorySizeText}";
-                totalSizeText = $"Total Memory In Snapshot: {totalSnapshotMemorySizeText}";
+                sizeText = string.Format(TextContent.AllocatedMemoryInTableFormat, totalMemorySizeText);
+                sizeTooltip = $"{memoryInTable:N0} B";
+                totalSizeText = string.Format(TextContent.TotalMemoryInSnapshotFormat, totalSnapshotMemorySizeText);
+                totalSizeTooltip = $"{total:N0} B";
             }
             else
             {
@@ -134,9 +163,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 memoryInTable = totalMemorySize.Resident;
                 var totalMemorySizeText = EditorUtility.FormatBytes((long)memoryInTable);
                 var totalSnapshotMemorySizeText = EditorUtility.FormatBytes((long)total);
-                sizeText = $"Resident Memory In Table: {totalMemorySizeText}";
+                sizeText = string.Format(TextContent.ResidentMemoryInTableFormat, totalMemorySizeText);
                 sizeTooltip = $"{memoryInTable:N0} B";
-                totalSizeText = $"Total Resident Memory In Snapshot: {totalSnapshotMemorySizeText}";
+                totalSizeText = string.Format(TextContent.TotalResidentMemoryInSnapshotFormat, totalSnapshotMemorySizeText);
                 totalSizeTooltip = $"{total:N0} B";
             }
 
@@ -155,8 +184,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected void GenerateTreeViewContextMenu(ContextualMenuPopulateEvent evt)
         {
-            // We want to override menu
-            evt.menu.ClearItems();
+            // The built-in column show/hide items from MultiColumnTreeView are already in the menu.
+            // Mode-controlled columns (Size, Resident Size) are marked optional="false" in the UXML
+            // so they don't appear here — their visibility is controlled by the mode dropdown below.
 
             void AddMenuItem(DropdownMenu menu, string name, AllTrackedMemoryTableMode mode, bool optionAvailable)
             {
@@ -217,6 +247,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         void GatherReferencesInView(VisualElement view)
         {
             SearchField = view.Q<ToolbarSearchField>(k_UxmlIdentifier_SearchField);
+            StatusFilterButton = view.Q<StatusFilterButton>(k_UxmlIdentifier_StatusFilterButton);
             m_TableSizeBar = view.Q<DetailedSizeBar>(k_UxmlIdentifier_TableSizeBar);
             TableContainer = view.Q<VisualElement>(k_UxmlIdentifier_TableContainer);
             TableColumnsDropdown = view.Q<DropdownField>(k_UxmlIdentifier_TableModeDropdown);

@@ -41,6 +41,17 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
+            /// <summary>
+            /// Force completion of async callstack symbols read.
+            /// Used for accurate timing when profiling snapshot loading,
+            /// and to prevent concurrent AsyncReadManager operations on the same file.
+            /// </summary>
+            public void CompleteAsyncReadOperations()
+            {
+                // Force completion of async callstack symbols read
+                var _ = callstackSymbols;
+            }
+
             public readonly struct ReadableCallstack
             {
                 public readonly string MemLabel;

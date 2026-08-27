@@ -186,6 +186,8 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 case CachedSnapshot.SourceIndex.SourceId.NativeObject:
                 case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
                 case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                case CachedSnapshot.SourceIndex.SourceId.Prefab:
+                case CachedSnapshot.SourceIndex.SourceId.Scene:
                     UpdateRootObjects(source);
                     break;
                 case CachedSnapshot.SourceIndex.SourceId.GfxResource:
@@ -1054,9 +1056,15 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                         var replacee = name.Substring(pos + 1, next - (pos + 1));
                         if (replacee.Contains(','))
                         {
-                            var split = replacee.Split(',');
+                            // Split on top-level commas only, respecting angle-bracket nesting, so a
+                            // generic argument that is itself generic isn't split mid-type. (Spaces have
+                            // already been stripped from 'name' above, so the trimming SplitTypeArgs does
+                            // is a no-op here and the subsequent name.Replace(s, ...) still matches.)
+                            var split = TypeNameParsingUtility.SplitTypeArgs(replacee);
                             foreach (var s in split)
                             {
+                                if (string.IsNullOrEmpty(s))
+                                    continue;// Skip empty generic type entries.
                                 var truncated = TruncateTypeName(s);
                                 pos += truncated.Length;
                                 name = name.Replace(s, truncated);

@@ -63,7 +63,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             id = s_IdGenerator++;
             DisplayName = cs.FieldDescriptions.FieldDescriptionName[m_Idx];
             var typeIdx = cs.FieldDescriptions.TypeIndex[idx];
-            TypeName = cs.TypeDescriptions.TypeDescriptionName[typeIdx];
+            // typeIdx is -1 for CoreCLR pointer/function-pointer fields (see FieldDescriptionEntriesCache.ElementType).
+            TypeName = typeIdx >= 0 ? cs.TypeDescriptions.TypeDescriptionName[typeIdx] : "<pointer>";
             depth = -1;
             children = new List<TreeViewItem>();
         }

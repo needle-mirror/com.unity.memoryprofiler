@@ -13,9 +13,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static UnifiedTypeAndName Invalid => new UnifiedTypeAndName(null, CachedSnapshot.NativeTypeEntriesCache.InvalidTypeIndex);
 
         public bool IsValid => (HasManagedType || HasNativeType) && NativeTypeName != null;
-        public readonly bool ManagedTypeIsBaseTypeFallback => m_TypeInfo.ManagedTypeIsBaseTypeFallback;
         public readonly int NativeTypeIndex => m_TypeInfo.NativeTypeIndex;
         public readonly int ManagedTypeIndex => m_TypeInfo.ManagedTypeIndex;
+        public readonly int ManagedBaseTypeIndexForNativeType => m_TypeInfo.ManagedBaseTypeIndexForNativeType;
         public bool HasManagedType => m_TypeInfo.HasManagedType;
         public bool HasNativeType => m_TypeInfo.HasNativeType;
         public bool IsUnifiedType => m_TypeInfo.IsUnifiedType;
@@ -97,7 +97,6 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         public static UnifiedType Invalid => new UnifiedType(null, default(ObjectData));
         public bool IsValid => HasManagedType || HasNativeType;
-        public readonly bool ManagedTypeIsBaseTypeFallback => ManagedBaseTypeIndexForNativeType == ManagedTypeIndex;
         public readonly int NativeTypeIndex;
         public readonly int ManagedTypeIndex;
         public readonly int ManagedBaseTypeIndexForNativeType;
@@ -159,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 NativeTypeIndex = CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid;
                 IsUnityObjectType = (IsMonoBehaviourType = IsComponentType = IsGameObjectType = IsTransformType = false)
-                                    // In case the native type for this managed type could not be found but a managed base type which did inherit from, or is, UnityEngine.Object, this is still a Unity Objects
+                                    // In case the native type for this managed type could not be found but a managed base type which did inherit from, or is, UnityEngine.Object, this is still a Unity Object.
                                     || ManagedBaseTypeIndexForNativeType is not CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid;
             }
         }
@@ -259,8 +258,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         public ulong TotalSize => NativeSize + (ulong)ManagedSize;
         public int TotalRefCount => ManagedRefCount + NativeRefCount;
 
-        public bool IsLeakedShell => !HasNativeSide && HasManagedSide;
-        public bool IsFullUnityObjet => HasNativeSide && HasManagedSide;
+        public bool IsLeakedShell => Type.HasNativeType && !HasNativeSide && HasManagedSide;
+        /// <summary>
+        /// Note: This misses Leaked Dynamic Assets that have managed self references via their managed fields.
+        /// Prefer <see cref="ObjectStatusComputation.GetStatus"/> where a processed snapshot is available; it
+        /// classifies those too.
+        /// </summary>
+        public bool IsLeakedDynamicAsset => IsFullUnityObject && IsAssetObject && !IsPersistentAsset && !IsDontUnload && TotalRefCount == 0;
+        public bool IsFullUnityObject => HasNativeSide && HasManagedSide;
 
         public bool IsComponent => Type.IsComponentType;
         public bool IsMonoBehaviour => Type.IsMonoBehaviourType;
@@ -283,7 +288,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>
         /// Prefer checking for <see cref="IsPersistentAsset"/> as more future proof (and generally more reliable) way of checking
         /// that this Object is related to a SerializedFile.
-        /// SA: <seealso cref="EntityId.IsRuntimeCreated"/>
+        /// This value is unreliable for snapshots where EntityId is bigger than 4 bytes in size.
+        /// SA: <seealso cref="EntityId.IsRuntimeCreated"/>, <seealso cref="CachedSnapshot.HasEntityIDAs8ByteStructs"/>
         /// </summary>
         public bool IsRuntimeCreated => EntityId.IsRuntimeCreated();
         public bool IsManager => Flags.HasFlag(Format.ObjectFlags.IsManager);
@@ -304,8 +310,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (snapshot == null || !unityObject.IsValid || !type.IsValid || !type.IsUnityObjectType)
             {
                 NativeObjectData = default;
-                ManagedObjectData = default;
-                ManagedObjectIndex = -1;
+                ManagedObjectData = unityObject.isManaged ? unityObject : default;
+                ManagedObjectIndex = unityObject.isManaged ? unityObject.GetManagedObjectIndex(snapshot) : -1;
                 EntityId = EntityId.None;
                 NativeSize = 0;
                 NativeObjectName = string.Empty;

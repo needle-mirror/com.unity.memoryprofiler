@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 
 // Old and wrong namespace and assembly name. Kept around to not break Samver / force a major version bump.
@@ -6,6 +7,7 @@ namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 {
     // This API should have not been exposed as public. It's kinda not worth it to deprecate and bump the major version for this one though.
     [EditorBrowsable(EditorBrowsableState.Never)] // aka: undoc / hide from docs
+    [Obsolete("This API is no longer used. Detailed view is no longer part of the Memory Profiler Module.", false)]
     public enum ProfilerMemoryView
     {
         Simple = 0,

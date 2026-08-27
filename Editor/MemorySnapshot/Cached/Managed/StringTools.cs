@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine;
@@ -54,8 +55,24 @@ namespace Unity.MemoryProfiler.Editor
 
             if (stringWasShortenedForPreview)
             {
-                str = ReadString(managedObjectInfo.data, out fullLength, snapshot.VirtualMachineInformation);
-                return addQuotes ? $"\"{str}\"" : str;
+                // Try to get full string data (fast path via RefetchHeapBytes, fallback to FindHeapBytes)
+                if (snapshot.TryGetHeapBytesWithFastPath(managedObjectInfo.data, managedObjectInfo.PtrObject,
+                    out var bytes, out var onDemandScope))
+                {
+                    using (onDemandScope)
+                    {
+                        str = ReadString(bytes, out fullLength, snapshot.VirtualMachineInformation);
+                        if (addQuotes)
+                        {
+                            fullLength += 2;
+                            return $"\"{str}\"";
+                        }
+                        return str;
+                    }
+                }
+
+                str += TextContent.InvalidStringDataOnlyPreviewPleaseReportABugMessageShort;
+                fullLength = str.Length;
             }
 
             return str;
@@ -71,7 +88,43 @@ namespace Unity.MemoryProfiler.Editor
                 return StripQuotes(preview);
             }
             // Otherwise read the first line of the string.
-            return ReadFirstStringLine(managedObjectInfo.data, snapshot.VirtualMachineInformation, addQuotes);
+            // Try to get heap bytes (fast path via RefetchHeapBytes, fallback to FindHeapBytes)
+            if (snapshot.TryGetHeapBytesWithFastPath(managedObjectInfo.data, managedObjectInfo.PtrObject,
+                out var bytes, out var onDemandCopy))
+            {
+                using (onDemandCopy)
+                {
+                    return ReadFirstStringLine(bytes, snapshot.VirtualMachineInformation, addQuotes);
+                }
+            }
+
+            // Heap bytes unloaded, not in cache and not available on demand
+            return addQuotes ? $"\"{TextContent.InvalidStringDataPleaseReportABugMessageShort}\"" : TextContent.InvalidStringDataPleaseReportABugMessageShort;
+        }
+
+        public static string GetCharArrayPreviewOrReadFirstLine(this ManagedObjectInfo managedObjectInfo, CachedSnapshot snapshot, bool addQuotes)
+        {
+            // First, check the cache.
+            if (snapshot.TableEntryNames?.TryGetPreview(managedObjectInfo.ManagedObjectIndex, out var preview) ?? false)
+            {
+                if (addQuotes)
+                    return preview;
+                return StripQuotes(preview);
+            }
+            // Otherwise read the first line of the string.
+            // Try to get heap bytes (fast path via RefetchHeapBytes, fallback to FindHeapBytes)
+            if (snapshot.TryGetHeapBytesWithFastPath(managedObjectInfo.data, managedObjectInfo.PtrObject,
+                out var bytes, out var onDemandScope))
+            {
+                using (onDemandScope)
+                {
+                    var fullLength = ManagedHeapArrayDataTools.GetArrayInfo(snapshot, bytes, managedObjectInfo.ITypeDescription).Length;
+                    return ReadFirstCharArrayLine(bytes, snapshot.VirtualMachineInformation, addQuotes, fullLength);
+                }
+            }
+
+            // Heap bytes unloaded, not in cache and not available on demand
+            return addQuotes ? $"\"{TextContent.InvalidCharArrayDataPleaseReportABugMessageShort}\"" : TextContent.InvalidCharArrayDataPleaseReportABugMessageShort;
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
@@ -146,10 +199,10 @@ namespace Unity.MemoryProfiler.Editor
                 if (fullLength > maxLengthToRead)
                 {
                     var cappedLength = maxLengthToRead;
-                    return $"{System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), cappedLength * sizeof(char))}{Elipsis}";
+                    return $"{Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), cappedLength * sizeof(char))}{Elipsis}";
                 }
                 else
-                    return System.Text.Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), fullLength * sizeof(char));
+                    return Encoding.Unicode.GetString(firstChar.GetUnsafeOffsetTypedPtr(), fullLength * sizeof(char));
             }
         }
 
@@ -182,8 +235,9 @@ namespace Unity.MemoryProfiler.Editor
             {
                 if (firstLineBreak < maxCharsInLine && str.Length > maxCharsInLine)
                 {
-                    // reduce our working set
-                    str = str.Substring(0, Math.Min(str.Length, maxCharsInLine));
+                    // reduce our working set to only up to (but including) the line break,
+                    // so that it's clear why the string was displayed shorter than expected.
+                    str = str.Substring(0, firstLineBreak + 1);
                 }
                 str = str.Replace("\n", "\\n");
                 str = str.Replace("\r", "\\r");

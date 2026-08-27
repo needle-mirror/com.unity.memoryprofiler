@@ -29,6 +29,7 @@ namespace Unity.MemoryProfiler.Editor
 
         public bool Crawled { private set; get; }
         const int k_ManagedConnectionsInitialSize = 65536;
+        const int k_ExtraordinaryLifenessHashSetsInitialSize = 64;
         DynamicArray<ManagedObjectInfo> m_ManagedObjects;
         public ref DynamicArray<ManagedObjectInfo> ManagedObjects => ref m_ManagedObjects;
         AddressToManagedIndexHashMap m_MangedObjectIndexByAddress;
@@ -43,9 +44,51 @@ namespace Unity.MemoryProfiler.Editor
         ConnectionsHashMap m_ConnectionsFromMappedToSourceIndex;
         public ref ConnectionsHashMap ConnectionsFromMappedToSourceIndex => ref m_ConnectionsFromMappedToSourceIndex;
 
-        public HashSet<long> IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute { private set; get; }
-        public HashSet<long> IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle { private set; get; }
-        public HashSet<long> IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle { private set; get; }
+        NativeHashSet<long> m_IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute;
+        /// <summary>Indices of managed objects held by a GCHandle believed to be arrays attributed with <c>[RequiredByNativeCode]</c> / <c>[UsedByNativeCode]</c> (or a <c>[CustomEditor]</c>-driven equivalent), inferred heuristically since the attribute itself isn't captured.</summary>
+        public ref NativeHashSet<long> IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute => ref m_IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute;
+
+        NativeHashSet<long> m_IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle;
+        /// <summary>Indices of non-Unity-Object managed objects held by a GCHandle for a reason other than being backed by a native object.</summary>
+        public ref NativeHashSet<long> IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle => ref m_IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle;
+
+        NativeHashSet<long> m_IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle;
+        /// <summary>Indices of managed objects held by a GCHandle that are, or could be, Unity Object types, but aren't yet confirmed to be backed by a native object.</summary>
+        public ref NativeHashSet<long> IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle => ref m_IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle;
+
+        /// <summary>
+        /// False when <see cref="ManagedObjects"/> was populated from the backend graph without heap bytes
+        /// (raw backend file order instead of the byte walk's handle-targets-first order). Use
+        /// <see cref="ResolveManagedObjectIndexForGCHandle"/> / <see cref="IsGCHandleTarget"/> rather than
+        /// comparing indices directly.
+        /// </summary>
+        public bool ObjectIndicesMatchGCHandleOrder { get; set; } = true;
+        /// <summary>
+        /// Populated only when <see cref="ObjectIndicesMatchGCHandleOrder"/> is false: GCHandle index -> the
+        /// <see cref="ManagedObjectInfo.ManagedObjectIndex"/> it targets, or <see cref="InvalidObjectIndex"/>
+        /// if that target has no <see cref="ManagedObjectInfo"/> row.
+        /// </summary>
+        DynamicArray<long> m_GCHandleIndexToManagedObjectIndex;
+        public ref DynamicArray<long> GCHandleIndexToManagedObjectIndex => ref m_GCHandleIndexToManagedObjectIndex;
+        /// <summary>Populated only when <see cref="ObjectIndicesMatchGCHandleOrder"/> is false. Reverse lookup: is this <see cref="ManagedObjectInfo.ManagedObjectIndex"/> the target of some GCHandle.</summary>
+        NativeHashSet<long> m_ManagedObjectIndicesThatAreGCHandleTargets;
+        public ref NativeHashSet<long> ManagedObjectIndicesThatAreGCHandleTargets => ref m_ManagedObjectIndicesThatAreGCHandleTargets;
+
+        /// <summary>
+        /// The <see cref="ManagedObjectInfo.ManagedObjectIndex"/> that GCHandle <paramref name="gcHandleIndex"/>
+        /// targets, or <see cref="InvalidObjectIndex"/> if that target has no <see cref="ManagedObjectInfo"/> row
+        /// (e.g. collected mid-capture).
+        /// </summary>
+        public long ResolveManagedObjectIndexForGCHandle(long gcHandleIndex) =>
+            ObjectIndicesMatchGCHandleOrder ? gcHandleIndex : GCHandleIndexToManagedObjectIndex[gcHandleIndex];
+
+        /// <summary>
+        /// True if <paramref name="managedObjectIndex"/> is the target of some GCHandle. <paramref name="uniqueGCHandleCount"/>
+        /// should be <see cref="CachedSnapshot.GCHandleEntriesCache.UniqueCount"/>, only used on the
+        /// <see cref="ObjectIndicesMatchGCHandleOrder"/> fast path.
+        /// </summary>
+        public bool IsGCHandleTarget(long managedObjectIndex, long uniqueGCHandleCount) =>
+            ObjectIndicesMatchGCHandleOrder ? managedObjectIndex < uniqueGCHandleCount : ManagedObjectIndicesThatAreGCHandleTargets.Contains(managedObjectIndex);
 
 #if DEBUG_VALIDATION
         // This Dictionary block is here to make the investigations for PROF-2420 easier.
@@ -64,9 +107,9 @@ namespace Unity.MemoryProfiler.Editor
             m_InvalidManagedObjectsReportedViaGCHandles = new InvalidObjectsHashMap(k_ManagedConnectionsInitialSize, Allocator.Persistent);
 #endif
             Connections = new BlockList<ManagedConnection>(k_ManagedConnectionsInitialSize, rawConnectionsCount);
-            IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute = new HashSet<long>();
-            IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle = new HashSet<long>();
-            IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle = new HashSet<long>();
+            m_IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute = new NativeHashSet<long>(k_ExtraordinaryLifenessHashSetsInitialSize, Allocator.Persistent);
+            m_IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle = new NativeHashSet<long>(k_ExtraordinaryLifenessHashSetsInitialSize, Allocator.Persistent);
+            m_IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle = new NativeHashSet<long>(k_ExtraordinaryLifenessHashSetsInitialSize, Allocator.Persistent);
         }
 
         internal void AddUpTotalMemoryUsageAndCacheStringPreviews(CachedSnapshot snapshot, CachedSnapshot.ManagedMemorySectionEntriesCache managedMemorySections)
@@ -175,8 +218,14 @@ namespace Unity.MemoryProfiler.Editor
         {
             ManagedObjects.Dispose();
             MangedObjectIndexByAddress.Dispose();
+            GCHandleIndexToManagedObjectIndex.Dispose();
             ConnectionsToMappedToSourceIndex.DisposeListsAndHashmap();
             ConnectionsFromMappedToSourceIndex.DisposeListsAndHashmap();
+            IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute.Dispose();
+            IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle.Dispose();
+            IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle.Dispose();
+            if (ManagedObjectIndicesThatAreGCHandleTargets.IsCreated)
+                ManagedObjectIndicesThatAreGCHandleTargets.Dispose();
 #if DEBUG_VALIDATION
             InvalidManagedObjectsReportedViaGCHandles.Dispose();
 #endif

@@ -16,15 +16,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Keeping this option open in case this changes and reworking the refcount to work at scale turns out not to scale too well when we do need that refcount statt
         const bool k_UseUniqueRefCountInUI = true;
 
-#pragma warning disable 0649
-        long m_CurrentSelectionIdx;
-#pragma warning restore 0649
         ObjectData m_CurrentSelectionObjectData;
         CachedSnapshot m_CachedSnapshot;
         SelectedItemDetailsPanel m_UI;
 
-        string k_StatusLabelText = "Status";
-        string k_HintLabelText = "Hint";
+        string k_StatusLabelText = TextContent.StatusRowLabel;
+        string k_HintLabelText = TextContent.HintRowLabel;
 
         public SelectedItemDetailsForTypesAndObjects(CachedSnapshot snapshot, SelectedItemDetailsPanel detailsUI)
         {
@@ -72,8 +69,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        const string k_TriggerAssetGCHint = "triggering 'Resources.UnloadUnusedAssets()', explicitly or e.g. via a non-additive Scene unload.";
-
         internal void HandleTypeDetails(UnifiedTypeAndName type)
         {
             if (!type.IsValid)
@@ -81,15 +76,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_UI.SetItemName(type);
 
-            if (type.ManagedTypeData.IsValid && !type.ManagedTypeIsBaseTypeFallback)
+            if (type.ManagedTypeData.IsValid)
                 m_UI.SetManagedObjectInspector(type.ManagedTypeData);
 
-            m_UI.SetDescription("The selected item is a Type.");
+            m_UI.SetDescription(TextContent.TypeDescriptionText);
 
             if (type.HasManagedType)
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Managed Type", type.ManagedTypeName);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.ManagedTypeRowLabel, type.ManagedTypeName);
             if (type.HasNativeType)
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Native Type", type.NativeTypeName);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.NativeTypeRowLabel, type.NativeTypeName);
 
             AddMemoryImpactInfo(m_CurrentSelectionObjectData.GetSourceLink(m_CachedSnapshot));
         }
@@ -111,9 +106,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
             var rootTransform = m_CachedSnapshot.SceneRoots.AllPrefabRootTransformSourceIndices[sourceIndex.Index];
             var rootTrabsformName = rootTransform.GetName(m_CachedSnapshot);
-            m_UI.SetItemName($"\"{rootTrabsformName}\" : Prefab");
+            m_UI.SetItemName(sourceIndex, $"\"{rootTrabsformName}\" : {TextContent.PrefabNameSuffix}");
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Prefab Name", rootTrabsformName);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.PrefabNameRowLabel, rootTrabsformName);
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.PrefabStatus, TextContent.PrefabHint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.PrefabHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
@@ -126,10 +121,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return;
             var objData = ObjectData.FromSourceLink(m_CachedSnapshot, sourceIndex);
             var sceneName = sourceIndex.GetName(m_CachedSnapshot);
-            m_UI.SetItemName($"\"{sceneName}\" : Scene");
+            m_UI.SetItemName(sourceIndex, $"\"{sceneName}\" : {TextContent.SceneNameSuffix}");
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Scene Name", sceneName);
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Scene Path", objData.GetAssetPath(m_CachedSnapshot));
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.SceneNameRowLabel, sceneName);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.ScenePathRowLabel, objData.GetAssetPath(m_CachedSnapshot));
 
             if (m_CachedSnapshot.SceneRoots.DontDestroyOnLoadSceneIndex == sourceIndex.Index)
             {
@@ -173,13 +168,42 @@ namespace Unity.MemoryProfiler.Editor.UI
             var nativeSize = (long)m_CachedSnapshot.NativeAllocations.Size[source.Index];
 
             var references = new List<ObjectData>();
-            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, source, references);
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Native Size", EditorUtility.FormatBytes(nativeSize), $"{nativeSize:N0} B");
-            if (MemoryProfilerSettings.FeatureFlags.ShowFoundReferencesForNativeAllocations_2024_10)
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Found References", references.Count.ToString(), TextContent.NativeAllocationFoundReferencesHint);
 
+            var rootId = m_CachedSnapshot.NativeAllocations.RootReferenceId[source.Index];
+            if (rootId >= NativeRootReferenceEntriesCache.FirstValidRootId)
+            {
+                if (m_CachedSnapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootId, out var nativeObjectIndex))
+                {
+                    m_UI.SetItemName(new SourceIndex(SourceIndex.SourceId.NativeObject, nativeObjectIndex));
+                    m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
+                    {
+                        IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Info,
+                        Message = TextContent.NativeAllocationRootedByNativeObjectInfoBoxMessage,
+                    });
+
+                }
+                else if (m_CachedSnapshot.NativeRootReferences.IdToIndex.TryGetValue(rootId, out var nativeRootReferenceIndex))
+                {
+                    m_UI.SetItemName(new SourceIndex(SourceIndex.SourceId.NativeRootReference, nativeRootReferenceIndex));
+                    m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
+                    {
+                        IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Info,
+                        Message = TextContent.NativeAllocationRootedByNativeRootReferenceInfoBoxMessage,
+                    });
+                }
+            }
+
+            ObjectConnection.GetAllReferencingObjects(m_CachedSnapshot, source, references);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.NativeSizeRowLabel, EditorUtility.FormatBytes(nativeSize), $"{nativeSize:N0} B");
+            if (MemoryProfilerSettings.FeatureFlags.ShowFoundReferencesForNativeAllocations_2024_10)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.FoundReferencesRowLabel, references.Count.ToString(), TextContent.NativeAllocationFoundReferencesHint);
+
+#if DEBUG_VALIDATION
+            // really only useful when debugging the memory profiler
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Allocation Index", source.Index.ToString());
+#endif
             if (MemoryProfilerSettings.EnableUnrootedAllocationBreakdown(m_CachedSnapshot)
-                && m_CachedSnapshot.NativeAllocations.RootReferenceId[source.Index] <= 0)
+                && rootId <= NativeRootReferenceEntriesCache.InvalidRootIndex)
             {
                 var message = TextContent.UnrootedUnrootedAllocationsErrorBoxMessageInternalMode;
                 if (!MemoryProfilerSettings.InternalMode)
@@ -215,42 +239,42 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void AddCallstacksExportAndTreeViewButtons(long rootReferenceId)
         {
-            const string exportJsonCallstacksButtonText = "Export Callstacks for Root (json)";
+            var exportJsonCallstacksButtonText = TextContent.ExportCallstacksJsonButton;
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportJsonCallstacksButtonText, exportJsonCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
                 onInteraction: () =>
                 {
                     ExportUtility.WriteNativeRootCallstackInfoToJson(m_CachedSnapshot, rootReferenceId);
                 });
 
-            const string exportJsonInvertedCallstacksButtonText = "Export (Inverted) Callstacks for Root (json)";
+            var exportJsonInvertedCallstacksButtonText = TextContent.ExportInvertedCallstacksJsonButton;
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportJsonInvertedCallstacksButtonText, exportJsonInvertedCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
                 onInteraction: () =>
                 {
                     ExportUtility.WriteNativeRootCallstackInfoToJson(m_CachedSnapshot, rootReferenceId, invertedCallstacks: true);
                 });
 
-            const string exportCsvCallstacksButtonText = "Export Callstacks for Root (csv)";
+            var exportCsvCallstacksButtonText = TextContent.ExportCallstacksCsvButton;
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportCsvCallstacksButtonText, exportCsvCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
                 onInteraction: () =>
                 {
                     ExportUtility.WriteNativeRootCallstackInfoToCsv(m_CachedSnapshot, rootReferenceId);
                 });
 
-            const string exportCsvInvertedCallstacksButtonText = "Export (Inverted) Callstacks for Root (csv)";
+            var exportCsvInvertedCallstacksButtonText = TextContent.ExportInvertedCallstacksCsvButton;
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, exportCsvInvertedCallstacksButtonText, exportCsvInvertedCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
                 onInteraction: () =>
                 {
                     ExportUtility.WriteNativeRootCallstackInfoToCsv(m_CachedSnapshot, rootReferenceId, invertedCallstacks: true);
                 });
 
-            const string openCallstacksButtonText = "Open Callstacks Table for Root";
+            var openCallstacksButtonText = TextContent.OpenCallstacksTableButton;
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, openCallstacksButtonText, openCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
                 onInteraction: () =>
                 {
                     ExportUtility.OpenCallstacksWindowForNativeRoot(m_CachedSnapshot, rootReferenceId);
                 });
 
-            const string openInvertedCallstacksButtonText = "Open (Inverted) Callstacks Table for Root";
+            var openInvertedCallstacksButtonText = TextContent.OpenInvertedCallstacksTableButton;
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, openInvertedCallstacksButtonText, openInvertedCallstacksButtonText, options: SelectedItemDynamicElementOptions.Button,
                 onInteraction: () =>
                 {
@@ -264,16 +288,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             var gfxSize = (long)m_CachedSnapshot.NativeGfxResourceReferences.GfxSize[source.Index];
             var rootId = (long)m_CachedSnapshot.NativeGfxResourceReferences.RootId[source.Index];
             var gfxResourceId = (long)m_CachedSnapshot.NativeGfxResourceReferences.GfxResourceId[source.Index];
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Graphics Size", EditorUtility.FormatBytes(gfxSize), $"{gfxSize:N0} B");
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Root ID", rootId.ToString());
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Gfx Resource ID", gfxResourceId.ToString());
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.GraphicsSizeRowLabel, EditorUtility.FormatBytes(gfxSize), $"{gfxSize:N0} B");
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.RootIdRowLabel, rootId.ToString());
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.GfxResourceIdRowLabel, gfxResourceId.ToString());
 
             if (rootId <= 0)
             {
                 m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameBasic, new InfoBox()
                 {
                     IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Error,
-                    Message = TextContent.UnrootedGraphcisResourceErrorBoxMessage,
+                    Message = TextContent.UnrootedGraphicsResourceErrorBoxMessage,
                 });
             }
             else if (m_CachedSnapshot.NativeCallstackSymbols.Count > 0)
@@ -281,7 +305,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameCallStacks, new InfoBox()
                 {
                     IssueLevel = (InfoBox.IssueType)SnapshotIssuesModel.IssueLevel.Info,
-                    Message = TextContent.GraphcisResourceWithSnapshotWithCallStacksInfoBoxMessage,
+                    Message = TextContent.GraphicsResourceWithSnapshotWithCallStacksInfoBoxMessage,
                 });
                 AddCallStacksInfoToUI(source);
             }
@@ -293,16 +317,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             GetRootReferenceName(m_CachedSnapshot, source, out var areaName, out var objectName);
 
             if (!string.IsNullOrEmpty(areaName))
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Area", areaName);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.AreaRowLabel, areaName);
 
             if (!string.IsNullOrEmpty(objectName))
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Object Name", objectName);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.ObjectNameRowLabel, objectName);
 
             var accumultatedSize = (long)m_CachedSnapshot.NativeRootReferences.AccumulatedSize[source.Index];
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Size", EditorUtility.FormatBytes(accumultatedSize), $"{accumultatedSize:N0} B");
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.SizeRowLabel, EditorUtility.FormatBytes(accumultatedSize), $"{accumultatedSize:N0} B");
 
             if (childCount > 0)
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Child Count", childCount.ToString());
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.ChildCountRowLabel, childCount.ToString());
 
             if (MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10)
             {
@@ -333,7 +357,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (addButton)
                     m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Rooted Allocations Display", // title is not shown
-                        alreadySplit ? "Hide Allocation List" : "List all Allocations",
+                        alreadySplit ? TextContent.HideAllocationListButton : TextContent.ListAllAllocationsButton,
                         tooltip:
                             alreadySplit ?
                             TextContent.NativeAllocationInternalModeDisambiguateAllocationsButtonTooltipHide :
@@ -376,8 +400,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         internal void HandleInvalidObjectDetails(UnifiedTypeAndName type, out string statusSummary)
         {
-            statusSummary = "Invalid Object";
-            m_UI.SetItemName("Invalid Object");
+            statusSummary = TextContent.InvalidObjectLabel;
+            m_UI.SetItemName(TextContent.InvalidObjectLabel);
 
             m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameCallStacks, new InfoBox()
             {
@@ -398,8 +422,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 // Both of these objects might own some impact of their counterpart so just adding their impacts
                 // together would lead to double counting.
-                AddMemoryImpactInfo(nativeIndex, "Native Object");
-                AddMemoryImpactInfo(managedIndex, "Managed Shell");
+                AddMemoryImpactInfo(nativeIndex, TextContent.NativeObjectHeaderForImpactDifferentiator);
+                AddMemoryImpactInfo(managedIndex, TextContent.ManagedShellHeaderForImpactDifferentiator);
             }
             else if (nativeIndex.Valid)
             {
@@ -413,10 +437,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void AddMemoryImpactAvailabilityMessage()
         {
-            if (!m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt && MemoryProfilerSettings.EnableRootsAndImpact)
+            if (!m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt)
             {
-                // If Impact info is enabled but not built, it means we are on an older snapshot,
-                // the setting was turned on after opening it, or the build failed. Message that to the user.
+                // If impact info wasn't built, it means we're on an older snapshot or the build failed.
+                // Message that to the user.
                 if (m_CachedSnapshot.HasSceneRootsAndAssetbundles)
                 {
                     m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameImpact, new InfoBox
@@ -470,55 +494,58 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (exclusiveSum.Committed > 0 && sharedSum.Committed > 0)
                 {
-                    AddMemoryImpactInfo(groupName, index, totalImpact, "Total", TextContent.AttributedImpactTotalTooltip);
+                    AddMemoryImpactInfo(groupName, index, totalImpact, TextContent.TotalImpactRowLabel, TextContent.AttributedImpactTotalTooltip);
                     addLineSpacing = true;
                 }
             }
 
             if (exclusiveSum.Committed > 0)
             {
-                m_UI.AddDynamicElement(groupName, /*string.Empty,*/ $"{(addLineSpacing ? '\n' : "")}<b>Exclusively Owned Referenced Memory</b>", null, null, options: SelectedItemDynamicElementOptions.EnableRichText | SelectedItemDynamicElementOptions.ShowTitle);
-                AddMemoryImpactInfo(groupName, index, impact.Exclusive, "Owned", TextContent.AttributedImpactExclusiveTooltip);
+                m_UI.AddDynamicElement(groupName, /*string.Empty,*/ $"{(addLineSpacing ? '\n' : "")}<b>{TextContent.ExclusivelyOwnedReferencedMemoryLabel}</b>", null, null, options: SelectedItemDynamicElementOptions.EnableRichText | SelectedItemDynamicElementOptions.ShowTitle);
+                AddMemoryImpactInfo(groupName, index, impact.Exclusive, TextContent.OwnedImpactRowLabel, TextContent.AttributedImpactExclusiveTooltip);
                 addLineSpacing = true;
             }
 
             if (sharedSum.Committed > 0)
             {
-                m_UI.AddDynamicElement(groupName,  /*string.Empty,*/ $"{(addLineSpacing ? '\n' : "")}<b>Shared Referenced Memory</b>", null, options: SelectedItemDynamicElementOptions.EnableRichText | SelectedItemDynamicElementOptions.ShowTitle);
-                AddMemoryImpactInfo(groupName, index, impact.SharedProRata, "Shared", TextContent.AttributedImpactSharedTooltip);
+                m_UI.AddDynamicElement(groupName,  /*string.Empty,*/ $"{(addLineSpacing ? '\n' : "")}<b>{TextContent.SharedReferencedMemoryLabel}</b>", null, options: SelectedItemDynamicElementOptions.EnableRichText | SelectedItemDynamicElementOptions.ShowTitle);
+                AddMemoryImpactInfo(groupName, index, impact.SharedProRata, TextContent.SharedImpactRowLabel, TextContent.AttributedImpactSharedTooltip);
             }
         }
 
-        void AddMemoryImpactInfo(string groupName, SourceIndex index, NativeRootSize totalImpact, string summedImpactPrefix = "Total", string tooltip = TextContent.AttributedImpactTotalTooltip)
+        void AddMemoryImpactInfo(string groupName, SourceIndex index, NativeRootSize totalImpact, string summedImpactLabel = null, string tooltip = null)
         {
+            summedImpactLabel ??= TextContent.TotalImpactRowLabel;
+            tooltip ??= TextContent.AttributedImpactTotalTooltip;
             bool multipleSizesToDisplay = (totalImpact.NativeSize.Committed > 0 ? 1 : 0) + (totalImpact.GfxSize.Committed > 0 ? 1 : 0) + (totalImpact.ManagedSize.Committed > 0 ? 1 : 0) > 1;
             if (multipleSizesToDisplay)
             {
                 var total = totalImpact.SumUp();
-                AddImpactGroupSizeUILine(groupName, $"{summedImpactPrefix} Impact", total.Committed, total.Resident, tooltip);
+                AddImpactGroupSizeUILine(groupName, summedImpactLabel, total.Committed, total.Resident, tooltip);
             }
             if (totalImpact.NativeSize.Committed > 0)
             {
-                var titleText = MultiValueListLabel("Native Impact", multipleSizesToDisplay, isLast: !multipleSizesToDisplay);
+                var titleText = MultiValueListLabel(TextContent.NativeImpactRowLabel, multipleSizesToDisplay, isLast: !multipleSizesToDisplay);
                 AddImpactGroupSizeUILine(groupName, titleText, totalImpact.NativeSize.Committed, totalImpact.NativeSize.Resident, tooltip);
             }
 
             if (totalImpact.ManagedSize.Committed > 0)
             {
-                string titleText = MultiValueListLabel("Managed Impact", hasMultiple: totalImpact.GfxSize.Committed > 0 || totalImpact.NativeSize.Committed > 0, isLast: totalImpact.GfxSize.Committed == 0);
+                string titleText = MultiValueListLabel(TextContent.ManagedImpactRowLabel, hasMultiple: totalImpact.GfxSize.Committed > 0 || totalImpact.NativeSize.Committed > 0, isLast: totalImpact.GfxSize.Committed == 0);
                 AddImpactGroupSizeUILine(groupName, titleText, totalImpact.ManagedSize.Committed, totalImpact.ManagedSize.Resident, tooltip);
             }
 
             if (totalImpact.GfxSize.Committed > 0)
             {
-                var titleText = MultiValueListLabel("Graphics Impact", multipleSizesToDisplay, isLast: true);
+                var titleText = MultiValueListLabel(TextContent.GraphicsImpactRowLabel, multipleSizesToDisplay, isLast: true);
                 AddImpactGroupSizeUILine(groupName, titleText, totalImpact.GfxSize.Committed, totalImpact.GfxSize.Resident, tooltip);
             }
         }
 
         void AddImpactGroupSizeUILine(string groupName, string description, ulong committed, ulong resident, string tooltipMessage = "")
         {
-            m_UI.AddDynamicElement(groupName, description, EditorUtility.FormatBytes((long)committed), $"Allocated: {EditorUtility.FormatBytes((long)committed)} ({committed:N0} B) \nResident: {EditorUtility.FormatBytes((long)resident)} ({resident:N0} B)\n\n{tooltipMessage}");
+            m_UI.AddDynamicElement(groupName, description, EditorUtility.FormatBytes((long)committed),
+                string.Format(TextContent.ImpactTooltipFormat, EditorUtility.FormatBytes((long)committed), committed, EditorUtility.FormatBytes((long)resident), resident, tooltipMessage));
         }
 
         static string MultiValueListLabel(string title, bool hasMultiple, bool isLast)
@@ -533,19 +560,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var managedObjectInfo = m_CurrentSelectionObjectData.GetManagedObject(m_CachedSnapshot);
             var managedSize = managedObjectInfo.Size;
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Managed Size", EditorUtility.FormatBytes(managedSize), $"{managedSize:N0} B");
+            var precomputedStatus = m_CachedSnapshot.ObjectStatusComputation.GetStatus(
+                new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectInfo.ManagedObjectIndex));
+
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.ManagedSizeRowLabel, EditorUtility.FormatBytes(managedSize), $"{managedSize:N0} B");
             if (m_CurrentSelectionObjectData.dataType == ObjectDataType.Array)
             {
                 var arrayInfo = m_CurrentSelectionObjectData.GetArrayInfo(m_CachedSnapshot);
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", arrayInfo.Length.ToString());
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.LengthRowLabel, arrayInfo.Length.ToString());
                 if (arrayInfo.Rank.Length > 1)
                 {
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Rank", m_CurrentSelectionObjectData.GenerateArrayDescription(m_CachedSnapshot, includeTypeName: false));
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.RankRowLabel, m_CurrentSelectionObjectData.GenerateArrayDescription(m_CachedSnapshot, includeTypeName: false));
                     for (int i = 0; i < arrayInfo.Rank.Length; i++)
                     {
                         if (arrayInfo.Rank[i] == 0)
                         {
-                            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Potential Logic Flaw?", "This multidimensional array has a zero sized dimension and therefore no elements. Is this intended?");
+                            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.PotentialLogicFlawLabel, TextContent.PotentialLogicFlawContent);
                             break;
                         }
                     }
@@ -557,22 +587,22 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 if (str != null)
                 {
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Length", fullLength.ToString());
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", $"{str}", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel | SelectedItemDynamicElementOptions.ShowTitle);
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.LengthRowLabel, fullLength.ToString());
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.StringValueRowLabel, $"{str}", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel | SelectedItemDynamicElementOptions.ShowTitle);
                 }
                 else
                 {
                     // String data is unavailable
-                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "String Value", "(String data unavailable)", options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.ShowTitle);
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.StringValueRowLabel, TextContent.StringDataUnavailable, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.ShowTitle);
                 }
             }
             AddMemoryImpactInfo(m_CurrentSelectionObjectData.GetSourceLink(m_CachedSnapshot));
 
-            GetDetailedManagedReferenceCounts(managedObjectInfo.ManagedObjectIndex, -1, out var uniqueReferenceCount, out var _, out var _, out var repeatRefCount, out var nonUnityObjectGCHandleCount, out var heldByGCHandle);
+            GetDetailedManagedReferenceCounts(managedObjectInfo.ManagedObjectIndex, -1, out var uniqueReferenceCount, out var _, out var _, out var repeatRefCount, out var nonUnityObjectGCHandleCount, out _);
 
             var refCount = k_UseUniqueRefCountInUI ? uniqueReferenceCount : managedObjectInfo.RefCount;
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", refCount.ToString());
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.ReferencedByRowLabel, refCount.ToString());
 
             if (!k_UseUniqueRefCountInUI && repeatRefCount > 0)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.RepeatReferencesLabel, repeatRefCount.ToString(), tooltip: TextContent.RepeatReferencesTooltip);
@@ -588,31 +618,27 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Native Object that since got destroyed. This would now be listed as a non-Native-Object reference in the references table and there is no way
             // to reasonably call that out as a potential bug in the captured runtime version (something that was previously attempted by checking
             // the (non-unique, non-GCHandle-including) references list count against the RefCount, and then reported as UnkownLivenessReasonStatus.
-            if (heldByGCHandle)
+            switch (precomputedStatus)
             {
-                UpdateStatusForGCHandleHeldObjectWithoutNativeObject(managedObjectInfo.ManagedObjectIndex, false);
-            }
-            else if (uniqueReferenceCount > 0)
-            {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.ReferencedManagedObjectStatus, TextContent.ReferencedManagedObjectHint);
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.ReferencedManagedObjectHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
-            }
-            // We are getting into Bug territory: Either this looked like a Managed Object during crawling but no native object was found, or we have legit no idea why it is alive
-            else
-            {
-                Checks.CheckEquals(managedObjectInfo.RefCount, uniqueReferenceCount);
-
-                // This has to be an issue in the Managed Crawler, the UI or some other processing of the snapshot,
-                // as Objects without a GCHandle or a reference to them aren't found by the Managed Crawler.
-                // If we eventually attempt to read "empty" managed heap space, we may find Managed Objects
-                // with no references that are about to be collected (outside of a Free Block), or already collected (inside a Free Block).
-                // TODO: adjust this logic when that happens and make sure to mark or list these objects somehow/somewhere so we can exclude them here
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnkownLivenessReasonStatus, TextContent.UnkownLivenessReasonHint);
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnkownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                case ObjectStatus.UsedByNativeCode:
+                case ObjectStatus.GCHandleHeld:
+                case ObjectStatus.LeakedShellHeldByGCHandle:
+                    UpdateStatusForGCHandleHeldObjectWithoutNativeObject(managedObjectInfo.ManagedObjectIndex, false);
+                    break;
+                case ObjectStatus.ManagedObjectReferenced:
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.ReferencedManagedObjectStatus, TextContent.ReferencedManagedObjectHint);
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.ReferencedManagedObjectHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                    break;
+                case ObjectStatus.UnknownLiveness:
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.UnknownLivenessReasonStatus, TextContent.UnknownLivenessReasonHint);
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.UnknownLivenessReasonHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                    break;
+                default:
+                    break;
             }
 
             var objectAddress = m_CurrentSelectionObjectData.GetObjectPointer(m_CachedSnapshot, false);
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Managed Address", DetailFormatter.FormatPointer(objectAddress));
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.ManagedAddressRowLabel, DetailFormatter.FormatPointer(objectAddress));
         }
 
         void GetDetailedManagedReferenceCounts(long managedObjectIndex, long nativeObjectIndex, out long uniqueReferenceCount, out long uniqueManagedReferenceCount, out long uniqueNativeReferenceCount, out long repeatRefCount, out long nonUnityObjectGCHandleCount, out bool heldByGCHandle)
@@ -664,8 +690,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         throw new NotImplementedException();
                 }
             }
-            // the first indices are reserved for objects held by GCHandles
-            heldByGCHandle = managedObjectIndex < m_CachedSnapshot.GcHandles.UniqueCount;
+            // The first indices are reserved for objects held by GCHandles (see ManagedData.IsGCHandleTarget).
+            heldByGCHandle = m_CachedSnapshot.CrawledData.IsGCHandleTarget(managedObjectIndex, m_CachedSnapshot.GcHandles.UniqueCount);
         }
 
         private void AddBasicGroupSizeUILine(string description, ulong value, string tooltipMessage = "")
@@ -684,6 +710,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 rootSize = m_CachedSnapshot.ProcessedNativeRoots.Data[mappedIndex].AccumulatedRootSizes;
             }
 
+            var precomputedStatus = selectedUnityObject.HasNativeSide
+                ? m_CachedSnapshot.ObjectStatusComputation.GetStatus(
+                    new SourceIndex(SourceIndex.SourceId.NativeObject, selectedUnityObject.NativeObjectIndex))
+                : ObjectStatus.None;
+
             var nativeSize = rootSize.NativeSize.Committed;
             var managedSize = selectedUnityObject.HasManagedSide ? selectedUnityObject.ManagedSize : 0;
 
@@ -695,51 +726,51 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (multipleSizesToDisplay)
             {
                 totalAllocated += (ulong)managedSize + graphicsSize;
-                AddBasicGroupSizeUILine("Total Allocated", totalAllocated);
+                AddBasicGroupSizeUILine(TextContent.TotalAllocatedRowLabel, totalAllocated);
             }
 
             if (nativeSize > 0)
             {
-                var titleText = MultiValueListLabel("Native Size", multipleSizesToDisplay, isLast: !multipleSizesToDisplay);
+                var titleText = MultiValueListLabel(TextContent.NativeSizeRowLabel, multipleSizesToDisplay, isLast: !multipleSizesToDisplay);
                 AddBasicGroupSizeUILine(titleText, nativeSize);
             }
 
             if (selectedUnityObject.HasManagedSide)
             {
-                string titleText = MultiValueListLabel("Managed Size", hasMultiple: graphicsSize > 0 || nativeSize > 0, isLast: graphicsSize == 0);
+                string titleText = MultiValueListLabel(TextContent.ManagedSizeRowLabel, hasMultiple: graphicsSize > 0 || nativeSize > 0, isLast: graphicsSize == 0);
                 AddBasicGroupSizeUILine(titleText, (ulong)selectedUnityObject.ManagedSize);
             }
 
             if (graphicsSize > 0)
             {
-                var titleText = MultiValueListLabel("Graphics Size", multipleSizesToDisplay, isLast: true);
+                var titleText = MultiValueListLabel(TextContent.GraphicsSizeRowLabel, multipleSizesToDisplay, isLast: true);
                 AddBasicGroupSizeUILine(titleText, graphicsSize);
             }
 
             var totalResidentSize = rootSize.NativeSize.Resident + rootSize.ManagedSize.Resident;
             if (totalResidentSize > 0)
             {
-                AddBasicGroupSizeUILine("Total Resident Size", totalResidentSize);
+                AddBasicGroupSizeUILine(TextContent.TotalResidentSizeRowLabel, totalResidentSize);
             }
 
             if (selectedUnityObject.HasNativeSide)
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Runtime estimation",
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.RuntimeEstimationRowLabel,
                     $"{EditorUtility.FormatBytes((long)selectedUnityObject.NativeSize)}",
-                    $"{selectedUnityObject.NativeSize:N0} B\n\nThis is the value that would've been returned by calling GetRuntimeMemorySizeLong at runtime. It combines native and gpu allocation estimates.");
+                    $"{selectedUnityObject.NativeSize:N0} B\n\n{TextContent.RuntimeEstimationTooltip}");
             }
 
             AddMemoryImpactInfo(selectedUnityObject.HasNativeSide ? new SourceIndex(SourceIndex.SourceId.NativeObject, selectedUnityObject.NativeObjectIndex) : default,
                 selectedUnityObject.HasManagedSide ? new SourceIndex(SourceIndex.SourceId.ManagedObject, selectedUnityObject.ManagedObjectIndex) : default);
 
-            GetDetailedManagedReferenceCounts(selectedUnityObject.ManagedObjectIndex, selectedUnityObject.NativeObjectIndex, out var uniqueReferenceCount, out var uniqueManagedReferenceCount, out var uniqueNativeReferenceCount, out var repeatRefCount, out var nonUnityObjectGCHandleCount, out var heldByGCHandle);
+            GetDetailedManagedReferenceCounts(selectedUnityObject.ManagedObjectIndex, selectedUnityObject.NativeObjectIndex, out var uniqueReferenceCount, out var uniqueManagedReferenceCount, out var uniqueNativeReferenceCount, out var repeatRefCount, out var nonUnityObjectGCHandleCount, out _);
 
             var refCount = k_UseUniqueRefCountInUI ? uniqueReferenceCount : selectedUnityObject.TotalRefCount;
             var nativeRefCount = k_UseUniqueRefCountInUI ? uniqueNativeReferenceCount : selectedUnityObject.NativeRefCount;
             var managedRefCount = k_UseUniqueRefCountInUI ? uniqueManagedReferenceCount : selectedUnityObject.ManagedRefCount;
 
-            var refCountExtra = (selectedUnityObject.IsFullUnityObjet && selectedUnityObject.TotalRefCount > 0) ? $"({nativeRefCount} Native + {managedRefCount} Managed)" : string.Empty;
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Referenced By", $"{refCount} {refCountExtra}{(selectedUnityObject.IsFullUnityObjet ? " + 2 Self References" : "")}");
+            var refCountExtra = (selectedUnityObject.IsFullUnityObject && selectedUnityObject.TotalRefCount > 0) ? string.Format(TextContent.NativeAndManagedRefCountFormat, nativeRefCount, managedRefCount) : string.Empty;
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.ReferencedByRowLabel, $"{refCount} {refCountExtra}{(selectedUnityObject.IsFullUnityObject ? TextContent.SelfReferencesSuffix : "")}");
 
             if (!k_UseUniqueRefCountInUI && repeatRefCount > 0)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.RepeatReferencesLabel, repeatRefCount.ToString(), tooltip: TextContent.RepeatReferencesTooltip);
@@ -747,9 +778,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (nonUnityObjectGCHandleCount > 0)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.NonUnityObjectGCHandleReferencesLabel, nonUnityObjectGCHandleCount.ToString(), tooltip: TextContent.NonUnityObjectGCHandleReferencesTooltip);
 
-            if (selectedUnityObject.IsFullUnityObjet && !selectedUnityObject.ManagedObjectData.IsValid)
+            if (selectedUnityObject.IsFullUnityObject && !selectedUnityObject.ManagedObjectData.IsValid)
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, "Bug!", "This Native Object is associated with an invalid Managed Object, " + TextContent.InvalidObjectPleaseReportABugMessage);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, TextContent.BugRowLabel, TextContent.InvalidManagedObjectAssociationMessage);
             }
 
             if (selectedUnityObject.HasNativeSide && MetaDataHelpers.GenerateMetaDataString(m_CachedSnapshot, selectedUnityObject.NativeObjectIndex, out var metaData))
@@ -771,7 +802,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             // Debug info
-            var instanceIdLabel = m_CachedSnapshot.MetaData.UnityVersionEqualOrNewer(6000, 3, 0) ? "Entity ID" : "Instance ID";
+            var instanceIdLabel = m_CachedSnapshot.MetaData.UnityVersionEqualOrNewer(6000, 3, 0) ? TextContent.EntityIdRowLabel : TextContent.InstanceIdRowLabel;
             if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, instanceIdLabel, selectedUnityObject.EntityId.ToString());
             if (selectedUnityObject.HasNativeSide)
             {
@@ -783,25 +814,24 @@ namespace Unity.MemoryProfiler.Editor.UI
                     ref flagsLabel, ref flagsTooltip,
                     ref hideFlagsLabel, ref hideFlagsTooltip, false);
                 if (string.IsNullOrEmpty(flagsLabel))
-                    flagsLabel = "None";
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Flags", flagsLabel, flagsTooltip);
+                    flagsLabel = TextContent.NoneLabel;
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.FlagsRowLabel, flagsLabel, flagsTooltip);
                 if (string.IsNullOrEmpty(hideFlagsLabel))
-                    hideFlagsLabel = "None";
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "HideFlags", hideFlagsLabel, hideFlagsTooltip);
+                    hideFlagsLabel = TextContent.NoneLabel;
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.HideFlagsRowLabel, hideFlagsLabel, hideFlagsTooltip);
             }
 
-            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Native Address", DetailFormatter.FormatPointer(selectedUnityObject.NativeObjectData.GetObjectPointer(m_CachedSnapshot, false)));
-            if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, "Managed Address", DetailFormatter.FormatPointer(selectedUnityObject.ManagedObjectData.GetObjectPointer(m_CachedSnapshot, false)));
+            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.NativeAddressRowLabel, DetailFormatter.FormatPointer(selectedUnityObject.NativeObjectData.GetObjectPointer(m_CachedSnapshot, false)));
+            if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.ManagedAddressRowLabel, DetailFormatter.FormatPointer(selectedUnityObject.ManagedObjectData.GetObjectPointer(m_CachedSnapshot, false)));
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Selected Index", $"U:{m_CurrentSelectionIdx}");
-            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Native Index", $"U:{selectedUnityObject.NativeObjectData.GetUnifiedObjectIndex(m_CachedSnapshot)} N:{selectedUnityObject.NativeObjectData.nativeObjectIndex}");
-            if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, "Managed Index", $"U:{selectedUnityObject.ManagedObjectData.GetUnifiedObjectIndex(m_CachedSnapshot)} M:{selectedUnityObject.ManagedObjectData.GetManagedObjectIndex(m_CachedSnapshot)}");
+            if (selectedUnityObject.HasNativeSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, TextContent.NativeIndexRowLabel, selectedUnityObject.NativeObjectData.nativeObjectIndex.ToString());
+            if (selectedUnityObject.HasManagedSide) m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, TextContent.ManagedIndexRowLabel, selectedUnityObject.ManagedObjectData.GetManagedObjectIndex(m_CachedSnapshot).ToString());
 
-            UpdateStatusAndHint(selectedUnityObject, heldByGCHandle);
+            UpdateStatusAndHint(selectedUnityObject, precomputedStatus);
 
-            if (selectedUnityObject.IsFullUnityObjet)
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, "Self References", "The Managed and Native parts of this UnityEngine.Object reference each other. This is normal."
-                    + (selectedUnityObject.TotalRefCount == 0 ? " Nothing else references them though so the Native part keeps the Managed part alive." : ""));
+            if (selectedUnityObject.IsFullUnityObject)
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, TextContent.SelfReferencesRowLabel, TextContent.SelfReferencesHint
+                    + (selectedUnityObject.TotalRefCount == 0 ? " " + TextContent.SelfReferencesOnlyConnectionHint : ""));
 
             if (selectedUnityObject.HasManagedSide)
             {
@@ -857,24 +887,28 @@ namespace Unity.MemoryProfiler.Editor.UI
                 EditorGUIUtility.systemCopyBuffer = stringBuilder.ToString();
             }
 
-            var copyButtonText = $"Copy {(furthercallstackCount > 0 ? "First " : (callstackCount > 1 ? "All " : ""))}{callstackCount} Call Stack{(callstackCount > 1 ? "s" : "")}";
+            var copyButtonText = furthercallstackCount > 0
+                ? string.Format(TextContent.CopyFirstCallStacksButtonFormat, callstackCount)
+                : string.Format(TextContent.CopyCallStackButtonFormat, callstackCount);
+            var copyButtonTooltip = string.Format(TextContent.CopyCallStacksTooltipFormat, callstackCount);
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, copyButtonText, copyButtonText, copyButtonText + " to the clipboard.",
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, copyButtonText, copyButtonText, copyButtonTooltip,
                 SelectedItemDynamicElementOptions.Button, () => CopyAllCallStacksToClipboard(BuildCallStackTexts(callstackCount, out var _, out var _, out var _, forCopy: true)));
 
             if (furthercallstackCount > 0)
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, $"Copy All Call Stacks", "Copy All Call Stacks", $"Copy All {callstackCount + furthercallstackCount} Call Stacks to the clipboard.",
+                var copyAllTooltip = string.Format(TextContent.CopyAllCallStacksTooltipFormat, callstackCount + furthercallstackCount);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, TextContent.CopyAllCallStacksButton, TextContent.CopyAllCallStacksButton, copyAllTooltip,
                     SelectedItemDynamicElementOptions.Button, () => CopyAllCallStacksToClipboard(BuildCallStackTexts(callstackCount + furthercallstackCount, out var _, out var _, out var _, forCopy: true)));
 
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, $"Further Call Stacks", furthercallstackCount.ToString());
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, TextContent.FurtherCallStacksRowLabel, furthercallstackCount.ToString());
             }
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, "Allocations Count", allocationCount.ToString());
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, $"{(furthercallstackCount > 0 ? "Shown " : "")}Call Stacks", callstackCount.ToString());
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, TextContent.AllocationsCountRowLabel, allocationCount.ToString());
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, furthercallstackCount > 0 ? TextContent.ShownCallStacksRowLabel : TextContent.CallStacksRowLabel, callstackCount.ToString());
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, "Clickable Call Stacks", "Clickable Call Stacks",
-                "Call Stacks can either be clickable (leading to the source file) or selectable. Toggle this off if you want them to be selectable.",
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, TextContent.ClickableCallStacksToggle, TextContent.ClickableCallStacksToggle,
+                TextContent.ClickableCallStacksTooltip,
                 SelectedItemDynamicElementOptions.Toggle | (MemoryProfilerSettings.ClickableCallStacks ? SelectedItemDynamicElementOptions.ToggleOn : 0), () =>
                {
                    MemoryProfilerSettings.ClickableCallStacks = !MemoryProfilerSettings.ClickableCallStacks;
@@ -882,8 +916,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                    AddCallStacksInfoToUI(sourceIndex);
                });
 
-            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, "Show Address in Call Stacks", "Show Address in Call Stacks",
-                "Show or hide Address in Call Stacks.",
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameCallStacks, TextContent.ShowAddressInCallStacksToggle, TextContent.ShowAddressInCallStacksToggle,
+                TextContent.ShowAddressInCallStacksTooltip,
                 SelectedItemDynamicElementOptions.Toggle | (MemoryProfilerSettings.AddressInCallStacks ? SelectedItemDynamicElementOptions.ToggleOn : 0), () =>
                {
                    MemoryProfilerSettings.AddressInCallStacks = !MemoryProfilerSettings.AddressInCallStacks;
@@ -1036,41 +1070,90 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.SetDescription(description);
         }
 
-        void UpdateStatusAndHint(UnifiedUnityObjectInfo selectedUnityObject, bool heldByGCHandle)
+        /// <summary>
+        /// Which Selection Details handler renders a selected Unity object with a given <see cref="ObjectStatus"/>.
+        /// <see cref="None"/> means that status carries no per-object details in this panel (structural/region/
+        /// pure-managed statuses a selected Unity object never reaches here).
+        /// </summary>
+        internal enum DetailHandlerKind
         {
-            if (heldByGCHandle && !selectedUnityObject.HasNativeSide)
+            None,
+            DelayedDeletionQueue,
+            LeakedShell,
+            LeakedShellHeldByGCHandle,
+            BrokenScriptReference,
+            Manager,
+            DynamicAsset,
+            PersistentAsset,
+            SceneObject,
+        }
+
+        /// <summary>
+        /// Maps an <see cref="ObjectStatus"/> to the Selection Details handler for it. Written as a switch
+        /// expression with NO discard arm on purpose: adding a new <see cref="ObjectStatus"/> without classifying
+        /// it here raises CS8509, which is a build error under TestProject's <c>-warnaserror+</c>. That makes the
+        /// "new status silently shows no details" gap a compile-time failure rather than a UI regression. Pure and
+        /// side-effect free so <c>SelectedItemDetailsStatusDispatchTests</c> can verify the mapping without UI.
+        /// </summary>
+        // CS8524 (the *unnamed* enum value isn't covered) is suppressed: every NAMED status is handled below, and
+        // a runtime value is always a defined enum member. We deliberately keep no discard arm so that adding a new
+        // named status still trips CS8509 (a -warnaserror+ build error) — suppressing CS8524 keeps that gate while
+        // not forcing a catch-all that would defeat it.
+#pragma warning disable CS8524
+        internal static DetailHandlerKind ResolveDetailHandler(ObjectStatus precomputedStatus) => precomputedStatus switch
+        {
+            ObjectStatus.InDelayedDeletionQueue => DetailHandlerKind.DelayedDeletionQueue,
+            ObjectStatus.LeakedShell => DetailHandlerKind.LeakedShell,
+            ObjectStatus.LeakedShellHeldByGCHandle => DetailHandlerKind.LeakedShellHeldByGCHandle,
+            ObjectStatus.BrokenScriptReference => DetailHandlerKind.BrokenScriptReference,
+            ObjectStatus.Manager => DetailHandlerKind.Manager,
+            ObjectStatus.DynamicAssetLeaked or ObjectStatus.DynamicAssetReferenced or ObjectStatus.DynamicAssetDontUnload => DetailHandlerKind.DynamicAsset,
+            ObjectStatus.UsedAsset or ObjectStatus.UnusedAsset or ObjectStatus.UnusedAssetDontUnload
+                or ObjectStatus.UnusedAssetInAssetBundle or ObjectStatus.LeakedAssetBundle
+                or ObjectStatus.UsedAssetBundle or ObjectStatus.UnusedAssetBundle => DetailHandlerKind.PersistentAsset,
+            ObjectStatus.SceneObject or ObjectStatus.SceneObjectDontUnload => DetailHandlerKind.SceneObject,
+            // Statuses a selected Unity object never carries into this panel (structural roots, memory regions,
+            // pure-managed-object statuses). They intentionally render no per-object status/hint.
+            ObjectStatus.None
+                or ObjectStatus.UsedByNativeCode or ObjectStatus.GCHandleHeld or ObjectStatus.ManagedObjectReferenced
+                or ObjectStatus.UnknownLiveness or ObjectStatus.ManagedTypeRoot or ObjectStatus.NativeRootAllocation
+                or ObjectStatus.GCHandleEntry or ObjectStatus.PrefabRoot or ObjectStatus.SceneRoot
+                or ObjectStatus.GraphicsBuffers or ObjectStatus.Untracked or ObjectStatus.Reserved
+                or ObjectStatus.ExecutablesAndMapped or ObjectStatus.VirtualMachine or ObjectStatus.Unrooted
+                or ObjectStatus.ReferencedUnrooted or ObjectStatus.BucketGroup => DetailHandlerKind.None,
+        };
+#pragma warning restore CS8524
+
+        void UpdateStatusAndHint(UnifiedUnityObjectInfo selectedUnityObject, ObjectStatus precomputedStatus)
+        {
+            switch (ResolveDetailHandler(precomputedStatus))
             {
-                // This differes from a Leaked Shell as there is a GCHandle allocated for this object,
-                // which, for Unity Objects, would normally indicate the presence of a Native Object.
-                UpdateStatusForGCHandleHeldObjectWithoutNativeObject(selectedUnityObject.ManagedObjectIndex, true);
-            }
-            // Currently a very narrow case that won't capture all objects in the delayed deletion queue,
-            // but at least those where we are reasonably certain that they are in the queue without accidentally false flagging just any unnamed objects
-            // TODO: We need extra info in the snapshot to capture all objects in the delayed deletion queue and expand this case then
-            else if (selectedUnityObject.IsPersistentAsset && selectedUnityObject.Type.IsSceneObjectType && selectedUnityObject.HasNativeSide && string.IsNullOrEmpty(selectedUnityObject.NativeObjectName)
-                && (!m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt || m_CachedSnapshot.RootAndImpactInfo.IsPersistentSceneObjectInDelayedDeletionQueue(new SourceIndex(SourceIndex.SourceId.NativeObject, selectedUnityObject.NativeObjectIndex))))
-            {
-                UpdateStatusAndHintForObjectsInDelayedDeletionQueue(selectedUnityObject);
-            }
-            else if (selectedUnityObject.IsLeakedShell)
-            {
-                UpdateStatusAndHintForLeakedShellObject(selectedUnityObject);
-            }
-            else if (selectedUnityObject.IsAssetObject && !selectedUnityObject.IsPersistentAsset)
-            {
-                UpdateStatusAndHintForDynamicAssets(selectedUnityObject);
-            }
-            else if (selectedUnityObject.IsPersistentAsset)
-            {
-                UpdateStatusAndHintForPersistentAssets(selectedUnityObject);
-            }
-            else if (selectedUnityObject.IsSceneObject)
-            {
-                UpdateStatusAndHintForSceneObjects(selectedUnityObject);
-            }
-            else if (selectedUnityObject.IsManager)
-            {
-                UpdateStatusAndHintForManagers(selectedUnityObject);
+                case DetailHandlerKind.DelayedDeletionQueue:
+                    UpdateStatusAndHintForObjectsInDelayedDeletionQueue(selectedUnityObject);
+                    break;
+                case DetailHandlerKind.LeakedShell:
+                    UpdateStatusAndHintForLeakedShellObject(selectedUnityObject);
+                    break;
+                case DetailHandlerKind.LeakedShellHeldByGCHandle:
+                    UpdateStatusForGCHandleHeldObjectWithoutNativeObject(selectedUnityObject.ManagedObjectIndex, true);
+                    break;
+                case DetailHandlerKind.BrokenScriptReference:
+                    UpdateStatusAndHintForBrokenScriptReference(selectedUnityObject);
+                    break;
+                case DetailHandlerKind.Manager:
+                    UpdateStatusAndHintForManagers(selectedUnityObject);
+                    break;
+                case DetailHandlerKind.DynamicAsset:
+                    UpdateStatusAndHintForDynamicAssets(selectedUnityObject);
+                    break;
+                case DetailHandlerKind.PersistentAsset:
+                    UpdateStatusAndHintForPersistentAssets(selectedUnityObject, precomputedStatus);
+                    break;
+                case DetailHandlerKind.SceneObject:
+                    UpdateStatusAndHintForSceneObjects(selectedUnityObject);
+                    break;
+                case DetailHandlerKind.None:
+                    break;
             }
         }
 
@@ -1108,21 +1191,13 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void UpdateStatusAndHintForLeakedShellObject(UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var statusSummary = (selectedUnityObject.ManagedRefCount > 0 ? "Referenced " : "GC.Collect()-able ") +
-                $"{TextContent.LeakedManagedShellName} of " +
-                (selectedUnityObject.IsSceneObject ? "a Scene Object" : "an Asset");
+            var statusSummary = string.Format(TextContent.LeakedShellStatusFormat,
+                selectedUnityObject.ManagedRefCount > 0 ? TextContent.LeakedShellStatusReferenced : TextContent.LeakedShellStatusCollectable,
+                selectedUnityObject.IsSceneObject ? TextContent.LeakedShellOfSceneObject : TextContent.LeakedShellOfAsset);
 
-            var hint = $"This Unity Object is a {TextContent.LeakedManagedShellName}. That means this object's type derives from UnityEngine.Object " +
-                "and the object therefore, normally, has a Native Object accompanying it. " +
-                "If it is used by Managed (C#) Code, a Managed Shell Object is created to allow access to the Native Object. " +
-                "In this case, the Native Object has been destroyed, either via Destroy() or because the " +
-                (selectedUnityObject.IsSceneObject ? "Scene" : "Asset Bundle") + " it was in was unloaded. " +
-                "After the Native Object was destroyed, the Managed Garbage Collector hasn't yet collected this object. " +
-                (selectedUnityObject.ManagedRefCount > 0
-                    ? "This is because the Managed Shell is still being referenced and can therefore not yet be collected. " +
-                    "You can fix this by explicitly setting each field referencing this Object to null (comparing it to null will claim it already is null, as it acts as a \"Fake Null\" object), " +
-                    "or by ensuring that each referencing object is no longer referenced itself, so that all of them can be unloaded."
-                    : "Nothing is referencing this Object anymore, so it should be collected with the next GC.Collect.");
+            var hint = string.Format(TextContent.LeakedShellHintFormat,
+                selectedUnityObject.IsSceneObject ? TextContent.LeakedShellHintSceneLabel : TextContent.LeakedShellHintAssetBundleLabel,
+                selectedUnityObject.ManagedRefCount > 0 ? TextContent.LeakedShellHintReferencedEnding : TextContent.LeakedShellHintUnreferencedEnding);
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
@@ -1130,81 +1205,82 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void UpdateStatusAndHintForDynamicAssets(UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var statusSummary = string.Empty;
-            if (selectedUnityObject.TotalRefCount > 0)
-                statusSummary += "Referenced ";
+            var referenced = selectedUnityObject.TotalRefCount > 0 ? TextContent.DynamicAssetStatusReferenced : string.Empty;
+            var state = selectedUnityObject.IsDontUnload ? TextContent.DynamicAssetStatusDontDestroyOnLoad
+                : selectedUnityObject.TotalRefCount == 0 ? TextContent.DynamicAssetStatusLeaked
+                : string.Empty;
+            var needsUpperCase = string.IsNullOrEmpty(referenced) && string.IsNullOrEmpty(state);
+            var dynamically = needsUpperCase ? TextContent.DynamicAssetStatusDynamically : TextContent.DynamicAssetStatusDynamicallyLower;
+            var creationSuffix = m_CachedSnapshot.HasEntityIDAs8ByteStructs ? TextContent.DynamicAssetStatusCreatedSuffix : selectedUnityObject.IsRuntimeCreated ? TextContent.DynamicAssetStatusRuntimeCreatedSuffix : TextContent.DynamicAssetStatusBuildTimeCreatedSuffix;
 
-            // State
-            if (selectedUnityObject.IsDontUnload)
-                statusSummary += "DontDestroyOnLoad ";
-            else if (selectedUnityObject.TotalRefCount == 0)
-                statusSummary += "Leaked ";
-
-            // Runtime created or Combined Scene Meshes
-            if (selectedUnityObject.IsRuntimeCreated)
-                statusSummary += $"{(string.IsNullOrEmpty(statusSummary) ? 'D' : 'd')}ynamically & run-time created ";
-            else
-                statusSummary += $"{(string.IsNullOrEmpty(statusSummary) ? 'D' : 'd')}ynamically & build-time created ";
-
-            statusSummary += "Asset";
+            var statusSummary = string.Format(TextContent.DynamicAssetStatusFormat,
+                referenced, state, dynamically, creationSuffix, TextContent.DynamicAssetStatusAsset);
 
             var newObjectTypeConstruction = "'new " + (selectedUnityObject.Type.HasManagedType ? selectedUnityObject.ManagedTypeName : selectedUnityObject.NativeTypeName) + "()'. ";
 
-            var hint = "This is a dynamically created Asset Type object, that was either Instantiated, implicitly duplicated or explicitly constructed via " +
-                newObjectTypeConstruction +
-                (selectedUnityObject.IsDontUnload ? "It is marked as 'DontDestroyOnLoad', so that it will never be unloaded by a Scene unload or an explicit call to 'Resources.UnloadUnusedAssets()'." +
-                    " If you want to get rid of it, you will need to call 'Destroy()' on it or not mark it as 'DontDestroyOnLoad'"
-                    : ((selectedUnityObject.TotalRefCount > 0 ? "It is still referenced, but if it should no longer be used, it will need to be unloaded explicitly by calling 'Destroy()' on it or "
-                        : "This object is not referenced anymore. It is therefore leaked! ") +
-                        "Remember to unload these objects by explicitly calling 'Destroy()' on them, or via the more costly and broad sweeping indirect method of " +
-                        k_TriggerAssetGCHint)
-                );
+            string hintEnding;
+            if (selectedUnityObject.IsDontUnload)
+                hintEnding = TextContent.DynamicAssetHintDontDestroyOnLoad;
+            else if (selectedUnityObject.TotalRefCount > 0)
+                hintEnding = TextContent.DynamicAssetHintReferenced;
+            else
+                hintEnding = TextContent.DynamicAssetHintLeakedFormat;
+
+            var hint = string.Format(TextContent.DynamicAssetHintFormat, newObjectTypeConstruction, hintEnding);
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
 
-            if (selectedUnityObject.IsRuntimeCreated && string.IsNullOrEmpty(selectedUnityObject.NativeObjectName))
+            if ((m_CachedSnapshot.HasEntityIDAs8ByteStructs || selectedUnityObject.IsRuntimeCreated) && string.IsNullOrEmpty(selectedUnityObject.NativeObjectName))
             {
-                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, "Tip", "This dynamically created Asset doesn't have a name, which will make it harder to find its source. " +
-                    "As a first step, search your entire project code for any instances of " + newObjectTypeConstruction +
-                    " and every 'Instantiate()' or similar call that would create an instance of this type, " +
-                    "and make sure you set the '.name' property of the resulting object to something that will make it easier to understand what this object is being created for.");
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, TextContent.TipRowLabel, string.Format(TextContent.TipUnnamedDynamicAssetFormat, newObjectTypeConstruction));
             }
         }
 
-        void UpdateStatusAndHintForPersistentAssets(UnifiedUnityObjectInfo selectedUnityObject)
+        void UpdateStatusAndHintForBrokenScriptReference(UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var statusSummary = (selectedUnityObject.TotalRefCount > 0 ? "Used " : "Unused ") +
-                (selectedUnityObject.IsDontUnload ? "DontDestroyOnLoad " : string.Empty) +
-                (selectedUnityObject.IsRuntimeCreated ? "Runtime Created " : "Loaded ") +
-                "Asset";
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.ObjectStatusBrokenScriptReference, TextContent.PersistentAssetHintBrokenScript);
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.PersistentAssetHintBrokenScript, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+        }
+
+        void UpdateStatusAndHintForPersistentAssets(UnifiedUnityObjectInfo selectedUnityObject, ObjectStatus precomputedStatus)
+        {
+            // AssetBundle-specific statuses get their dedicated label + hint. This must include
+            // UnusedAssetInAssetBundle: such an asset has TotalRefCount > 0 (the bundle references it),
+            // so the generic path below would misreport it as a used asset.
+            if (precomputedStatus is ObjectStatus.UsedAssetBundle or ObjectStatus.UnusedAssetBundle
+                or ObjectStatus.LeakedAssetBundle or ObjectStatus.UnusedAssetInAssetBundle)
+            {
+                var (bundleStatus, bundleHint) = precomputedStatus switch
+                {
+                    ObjectStatus.UsedAssetBundle => (TextContent.ObjectStatusUsedAssetBundle, TextContent.ObjectStatusUsedAssetBundleTooltip),
+                    ObjectStatus.UnusedAssetBundle => (TextContent.ObjectStatusUnusedAssetBundle, TextContent.ObjectStatusUnusedAssetBundleTooltip),
+                    ObjectStatus.UnusedAssetInAssetBundle => (TextContent.ObjectStatusUnusedAssetInAssetBundle, TextContent.ObjectStatusUnusedAssetInAssetBundleTooltip),
+                    _ => (TextContent.ObjectStatusLeakedAssetBundle, TextContent.ObjectStatusLeakedAssetBundleTooltip),
+                };
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, bundleStatus, bundleHint);
+                m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, bundleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
+                return;
+            }
+
+            var statusSummary = string.Format(TextContent.PersistentAssetStatusFormat,
+                selectedUnityObject.TotalRefCount > 0 ? TextContent.PersistentAssetStatusUsed : TextContent.PersistentAssetStatusUnused,
+                selectedUnityObject.IsDontUnload ? TextContent.PersistentAssetStatusDontDestroyOnLoad : string.Empty,
+                m_CachedSnapshot.HasEntityIDAs8ByteStructs ? "" : (selectedUnityObject.IsRuntimeCreated ? TextContent.PersistentAssetStatusRuntimeCreated : TextContent.PersistentAssetStatusLoaded));
 
             string hint;
-            if (selectedUnityObject.IsRuntimeCreated)
-                hint = "This is an Asset that was created at runtime and later associated with a file.";
+            if (!m_CachedSnapshot.HasEntityIDAs8ByteStructs && selectedUnityObject.IsRuntimeCreated)
+                hint = TextContent.PersistentAssetHintRuntimeCreated;
+            else if (selectedUnityObject.TotalRefCount > 0)
+                hint = TextContent.PersistentAssetHintUsed;
+            else if (selectedUnityObject.IsDontUnload)
+                hint = TextContent.PersistentAssetHintDontDestroyOnLoad;
+            // Fallback for snapshots without RootAndImpactInfo: there is no precomputed BrokenScriptReference
+            // status to route these to UpdateStatusAndHintForBrokenScriptReference, so detect them here.
+            else if (RootAndImpactInfo.UnreferencedNativeObjectIsBrokenScriptingTypeObject(m_CachedSnapshot, selectedUnityObject.NativeObjectIndex))
+                hint = TextContent.PersistentAssetHintBrokenScript;
             else
-            {
-                if (selectedUnityObject.TotalRefCount > 0)
-                {
-                    hint = "This is an Asset that is used by something in your Application. " +
-                        "If you didn't expect to see this Asset at this point in your application's lifetime, check the References panel to see what is using it. " +
-                        "If you expected it to be smaller, check the Asset's Import settings.";
-                }
-                else if (selectedUnityObject.IsDontUnload)
-                {
-                    hint = "This is an Asset that appears to no longer be used by anything in your Application but his held in Memory because it is marked as 'DontDestroyOnLoad'. " +
-                        "To unload it, you need to call 'Destroy()' on it or not mark it as 'DontDestroyOnLoad'";
-                }
-                else
-                {
-                    if (RootAndImpactInfo.UnreferencedNativeObjectIsBrokenScriptingTypeObject(m_CachedSnapshot, selectedUnityObject.NativeObjectIndex))
-                        hint = "This object lost its connection to its Script file. Fix it up or delete it.";
-                    else
-                        hint = "This is an Asset that appears to no longer be used by anything in your Application. " +
-                               "It may have been used earlier but now is just waiting for the next sweep of 'Resources.UnloadUnusedAssets()' to unload it. You can test that hypothesis by " +
-                               k_TriggerAssetGCHint;
-                }
-            }
+                hint = TextContent.PersistentAssetHintUnused;
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
@@ -1212,17 +1288,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void UpdateStatusAndHintForSceneObjects(UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var statusSummary = (selectedUnityObject.IsRuntimeCreated ? "Run-time created " : "Loaded ") +
-                (selectedUnityObject.IsDontUnload ? "DontDestroyOnLoad " : string.Empty) +
-                "Scene Object";
+            var statusSummary = string.Format(TextContent.SceneObjectStatusFormat,
+                m_CachedSnapshot.HasEntityIDAs8ByteStructs ? "" : (selectedUnityObject.IsRuntimeCreated ? TextContent.SceneObjectStatusRuntimeCreated : TextContent.SceneObjectStatusLoaded),
+                selectedUnityObject.IsDontUnload ? TextContent.SceneObjectStatusDontDestroyOnLoad : string.Empty);
 
-            var hint = "This is a Scene Object, i.e. a GameObject or a Component on it. " +
-                (selectedUnityObject.IsRuntimeCreated ? "It was instantiated after the Scene was loaded. " : "It was loaded in as part of a Scene. ") +
-                (selectedUnityObject.IsDontUnload ? "It is marked as 'DontDestroyOnLoad' so to unload it, you would need to call 'Destroy()' on it, or not mark it as 'DontDestroyOnLoad'" :
-                    "Its Native Memory will be unloaded once the Scene it resides in is unloaded or the GameObject " +
-                    (selectedUnityObject.IsGameObject ? "" : "it is attached to ") +
-                    "or its parents are destroyed via 'Destroy()'. " +
-                    (selectedUnityObject.HasManagedSide ? "Its Managed memory may live on as a Leaked Shell Object if something else that was not unloaded with it still references it." : ""));
+            var hint = TextContent.SceneObjectHintIntro +
+                (m_CachedSnapshot.HasEntityIDAs8ByteStructs ? "" : (selectedUnityObject.IsRuntimeCreated ? TextContent.SceneObjectHintInstantiated : TextContent.SceneObjectHintLoaded)) +
+                (selectedUnityObject.IsDontUnload ? TextContent.SceneObjectHintDontDestroyOnLoad :
+                    (selectedUnityObject.IsGameObject ? TextContent.SceneObjectHintUnloadGameObject : TextContent.SceneObjectHintUnloadComponent) +
+                    (selectedUnityObject.HasManagedSide ? TextContent.SceneObjectHintManagedShellWarning : ""));
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
@@ -1240,8 +1314,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void UpdateStatusAndHintForManagers(UnifiedUnityObjectInfo selectedUnityObject)
         {
-            var statusSummary = "Native Manager";
-            var hint = "This is Native Manager that is represents one of Unity's subsystems.";
+            var statusSummary = TextContent.NativeManagerStatus;
+            var hint = TextContent.NativeManagerHint;
 
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, statusSummary, hint);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, hint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
@@ -1253,13 +1327,13 @@ namespace Unity.MemoryProfiler.Editor.UI
          * - "Referenced Leaked Managed Shell of a Scene Object"
          * - "Referenced Leaked Managed Shell of an Asset"
          *
-         * - "Dynamically & run-time created Asset"
+         * - "Dynamically & runtime created Asset"
          * - "Dynamically & build-time created Asset"
-         * - "Referenced dynamically & run-time created Asset"
+         * - "Referenced dynamically & runtime created Asset"
          * - "Referenced dynamically & build-time created Asset "
-         * - "Referenced DontDestroyOnLoad dynamically & run-time created Asset"
+         * - "Referenced DontDestroyOnLoad dynamically & runtime created Asset"
          * - "Referenced DontDestroyOnLoad dynamically & build-time created Asset"
-         * - "Referenced Leaked dynamically & run-time created Asset"
+         * - "Referenced Leaked dynamically & runtime created Asset"
          * - "Referenced Leaked dynamically & build-time created Asset"
          *
          * - "Used Runtime Created Asset"

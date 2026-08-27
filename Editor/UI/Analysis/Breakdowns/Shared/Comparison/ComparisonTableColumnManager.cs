@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -10,11 +11,42 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// </summary>
     class ComparisonTableColumnManager<TItemData>
     {
+        class ColumnHeaderInfo
+        {
+            public string Title;
+            public string Tooltip;
+
+            /// <summary>
+            /// The header element the tooltip was last applied to, cached by <see cref="MultiColumnHeaderBuilder.Bind"/>
+            /// so a later tooltip update can be written directly instead of re-querying the tree view for it.
+            /// </summary>
+            public VisualElement TooltipTarget;
+        }
+
         readonly MultiColumnTreeView m_TreeView;
+        readonly Dictionary<string, ColumnHeaderInfo> m_ColumnHeaders = new Dictionary<string, ColumnHeaderInfo>();
 
         public ComparisonTableColumnManager(MultiColumnTreeView treeView)
         {
             m_TreeView = treeView;
+        }
+
+        /// <summary>
+        /// Updates the stored tooltip for a column and refreshes the rendered header element. Pass <c>null</c> to
+        /// fall back to the column title.
+        /// </summary>
+        public void SetColumnTooltip(string columnId, string tooltip)
+        {
+            if (!m_ColumnHeaders.TryGetValue(columnId, out var headerInfo))
+                return;
+
+            headerInfo.Tooltip = tooltip;
+
+            // Update the already-rendered header directly using the reference cached by BindHeader — the column's
+            // bindHeader delegate also captures 'headerInfo' by reference, so the next header re-bind picks up the
+            // new value regardless.
+            if (headerInfo.TooltipTarget != null)
+                headerInfo.TooltipTarget.tooltip = headerInfo.Tooltip ?? headerInfo.Title;
         }
 
         /// <summary>
@@ -26,12 +58,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             int width,
             Action<VisualElement, int> bindCell,
             Func<VisualElement> makeCell = null,
-            bool visible = true)
+            Action<VisualElement> destroyCell = null,
+            bool visible = true,
+            string headerTooltip = null)
         {
             var column = m_TreeView.columns[columnId];
             column.title = title;
             column.bindCell = bindCell;
             column.visible = visible;
+
+            var headerInfo = new ColumnHeaderInfo { Title = title, Tooltip = headerTooltip };
+            m_ColumnHeaders[columnId] = headerInfo;
+            // The default header has picking mode Ignore, so the tooltip on its title label never shows. To get a
+            // working tooltip we override makeHeader (otherwise bindHeader isn't called) and rebuild a header with
+            // the same structure and class names as the default one so it keeps the default styling.
+            column.makeHeader = MakeHeader;
+            column.bindHeader = header => BindHeader(header, headerInfo);
 
             if (width != 0)
             {
@@ -42,6 +84,16 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (makeCell != null)
                 column.makeCell = makeCell;
+
+            if (destroyCell != null)
+                column.destroyCell = destroyCell;
+        }
+
+        VisualElement MakeHeader() => MultiColumnHeaderBuilder.MakeHeader(out _, out _);
+
+        void BindHeader(VisualElement header, ColumnHeaderInfo headerInfo)
+        {
+            headerInfo.TooltipTarget = MultiColumnHeaderBuilder.Bind(header, headerInfo.Title, headerInfo.Tooltip, icon: null);
         }
 
         /// <summary>
@@ -132,7 +184,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             return (element, rowIndex) =>
             {
-                var cell = (CountDeltaCell)element;
+                var cell = element.Q<CountDeltaCell>();
                 var itemData = m_TreeView.GetItemDataForIndex<TItemData>(rowIndex);
                 var countDelta = getCountDelta(itemData);
                 cell.SetCountDelta(countDelta);
@@ -145,7 +197,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             return (element, rowIndex) =>
             {
-                var cell = (DeltaBarCell)element;
+                var cell = element.Q<DeltaBarCell>();
                 var itemData = m_TreeView.GetItemDataForIndex<TItemData>(rowIndex);
                 var sizeDelta = getSizeDelta(itemData);
                 var proportionalSizeDelta = 0f;
@@ -166,7 +218,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var itemData = m_TreeView.GetItemDataForIndex<TItemData>(rowIndex);
                 var sizeDelta = getSizeDelta(itemData);
-                ((Label)element).text = FormatBytes(sizeDelta);
+                element.Q<Label>().text = FormatBytes(sizeDelta);
             };
         }
 
@@ -176,7 +228,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var itemData = m_TreeView.GetItemDataForIndex<TItemData>(rowIndex);
                 var size = getSize(itemData);
-                ((Label)element).text = FormatBytes(size);
+                element.Q<Label>().text = FormatBytes(size);
             };
         }
 
@@ -186,7 +238,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var itemData = m_TreeView.GetItemDataForIndex<TItemData>(rowIndex);
                 var count = getCount(itemData);
-                ((Label)element).text = $"{count:N0}";
+                element.Q<Label>().text = $"{count:N0}";
             };
         }
 

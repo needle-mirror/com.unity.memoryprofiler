@@ -1,4 +1,4 @@
-using System.Threading.Tasks;
+using System;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -12,18 +12,19 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
         }
 
-        protected override async void ViewLoaded()
+        protected override void ViewLoaded()
         {
             base.ViewLoaded();
 
             // Initialize All Tracked Memory table as a child view controller.
-            m_TableViewController = new AllTrackedMemoryTableViewController(Snapshot, SearchField, responder: this);
+            m_TableViewController = new AllTrackedMemoryTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this);
             AddChild(m_TableViewController);
 
-            // Set table mode before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            await m_TableViewController.SetColumnsVisibilityAsync(TableColumnsMode);
+            // SetColumnsVisibilityAsync is synchronous before the view is loaded (IsViewLoaded = false):
+            // it only sets the TableMode property. Assert synchronous completion as a safety net.
+            m_TableViewController.SetColumnsVisibilityAsync(TableColumnsMode).AssertCompleted();
 
-            TableContainer.Add(m_TableViewController.View);
+            AddAndBuildChildTableView(m_TableViewController);
             // Setup table mode context menu and dropdown
             m_TableViewController.HeaderContextMenuPopulateEvent += GenerateTreeViewContextMenu;
             TableColumnsModeChanged += UpdateTableColumnsMode;
@@ -36,13 +37,20 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         async void UpdateTableColumnsMode(AllTrackedMemoryTableMode mode)
         {
-            // Update table mode view
-            await m_TableViewController.SetColumnsVisibilityAsync(mode);
+            try
+            {
+                // Update table mode view
+                await m_TableViewController.SetColumnsVisibilityAsync(mode);
 
-            // Refresh table common header
-            var model = m_TableViewController.Model;
-            if (model != null)
-                RefreshTableSizeBar(model.TotalMemorySize, model.TotalGraphicsMemorySize, model.TotalSnapshotMemorySize);
+                // Refresh table common header
+                var model = m_TableViewController.Model;
+                if (model != null)
+                    RefreshTableSizeBar(model.TotalMemorySize, model.TotalGraphicsMemorySize, model.TotalSnapshotMemorySize);
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogException(e);
+            }
         }
 
         void AllTrackedMemoryTableViewController.IResponder.Reloaded(

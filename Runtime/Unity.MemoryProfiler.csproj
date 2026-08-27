@@ -16,8 +16,8 @@
       <Define>MEMORY_PROFILER_API_PUBLIC</Define>
     </UnityVersionDefine>
     <UnityVersionDefine Include="Unity">
-      <Expression>7000.0.0a1</Expression>
-      <Define>LIVECYCLE_APIS_AVAILABLE</Define>
+      <Expression>6000.5.0a9</Expression>
+      <Define>LIFECYCLE_APIS_AVAILABLE</Define>
     </UnityVersionDefine>
   </ItemGroup>
 </Project>

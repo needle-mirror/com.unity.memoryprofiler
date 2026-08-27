@@ -1,19 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
-<engine:UXML
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xmlns:engine="UnityEngine.UIElements"
-    xmlns:editor="UnityEditor.UIElements"
-    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
-    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
-
+<engine:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:engine="UnityEngine.UIElements" xmlns:editor="UnityEditor.UIElements" xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI" noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
     <engine:VisualElement name="breakdown-view">
         <Style src="BreakdownView.uss"/>
-        <engine:VisualElement name="breakdown-view__search-field-container">
+        <engine:VisualElement name="breakdown-view__search-field-container" class="table-view__config-top-container">
             <engine:DropdownField name="breakdown-view__mode-dropdown"/>
-            <editor:ToolbarSearchField name="breakdown-view__search-field"/>
+			<engine:VisualElement name="breakdown-view__search-and-filter-group" class="table-view__search-and-filter-group">
+				<editor:ToolbarSearchField name="breakdown-view__search-field" class="table-view__search-field" />
+					<Unity.MemoryProfiler.Editor.UI:StatusFilterButton name="breakdown-view__status-filter-button"/>
+			</engine:VisualElement>
         </engine:VisualElement>
         <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="breakdown-view__table-size-bar"/>
         <engine:VisualElement name="breakdown-view__table-container"/>
     </engine:VisualElement>
-
 </engine:UXML>

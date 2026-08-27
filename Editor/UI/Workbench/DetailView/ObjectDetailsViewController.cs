@@ -157,7 +157,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             var header = new MultiColumnHeaderWithTruncateTypeName(PathsToRootDetailView.CreateDefaultMultiColumnHeaderState()) { canSort = false };
             m_PathsToRootDetailView?.OnDisable();
             m_PathsToRootDetailView = new PathsToRootDetailView(new TreeViewState(), header, m_ReferencesRibbonContainer);
-            m_PathsToRootDetailView.SetRoot(m_Snapshot, m_DataSource);
+
+            var referencesSource = m_DataSource;
+            if (m_DataSource.Id == SourceIndex.SourceId.NativeAllocation)
+            {
+                // for native allocations that are part of a native objects, we want to show the references to the native object which owns them
+                var rootId = m_Snapshot.NativeAllocations.RootReferenceId[m_DataSource.Index];
+                if (rootId >= NativeRootReferenceEntriesCache.FirstValidRootId && m_Snapshot.NativeObjects.RootReferenceIdToIndex.TryGetValue(rootId, out var nativeObjectIndex))
+                {
+                    referencesSource = new SourceIndex(SourceIndex.SourceId.NativeObject, nativeObjectIndex);
+                }
+            }
+
+            m_PathsToRootDetailView.SetRoot(m_Snapshot, referencesSource);
             m_PathsToRootDetailView.SelectionChangedEvt += UpdateSelectionDetails;
 
             // Reference selection
@@ -168,7 +180,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SetSelectedObjectToRoot();
             }));
             m_ReferenceSelection.ContextMenuOpening += ShowCopyMenuForReferencesTitle;
-            m_ReferenceSelection.SetLabelData(m_Snapshot, m_DataSource);
+            m_ReferenceSelection.SetLabelData(m_Snapshot, referencesSource);
 
             // Foldout controls
             m_ReferencesFoldout.RegisterValueChangedCallback(ReferencesToggle);
@@ -189,17 +201,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Update reference section state according to saved stat
             m_ReferencesFoldout.value = m_ReferencesSectionExpanded;
             // override reference panel visibility depending on data availability
-            var showReferencesPanel = m_DataSource.Id switch
+            var showReferencesPanel = referencesSource.Id switch
             {
                 // for regular objects, always show the references, as no references is an important datapoint
                 SourceIndex.SourceId.NativeObject => true,
                 SourceIndex.SourceId.ManagedObject => true,
-                SourceIndex.SourceId.GfxResource => GfxResourceHasNativeObjectAssociation(m_Snapshot, m_DataSource),
+                SourceIndex.SourceId.GfxResource => GfxResourceHasNativeObjectAssociation(m_Snapshot, referencesSource),
 
                 // Hide the References panel for non-objects unless there is data to show there.
                 // This is to avoid confusion that this no references could mean nothing is referencing them,
                 // when really we just don't have the full picture here (e.g. graphics scratch buffers held in native code NativeArrays held by a TempJob)
-                _ => HasReferencesData(m_Snapshot, m_DataSource)
+                _ => HasReferencesData(m_Snapshot, referencesSource)
             };
             m_ReferencesSectionHiddenBecauseThereIsNoRelevantData = !showReferencesPanel;
 

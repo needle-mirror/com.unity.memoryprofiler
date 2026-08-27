@@ -30,7 +30,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// Returns true if '<paramref name="text"/>' is equal to the filter's 'Text', according to an ordinal, case-insensitive comparison.
         /// If '<paramref name="text"/>' is null, returns true if the filter's 'Text' is an empty string.
         /// Otherwise, returns false.</returns>
-        public bool Passes(string text, CachedSnapshot cachedSnapshot = null)
+        public bool Passes(string text)
         {
             if (text == null)
                 return string.IsNullOrEmpty(m_Text);

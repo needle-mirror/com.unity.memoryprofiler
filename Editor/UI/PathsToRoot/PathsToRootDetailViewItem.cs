@@ -128,7 +128,13 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                         return referencedItemName + "Connection to Value";
                     }
                     var fieldType = cachedSnapshot.FieldDescriptions.TypeIndex[displayObject.fieldIndex];
-                    var isPointerField = fieldType == cachedSnapshot.TypeDescriptions.ITypeIntPtr || cachedSnapshot.TypeDescriptions.TypeDescriptionName[fieldType].EndsWith('*');
+                    // fieldType is -1 for CoreCLR pointer/function-pointer fields, which are pointer
+                    // fields by definition, so there's no TypeDescriptions row to check against. Gate on
+                    // HasBackendManagedGraph so a negative TypeIndex on another backend isn't assumed to be a
+                    // pointer field (and doesn't fall through to indexing TypeDescriptionName with it below).
+                    var isPointerField = fieldType < 0
+                        ? cachedSnapshot.HasBackendManagedGraph
+                        : fieldType == cachedSnapshot.TypeDescriptions.ITypeIntPtr || cachedSnapshot.TypeDescriptions.TypeDescriptionName[fieldType].EndsWith('*');
                     var referencingNativeData = data.codeType == CodeType.Native;
                     return referencedItemName + displayObject.GetFieldDescription(cachedSnapshot, truncateTypeNames: truncateTypeNames)
                         + (!referencingNativeData && !isPointerField ? " (Boehm reads pointer sized field as potential pointers)" : "");
@@ -215,9 +221,9 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public void SetIcons(CachedSnapshot cs)
         {
             if (!needsIcon) return;
-            TypeIcon = GetIcon(Data, TypeName, cs);
-            icon = (Texture2D)TypeIcon.image;
-            ObjectFlags = string.IsNullOrEmpty(FlagsInfo) ? null : new GUIContent(PathsToRootUtils.FlagIcon.image, ToolTipMsg);
+            TypeIcon = Icons.GetIcon(Data, TypeName, cs);
+            icon = (Texture2D)TypeIcon?.image;
+            ObjectFlags = string.IsNullOrEmpty(FlagsInfo) ? null : new GUIContent(Icons.FlagIcon.image, ToolTipMsg);
         }
 
         void SetObjectFlagsDataAndToolTip(ObjectData data, CachedSnapshot cachedSnapshot)
@@ -310,55 +316,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
             return ObjectFlags != null;
         }
 
-        public static GUIContent GetIcon(ObjectData data, string typeName, CachedSnapshot cs)
-        {
-            if (data.dataType is ObjectDataType.Scene)
-                return PathsToRootDetailView.Styles.SceneIcon;
-            if (typeName == "AssetBundle")
-            {
-                return PathsToRootUtils.NoIconContent;
-            }
-            if (PathsToRootUtils.iconContent.TryGetValue(typeName, out var content))
-            {
-                return content;
-            }
-            if (!typeName.Contains("<unknown>") && cs != null)
-            {
-                var n = string.Concat(typeName.Split(Path.GetInvalidFileNameChars()));
-                n = n.Replace("UnityEngine.", "");
-                n = n.Replace("UnityEditor.", "");
 
-                var tex = IconUtility.LoadBuiltInIconWithName(n + " Icon");
-                if (tex != null)
-                {
-                    PathsToRootUtils.iconContent.Add(typeName, new GUIContent((Texture)tex));
-                    return PathsToRootUtils.iconContent[typeName];
-                }
-
-                if (n == "MonoBehaviour")
-                {
-                    return PathsToRootUtils.CSScriptIconContent;
-                }
-
-                if (!data.isManaged) return GUIContent.none;
-
-
-                if (data.managedTypeIndex == -1)
-                    return PathsToRootUtils.CSScriptIconContent;
-
-
-                var idx = cs.TypeDescriptions.BaseOrElementTypeIndex[data.managedTypeIndex];
-                if (idx != -1 && cs.TypeDescriptions.TypeDescriptionName[idx] == "UnityEngine.MonoBehaviour")
-                {
-                    return PathsToRootUtils.CSScriptIconContent;
-                }
-
-                if (data.isManaged)
-                    return PathsToRootUtils.CSScriptIconContent;
-            }
-
-            return PathsToRootUtils.NoIconContent;
-        }
 
         public void AddChild(PathsToRootDetailTreeViewItem child)
         {

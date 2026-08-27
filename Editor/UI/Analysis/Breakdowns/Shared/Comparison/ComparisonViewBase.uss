@@ -37,13 +37,10 @@
     margin-top: 16px;
 }
 
-.comparison-view-base__search-field-container
+
+.table-view__config-top-container
 {
-    flex-direction: row;
-    flex-shrink: 0;
     margin: 0px 16px 16px 16px;
-    justify-content: space-between;
-    align-items: center;
 }
 
 .comparison-view-base__description-label
@@ -51,25 +48,9 @@
     flex-shrink: 1;
     margin-right: 16px;
     overflow: hidden;
+	padding-top: 3px;
+    white-space: normal;
     text-overflow: ellipsis;
-}
-
-.comparison-view-base__search-field
-{
-    height: 14px;
-    margin: 0px;
-    padding: 4px;
-    width: 40%;
-}
-
-.comparison-view-base__search-field TextField
-{
-    padding-left: 4px;
-}
-
-.comparison-view-base__search-field TextElement
-{
-    font-size: 12px;
 }
 
 /* ========================================

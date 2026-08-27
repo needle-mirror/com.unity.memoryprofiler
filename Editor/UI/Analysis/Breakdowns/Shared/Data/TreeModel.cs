@@ -52,6 +52,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        public static void ClearIdToIndexCache<TTreeItemData>(ref Dictionary<int, IndexableTreeViewListAndIndex<TTreeItemData>> idToIndex)
+        {
+            // null is the state used to denote it has to be rebuilt
+            idToIndex = null;
+        }
+
         public static TreeViewItemData<TTreeItemData> GetItemById<TTreeItemData>(
             this List<TreeViewItemData<TTreeItemData>> RootNodes,
             ref Dictionary<int, IndexableTreeViewListAndIndex<TTreeItemData>> idToIndex,

@@ -1,4 +1,5 @@
 using System;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -14,12 +15,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         public SizeCellRenderer(
             MultiColumnTreeView treeView,
             Func<AllTrackedMemoryTableMode> getTableMode,
-            string unavailableText = "N/A",
+            string unavailableText = null,
             string unreliableCssClass = "analysis-view__text__information-unreliable-or-unavailable")
         {
             m_TreeView = treeView;
             m_GetTableMode = getTableMode;
-            m_UnavailableText = unavailableText;
+            m_UnavailableText = string.IsNullOrEmpty(unavailableText) ? TextContent.NotAvailable : unavailableText;
             m_UnreliableCssClass = unreliableCssClass;
         }
 
@@ -32,7 +33,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var itemData = m_TreeView.GetItemDataForIndex<TItemData>(rowIndex);
                 var size = sizeSelector(itemData);
-                var cell = (Label)element;
+                var cell = element.Q<Label>();
                 var isUnreliable = isUnreliableSelector?.Invoke(itemData) ?? false;
 
                 if (!isUnreliable)
@@ -55,10 +56,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             Func<TItemData, MemorySize> sizeSelector,
             Func<TItemData, bool> isUnreliableSelector = null,
             string unavailableTooltip = null,
-            bool useResident = false)
+            bool? useResident = null)
         {
             return CreateSizeBinding<TItemData>(
-                itemData => useResident ? sizeSelector(itemData).Resident : sizeSelector(itemData).Committed,
+                itemData => useResident ?? m_GetTableMode() == AllTrackedMemoryTableMode.OnlyResident ? sizeSelector(itemData).Resident : sizeSelector(itemData).Committed,
                 isUnreliableSelector,
                 unavailableTooltip);
         }
@@ -72,7 +73,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var maxValue = maxValueSelector();
                 var item = m_TreeView.GetItemDataForIndex<TItemData>(rowIndex);
-                var cell = element as MemoryBar;
+                var cell = element.Q<MemoryBar>();
                 var isUnreliable = isUnreliableSelector?.Invoke(item) ?? false;
 
                 if (!isUnreliable)

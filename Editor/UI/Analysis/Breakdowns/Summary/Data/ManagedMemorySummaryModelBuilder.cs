@@ -109,7 +109,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             summary.VMStaticFields = 0;
             for (long i = 0; i < cs.TypeDescriptions.Count; i++)
             {
-                summary.VMStaticFields += cs.TypeDescriptions.StaticFieldBytes.Count(i);
+                summary.VMStaticFields += cs.TypeDescriptions.GetStaticFieldOwnByteSize(cs, i);
             }
 
             res = summary;

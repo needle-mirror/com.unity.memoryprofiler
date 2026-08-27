@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.UIElements;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -12,21 +14,27 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         readonly UnityObjectsModelBuilder m_Builder = new UnityObjectsModelBuilder();
 
+        public UnityObjectsModel EmptyModel => new UnityObjectsModel(new(), default);
+
         public UnityObjectsModel Build(CachedSnapshot snapshot, UnityObjectsModelBuilder.BuildArgs args)
         {
             return m_Builder.Build(snapshot, args);
         }
 
-        public UnityObjectsModel Build(UnityObjectsModel baseModel, List<int> treeNodeIdFilter)
+        public UnityObjectsModel Build(UnityObjectsModel baseModel, IList<int> treeNodeIdFilter)
         {
             return m_Builder.Build(baseModel, treeNodeIdFilter);
+        }
+
+        public void ClearIdToIndexCache()
+        {
+            m_Builder.ClearIdToIndexCache();
         }
     }
 
     class UnityObjectsTableViewController : SingleSnapshotTreeViewController<UnityObjectsModel, UnityObjectsModel.ItemData>
     {
-        // In contrast to AllTrackedMemory, setting the mode and column visibility for Unity Objects tables does not require a table rebuild
-        // The TreeView needs to be refreshed though as the cells changed and need to be rebuild
+        /// <summary>Column visibility and mode changes only need a cell refresh, not a model rebuild (unlike AllTrackedMemory where switching committed/resident recomputes the model).</summary>
         protected override bool SwitchingTableModeRequiresRebuild { get; } = false;
 
         protected override string UxmlIdentifier_TreeViewColumn__Size => k_UxmlIdentifier_TreeViewColumn__Size;
@@ -41,23 +49,36 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_TreeViewColumn__ManagedSize = "unity-objects-table-view__tree-view__column__managed-size";
         const string k_UxmlIdentifier_TreeViewColumn__ResidentSize = "unity-objects-table-view__tree-view__column__resident-size";
         const string k_UxmlIdentifier_TreeViewColumn__GpuSize = "unity-objects-table-view__tree-view__column__gpu-size";
+        const string k_UxmlIdentifier_TreeViewColumn__Status = "unity-objects-table-view__tree-view__column__status";
         const string k_UxmlIdentifier_Toolbar = "unity-objects-table-view__toolbar";
         const string k_UxmlIdentifier_FlattenToggle = "unity-objects-table-view__toolbar__flatten-toggle";
         const string k_UxmlIdentifier_DuplicatesToggle = "unity-objects-table-view__toolbar__duplicates-toggle";
         const string k_UxmlIdentifier_LoadingOverlay = "unity-objects-table-view__loading-overlay";
         const string k_UxmlIdentifier_ErrorLabel = "unity-objects-table-view__error-label";
+        const string k_UxmlIdentifier_Pager = "unity-objects-table-view__pager";
         const string k_Graphics_NotAvailable = "N/A";
-        const string k_Graphics_NotAvailable_ToolTip = "The memory profiler cannot certainly attribute which part of the resident memory belongs to graphics." +
-            "\n\nChange focus to 'Allocated Memory' to inspect graphics memory." +
-            "\n\nWe also recommend using a platform profiler for checking the residency status of graphics memory.";
+
+        const string k_SessionStateKey_FlattenHierarchy = "com.unity.memoryprofiler.UnityObjectsTableViewController.flattenHierarchy";
+        const string k_SessionStateKey_ShowDuplicatesOnly = "com.unity.memoryprofiler.UnityObjectsTableViewController.showDuplicatesOnly";
 
         // Model.
         readonly CachedSnapshot m_Snapshot;
-        readonly bool m_ShowAdditionalOptions;
+        readonly bool m_CompareMode;
         readonly IResponder m_Responder;
         protected override Dictionary<string, Comparison<TreeViewItemData<UnityObjectsModel.ItemData>>> SortComparisons { get; }
+        /// <summary>
+        /// Maps each sortable column to the compact-row sort key for the flattened view's native multi-column
+        /// index sort. The Description (name) column is absent because name sorting goes through the model's
+        /// managed path instead. The size-bar column resolves to committed/resident by table mode at sort time.
+        /// </summary>
+        readonly Dictionary<string, UnityObjectsFlatRowComparer.Column> m_FlatSortColumns;
+        /// <summary>The paged model owns a native row store that must be disposed when it is replaced.</summary>
+        UnityObjectsModel m_OwnedModel;
+        FlatPagerBinding<UnityObjectsFlatRowComparer.Column> m_PagerBinding;
         bool m_ShowDuplicatesOnly;
         bool m_FlattenHierarchy;
+
+        public override bool ExcludeAllFilterApplied => m_FilterManager.TreeNodeIdFilter != null && m_FilterManager.TreeNodeIdFilter.Count == 0;
 
         // Composed components
         readonly TableFilterManager<UnityObjectsModel, UnityObjectsModel.ItemData> m_FilterManager;
@@ -69,24 +90,28 @@ namespace Unity.MemoryProfiler.Editor.UI
         Toolbar m_Toolbar;
         Toggle m_FlattenToggle;
         Toggle m_DuplicatesToggle;
+        PaginationControl m_Pager;
+        const int k_DefaultColumnWidth = 120;
+        const int k_SizeBarColumnWidth = 180;
 
         public UnityObjectsTableViewController(
             CachedSnapshot snapshot,
             ToolbarSearchField searchField = null,
-            bool buildOnLoad = true,
-            bool showAdditionalOptions = true,
-            IResponder responder = null,
-            bool disambiguateByInstanceID = false)
-            : base(idOfDefaultColumnWithPercentageBasedWidth: k_UxmlIdentifier_TreeViewColumn__Description, buildOnLoad)
+            StatusFilterButton statusFilterButton = null,
+            bool compareMode = false,
+            bool disambiguateUnityObjects = false,
+            IResponder responder = null)
+            : base(idOfDefaultColumnWithPercentageBasedWidth: k_UxmlIdentifier_TreeViewColumn__Description)
         {
             m_Snapshot = snapshot;
             m_SearchField = searchField;
-            m_ShowAdditionalOptions = showAdditionalOptions;
+            m_CompareMode = compareMode;
             m_Responder = responder;
-            DisambiguateByInstanceID = disambiguateByInstanceID;
+            DisambiguateByInstanceId = disambiguateUnityObjects;
 
             // Initialize composed components
             m_FilterManager = new TableFilterManager<UnityObjectsModel, UnityObjectsModel.ItemData>();
+            statusFilterButton?.SetUp(m_FilterManager, () => { if (IsViewLoaded) FireAndForgetBuildModelAsync(); }, ObjectStatusExtensions.UnityObjectsTableUnavailableStatuses);
             m_BuildOrchestrator = new ModelBuildOrchestrator<UnityObjectsModel, UnityObjectsModelBuilder.BuildArgs>(
                 snapshot,
                 new UnityObjectsModelBuilderAdapter(),
@@ -104,6 +129,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 { k_UxmlIdentifier_TreeViewColumn__ManagedSize, (x, y) => x.data.ManagedSize.Committed.CompareTo(y.data.ManagedSize.Committed) },
                 { k_UxmlIdentifier_TreeViewColumn__GpuSize, (x, y) => x.data.GpuSize.Committed.CompareTo(y.data.GpuSize.Committed) },
                 { k_UxmlIdentifier_TreeViewColumn__SizeBar, (x, y) => TableMode != AllTrackedMemoryTableMode.OnlyResident ? x.data.TotalSize.Committed.CompareTo(y.data.TotalSize.Committed) : x.data.TotalSize.Resident.CompareTo(y.data.TotalSize.Resident) },
+                { k_UxmlIdentifier_TreeViewColumn__Status, (x, y) => x.data.WarningInfo.GetStatusSortKey().CompareTo(y.data.WarningInfo.GetStatusSortKey()) },
+            };
+
+            m_FlatSortColumns = new()
+            {
+                { k_UxmlIdentifier_TreeViewColumn__Size, UnityObjectsFlatRowComparer.Column.SizeCommitted },
+                { k_UxmlIdentifier_TreeViewColumn__ResidentSize, UnityObjectsFlatRowComparer.Column.SizeResident },
+                { k_UxmlIdentifier_TreeViewColumn__NativeSize, UnityObjectsFlatRowComparer.Column.NativeSize },
+                { k_UxmlIdentifier_TreeViewColumn__ManagedSize, UnityObjectsFlatRowComparer.Column.ManagedSize },
+                { k_UxmlIdentifier_TreeViewColumn__GpuSize, UnityObjectsFlatRowComparer.Column.GpuSize },
+                { k_UxmlIdentifier_TreeViewColumn__Status, UnityObjectsFlatRowComparer.Column.Status },
             };
         }
 
@@ -118,6 +154,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             set
             {
                 m_ShowDuplicatesOnly = value;
+                SessionState.SetBool(k_SessionStateKey_ShowDuplicatesOnly, value);
                 if (IsViewLoaded)
                     // ShowDuplicatesOnly is a property setter triggered by UI input and therefore doesn't expect an awaitable task.
                     // No caller or following code expects any part of the async build to be done.
@@ -132,6 +169,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             set
             {
                 m_FlattenHierarchy = value;
+                SessionState.SetBool(k_SessionStateKey_FlattenHierarchy, value);
                 if (IsViewLoaded)
                     // FlattenHierarchy is a property setter triggered by UI input or startup config (before IsViewLoaded is true) and therefore doesn't expect an awaitable task.
                     // No caller or following code expects any part of the async build to be done.
@@ -140,13 +178,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public bool DisambiguateByInstanceID { get; private set; }
+        public bool DisambiguateByInstanceId { get; private set; }
 
         // Filter properties - delegate to FilterManager with specific naming for UnityObjects
         public IScopedFilter<string> SearchStringFilter => m_FilterManager.SearchFilter;
         public ITextFilter UnityObjectNameFilter => m_FilterManager.NameFilter;
         public ITextFilter UnityObjectTypeNameFilter => m_FilterManager.TypeNameFilter;
-        public IEntityIdFilter SourceIndexFilter => m_FilterManager.EntityIdFilter;
 
         void OnSearchFilterChanged(IScopedFilter<string> searchFilter)
         {
@@ -158,12 +195,33 @@ namespace Unity.MemoryProfiler.Editor.UI
             IScopedFilter<string> searchStringFilter = null,
             ITextFilter unityObjectNameFilter = null,
             ITextFilter unityObjectTypeNameFilter = null,
-            IEntityIdFilter unityObjectInstanceIdFilter = null)
+            IList<int> treeNodeIdFilter = null)
         {
             // SetFilters is a listener to UI input (search filter changes) and therefore doesn't expect an awaitable task.
             // No caller or following code expects any part of the asnyc build to be done.
-            // Therefore: Discard the returned task.
-            _ = SetFiltersAsync(model, searchStringFilter, unityObjectNameFilter, unityObjectTypeNameFilter, unityObjectInstanceIdFilter);
+            FireAndForgetFilterAsync(model, searchStringFilter, unityObjectNameFilter, unityObjectTypeNameFilter, treeNodeIdFilter);
+        }
+
+        async void FireAndForgetFilterAsync(
+            UnityObjectsModel model = null,
+            IScopedFilter<string> searchStringFilter = null,
+            ITextFilter unityObjectNameFilter = null,
+            ITextFilter unityObjectTypeNameFilter = null,
+            IList<int> treeNodeIdFilter = null)
+        {
+            try
+            {
+                await SetFiltersAsync(model, searchStringFilter, unityObjectNameFilter, unityObjectTypeNameFilter, treeNodeIdFilter);
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation is expected and acceptable - don't log
+            }
+            catch (Exception e)
+            {
+                // Log unexpected exceptions but don't rethrow (would crash the application in async void)
+                Debug.LogException(e);
+            }
         }
 
         public async Task SetFiltersAsync(
@@ -171,39 +229,24 @@ namespace Unity.MemoryProfiler.Editor.UI
             IScopedFilter<string> searchStringFilter = null,
             ITextFilter unityObjectNameFilter = null,
             ITextFilter unityObjectTypeNameFilter = null,
-            IEntityIdFilter unityObjectInstanceIdFilter = null)
+            IList<int> treeNodeIdFilter = null)
         {
-            ClearFilters();
-
             // Store all filters in FilterManager
             m_FilterManager.SearchFilter = searchStringFilter;
             m_FilterManager.NameFilter = unityObjectNameFilter;
             m_FilterManager.TypeNameFilter = unityObjectTypeNameFilter;
-            m_FilterManager.EntityIdFilter = unityObjectInstanceIdFilter;
+
+            if (model != m_FilterManager.BaseModelForTreeNodeIdFiltering)
+                m_BuildOrchestrator.ClearIdToIndexCache();
             m_FilterManager.BaseModelForTreeNodeIdFiltering = model;
 
             // Set tree node filter for exclude-all scenario
-            // To align this logic with the All Of Memory table, set an empty tree node id filter if the goal is to exclude everything
-            // TODO: filtering out to show no objects is still handled via the SourceIndexFilter instead of the ExcludeAllFilterApplied that checks m_TreeNodeIdFilter
-            m_FilterManager.TreeNodeIdFilter =
-                // This kind of filtering is essentially a hack to keep the Base & Compare tables empty.
-                (unityObjectInstanceIdFilter?.Passes(CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone) ?? false)
-                ? new List<int>() : null;
+            // Set an empty tree node id filter if the goal is to exclude everything
+            m_FilterManager.TreeNodeIdFilter = treeNodeIdFilter;
 
-            // Update base class members for compatibility
-            m_TreeNodeIdFilter = m_FilterManager.TreeNodeIdFilter;
-            m_BaseModelForTreeNodeIdFiltering = m_FilterManager.BaseModelForTreeNodeIdFiltering;
-
-            await m_FilterManager.ApplyFiltersAsync(() => BuildModelAsync(false), IsViewLoaded);
-        }
-
-        protected virtual void ClearFilters()
-        {
-            m_FilterManager.ClearFilters();
-
-            // Update base class members
-            m_BaseModelForTreeNodeIdFiltering = default;
-            m_TreeNodeIdFilter = null;
+            await m_FilterManager.ApplyFiltersAsync(m_FilterManager.TreeNodeIdFilter != null ?
+                    () => FilterModelAsync(m_FilterManager.BaseModelForTreeNodeIdFiltering, m_FilterManager.TreeNodeIdFilter, m_BuildOrchestrator) :
+                    () => BuildModelAsync(false), IsViewLoaded);
         }
 
         protected override VisualElement LoadView()
@@ -221,13 +264,17 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             base.ViewLoaded();
 
-            m_FlattenToggle.text = "Flatten Hierarchy";
+            m_FlattenHierarchy = SessionState.GetBool(k_SessionStateKey_FlattenHierarchy, false);
+            m_FlattenToggle.SetValueWithoutNotify(m_FlattenHierarchy);
+            m_FlattenToggle.text = TextContent.FlattenHierarchy;
             m_FlattenToggle.RegisterValueChangedCallback(OnFlattenHierarchyToggleValueChanged);
-            m_DuplicatesToggle.text = "Show Potential Duplicates Only";
-            m_DuplicatesToggle.tooltip = "Show potential duplicate Unity Objects only. Potential duplicates, which are Unity Objects of the same type, name, and size, might represent the same asset loaded multiple times in memory.";
+            m_ShowDuplicatesOnly = SessionState.GetBool(k_SessionStateKey_ShowDuplicatesOnly, false);
+            m_DuplicatesToggle.SetValueWithoutNotify(m_ShowDuplicatesOnly);
+            m_DuplicatesToggle.text = TextContent.ShowPotentialDuplicatesOnly;
+            m_DuplicatesToggle.tooltip = TextContent.ShowPotentialDuplicatesOnlyTooltip;
             m_DuplicatesToggle.RegisterValueChangedCallback(OnShowDuplicatesOnlyToggleValueChanged);
 
-            if (!m_ShowAdditionalOptions)
+            if (m_CompareMode)
                 UIElementsHelper.SetElementDisplay(m_Toolbar, false);
         }
 
@@ -237,12 +284,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Toolbar = view.Q<Toolbar>(k_UxmlIdentifier_Toolbar);
             m_FlattenToggle = view.Q<Toggle>(k_UxmlIdentifier_FlattenToggle);
             m_DuplicatesToggle = view.Q<Toggle>(k_UxmlIdentifier_DuplicatesToggle);
+            m_Pager = view.Q<PaginationControl>(k_UxmlIdentifier_Pager);
             m_LoadingOverlay = view.Q<ActivityIndicatorOverlay>(k_UxmlIdentifier_LoadingOverlay);
             m_ErrorLabel = view.Q<Label>(k_UxmlIdentifier_ErrorLabel);
 
             // Initialize components that depend on m_TreeView
             m_ColumnManager = new TreeViewColumnManager<UnityObjectsModel.ItemData>(m_TreeView);
             m_SizeCellRenderer = new SizeCellRenderer(m_TreeView, () => TableMode, k_Graphics_NotAvailable, k_UssClass_Cell_Unreliable);
+
+            m_PagerBinding = new FlatPagerBinding<UnityObjectsFlatRowComparer.Column>(
+                m_Pager,
+                m_ColumnManager.SetColumnTooltip,
+                k_UxmlIdentifier_TreeViewColumn__Description,
+                k_UxmlIdentifier_TreeViewColumn__SizeBar,
+                m_FlatSortColumns,
+                GetDefaultFlatSortColumn,
+                TextContent.UnityObjectsNameColumnHeaderTooltip,
+                UnityObjectsFlatRowComparer.k_MaxColumns,
+                () => m_Model,
+                () => { m_TreeView.SetRootItems(m_Model.RootNodes); m_TreeView.RefreshItems(); });
         }
 
         protected override void ConfigureTreeView()
@@ -251,48 +311,53 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Description,
-                "Description",
+                TextContent.DescriptionTableColumnHeader,
                 0,
                 BindCellForDescriptionColumn(),
-                UnityObjectsDescriptionCell.Instantiate);
+                makeCell: () => new ObjectOrTypeLabel() { HideTypeInfoForObjects = true },
+                destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose(),
+                headerTooltip: TextContent.UnityObjectsNameColumnHeaderTooltip);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Size,
-                "Allocated Size",
-                120,
+                TextContent.AllocatedSizeTableColumnHeader,
+                k_DefaultColumnWidth,
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
-                    item => item.TotalSize),
+                    item => item.TotalSize,
+                    useResident: false),
                 visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__SizeBar,
-                "% Impact",
-                180,
+                TextContent.PercentImpactTableColumnHeader,
+                k_SizeBarColumnWidth,
                 m_SizeCellRenderer.CreateMemoryBarBinding<UnityObjectsModel.ItemData>(
                     item => item.TotalSize,
                     () => TableMode != AllTrackedMemoryTableMode.OnlyResident
                         ? new MemorySize(m_Model.TotalMemorySize.Committed, m_Model.TotalMemorySize.Committed)
                         : new MemorySize(m_Model.TotalMemorySize.Resident, m_Model.TotalMemorySize.Resident)),
-                m_SizeCellRenderer.MakeMemoryBarCell);
+                makeCell: m_SizeCellRenderer.MakeMemoryBarCell);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__NativeSize,
-                "Native Size",
-                120,
+                TextContent.NativeSizeTableColumnHeader,
+                k_DefaultColumnWidth,
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
-                    item => item.NativeSize));
+                    item => item.NativeSize),
+                visible: !m_CompareMode);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ManagedSize,
-                "Managed Size",
-                120,
+                TextContent.ManagedSizeTableColumnHeader,
+                k_DefaultColumnWidth,
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
-                    item => item.ManagedSize));
+                    item => item.ManagedSize),
+                visible: !m_CompareMode);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ResidentSize,
-                "Resident Size",
-                120,
+                TextContent.ResidentSizeTableColumnHeader,
+                k_DefaultColumnWidth,
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
                     item => item.TotalSize,
                     useResident: true),
@@ -300,22 +365,29 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__GpuSize,
-                "Graphics Size",
-                120,
-                BindCellForGpuSizeColumn());
+                TextContent.GraphicsSizeTableColumnHeader,
+                k_DefaultColumnWidth,
+                BindCellForGpuSizeColumn(),
+                visible: !m_CompareMode);
+
+            m_ColumnManager.ConfigureColumn(
+                k_UxmlIdentifier_TreeViewColumn__Status,
+                TextContent.StatusTableColumnHeader,
+                k_DefaultColumnWidth,
+                BindCellForStatusColumn(),
+                makeCell: () => new StatusCell(),
+                visible: true);
         }
 
         protected UnityObjectsModelBuilder.BuildArgs GetModelBuilderArgs()
         {
             return new UnityObjectsModelBuilder.BuildArgs(
-                m_FilterManager.SearchFilter,
+                m_FilterManager.CompoundSearchFilter,
                 m_FilterManager.NameFilter,
                 m_FilterManager.TypeNameFilter,
-                m_FilterManager.EntityIdFilter,
                 FlattenHierarchy,
                 ShowDuplicatesOnly,
-                DisambiguateByInstanceID,
-                ProcessUnityObjectItemSelected);
+                DisambiguateByInstanceId);
         }
 
         protected override Func<UnityObjectsModel> GetModelBuilderTask(CancellationToken cancellationToken)
@@ -326,6 +398,75 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_FilterManager.BaseModelForTreeNodeIdFiltering,
                 m_FilterManager.TreeNodeIdFilter,
                 cancellationToken);
+        }
+
+        /// <summary>
+        /// Sorting the flattened, paged model can't go through TreeModel.Sort (which only sees the current page).
+        /// Re-order the native store by the active column(s) instead, then re-materialize the first page. The
+        /// table header allows mixing the name (Description) column with size/status columns (up to k_MaxColumns
+        /// of the latter) at any priority; SortFlatMixed honors that order, staying on the fast native comparer
+        /// when name isn't involved, and dropping only the name level (not the whole sort) above
+        /// <see cref="FlatPagingLimits.NameSortHardLimit"/>.
+        /// </summary>
+        protected override Func<Task<UnityObjectsModel>, UnityObjectsModel> GetModelSorterTask(CancellationToken cancellationToken)
+        {
+            if (!m_FlattenHierarchy)
+                return base.GetModelSorterTask(cancellationToken);
+
+            // Read the active sort columns on the main thread (UI access) before the async continuation runs.
+            var sort = m_PagerBinding.ReadSortState(m_TreeView);
+
+            return task =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var model = task.Result;
+                if (model == null || !model.IsPaged)
+                    return model;
+
+                // This runs on a background thread-pool thread, so materialize: false defers materializing the
+                // page until OnModelRebuild is back on the main thread.
+                if (sort.Levels.Length > 0)
+                {
+                    model.SortFlatMixed(sort.Levels, materialize: false);
+                }
+                else
+                {
+                    // No active size/status/name sort: fall back to the default (Size, descending).
+                    model.SortFlatMixed(new[] { new FlatSortLevel<UnityObjectsFlatRowComparer.Column> { Column = m_PagerBinding.DefaultColumn, Descending = true } }, materialize: false);
+                }
+                return model;
+            };
+        }
+
+        /// <summary>Size column/bar sort key: committed in the default mode, resident when OnlyResident is active.</summary>
+        UnityObjectsFlatRowComparer.Column GetDefaultFlatSortColumn() => TableMode != AllTrackedMemoryTableMode.OnlyResident
+            ? UnityObjectsFlatRowComparer.Column.SizeCommitted
+            : UnityObjectsFlatRowComparer.Column.SizeResident;
+
+        protected override void OnModelRebuild(bool success, bool modelHasNewTreeViewIds, Exception exception = null)
+        {
+            // GetModelSorterTask above defers materializing the paged model's current page to here: the
+            // background sort continuation runs on a thread-pool thread, and RootNodes is also read by the
+            // UI-bound tree view, so mutating it off the main thread would race that read. Materialize now, on
+            // the main thread, before base.OnModelRebuild reads it via RefreshView -> SetRootItems.
+            if (success && m_Model != null && m_Model.IsPaged)
+                m_Model.MaterializePage(m_Model.CurrentPage);
+
+            base.OnModelRebuild(success, modelHasNewTreeViewIds, exception);
+
+            if (!success || m_Model == null)
+            {
+                m_PagerBinding.SyncTo(null);
+                return;
+            }
+
+            // Free the native store of the model this build replaced. A justSort reuses the same model instance
+            // (m_Model == m_OwnedModel), so it is not disposed; only a full rebuild swaps it.
+            DisposableModelSwap.ReplaceIfChanged(ref m_OwnedModel, m_Model);
+
+            // The pager only applies to the flattened, paged model. SortFlat/the build reset CurrentPage to 0,
+            // so the pager follows the model.
+            m_PagerBinding.SyncTo(m_Model);
         }
 
         protected override void OnViewReloaded(bool success)
@@ -341,35 +482,24 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             return (element, rowIndex) =>
             {
-                var cell = (UnityObjectsDescriptionCell)element;
+                var label = element.Q<ObjectOrTypeLabel>();
                 var itemData = m_TreeView.GetItemDataForIndex<UnityObjectsModel.ItemData>(rowIndex);
-
-                var typeName = GetNativeBaseTypeName(itemData.Source);
-                cell.SetTypeName(typeName);
 
                 var displayText = itemData.Name;
                 if (string.IsNullOrEmpty(displayText))
                     displayText = CachedSnapshot.InvalidItemName;
-                cell.SetText(displayText);
+
+                if (!label.TrySetLabelDataFromSourceIndex(m_Snapshot, itemData.Source, displayText))
+                {
+                    label.SetLabelData(m_Snapshot, displayText, string.Empty);
+                }
 
                 var secondaryDisplayText = string.Empty;
                 var childCount = itemData.ChildCount;
                 if (childCount > 0)
                     secondaryDisplayText = $"({childCount:N0} Object{((childCount > 1) ? "s" : string.Empty)})";
-                cell.SetSecondaryText(secondaryDisplayText);
+                label.SetSecondaryText(secondaryDisplayText);
             };
-        }
-
-        string GetNativeBaseTypeName(CachedSnapshot.SourceIndex source)
-        {
-            var typeIndex = source.Id switch
-            {
-                CachedSnapshot.SourceIndex.SourceId.NativeObject => m_Snapshot.NativeObjects.NativeTypeArrayIndex[source.Index],
-                CachedSnapshot.SourceIndex.SourceId.NativeType => source.Index,
-                CachedSnapshot.SourceIndex.SourceId.ManagedType => m_Snapshot.TypeDescriptions.UnifiedTypeInfoManaged[source.Index].NativeTypeIndex,
-                _ => throw new ArgumentOutOfRangeException(),
-            };
-            return m_Snapshot.NativeTypes.TypeName[typeIndex];
         }
 
         Action<VisualElement, int> BindCellForGpuSizeColumn()
@@ -377,12 +507,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             return (element, rowIndex) =>
             {
                 var itemData = m_TreeView.GetItemDataForIndex<UnityObjectsModel.ItemData>(rowIndex);
-                var label = element as Label;
+                var label = element.Q<Label>();
 
                 if (TableMode == AllTrackedMemoryTableMode.OnlyResident)
                 {
-                    label.text = k_Graphics_NotAvailable;
-                    label.tooltip = k_Graphics_NotAvailable_ToolTip;
+                    label.text = TextContent.NotAvailable;
+                    label.tooltip = TextContent.GraphicsSizeNotAvailableTooltip;
                     label.AddToClassList(k_UssClass_Cell_Unreliable);
                 }
                 else
@@ -393,6 +523,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                     label.displayTooltipWhenElided = false;
                     label.RemoveFromClassList(k_UssClass_Cell_Unreliable);
                 }
+            };
+        }
+
+        Action<VisualElement, int> BindCellForStatusColumn()
+        {
+            return (element, rowIndex) =>
+            {
+                var itemData = m_TreeView.GetItemDataForIndex<UnityObjectsModel.ItemData>(rowIndex);
+                element.Q<StatusCell>().SetStatus(itemData.WarningInfo, itemData.ChildCount);
             };
         }
 
@@ -408,13 +547,25 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override void OnTreeItemSelected(int itemId, UnityObjectsModel.ItemData itemData)
         {
-            // Invoke the selection processor for the selected item.
-            m_Model.SelectionProcessor?.Invoke(itemId, itemData);
+            m_Responder?.UnityObjectsTableViewControllerSelectedItem(itemId, this, itemData);
         }
 
-        void ProcessUnityObjectItemSelected(int itemId, UnityObjectsModel.ItemData itemData)
+        protected override void Dispose(bool disposing)
         {
-            m_Responder?.UnityObjectsTableViewControllerSelectedItem(itemId, this, itemData);
+            SearchFilterChanged -= OnSearchFilterChanged;
+            if (disposing)
+                m_PagerBinding?.Detach();
+
+            // base.Dispose cancels and waits for any in-flight background sort/filter (AsyncModelBuildCoordinator)
+            // before returning. That has to happen before the native-buffer release below, or a still-running
+            // SortFlat/ApplyFilter could dereference memory this frees out from under it.
+            base.Dispose(disposing);
+
+            if (disposing)
+            {
+                // Frees the paged model's native row store.
+                DisposableModelSwap.ReplaceIfChanged(ref m_OwnedModel, null);
+            }
         }
 
         public interface IResponder

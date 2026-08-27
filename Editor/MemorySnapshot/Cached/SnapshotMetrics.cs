@@ -24,11 +24,11 @@ namespace Unity.MemoryProfiler.Editor
             NativeTypesCache,
             TypeDescriptionsCache,
             NativeRootReferencesCache,
+            NativeAllocationsCache,
             NativeObjectsCache,
             NativeMemoryRegionsCache,
             NativeMemoryLabelsCache,
             NativeCallstackSymbolsCache,
-            NativeAllocationsCache,
             ManagedStacksCache,
             ManagedHeapSectionsCache,
             GcHandlesCache,
@@ -204,6 +204,25 @@ namespace Unity.MemoryProfiler.Editor
         public long MemoryMapEntryCount;
 
         /// <summary>
+        /// Loading diagnostics — populated eagerly during Load() so partial data is
+        /// available if the test-watchdog aborts the reading mid-load.
+        /// </summary>
+        [Serializable]
+        public struct LoadingDiagnosticsMetrics
+        {
+            public long ManagedHeapSectionCount;
+            public long ManagedHeapTotalBytes;
+            public long ManagedStackSectionCount;
+            public long ManagedStackTotalBytes;
+            /// <summary>
+            /// Updated at each sub-step in Load(). When the watchdog fires,
+            /// this indicates exactly where loading stalled.
+            /// </summary>
+            public string LastCompletedLoadingPhase;
+        }
+        public LoadingDiagnosticsMetrics LoadingDiagnostics;
+
+        /// <summary>
         /// Constructor timing (milliseconds)
         /// </summary>
         [Serializable]
@@ -252,6 +271,9 @@ namespace Unity.MemoryProfiler.Editor
                     case TimingStep.NativeRootReferencesCache:
                         NativeRootReferencesCacheNanoSec = nanoSeconds;
                         break;
+                    case TimingStep.NativeAllocationsCache:
+                        NativeAllocationsCacheNanoSec = nanoSeconds;
+                        break;
                     case TimingStep.NativeObjectsCache:
                         NativeObjectsCacheNanoSec = nanoSeconds;
                         break;
@@ -263,9 +285,6 @@ namespace Unity.MemoryProfiler.Editor
                         break;
                     case TimingStep.NativeCallstackSymbolsCache:
                         NativeCallstackSymbolsCacheNanoSec = nanoSeconds;
-                        break;
-                    case TimingStep.NativeAllocationsCache:
-                        NativeAllocationsCacheNanoSec = nanoSeconds;
                         break;
                     case TimingStep.ManagedStacksCache:
                         ManagedStacksCacheNanoSec = nanoSeconds;
@@ -335,11 +354,18 @@ namespace Unity.MemoryProfiler.Editor
         }
         public PostProcessTimingMetrics PostProcessTiming;
 
-        public readonly void LogToConsole()
+        public readonly void LogToConsole(bool asError = false)
         {
-            Debug.Log($"=== Snapshot Metrics ===\n" + ToJsonString());
+            var output = $"=== Snapshot Metrics ===\n" + ToJsonString();
+            if (asError)
+            {
+                Debug.LogError(output);
+            }
+            else
+            {
+                Debug.Log(output);
+            }
         }
-
         public readonly string ToJsonString()
         {
             return JsonUtility.ToJson(this, prettyPrint: true);

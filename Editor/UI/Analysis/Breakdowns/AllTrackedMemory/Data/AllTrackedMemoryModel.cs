@@ -7,11 +7,9 @@ namespace Unity.MemoryProfiler.Editor.UI
     // Data model representing the 'AllTrackedMemory' breakdown.
     class AllTrackedMemoryModel : TreeModel<AllTrackedMemoryModel.ItemData>
     {
-        public AllTrackedMemoryModel(List<TreeViewItemData<ItemData>> treeRootNodes, MemorySize totalSnapshotMemorySize, Action<int, ItemData> selectionProcessor)
+        public AllTrackedMemoryModel(List<TreeViewItemData<ItemData>> treeRootNodes, MemorySize totalSnapshotMemorySize)
             : base(treeRootNodes)
         {
-            SelectionProcessor = selectionProcessor;
-
             var totalMemorySize = new MemorySize();
             foreach (var rootItem in treeRootNodes)
             {
@@ -37,9 +35,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Includes graphics memory.
         public MemorySize TotalSnapshotMemorySize { get; }
 
-        // A callback to process the selection of an item.
-        public Action<int, ItemData> SelectionProcessor { get; }
-
         // The data associated with each item in the tree.
         public readonly struct ItemData : IPrivateComparableItemData
         {
@@ -47,13 +42,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 string name,
                 MemorySize size,
                 CachedSnapshot.SourceIndex source,
-                int childCount = 0)
+                int childCount = 0,
+                ObjectStatus status = ObjectStatus.None)
             {
                 Name = name;
                 TotalSize = size;
                 Source = source;
                 ChildCount = childCount;
                 Unreliable = false;
+                WarningInfo = ObjectStatusWarningInfo.FromStatus(status);
             }
 
             // The name of this item.
@@ -70,6 +67,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // The item information is unreliable and being shown "for information"
             public bool Unreliable { get; init; }
+
+            // Aggregated warning info: status bitmask and warning-object count for this subtree.
+            // For leaf nodes: FromStatus(status). For group nodes: OR of children, set via init.
+            public ObjectStatusWarningInfo WarningInfo { get; init; }
         }
     }
 }

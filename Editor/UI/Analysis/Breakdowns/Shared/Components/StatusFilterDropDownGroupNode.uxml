@@ -1,0 +1,8 @@
+<engine:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:engine="UnityEngine.UIElements" editor-extension-mode="True">
+    <Style src="StatusFilterDropDown.uss"/>
+    <engine:VisualElement name="group-node__row" class="status-filter-dropdown__group-node__row">
+        <engine:Foldout name="group-node__foldout" class="status-filter-dropdown__group-node__foldout" value="false"/>
+        <engine:Toggle name="group-node__toggle" class="status-filter-dropdown__group-node__toggle"/>
+    </engine:VisualElement>
+    <engine:VisualElement name="group-node__sub-items" class="status-filter-dropdown__group-node__sub-items"/>
+</engine:UXML>

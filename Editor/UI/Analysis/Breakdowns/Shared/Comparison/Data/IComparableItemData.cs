@@ -17,5 +17,8 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         // The total size of this item, in bytes.
         MemorySize TotalSize { get; }
+
+        // The source handle into the snapshot for this item.
+        CachedSnapshot.SourceIndex Source { get; }
     }
 }

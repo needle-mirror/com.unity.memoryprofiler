@@ -434,7 +434,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             UIElementsHelper.SetVisibility(m_CopyButton, false);
             NonObjectTitleShown = true;
-            m_Title.text = "No details available";
+            m_Title.text = TextContent.NoDetailsAvailable;
         }
 
         public void AddDynamicElement(string title, string content)
@@ -638,9 +638,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case 1:
                 {
                     GenericMenu menu = new GenericMenu();
-                    menu.AddItem(new GUIContent("Copy File Path"), false, () => EditorGUIUtility.systemCopyBuffer = path);
-                    menu.AddItem(new GUIContent("Copy File Path and Line"), false, () => EditorGUIUtility.systemCopyBuffer = $"{path}:{lineNumber}");
-                    menu.AddItem(new GUIContent("Copy Line Number"), false, () => EditorGUIUtility.systemCopyBuffer = lineNumber.ToString());
+                    menu.AddItem(TextContent.CopyFilePath, false, () => EditorGUIUtility.systemCopyBuffer = path);
+                    menu.AddItem(TextContent.CopyFilePathAndLine, false, () => EditorGUIUtility.systemCopyBuffer = $"{path}:{lineNumber}");
+                    menu.AddItem(TextContent.CopyLineNumber, false, () => EditorGUIUtility.systemCopyBuffer = lineNumber.ToString());
                     menu.ShowAsContext();
                     break;
                 }
@@ -683,11 +683,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, typeInfo);
         }
 
-        public void SetItemName(CachedSnapshot.SourceIndex sourceIndex)
+        public void SetItemName(CachedSnapshot.SourceIndex sourceIndex, string itemName = null)
         {
             UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
             NonObjectTitleShown = false;
-            m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, sourceIndex);
+            m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, sourceIndex, itemName);
         }
 
         public void SetItemName(UnifiedUnityObjectInfo unityObjectInfo)
@@ -723,39 +723,61 @@ namespace Unity.MemoryProfiler.Editor.UI
             NonObjectTitleShown = false;
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, unityObjectInfo);
 
+            m_SearchCancellationTokenSource?.Cancel();
             var cts = m_SearchCancellationTokenSource = new CancellationTokenSource();
+            StartSearch(unityObjectInfo, cts);
+        }
+
+        void StartSearch(UnifiedUnityObjectInfo unityObjectInfo, CancellationTokenSource cts)
+        {
+            // Set up the "searching" UI state synchronously on the main thread before starting the search.
+            UIElementsHelper.SetVisibility(m_SelectInEditorButton, true);
+            m_SelectInEditorButton.SetEnabled(false);
+            m_SelectInEditorButton.tooltip = QuickSearchUtility.SearchDatabaseIsReady() ? TextContent.SelectInEditorButtonSearching : TextContent.SelectInEditorButtonSearchingWhileIndexIsBuilding;
+            m_SelectInEditorButtonHolder.tooltip = String.Empty;
+
+            // FindObject uses Unity's QuickSearch API, which can complete its task on a non-main thread.
+            // Use an explicit TaskScheduler to guarantee HandleSearchResults runs on the main thread.
+            // Pass CancellationToken.None (not cts.Token) so the continuation always runs even when the
+            // search was canceled after FindObject completed — it must run to dispose the Findings result
+            // and the CancellationTokenSource. The stale-result check happens inside HandleSearchResults.
+            var mainThreadScheduler = TaskScheduler.FromCurrentSynchronizationContext();
+            EditorAssetFinderUtility.FindObject(m_CachedSnapshot, unityObjectInfo, cts.Token)
+                .ContinueWith(t => HandleSearchResults(t, cts), CancellationToken.None, TaskContinuationOptions.None, mainThreadScheduler);
+        }
+
+        // Runs on the main thread. Owns disposal of both the Findings result and the CancellationTokenSource.
+        void HandleSearchResults(Task<EditorAssetFinderUtility.Findings> findingsTask, CancellationTokenSource cts)
+        {
             try
             {
-                var findings = EditorAssetFinderUtility.FindObject(m_CachedSnapshot, unityObjectInfo, m_SearchCancellationTokenSource.Token);
-                UIElementsHelper.SetVisibility(m_SelectInEditorButton, true);
-                m_SelectInEditorButton.SetEnabled(false);
-                m_SelectInEditorButton.tooltip = QuickSearchUtility.SearchDatabaseIsReady() ? TextContent.SelectInEditorButtonSearching : TextContent.SelectInEditorButtonSearchingWhileIndexIsBuilding;
-                m_SelectInEditorButtonHolder.tooltip = String.Empty;
-
-                findings
-                    .ContinueWith(UpdateUIForSearchResults, m_SearchCancellationTokenSource.Token, TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContext())
-                    .ContinueWith((t) => cts.Dispose());
-            }
-            catch (Exception e)
-            {
-                if (e is not OperationCanceledException)
+                // A canceled task has Status == Canceled and Exception == null, so checking Exception alone
+                // is insufficient — accessing .Result on a Canceled task throws TaskCanceledException.
+                if (findingsTask.Status != TaskStatus.RanToCompletion)
                 {
-                    Debug.LogException(e);
+                    if (findingsTask.IsFaulted && findingsTask.Exception?.InnerException is not OperationCanceledException)
+                        Debug.LogException(findingsTask.Exception.InnerException);
+                    return;
                 }
+                using var findings = findingsTask.Result;
+                // Drop stale results: a newer selection canceled this search after FindObject completed.
+                if (cts.IsCancellationRequested)
+                    return;
+                UpdateUIForSearchResults(findings);
+            }
+            finally
+            {
+                // Clear the active reference if it is still ours, then dispose. Both this and the Cancel()
+                // call in SetItemName run on the main thread, so there is no race: m_SearchCancellationTokenSource
+                // never points at a disposed source.
+                if (ReferenceEquals(m_SearchCancellationTokenSource, cts))
+                    m_SearchCancellationTokenSource = null;
                 cts.Dispose();
             }
         }
 
-        void UpdateUIForSearchResults(Task<EditorAssetFinderUtility.Findings> findings)
+        void UpdateUIForSearchResults(EditorAssetFinderUtility.Findings findingsResult)
         {
-            if (findings.Exception != null)
-            {
-                if (findings.Exception.InnerException is not OperationCanceledException)
-                {
-                    Debug.LogException(findings.Exception);
-                }
-            }
-            using var findingsResult = findings.Result;
             m_FoundObjectInEditor = findingsResult.FoundObject;
             if (m_FoundObjectInEditor != null)
             {
@@ -782,19 +804,19 @@ namespace Unity.MemoryProfiler.Editor.UI
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.FoundTooMany:
                         m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonFoundTooMany.tooltip +
-                            (m_CanSearch ? TextContent.SelectInEditorTooltipCanSearch : string.Empty);
+                            (m_CanSearch ? " " + TextContent.SelectInEditorTooltipCanSearch : string.Empty);
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.FoundTooManyToProcess:
                         m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonFoundTooManyToProcess.tooltip +
-                            (m_CanSearch ? TextContent.SelectInEditorTooltipCanSearch : string.Empty);
+                            (m_CanSearch ? " " + TextContent.SelectInEditorTooltipCanSearch : string.Empty);
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.TypeIssues:
-                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonTypeMissmatch +
-                            (m_CanSearch ? TextContent.SelectInEditorTooltipTrySearch : string.Empty);
+                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = TextContent.SelectInEditorButtonTypeMismatch.tooltip +
+                            (m_CanSearch ? " " + TextContent.SelectInEditorTooltipTrySearch : string.Empty);
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.SearchTimeout:
                     case EditorAssetFinderUtility.SearchFailReason.SearchCanceled:
-                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = QuickSearchUtility.SearchDatabaseIsReady() ? TextContent.SelectInEditorButtonSearchTimeout : TextContent.SelectInEditorButtonSearchTimeoutSearchIndexWasNotYetBuild;
+                        m_SelectInEditorButton.tooltip = m_SelectInEditorButtonHolder.tooltip = QuickSearchUtility.SearchDatabaseIsReady() ? TextContent.SelectInEditorButtonSearchTimeout : TextContent.SelectInEditorButtonSearchTimeoutSearchIndexWasNotYetBuilt;
                         break;
                     case EditorAssetFinderUtility.SearchFailReason.Found:
                     default:

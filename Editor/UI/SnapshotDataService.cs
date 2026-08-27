@@ -20,6 +20,8 @@ namespace Unity.MemoryProfiler.Editor
         void SetSnapshotsFolderDirty();
         void UnloadAll();
         string GetSnapshotFolderPath();
+        /// <summary>True while a background folder sync (triggered by Import, Delete, or directory changes) is in progress.</summary>
+        bool IsSnapshotFolderSyncing { get; }
     }
 
     enum SnapshotLoadedState
@@ -41,12 +43,14 @@ namespace Unity.MemoryProfiler.Editor
         CachedSnapshot m_ComparedSnapshot;
 
         SnapshotFileListModel m_SnapshotFileListModel;
-        AsyncWorker<SnapshotFileListModel> m_BuildAllSnapshotsWorker;
+        CancellationTokenSource m_BuildAllSnapshotsCTS;
         FileSystemWatcherUnity m_SnapshotFolderWatcher;
         bool m_SnapshotFolderIsDirty;
         bool m_SnapshotFolderWasDeleted;
         [NonSerialized]
         bool m_Disposed;
+
+        public bool IsSnapshotFolderSyncing => m_BuildAllSnapshotsCTS != null;
 
         public bool SnapshotListModelIsUpToDate
         {
@@ -210,6 +214,16 @@ namespace Unity.MemoryProfiler.Editor
                     }
                     else
                         m_BaseSnapshot = LoadSnapshot(reader);
+                }
+                else if (m_ComparedSnapshot != null)
+                {
+                    // When looking at a single snapshot with another snapshot still open, but loading a new one,
+                    // unload the compared one first (order of unloading/ maintaining the assumption that if
+                    // any snapshots are loaded, it is the base one and only *maybe* the compared one).
+                    UnloadSnapshot(ref m_ComparedSnapshot);
+                    m_ComparedSnapshot = LoadSnapshot(reader);
+                    // Then swap to the newly loaded one
+                    Swap();
                 }
                 else
                 {
@@ -379,25 +393,29 @@ namespace Unity.MemoryProfiler.Editor
             if (m_Disposed)
                 throw new ObjectDisposedException(nameof(SnapshotDataService));
 
-            m_BuildAllSnapshotsWorker?.Dispose();
-            m_BuildAllSnapshotsWorker = null;
+            // Cancel any in-progress build before starting a new one. Do not Dispose here: the running
+            // task may still register callbacks on the token, and its continuation already disposes the
+            // CancellationTokenSource on the main thread once it completes.
+            m_BuildAllSnapshotsCTS?.Cancel();
 
-            m_BuildAllSnapshotsWorker = new AsyncWorker<SnapshotFileListModel>();
             // Check and store updated state
             m_SnapshotFolderWatcher.Refresh();
-            // grab a copy of the directory so that a directory change on main thread will not bleed into the worker thread
+            // Grab a copy of the directory so that a directory change on the main thread will not bleed into the worker thread.
             var snapshotDirectory = m_SnapshotFolderWatcher.Directory;
-            // pre-declare directory as clean, because it will be once the worker is done
+            // Pre-declare directory as clean, because it will be once the worker is done.
             m_SnapshotFolderIsDirty = false;
-            m_BuildAllSnapshotsWorker.Execute((token) =>
+
+            var cts = m_BuildAllSnapshotsCTS = new CancellationTokenSource();
+            var mainThreadScheduler = TaskScheduler.FromCurrentSynchronizationContext();
+            Task.Run(() =>
             {
                 try
                 {
-                    return BuildSnapshotsInfo(token, snapshotDirectory, AllSnapshots);
+                    return BuildSnapshotsInfo(cts.Token, snapshotDirectory, AllSnapshots);
                 }
                 catch (TaskCanceledException)
                 {
-                    // We expect a TaskCanceledException to be thrown when cancelling an in-progress builder. Do not log an error to the console.
+                    // We expect a TaskCanceledException when cancelling an in-progress builder.
                     return null;
                 }
                 catch (Exception e)
@@ -405,27 +423,33 @@ namespace Unity.MemoryProfiler.Editor
                     Debug.LogException(e);
                     return null;
                 }
-            }, (result) =>
+            }, cts.Token).ContinueWith(t =>
             {
-                // Dispose asynchronous worker.
-                m_BuildAllSnapshotsWorker?.Dispose();
-                m_BuildAllSnapshotsWorker = null;
+                // Runs on the main thread. Dispose CTS and clear the field if this is still the active build.
+                cts.Dispose();
+                if (ReferenceEquals(m_BuildAllSnapshotsCTS, cts))
+                    m_BuildAllSnapshotsCTS = null;
 
-                // Update on success
-                if (result != null)
+                // If the Task.Run was canceled before it started (rapid SyncSnapshotsFolder calls),
+                // the task transitions to Canceled and t.Result would throw. Skip gracefully.
+                if (t.IsCanceled || t.IsFaulted)
+                    return;
+
+                var result = t.Result;
+                if (m_Disposed || result == null)
+                    return;
+
+                if (result.Equals(m_SnapshotFileListModel))
                 {
-                    if (result.Equals(m_SnapshotFileListModel))
-                    {
-                        m_SnapshotFileListModel.UpdateTimeStamp(result.SnapshotDirectoryLastWriteTimestampUtc);
-                    }
-                    else
-                    {
-                        // only really update if there is an actual change
-                        m_SnapshotFileListModel = result;
-                        AllSnapshotsChanged?.Invoke();
-                    }
+                    m_SnapshotFileListModel.UpdateTimeStamp(result.SnapshotDirectoryLastWriteTimestampUtc);
                 }
-            });
+                else
+                {
+                    // Only really update if there is an actual change.
+                    m_SnapshotFileListModel = result;
+                    AllSnapshotsChanged?.Invoke();
+                }
+            }, CancellationToken.None, TaskContinuationOptions.None, mainThreadScheduler);
         }
 
         static CachedSnapshot LoadSnapshot(FileReader file, bool crawlManaged = true)
@@ -567,8 +591,9 @@ namespace Unity.MemoryProfiler.Editor
             // Unload without notify
             LoadedSnapshotsChanged = null;
 
-            m_BuildAllSnapshotsWorker?.Dispose();
-            m_BuildAllSnapshotsWorker = null;
+            m_BuildAllSnapshotsCTS?.Cancel();
+            m_BuildAllSnapshotsCTS?.Dispose();
+            m_BuildAllSnapshotsCTS = null;
 
             m_SnapshotFolderWatcher?.Dispose();
             m_SnapshotFolderWatcher = null;

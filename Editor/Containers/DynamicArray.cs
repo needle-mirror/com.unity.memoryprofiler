@@ -3,17 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Diagnostics;
-#if UNITY_COLLECTIONS_CHANGED
-using Allocator = Unity.Collections.AllocatorManager;
-using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
-using static Unity.Collections.AllocatorManager;
-#else
 using Allocator = Unity.Collections.Allocator;
-using AllocatorType = Unity.Collections.Allocator;
-#endif
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
@@ -139,8 +133,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
         long m_Count;
         public readonly long Count => m_Count;
 
-        AllocatorType m_Allocator;
-        public readonly AllocatorType Allocator => m_Allocator;
+        Allocator m_Allocator;
+        public readonly Allocator Allocator => m_Allocator;
 
         public enum ResizePolicy
         {
@@ -172,11 +166,11 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public readonly bool IsCreated => m_IsCreated == BurstableBool.TRUE;
         public readonly long ElementSize => sizeof(T);
 
-        public DynamicArray(AllocatorType allocator) : this(0, allocator) { }
+        public DynamicArray(Allocator allocator) : this(0, allocator) { }
 
-        public DynamicArray(long initialCount, AllocatorType allocator, bool memClear = false) : this(initialCount, initialCount, allocator, memClear) { }
+        public DynamicArray(long initialCount, Allocator allocator, bool memClear = false) : this(initialCount, initialCount, allocator, memClear) { }
 
-        public DynamicArray(long initialCount, long initialCapacity, AllocatorType allocator, bool memClear = false)
+        public DynamicArray(long initialCount, long initialCapacity, Allocator allocator, bool memClear = false)
         {
             m_Allocator = allocator;
             m_Count = initialCount;
@@ -185,12 +179,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
             if (m_Capacity != 0)
             {
                 var allocSize = m_Capacity * sizeof(T);
-#if UNITY_COLLECTIONS_CHANGED
-                CalculateAllocationSize(ref m_Capacity, out var sizeOf);
-                m_Data = (T*)allocator.Allocate(sizeOf, UnsafeUtility.AlignOf<T>(), (int)m_Capacity);
-#else
                 m_Data = (T*)UnsafeUtility.Malloc(allocSize, UnsafeUtility.AlignOf<T>(), m_Allocator);
-#endif
                 if (memClear)
                     UnsafeUtility.MemClear(m_Data, allocSize);
             }
@@ -199,29 +188,11 @@ namespace Unity.MemoryProfiler.Editor.Containers
             m_IsCreated = BurstableBool.TRUE;
         }
 
-#if UNITY_COLLECTIONS_CHANGED
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
-        static void CalculateAllocationSize(ref long capacity, out int sizeOf)
-        {
-            // Allocate doesn't take long, so if the allocation is bigger than int.MaxValue, split it up
-            sizeOf = sizeof(T);
-            if(capacity > int.MaxValue)
-            {
-                sizeOf = int.MaxValue;
-                var cap = capacity / int.MaxValue;
-                // round up the amount of times int.MaxValue is needed if the capacity isn't exatly a multiple of int.MaxValue.
-                if (capacity % int.MaxValue > 0)
-                    ++cap;
-                capacity = cap;
-            }
-        }
-#endif
-
-        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
-        public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, AllocatorType allocator)
+        public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, Allocator allocator)
             => ConvertExistingDataToDynamicArray(dataPointer, count, allocator, count);
 
-        public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, AllocatorType allocator, long capacity)
+        public static unsafe DynamicArray<T> ConvertExistingDataToDynamicArray(T* dataPointer, long count, Allocator allocator, long capacity)
         {
             if (capacity < count)
                 throw new ArgumentException("Capacity must be greater or equal to length", nameof(capacity));
@@ -340,6 +311,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         void MemClear(long start)
         {
+            if (m_Capacity == 0)
+                return;
             var dst = (byte*)m_Data;
             var offsetInBytes = start * sizeof(T);
             UnsafeUtility.MemClear(dst + offsetInBytes, (m_Capacity - m_Count) * sizeof(T));
@@ -385,28 +358,15 @@ namespace Unity.MemoryProfiler.Editor.Containers
                     _ => throw new NotImplementedException(),
                 };
 
-#if UNITY_COLLECTIONS_CHANGED
-                if (m_Allocator == default)
-#else
                 if (m_Allocator == Allocator.None)
-#endif
                     throw new NotSupportedException("Resizing a DynamicArray that acts as a slice of another DynamicArray is not allowed");
 
-#if UNITY_COLLECTIONS_CHANGED
-                CalculateAllocationSize(ref newCapacity, out var sizeOf);
-                var newMem = (T*)m_Allocator.Allocate(sizeOf, UnsafeUtility.AlignOf<T>(), (int)newCapacity);
-#else
                 var newMem = (T*)UnsafeUtility.Malloc(newCapacity * sizeof(T), UnsafeUtility.AlignOf<T>(), m_Allocator);
-#endif
 
-                if (m_Data != null)
+                if (m_Capacity > 0)
                 {
                     UnsafeUtility.MemCpy(newMem, m_Data, Count * sizeof(T));
-#if UNITY_COLLECTIONS_CHANGED
-                    Free(m_Allocator, m_Data);
-#else
                     UnsafeUtility.Free(m_Data, m_Allocator);
-#endif
                 }
 
                 m_Data = newMem;
@@ -485,7 +445,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public void Clear(bool stomp)
         {
             Checks.CheckEquals(true, IsCreated);
-            if (stomp)
+            if (stomp && m_Capacity > 0)
             {
                 UnsafeUtility.MemClear(m_Data, sizeof(T));
             }
@@ -500,42 +460,36 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         public void Dispose()
         {
-            if (IsCreated && m_Data != null
-#if UNITY_COLLECTIONS_CHANGED
-                && m_Allocator == default
-#else
-                && m_Allocator > Allocator.None
-#endif
-                )
+            if (IsCreated && m_Data != null && m_Allocator > Allocator.None)
             {
-                if (typeof(IDisposable).IsAssignableFrom(typeof(T)))
-                {
-                    for (var i = 0; i < m_Count; i++)
-                    {
-                        ((IDisposable)m_Data[i]).Dispose();
-                    }
-                }
-#if UNITY_COLLECTIONS_CHANGED
-                Free(m_Allocator, m_Data);
-#else
                 UnsafeUtility.Free(m_Data, m_Allocator);
-#endif
             }
             m_Capacity = 0;
             m_Count = 0;
             m_Data = null;
-            m_Allocator =
-#if UNITY_COLLECTIONS_CHANGED
-                default;
-#else
-                Allocator.Invalid;
-#endif
+            m_Allocator = Allocator.Invalid;
             m_IsCreated = BurstableBool.FALSE;
         }
 
         public readonly IEnumerator<T> GetEnumerator() => new DynamicArrayEnumerator<DynamicArray<T>, T>(this);
 
         readonly IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [BurstCompile]
+    static class DynamicArrayUtility
+    {
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining), BurstCompile(CompileSynchronously = true, OptimizeFor = OptimizeFor.Performance)]
+        public static void DisposeArrayOfDisposables<TDisposable>(ref this DynamicArray<TDisposable> array)
+                where TDisposable : unmanaged, IDisposable
+        {
+            for (var i = 0; i < array.Count; i++)
+            {
+                ref TDisposable item = ref array[i];
+                item.Dispose();
+            }
+            array.Dispose();
+        }
     }
 
     struct DynamicArrayEnumerator<TContainer, T> : IEnumerator<T>

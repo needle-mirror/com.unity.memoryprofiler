@@ -12,30 +12,41 @@ namespace Unity.MemoryProfiler.Editor.UI
     // Builds a UnityObjectsModel.
     class UnityObjectsModelBuilder
     {
-        // This filter is kind of a hack that is used to leave the Base and Compare tables empty.
-        // To avoid the cost of having to rebuild a model that is entirely empty while iterating
-        // over all Unity Objects in the snapshot, using this exact instance will sidestep the model generation entirely.
-        public static readonly IEntityIdFilter ShowNoObjectsAtAllFilter = MatchesInstanceIdFilter.Create(CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone, null);
+        /// <summary>Rows materialized into the tree view at once in the flattened, paginated view.</summary>
+        const int k_FlattenedPageSize = 2500;
 
         protected int m_ItemId;
+        readonly int m_FlattenedPageSize;
 
         public UnityObjectsModelBuilder()
+            : this(k_FlattenedPageSize)
+        {
+        }
+
+        /// <summary>Test seam: build the flattened model with a small page size so paging can be exercised on small fixtures.</summary>
+        internal UnityObjectsModelBuilder(int flattenedPageSize)
         {
             m_ItemId = (int)IAnalysisViewSelectable.Category.FirstDynamicId;
+            m_FlattenedPageSize = flattenedPageSize;
         }
 
         Dictionary<int, IndexableTreeViewListAndIndex<UnityObjectsModel.ItemData>> m_IdToIndex;
 
-        public UnityObjectsModel Build(UnityObjectsModel baseModel, IEnumerable<int> treeNodeIds = null)
+        public void ClearIdToIndexCache()
+        {
+            TreeModelHelpers.ClearIdToIndexCache(ref m_IdToIndex);
+        }
+
+        public UnityObjectsModel Build(UnityObjectsModel baseModel, IEnumerable<int> treeNodeIdFilter = null)
         {
             var tree = new List<TreeViewItemData<UnityObjectsModel.ItemData>>();
 
             var totalMemory = new MemorySize();
 
-            if (treeNodeIds != null)
+            if (treeNodeIdFilter != null)
             {
                 var stack = new Stack<TreeViewItemData<UnityObjectsModel.ItemData>>();
-                foreach (var id in treeNodeIds)
+                foreach (var id in treeNodeIdFilter)
                 {
                     // the only place where the base model has to be assumed as non-null.
                     var item = baseModel.RootNodes.GetItemById(ref m_IdToIndex, id);
@@ -74,7 +85,15 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <returns></returns>
         protected UnityObjectsModel CreateDerivedModel(List<TreeViewItemData<UnityObjectsModel.ItemData>> rootNodes, MemorySize totalMemory, UnityObjectsModel baseModel)
         {
-            return new UnityObjectsModel(rootNodes, totalMemory, baseModel?.SelectionProcessor);
+            return new UnityObjectsModel(rootNodes, totalMemory);
+        }
+
+        static ObjectStatusWarningInfo AggregateWarningInfo(List<TreeViewItemData<UnityObjectsModel.ItemData>> items)
+        {
+            var result = default(ObjectStatusWarningInfo);
+            for (int i = 0; i < items.Count; i++)
+                result |= items[i].data.WarningInfo;
+            return result;
         }
 
         public UnityObjectsModel Build(CachedSnapshot snapshot, in BuildArgs args)
@@ -84,13 +103,100 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var nativeUnityObjectBaseTypesToDisambiguateByManagedType = BuildListOfNativeUnityObjectBaseTypesToDisambiguateByManagedType(snapshot);
 
-            var rootNodes = BuildUnityObjectsGroupedByType(snapshot, nativeUnityObjectBaseTypesToDisambiguateByManagedType,
-                args, out var totalMemoryInSnapshot);
-            if (args.FlattenHierarchy)
-                rootNodes = TreeModelUtility.RetrieveLeafNodesOfTree(rootNodes);
+            if (!args.FlattenHierarchy)
+            {
+                var rootNodes = BuildUnityObjectsGroupedByType(snapshot, nativeUnityObjectBaseTypesToDisambiguateByManagedType, args, out var treeTotalMemoryInSnapshot);
+                return new UnityObjectsModel(rootNodes, treeTotalMemoryInSnapshot);
+            }
 
-            var model = new UnityObjectsModel(rootNodes, totalMemoryInSnapshot, args.SelectionProcessor);
-            return model;
+            // Flat mode: build the type maps, apply filters, then emit leaf items directly into the
+            // native store without constructing the intermediate group-header TreeViewItemData nodes.
+            BuildUnityObjectTypeIndexToUnityObjectsMapForSnapshot(
+                snapshot, args, nativeUnityObjectBaseTypesToDisambiguateByManagedType,
+                out var typeIndexToTypeObjectsMap,
+                out var disambiguatedTypeIndexToTypeObjectsMap,
+                out var nonDisambiguatedObjectsOfDisambiguatedNativeTypes,
+                out var totalMemoryInSnapshot);
+
+            if (args.PotentialDuplicatesFilter)
+            {
+                typeIndexToTypeObjectsMap = FilterTypeIndexToTypeObjectsMapForPotentialDuplicatesAndGroup(typeIndexToTypeObjectsMap);
+                foreach (var nativeType in nativeUnityObjectBaseTypesToDisambiguateByManagedType)
+                {
+                    if (disambiguatedTypeIndexToTypeObjectsMap.ContainsKey(nativeType))
+                        disambiguatedTypeIndexToTypeObjectsMap[nativeType] = FilterTypeIndexToTypeObjectsMapForPotentialDuplicatesAndGroup(disambiguatedTypeIndexToTypeObjectsMap[nativeType]);
+                }
+                nonDisambiguatedObjectsOfDisambiguatedNativeTypes = FilterTypeIndexToTypeObjectsMapForPotentialDuplicatesAndGroup(nonDisambiguatedObjectsOfDisambiguatedNativeTypes);
+            }
+
+            var store = new FlattenedRowStore<UnityObjectsCompactRow>();
+            try
+            {
+                var names = new List<string>();
+                var totalMemorySize = new MemorySize();
+                CollectTypeMapLeafNodesToStore(typeIndexToTypeObjectsMap, store, names, ref totalMemorySize);
+                foreach (var innerMap in disambiguatedTypeIndexToTypeObjectsMap.Values)
+                    CollectTypeMapLeafNodesToStore(innerMap, store, names, ref totalMemorySize);
+                CollectTypeMapLeafNodesToStore(nonDisambiguatedObjectsOfDisambiguatedNativeTypes, store, names, ref totalMemorySize);
+                return new UnityObjectsModel(store, names, m_FlattenedPageSize, totalMemorySize, totalMemoryInSnapshot);
+            }
+            catch
+            {
+                store.Dispose();
+                throw;
+            }
+        }
+
+        // Iterates a type map and emits each leaf object into the store. Items in the map are either
+        // individual leaf objects (no children) or potential-duplicate group nodes whose children are
+        // the individual objects; both cases are handled by EmitItemToStore.
+        static void CollectTypeMapLeafNodesToStore(
+            Dictionary<SourceIndex, DictionaryOrList> map,
+            FlattenedRowStore<UnityObjectsCompactRow> store,
+            List<string> names,
+            ref MemorySize totalMemorySize)
+        {
+            foreach (var typeObjects in map.Values)
+            {
+                if (typeObjects.ListOfObjects != null)
+                {
+                    foreach (var item in typeObjects.ListOfObjects)
+                        EmitItemToStore(item, store, names, ref totalMemorySize);
+                }
+                else if (typeObjects.MapOfObjects != null)
+                {
+                    foreach (var objList in typeObjects.MapOfObjects.Values)
+                    {
+                        foreach (var item in objList)
+                            EmitItemToStore(item, store, names, ref totalMemorySize);
+                    }
+                }
+            }
+        }
+
+        // Emits a leaf item into the store. If the item is a group node (potential-duplicate group),
+        // emits its children instead (they are the actual individual objects, one level deep at most).
+        static void EmitItemToStore(
+            TreeViewItemData<UnityObjectsModel.ItemData> item,
+            FlattenedRowStore<UnityObjectsCompactRow> store,
+            List<string> names,
+            ref MemorySize totalMemorySize)
+        {
+            if (item.hasChildren)
+            {
+                foreach (var child in item.children)
+                {
+                    names.Add(child.data.Name);
+                    store.Add(new UnityObjectsCompactRow(child.id, child.data, names.Count - 1));
+                    totalMemorySize += child.data.TotalSize;
+                }
+            }
+            else
+            {
+                names.Add(item.data.Name);
+                store.Add(new UnityObjectsCompactRow(item.id, item.data, names.Count - 1));
+                totalMemorySize += item.data.TotalSize;
+            }
         }
 
         protected static bool CanBuildBreakdownForSnapshot(CachedSnapshot snapshot)
@@ -205,7 +311,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var typeGroupList = new List<TreeViewItemData<UnityObjectsModel.ItemData>>();
                 foreach (var listOfObjectsById in dictionaryOrList.MapOfObjects)
                 {
-                    typeGroupList.Add(CreateGroupNode(listOfObjectsById.Key, new SourceIndex(), listOfObjectsById.Value));
+                    var representativeSource = listOfObjectsById.Value.Count > 0
+                        ? listOfObjectsById.Value[0].data.Source
+                        : new SourceIndex();
+                    typeGroupList.Add(CreateGroupNode(listOfObjectsById.Key, representativeSource, listOfObjectsById.Value));
                 }
                 return CreateGroupNode(typeSource.GetName(snapshot), typeSource, typeGroupList);
             }
@@ -232,7 +341,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                     typeManagedSize,
                     typeGpuSize,
                     sourceIndex,
-                    items.Count),
+                    items.Count)
+                { WarningInfo = AggregateWarningInfo(items) },
                 items);
         }
 
@@ -314,12 +424,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             disambiguatedTypeIndexToTypeObjectsMap = new Dictionary<SourceIndex, Dictionary<SourceIndex, DictionaryOrList>>();
             nonDisambiguatedObjectsOfDisambiguatedNativeTypes = new Dictionary<SourceIndex, DictionaryOrList>();
 
-            if (args.UnityObjectInstanceIDFilter == ShowNoObjectsAtAllFilter)
-            {
-                totalMemoryInSnapshot = new MemorySize();
-                return;
-            }
-
             var nativeObject2Size = BuildNativeObjectIndexToSize(snapshot, out totalMemoryInSnapshot);
 
             // Group objects by type
@@ -327,9 +431,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             var nativeObjects = snapshot.NativeObjects;
             foreach (var obj in nativeObject2Size)
             {
-                if (!(args.UnityObjectInstanceIDFilter?.Passes(nativeObjects.InstanceId[obj.Key.Index], snapshot) ?? true))
-                    continue;
-
                 int managedTypeIndex = -1;
                 string managedTypeName = null;
                 if (nativeObjects.ManagedObjectIndex[obj.Key.Index] >= 0)
@@ -366,9 +467,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 var itemName = args.DisambiguateByInstanceId ?
-                    NativeObjectTools.ProduceNativeObjectId(obj.Key.Index, snapshot) : nativeObjectName;
+                    NativeObjectTools.ProduceNativeObjectNameAndId(obj.Key.Index, snapshot) : nativeObjectName;
 
-                if (args.SearchStringFilter != null)
+                // Grab precomputed status before search filter so it can be searched
+                var status = snapshot.ObjectStatusComputation.GetStatus(obj.Key);
+
+                if (args.SearchFilter != null)
                 {
                     // Check if Native Type Name still needs initializing
                     if (args.UnityObjectTypeNameFilter == null)
@@ -382,16 +486,21 @@ namespace Unity.MemoryProfiler.Editor.UI
                         managedBaseTypeName = snapshot.TypeDescriptions.TypeDescriptionName[managedBaseTypeIndex];
                     }
 
-                    using var searchFilterScopeNativeTypeName = args.SearchStringFilter.OpenScope(nativeTypeName);
-                    using var searchFilterScopeManagedBaseTypeName = args.SearchStringFilter.OpenScope(managedBaseTypeName);
-                    using var searchFilterScopeManagedTypeName = args.SearchStringFilter.OpenScope(managedTypeName);
-                    using var searchFilterScopeNativeObjectName = args.SearchStringFilter.OpenScope(nativeObjectName);
-                    if ((args.DisambiguateByInstanceId ?
-                        !searchFilterScopeNativeObjectName.Passes(itemName)
-                        : !searchFilterScopeNativeObjectName.ScopePasses))
-                    {
+                    // Open type-name scopes for propagation, then use Passes() on the last scope for the
+                    // leaf-level name+status check without pushing an extra scope onto the stack.
+                    using var scopeNativeTypeName = args.SearchFilter.OpenScope(nativeTypeName);
+                    using var scopeManagedBaseTypeName = args.SearchFilter.OpenScope(managedBaseTypeName);
+                    using var scopeManagedTypeName = args.SearchFilter.OpenScope(managedTypeName);
+                    var checkName = args.DisambiguateByInstanceId ? itemName : nativeObjectName;
+                    // A Unity Object that owns graphics memory has a GraphicsBuffer behind it, so surface it
+                    // to the GraphicsBuffers status filter directly (in addition to matching on its own
+                    // name+status). For a pure text filter this is a no-op, since the GraphicsBuffers branch
+                    // reduces to the same name check.
+                    var ownsGraphics = obj.Value.Gfx.Committed > 0;
+                    if (!scopeManagedTypeName.ScopePasses
+                        && !scopeManagedTypeName.Passes(checkName, status)
+                        && !(ownsGraphics && scopeManagedTypeName.Passes(checkName, ObjectStatus.GraphicsBuffers)))
                         continue;
-                    }
                 }
 
                 // Create node for conceptual Unity Object.
@@ -402,7 +511,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         obj.Value.Native,
                         obj.Value.Managed,
                         obj.Value.Gfx,
-                        obj.Key)
+                        obj.Key,
+                        status: status)
                 );
 
                 // Add node to corresponding type's list of Unity Objects.
@@ -505,7 +615,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                                 potentialDuplicatesManagedSize,
                                 potentialDuplicatesGpuSize,
                                 potentialDuplicateData.Source,
-                                potentialDuplicateObjects.Count),
+                                potentialDuplicateObjects.Count)
+                            { WarningInfo = AggregateWarningInfo(potentialDuplicateObjects) },
                             potentialDuplicateObjects);
                         potentialDuplicateItems.Add(potentialDuplicateItem);
                     }
@@ -522,36 +633,30 @@ namespace Unity.MemoryProfiler.Editor.UI
         public readonly struct BuildArgs
         {
             public BuildArgs(
-                IScopedFilter<string> searchStringFilter = null,
+                CompoundSearchFilter searchFilter = null,
                 ITextFilter unityObjectNameFilter = null,
                 ITextFilter unityObjectTypeNameFilter = null,
-                IEntityIdFilter unityObjectInstanceIDFilter = null,
                 bool flattenHierarchy = false,
                 bool potentialDuplicatesFilter = false,
-                bool disambiguateByInstanceId = false,
-                Action<int, UnityObjectsModel.ItemData> selectionProcessor = null)
+                bool disambiguateByInstanceId = false)
             {
-                SearchStringFilter = searchStringFilter;
+                SearchFilter = searchFilter;
                 UnityObjectNameFilter = unityObjectNameFilter;
                 UnityObjectTypeNameFilter = unityObjectTypeNameFilter;
-                UnityObjectInstanceIDFilter = unityObjectInstanceIDFilter;
                 FlattenHierarchy = flattenHierarchy;
                 PotentialDuplicatesFilter = potentialDuplicatesFilter;
                 DisambiguateByInstanceId = disambiguateByInstanceId;
-                SelectionProcessor = selectionProcessor;
             }
-
-            // Only include tree paths that match this filter.
-            public IScopedFilter<string> SearchStringFilter { get; }
+            /// <summary>
+            /// Only include tree paths that match this filter.
+            /// </summary>
+            public CompoundSearchFilter SearchFilter { get; }
 
             // Only include Unity Objects with this name.
             public ITextFilter UnityObjectNameFilter { get; }
 
             // Only include Unity Objects with this type name.
             public ITextFilter UnityObjectTypeNameFilter { get; }
-
-            // Only include the Unity Object with this instance ID. Null means do not filter by instance id. CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone (0) can be used to filter everything (used for comparison).
-            public IEntityIdFilter UnityObjectInstanceIDFilter { get; }
 
             // Flatten the hierarchy to a single level, removing all groups; transforms the tree into a list of its leaf nodes.
             public bool FlattenHierarchy { get; }
@@ -563,9 +668,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// Use Instance IDs to differentiate objects with the same name, only used in comparisons
             /// </summary>
             public bool DisambiguateByInstanceId { get; }
-
-            // Selection processor for a Unity Object item. Argument is item data record from the model for the object.
-            public Action<int, UnityObjectsModel.ItemData> SelectionProcessor { get; }
         }
 
         public class MapOfManagedTypeOrObjectName2Objects

@@ -48,7 +48,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             public void Init(ref TJobChunk job);
         }
 
-        [BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
+        [BurstCompile(CompileSynchronously = true, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
         unsafe struct ChunkedParallelArrayCrawlerJob<TJobChunk> : IChunkedParallelCrawlerJob, IJobParallelFor
             where TJobChunk : unmanaged, ICrawlerJobChunk<TJobChunk>
         {
@@ -73,6 +73,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #endif
             }
 
+            [BurstCompile(CompileSynchronously = true, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
             public void Finish(IChunkedCrawlerJobManagerBase crawlData)
             {
                 // Combine the data from the parallel jobs!
@@ -88,9 +89,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     }
                 }
                 // cleanup the jobs
-                (*Chunks).Dispose();
+                (*Chunks).DisposeArrayOfDisposables();
             }
 
+            [BurstCompile(CompileSynchronously = true, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
             public void Execute(int index)
             {
                 ref var chunk = ref (*Chunks)[index];

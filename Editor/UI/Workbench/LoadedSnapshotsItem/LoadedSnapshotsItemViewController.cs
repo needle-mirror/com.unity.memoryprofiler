@@ -74,7 +74,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_CloseButton.clickable.clicked += () => CloseCapture();
 
             m_ProductLabel.text = Model.ProductName;
-            m_SessionLabel.text = m_SnapshotDataService.SessionNames[Model.SessionId];
+            // SessionNames only contains the sessions discovered in the snapshot directory list. A
+            // snapshot loaded from elsewhere (e.g. a temp path, as the tests do) can carry a SessionId
+            // that isn't represented there, so look it up defensively rather than indexing blindly.
+            m_SessionLabel.text = m_SnapshotDataService.SessionNames.TryGetValue(Model.SessionId, out var sessionName) ? sessionName : string.Empty;
 
             m_ImageAndMetaContainer.tooltip = $"Metadata Description:\n{Model.MetadataDescription}";
 

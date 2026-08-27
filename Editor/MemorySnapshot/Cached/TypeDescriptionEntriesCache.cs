@@ -74,6 +74,11 @@ namespace Unity.MemoryProfiler.Editor
             public DynamicArray<TypeFlags> Flags = default;
             public DynamicArray<int> BaseOrElementTypeIndex = default;
 
+            // Format v20+: static fields are addressed positionally in StaticFieldSlots (one header
+            // group per owned static field), not by FieldDescriptions_Offset - see RecurseCrawlFields'
+            // Offset == -1 (thread-static) handling.
+            readonly bool m_HasStaticFieldSlotsAndFlags;
+
             /// <summary>
             /// Type size, which for value types does not include a header that would be added if they get boxed onto the heap.
             /// For boxed value types (i.e. <seealso cref="HasFlag(int, TypeFlags)"/> for flag <seealso cref="TypeFlags.kValueType"/> is true)
@@ -88,8 +93,8 @@ namespace Unity.MemoryProfiler.Editor
             /// and their full size can't be determined for all instances of their type, but only for a concrete object.
             /// For all other types, it returns the definitive size on the heap.
             ///
-            /// For the full size of strings use <see cref="ManagedHeapArrayDataTools.ReadArrayObjectSizeInBytes"/> instead.
-            /// For the full size of arrays use <see cref="StringTools.ReadStringObjectSizeInBytes"/ instead>.
+            /// For the full size of arrays use <see cref="ManagedHeapArrayDataTools.ReadArrayObjectSizeInBytes"/> instead.
+            /// For the full size of strings use <see cref="StringTools.ReadStringObjectSizeInBytes"/> instead.
             /// </summary>
             /// <param name="typeIndex"></param>
             /// <param name="vmInfo"></param>
@@ -120,6 +125,78 @@ namespace Unity.MemoryProfiler.Editor
             NestedDynamicSizedArrayReadOperation<int> m_FieldIndicesReadOp;
             public NestedDynamicArray<byte> StaticFieldBytes => m_StaticFieldBytesReadOp.CompleteReadAndGetNestedResults();
             NestedDynamicSizedArrayReadOperation<byte> m_StaticFieldBytesReadOp;
+
+            /// <summary>
+            /// Per-type raw blob (format v20+, <see cref="Format.FormatVersion.StaticFieldAndNonGCHeapVersion"/>)
+            /// of resolved GC-static field slots, one per type row. Layout: for each of the type's OWN
+            /// static fields (<see cref="FieldIndicesOwnedStatic"/> order), an 8-byte header (<c>uint16</c>
+            /// slot count + 6 bytes padding) followed by that many fixed-width slots — every owned static
+            /// field gets exactly one header group, even with a count of 0. A reference-typed field's slot
+            /// is the pointer itself (pointer-size bytes); a value-typed field's slot is the value's own
+            /// bytes laid out inline (statics aren't boxed just because they're static), so a reference
+            /// field nested inside the value is at its own byte offset within the slot. The blob itself
+            /// does not record each slot's byte width — the caller derives it from the field's own resolved
+            /// type (pointer size for a reference type, <see cref="Size"/> for a value type), the same way
+            /// the native writer sized it. Populated on all three backends for ordinary statics; only
+            /// CoreCLR resolves thread-static slots today (Mono/IL2CPP report a count of 0 for those fields
+            /// — see GAPS.md). Empty on older files. Use <see cref="ParseStaticFieldSlots"/> to decode a
+            /// row rather than walking this manually.
+            /// </summary>
+            public NestedDynamicArray<byte> StaticFieldSlots => m_StaticFieldSlotsReadOp.CompleteReadAndGetNestedResults();
+            NestedDynamicSizedArrayReadOperation<byte> m_StaticFieldSlotsReadOp;
+
+            /// <summary>
+            /// One owned static field's decoded slot-group position within a
+            /// <see cref="StaticFieldSlots"/> blob — the slot count from the group's header, and the byte
+            /// offset (within the same blob) where its <see cref="Count"/> fixed-width slots begin. No
+            /// bytes are copied; read directly from the blob at <see cref="SlotDataOffset"/>, this
+            /// field's own slot byte size at a time (see <see cref="ParseStaticFieldSlots"/>).
+            /// </summary>
+            public readonly struct StaticFieldSlotGroup
+            {
+                public readonly int Count;
+                public readonly long SlotDataOffset;
+                public StaticFieldSlotGroup(int count, long slotDataOffset) { Count = count; SlotDataOffset = slotDataOffset; }
+            }
+
+            /// <summary>
+            /// Decodes one type's <see cref="StaticFieldSlots"/> blob into one <see cref="StaticFieldSlotGroup"/>
+            /// per owned static field, in the same order as <see cref="FieldIndicesOwnedStatic"/> and
+            /// <paramref name="slotByteSizes"/>. A field with a count of 0 (e.g. an unresolved static, or a
+            /// not-yet-supported Mono/IL2CPP thread-static) yields a zero-count group at its position, not a
+            /// skipped one. No bytes are copied — callers read directly from <paramref name="blob"/>.
+            /// On a truncated or corrupt blob (header or payload running past <paramref name="blob"/>'s length),
+            /// logs an error and returns zero-count groups for that field and every field after it instead of
+            /// indexing out of bounds.
+            /// </summary>
+            public static StaticFieldSlotGroup[] ParseStaticFieldSlots(DynamicArrayRef<byte> blob, IReadOnlyList<int> slotByteSizes)
+            {
+                if (blob.Count == 0)
+                    return Array.Empty<StaticFieldSlotGroup>();
+
+                var groups = new StaticFieldSlotGroup[slotByteSizes.Count];
+                long cursor = 0;
+                for (int fieldOrdinal = 0; fieldOrdinal < slotByteSizes.Count; ++fieldOrdinal)
+                {
+                    const int headerSize = 8; // 2-byte count + 6 bytes padding
+                    if (cursor + headerSize > blob.Count)
+                    {
+                        Debug.LogError($"Corrupt or truncated static field slots data: header for field ordinal {fieldOrdinal} runs past the end of the blob (cursor {cursor}, header size {headerSize}, blob length {blob.Count}). Please report a bug with the snapshot file.");
+                        break;
+                    }
+                    int count = blob[cursor] | (blob[cursor + 1] << 8);
+                    cursor += headerSize;
+                    long payloadSize = (long)count * slotByteSizes[fieldOrdinal];
+                    if (payloadSize < 0 || cursor + payloadSize > blob.Count)
+                    {
+                        Debug.LogError($"Corrupt or truncated static field slots data: slot payload for field ordinal {fieldOrdinal} runs past the end of the blob (cursor {cursor}, slot count {count}, payload size {payloadSize}, blob length {blob.Count}). Please report a bug with the snapshot file.");
+                        break;
+                    }
+                    groups[fieldOrdinal] = new StaticFieldSlotGroup(count, cursor);
+                    cursor += payloadSize;
+                }
+                return groups;
+            }
 
             //secondary data, handled inside InitSecondaryItems
             NestedDynamicArray<int> m_FieldIndicesInstance; //includes all bases' instance fields
@@ -202,6 +279,7 @@ namespace Unity.MemoryProfiler.Editor
 
             public TypeDescriptionEntriesCache(ref IFileReader reader, FieldDescriptionEntriesCache fieldDescriptions, NativeTypeEntriesCache nativeTypes, VirtualMachineInformation vmInfo)
             {
+                m_HasStaticFieldSlotsAndFlags = reader.FormatVersion >= FormatVersion.StaticFieldAndNonGCHeapVersion;
                 Count = (int)reader.GetEntryCount(EntryType.TypeDescriptions_TypeIndex);
 
                 TypeDescriptionName = new string[Count];
@@ -282,7 +360,19 @@ namespace Unity.MemoryProfiler.Editor
 
                 m_FieldIndicesReadOp = reader.AsyncReadDynamicSizedArray<int>(EntryType.TypeDescriptions_FieldIndices, 0, Count, Allocator.Persistent);
 
-                m_StaticFieldBytesReadOp = reader.AsyncReadDynamicSizedArray<byte>(EntryType.TypeDescriptions_StaticFieldBytes, 0, Count, Allocator.Persistent);
+                // Format v20+ never populates TypeDescriptions_StaticFieldBytes (see StaticFieldSlots
+                // instead), so skip scheduling its read entirely rather than reading a guaranteed-empty
+                // blob. Every consumer of the StaticFieldBytes property already branches on
+                // m_HasStaticFieldSlotsAndFlags before touching it.
+                //
+                // Conversely, TypeDescriptions_StaticFieldSlots doesn't exist as an entry at all before
+                // format v20 - reading it on an older file isn't just "empty", it's an out-of-range
+                // ordinal past that file's own (shorter) chapter directory, which throws in
+                // AsyncReadDynamicSizedArray's format check. Only schedule this read on v20+ files.
+                if (!m_HasStaticFieldSlotsAndFlags)
+                    m_StaticFieldBytesReadOp = reader.AsyncReadDynamicSizedArray<byte>(EntryType.TypeDescriptions_StaticFieldBytes, 0, Count, Allocator.Persistent);
+                else
+                    m_StaticFieldSlotsReadOp = reader.AsyncReadDynamicSizedArray<byte>(EntryType.TypeDescriptions_StaticFieldSlots, 0, Count, Allocator.Persistent);
 
 
                 var typeNameToIndex = new Dictionary<string, int>();
@@ -398,12 +488,71 @@ namespace Unity.MemoryProfiler.Editor
 
             /// <summary>
             /// Note: A Type may <see cref="HasStaticField"/> but no data for them, presumably because they haven't been initialized yet.
+            /// Format v20+ never populates <see cref="StaticFieldBytes"/> (its read isn't even scheduled),
+            /// so this always returns false there - use <see cref="HasStaticFieldSlotData"/> instead.
             /// </summary>
             /// <param name="iType"></param>
             /// <returns></returns>
             public bool HasStaticFieldData(long iType)
             {
+                if (m_HasStaticFieldSlotsAndFlags)
+                    return false;
                 return StaticFieldBytes[iType].Count > 0;
+            }
+
+            /// <summary>
+            /// Format v20+ equivalent of <see cref="HasStaticFieldData"/> for the resolved-address path.
+            /// Pre-v20 files never populate <see cref="StaticFieldSlots"/> (its read isn't even
+            /// scheduled), so this always returns false there. A non-empty blob alone isn't sufficient:
+            /// every owned static field gets an 8-byte header group even when unresolved (count 0), so
+            /// this parses the groups and requires at least one with a non-zero count.
+            /// </summary>
+            public bool HasStaticFieldSlotData(CachedSnapshot snapshot, long iType)
+            {
+                if (!m_HasStaticFieldSlotsAndFlags)
+                    return false;
+
+                var ownedStaticFields = FieldIndicesOwnedStatic[iType];
+                if (ownedStaticFields.Count == 0)
+                    return false;
+
+                var slotByteSizes = new int[ownedStaticFields.Count];
+                for (int i = 0; i < ownedStaticFields.Count; ++i)
+                    slotByteSizes[i] = FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize(snapshot, ownedStaticFields[i]);
+
+                var groups = ParseStaticFieldSlots(StaticFieldSlots[iType], slotByteSizes);
+                for (int i = 0; i < groups.Length; ++i)
+                {
+                    if (groups[i].Count > 0)
+                        return true;
+                }
+                return false;
+            }
+
+            /// <summary>
+            /// Total resolved static-field byte size owned by a type: <see cref="StaticFieldBytes"/>'s
+            /// count on pre-v20 files, or the sum of every owned static field's slot group
+            /// (<see cref="ParseStaticFieldSlots"/>'s <c>Count * slotByteSize</c>) on v20+ files, where
+            /// <see cref="StaticFieldBytes"/> is no longer populated.
+            /// </summary>
+            public long GetStaticFieldOwnByteSize(CachedSnapshot snapshot, long iType)
+            {
+                if (!snapshot.HasStaticFieldSlotsAndFlags)
+                    return StaticFieldBytes[iType].Count;
+
+                var ownedStaticFields = FieldIndicesOwnedStatic[iType];
+                if (ownedStaticFields.Count == 0)
+                    return 0;
+
+                var slotByteSizes = new int[ownedStaticFields.Count];
+                for (int i = 0; i < ownedStaticFields.Count; ++i)
+                    slotByteSizes[i] = FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize(snapshot, ownedStaticFields[i]);
+
+                var groups = ParseStaticFieldSlots(StaticFieldSlots[iType], slotByteSizes);
+                long total = 0;
+                for (int i = 0; i < groups.Length; ++i)
+                    total += (long)groups[i].Count * slotByteSizes[i];
+                return total;
             }
 
             [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
@@ -513,9 +662,13 @@ namespace Unity.MemoryProfiler.Editor
                         continue;
                     }
 
-                    if (fieldDescriptions.Offset[iField] == -1) //TODO: verify this assumption
+                    // Pre-v20: Offset == -1 encodes a thread-static field, which can't be addressed by
+                    // offset into the legacy StaticFieldBytes blob, so it's dropped here. Format v20+
+                    // addresses static fields positionally in StaticFieldSlots instead (one header group
+                    // per owned static field, in FieldIndicesOwnedStatic order) - dropping the field here
+                    // would desync that positional mapping for every subsequent field, so keep it on v20+.
+                    if (fieldDescriptions.Offset[iField] == -1 && !m_HasStaticFieldSlotsAndFlags)
                     {
-                        // this is how we encode TLS fields. We don't support TLS fields yet.
                         continue;
                     }
 
@@ -767,6 +920,11 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     _ = StaticFieldBytes; // Accessing the property forces completion
                 }
+                // Force completion of async static field slots read
+                if (m_StaticFieldSlotsReadOp.IsCreated)
+                {
+                    _ = StaticFieldSlots; // Accessing the property forces completion
+                }
             }
 
             void UpdateManagedToNativeTypeMapping(CachedSnapshot.NativeTypeEntriesCache nativeTypes, int managedType, int nativeType, ref NativeHashSet<int> hashmapOfUnityBaseTypes, int baseFallbackType = CachedSnapshot.TypeDescriptionEntriesCache.ITypeInvalid)
@@ -914,6 +1072,14 @@ namespace Unity.MemoryProfiler.Editor
                     // ... before disposing the result, as otherwise we'd sync on a pending read op.
                     StaticFieldBytes.Dispose();
                     m_StaticFieldBytesReadOp = default;
+                }
+                if (m_StaticFieldSlotsReadOp.IsCreated)
+                {
+                    // Dispose the read operation first to abort it ...
+                    m_StaticFieldSlotsReadOp.Dispose();
+                    // ... before disposing the result, as otherwise we'd sync on a pending read op.
+                    StaticFieldSlots.Dispose();
+                    m_StaticFieldSlotsReadOp = default;
                 }
 
                 if (m_FieldIndicesInstance.IsCreated)

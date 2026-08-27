@@ -310,7 +310,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // strings don't get their fields processed, they write their value into the field's root
             if (snapshot.TypeDescriptions.ITypeString == item.ObjectData.managedTypeIndex && item.ObjectData.dataType != ObjectDataType.Type)
             {
-                item.Root.Value = ManagedObjectTools.GetStringPreview(snapshot, item.ObjectData.GetManagedObject(snapshot), false);
+                item.Root.Value = StringTools.GetPreviewOrReadFirstLine(item.ObjectData.GetManagedObject(snapshot), snapshot, false);
                 return;
             }
 
@@ -361,7 +361,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
             v ??= GetValue(info.ObjectData, info.Root);
-            var typeName = snapshot.TypeDescriptions.TypeDescriptionName[typeIdx];
+            // typeIdx is -1 for CoreCLR pointer/function-pointer fields (see FieldDescriptionEntriesCache.ElementType).
+            var typeName = typeIdx >= 0 ? snapshot.TypeDescriptions.TypeDescriptionName[typeIdx] : "<pointer>";
             var fieldSize = GetFieldSize(snapshot, info.ObjectData);
             string name;
             var isStatic = false;
@@ -391,98 +392,134 @@ namespace Unity.MemoryProfiler.Editor.UI
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         bool TryReadFieldAsPointerAtGCHandleHeldObject(CachedSnapshot cs, ObjectData fieldByIndex)
         {
-            return MemoryProfilerSettings.FeatureFlags.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects &&
-                cs.TypeDescriptions.CouldThisFieldBeReadAsAnAddress(fieldByIndex.managedTypeIndex, cs) &&
+            if (!MemoryProfilerSettings.FeatureFlags.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects)
+                return false;
+
+            if (!cs.TypeDescriptions.CouldThisFieldBeReadAsAnAddress(fieldByIndex.managedTypeIndex, cs))
+                return false;
+
+            // Refresh heap bytes if needed before trying to read pointer
+            // Pass no address as the address should only be deduced from the section index and offset in managedObjectData
+            // See ObjectData.GetReferencedPointer for further details of why not to use the hostManagedObjectPtr.
+            if (!cs.TryGetHeapBytesWithFastPath(fieldByIndex.managedObjectData, 0,
+                out var refreshedBytes, out var onDemandRefScope))
+                return false;
+
+            using (onDemandRefScope)
+            {
                 // it could also be a genuine value type that would be valuable to show as is, so only interpret this as a reference if it points at something valid
-                fieldByIndex.managedObjectData.TryReadPointer(out var address) == BytesAndOffset.PtrReadError.Success &&
-                cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(address, out var objectIdentifyer) && objectIdentifyer < cs.GcHandles.UniqueCount;
+                if (refreshedBytes.TryReadPointer(out var address) != BytesAndOffset.PtrReadError.Success)
+                    return false;
+
+                if (!cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(address, out var objectIdentifyer))
+                    return false;
+
+                return cs.CrawledData.IsGCHandleTarget(objectIdentifyer, cs.GcHandles.UniqueCount);
+            }
         }
 
         void ProcessManagedPtr(CachedSnapshot cs, ObjectData fieldByIndex, ManagedObjectInspectorItem fieldItem, string value)
         {
-            ulong pointer;
-            if (fieldByIndex.managedObjectData.TryReadPointer(out pointer) != BytesAndOffset.PtrReadError.Success)
+            // Refresh heap bytes if needed before reading pointer
+            // Pass no address as the address should only be deduced from the section index and offset in managedObjectData
+            // See ObjectData.GetReferencedPointer for further details of why not to use the hostManagedObjectPtr.
+            if (!cs.TryGetHeapBytesWithFastPath(fieldByIndex.managedObjectData, 0,
+                out var refreshedBytes, out var onDemandRefScope))
             {
                 fieldItem.Value = "Failed to read pointer!";
                 return;
             }
-            if (pointer == 0)
-            {
-                fieldItem.Value = "null";
-                return;
-            }
-            if (pointer == ulong.MaxValue)
-            {
-                fieldItem.Value = "invalid";
-                return;
-            }
 
-            if (cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(pointer, out var objectIdentifyer))
+            using (onDemandRefScope)
             {
-                m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectIndex(cs, objectIdentifyer)));
-            }
-            else if (cs.NativeObjects.NativeObjectAddressToEntityId.TryGetValue(pointer, out var _))
-            {
-                EnqueueNativeObject(fieldItem, pointer, cs);
-            }
-            else
-            {
-                string fieldTypeName = string.Empty;
-                // cover the most common
-                if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeIntPtr)
-                    fieldTypeName = "(IntPtr)";
-                else if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeVoidPtr)
-                    fieldTypeName = "(void*)";
-                else if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeBytePtr)
-                    fieldTypeName = "(byte*)";
-                else
+                ulong pointer;
+                if (refreshedBytes.TryReadPointer(out pointer) != BytesAndOffset.PtrReadError.Success)
                 {
-                    var lastDot = fieldItem.TypeName.LastIndexOf('.');
-                    if (lastDot < 0)
-                        lastDot = 0;
-                    fieldTypeName = $"({fieldItem.TypeName.Substring(lastDot + 1)})";
+                    fieldItem.Value = "Failed to read pointer!";
+                    return;
+                }
+                if (pointer == 0)
+                {
+                    fieldItem.Value = "null";
+                    return;
+                }
+                if (pointer == ulong.MaxValue)
+                {
+                    fieldItem.Value = "invalid";
+                    return;
                 }
 
-                var data = cs.ManagedHeapSections.Find(pointer, cs.VirtualMachineInformation, out MemorySectionType memorySectionType);
-                if (data.IsValid)
+                if (cs.CrawledData.MangedObjectIndexByAddress.TryGetValue(pointer, out var objectIdentifyer))
                 {
-                    // TODO: caveat these objects as "potential managed objects" as beyond them fitting into the managed heap, we can't be sure they are actually managed objects or just random bytes pointed to.
-                    // We do however ensure that they at least fit the type of the field they are in.
-
-                    // Managed Objects can (afaik) not be found in VM Memory, so ignore that here
-                    var moi = memorySectionType != CachedSnapshot.MemorySectionType.GarbageCollector ? ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data, fieldByIndex.managedTypeIndex) : ManagedObjectInfo.Invalid;
-                    if (moi.IsValid())
+                    m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectIndex(cs, objectIdentifyer)));
+                }
+                else if (cs.NativeObjects.NativeObjectAddressToEntityId.TryGetValue(pointer, out var _))
+                {
+                    EnqueueNativeObject(fieldItem, pointer, cs);
+                }
+                else
+                {
+                    string fieldTypeName = string.Empty;
+                    // cover the most common
+                    if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeIntPtr)
+                        fieldTypeName = "(IntPtr)";
+                    else if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeVoidPtr)
+                        fieldTypeName = "(void*)";
+                    else if (fieldItem.ManagedTypeIndex == cs.TypeDescriptions.ITypeBytePtr)
+                        fieldTypeName = "(byte*)";
+                    else
                     {
-                        m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectInfo(cs, moi)));
+                        var lastDot = fieldItem.TypeName.LastIndexOf('.');
+                        if (lastDot < 0)
+                            lastDot = 0;
+                        fieldTypeName = $"({fieldItem.TypeName.Substring(lastDot + 1)})";
+                    }
+
+                    if (cs.FindHeapBytes(pointer, out var data, out MemorySectionType memorySectionType, out var onDemandLoadedTemporaryHeapDataCopyToBeDisposedOfWhenDone)
+                        && data.IsValid)
+                    {
+                        using (onDemandLoadedTemporaryHeapDataCopyToBeDisposedOfWhenDone)
+                        {
+                            // TODO: caveat these objects as "potential managed objects" as beyond them fitting into the managed heap, we can't be sure they are actually managed objects or just random bytes pointed to.
+                            // We do however ensure that they at least fit the type of the field they are in.
+
+                            // Managed Objects can (afaik) not be found in VM Memory, so ignore that here
+                            var moi = memorySectionType != CachedSnapshot.MemorySectionType.GarbageCollector ? ManagedDataCrawler.ParseObjectHeader(cs, pointer, out var wasAlreadyCrawled, true, data, fieldByIndex.managedTypeIndex) : ManagedObjectInfo.Invalid;
+                            if (moi.IsValid())
+                            {
+                                m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectInfo(cs, moi)));
 #if DEBUG_VALIDATION
-                        Debug.LogError("Managed Object Inspector found a possible Managed Object that the crawler missed!");
+                                Debug.LogError("Managed Object Inspector found a possible Managed Object that the crawler missed!");
 #endif
+                            }
+                            else
+                            {
+                                // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
+                                if (HidePointers && string.IsNullOrEmpty(value))
+                                    value = DetailFormatter.FormatPointer(pointer);
+
+                                var bytes = "";
+                                var maxBytesAvailable = (ulong)data.Bytes.Count - data.Offset;
+                                for (var b = 0u; b < maxBytesAvailable && b < 20; b++)
+                                {
+                                    bytes += data.Bytes[(long)data.Offset + b].ToString("X") + " ";
+                                }
+
+                                // lets get some debug info
+                                if (memorySectionType == CachedSnapshot.MemorySectionType.GarbageCollector)
+                                    // some unsafe pointer outside of a fixed? Sounds Dangerous
+                                    fieldItem.Value = $"{fieldTypeName} -> Managed Heap @{value} Data: {bytes}";
+                                else
+                                    // likely pointing at some Mono Object, e.g. vtable or the like
+                                    fieldItem.Value = $"{fieldTypeName} -> Virtual Machine @{value} Data: {bytes}";
+                            }
+                        }
                     }
                     else
                     {
-                        // when pointers are hidden, value is likely empty. For these details here though, we always provide the pointer info as string
-                        if (HidePointers && string.IsNullOrEmpty(value))
-                            value = DetailFormatter.FormatPointer(pointer);
-
-                        var bytes = "";
-                        var maxBytesAvailable = (ulong)data.Bytes.Count - data.Offset;
-                        for (var b = 0u; b < maxBytesAvailable && b < 20; b++)
-                        {
-                            bytes += data.Bytes[(long)data.Offset + b].ToString("X") + " ";
-                        }
-
-                        // lets get some debug info
-                        if (memorySectionType == CachedSnapshot.MemorySectionType.GarbageCollector)
-                            // some unsafe pointer outside of a fixed? Sounds Dangerous
-                            fieldItem.Value = $"{fieldTypeName} -> Managed Heap @{value} Data: {bytes}";
-                        else
-                            // likely pointing at some Mono Object, e.g. vtable or the like
-                            fieldItem.Value = $"{fieldTypeName} -> Virtual Machine @{value} Data: {bytes}";
+                        onDemandLoadedTemporaryHeapDataCopyToBeDisposedOfWhenDone.Dispose();
+                        FindNativeAllocationOrRegion(cs, pointer, fieldItem, value, fieldTypeName);
                     }
-                }
-                else
-                {
-                    FindNativeAllocationOrRegion(cs, pointer, fieldItem, value, fieldTypeName);
                 }
             }
         }
@@ -555,10 +592,28 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case ObjectDataType.Value:
                     return (ulong)cs.TypeDescriptions.Size[fieldByIndex.managedTypeIndex];
                 case ObjectDataType.NativeObject:
-                    return cs.NativeObjects.Size[fieldByIndex.nativeObjectIndex];
+                    return GetNativeObjectTrackedSize(cs, fieldByIndex.nativeObjectIndex);
                 default:
                     return 0;
             }
+        }
+
+        /// <summary>
+        /// Returns the native + graphics size for a native object from <see cref="ProcessedNativeRoots"/>,
+        /// which only includes allocations validated against system memory regions.
+        /// Falls back to <see cref="NativeObjectEntriesCache.Size"/> if the root reference cannot be resolved.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        static ulong GetNativeObjectTrackedSize(CachedSnapshot cs, long nativeObjectIndex)
+        {
+            var rootReferenceId = cs.NativeObjects.RootReferenceId[nativeObjectIndex];
+            if (rootReferenceId >= NativeRootReferenceEntriesCache.FirstValidRootId)
+            {
+                var mappedIndex = cs.ProcessedNativeRoots.RootIdToMappedIndex(rootReferenceId);
+                ref readonly var sizes = ref cs.ProcessedNativeRoots.Data[mappedIndex].AccumulatedRootSizes;
+                return sizes.NativeSize.Committed + sizes.GfxSize.Committed;
+            }
+            return cs.NativeObjects.Size[nativeObjectIndex];
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
@@ -649,15 +704,24 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // The field index alone doesn't make this field the m_CachedPtr field, the parent also needs inherit from UnityEngine.Object.
                 && cs.TypeDescriptions.UnifiedTypeInfoManaged[field.Parent.Obj.managedTypeIndex].IsUnityObjectType)
             {
-                if (field.managedObjectData.TryReadPointer(out var nativeObjectPointer) == BytesAndOffset.PtrReadError.Success)
+                // Refresh heap bytes if needed before reading pointer
+                // Pass no address as the address should only be deduced from the section index and offset in managedObjectData
+                // See ObjectData.GetReferencedPointer for further details of why not to use the hostManagedObjectPtr.
+                if (cs.TryGetHeapBytesWithFastPath(field.managedObjectData, 0, out var refreshedBytes, out var onDemandRefScope))
                 {
-                    if (nativeObjectPointer == 0)
+                    using (onDemandRefScope)
                     {
-                        fieldEntry = new ManagedObjectInspectorItem(m_InspectorID, fieldEntry.DisplayName, fieldEntry.ManagedTypeIndex, fieldEntry.TypeName, $"{fieldEntry.Value} {TextContent.LeakedManagedShellHint}", fieldEntry.IsStatic, GetIdentifyingPointer(field, cs), fieldEntry.Size);
-                    }
-                    else
-                    {
-                        EnqueueNativeObject(fieldEntry, nativeObjectPointer, cs);
+                        if (refreshedBytes.TryReadPointer(out var nativeObjectPointer) == BytesAndOffset.PtrReadError.Success)
+                        {
+                            if (nativeObjectPointer == 0)
+                            {
+                                fieldEntry = new ManagedObjectInspectorItem(m_InspectorID, fieldEntry.DisplayName, fieldEntry.ManagedTypeIndex, fieldEntry.TypeName, $"{fieldEntry.Value} {TextContent.LeakedManagedShellHint}", fieldEntry.IsStatic, GetIdentifyingPointer(field, cs), fieldEntry.Size);
+                            }
+                            else
+                            {
+                                EnqueueNativeObject(fieldEntry, nativeObjectPointer, cs);
+                            }
+                        }
                     }
                 }
             }
@@ -762,7 +826,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             var identifyingPointer = nativeObjectData.GetObjectPointer(cs);
             var nativeObjectItem = new ManagedObjectInspectorItem(m_InspectorID, "Native Reference", -1, nativeObjectData.GenerateTypeName(cs),
-                cs.NativeObjects.ObjectName[nativeObjectData.nativeObjectIndex], false, identifyingPointer, cs.NativeObjects.Size[nativeObjectData.nativeObjectIndex]);
+                cs.NativeObjects.ObjectName[nativeObjectData.nativeObjectIndex], false, identifyingPointer, GetNativeObjectTrackedSize(cs, nativeObjectData.nativeObjectIndex));
             nativeObjectItem.depth = root.depth + 1;
             root.AddChild(nativeObjectItem);
 
@@ -823,7 +887,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return "failed to read data";
             if (od.managedObjectData.Bytes.Count == 0
                 && m_CachedSnapshot.FieldDescriptions.IsStatic[od.fieldIndex] == 1
-                && m_CachedSnapshot.TypeDescriptions.HasStaticFieldData(od.managedTypeIndex))
+                && (m_CachedSnapshot.TypeDescriptions.HasStaticFieldData(od.managedTypeIndex)
+                    || m_CachedSnapshot.TypeDescriptions.HasStaticFieldSlotData(m_CachedSnapshot, od.managedTypeIndex)))
             {
                 return "uninitialized static field data";
             }
@@ -841,7 +906,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return m_Formatter.FormatArray(od, truncateTypeNames);
                 case ObjectDataType.ReferenceObject:
                 {
-                    ulong ptr = od.GetReferencePointer();
+                    ulong ptr = od.GetReferencePointer(m_CachedSnapshot);
                     if (ptr == 0)
                     {
                         return "null";
@@ -858,7 +923,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 case ObjectDataType.ReferenceArray:
                 {
-                    ulong ptr = od.GetReferencePointer();
+                    ulong ptr = od.GetReferencePointer(m_CachedSnapshot);
                     if (ptr == 0)
                     {
                         return "null";

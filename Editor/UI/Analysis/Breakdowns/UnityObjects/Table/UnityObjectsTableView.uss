@@ -15,6 +15,13 @@
 {
 }
 
+/* Page-flipping control for the flattened view; hidden until the controller shows it (flat mode, >1 page).
+   The generic .memory-profiler-pager* visuals live in the shared TableViewBase.uss. */
+.unity-objects-table-view__pager
+{
+    display: none;
+}
+
 /* Unity Objects specific: Toolbar styles */
 #unity-objects-table-view__toolbar
 {

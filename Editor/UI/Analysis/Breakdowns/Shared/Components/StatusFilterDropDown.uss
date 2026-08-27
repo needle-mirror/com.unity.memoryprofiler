@@ -1,0 +1,112 @@
+.memory-profiler__light:root
+{
+    --separator-background-color: #A7A7A7;
+}
+
+.memory-profiler__dark:root
+{
+    --separator-background-color: #282828;
+}
+
+/* Styles for the status filter dropdown window and its group nodes. */
+
+/* ── Window root ──────────────────────────────────────────────────────────── */
+
+.status-filter-dropdown
+{
+    padding: 4px 0;
+}
+
+/* ── "Select all" flat toggle ─────────────────────────────────────────────── */
+
+.status-filter-dropdown__select-all
+{
+    padding: 2px 8px;
+    flex-shrink: 0;
+    flex-direction: row-reverse;
+}
+
+.status-filter-dropdown__select-all > unity-toggle__label
+{
+	flex-grow: 1;
+	flex-shrink: 0;
+	min-width: auto;
+	margin-left: 2px;
+}
+
+.status-filter-dropdown__select-all > unity-toggle__label
+{
+	flex-grow: 0;
+	flex-shrink: 0;
+}
+
+/* ── Separator between "Select all" and the group list ───────────────────── */
+
+.status-filter-dropdown__separator
+{
+    height: 1px;
+    margin: 2px 5px;
+    background-color: var(--separator-background-color);
+    flex-shrink: 0;
+}
+
+/* ── Scroll area ──────────────────────────────────────────────────────────── */
+
+.status-filter-dropdown__scroll
+{
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+/* ── Group node ───────────────────────────────────────────────────────────── */
+
+.status-filter-dropdown__group-node
+{
+    flex-direction: column;
+    padding: 2px 8px;
+}
+
+.status-filter-dropdown__group-node__row
+{
+    flex-direction: row;
+    flex-grow: 1;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.status-filter-dropdown__group-node__foldout
+{
+    flex-grow: 0;
+    flex-shrink: 0;
+    /* Show only the arrow — suppress the built-in label and checkmark area. */
+    width: 16px;
+    min-width: 16px;
+    max-width: 16px;
+}
+
+/* Hide the foldout's own label text (we use the toggle's label instead). */
+.status-filter-dropdown__group-node__foldout > .unity-toggle__input
+{
+    display: none;
+}
+
+.status-filter-dropdown__group-node__toggle
+{
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow: hidden;
+}
+
+.status-filter-dropdown__group-node__sub-items
+{
+    margin-left: 24px;
+}
+
+/* Wrapper row around a sub-item toggle. Stays enabled when its toggle is disabled
+   so the "not available in this table" tooltip is still shown on hover. */
+.status-filter-dropdown__sub-item-row
+{
+    flex-direction: row;
+    flex-grow: 1;
+    flex-shrink: 0;
+}

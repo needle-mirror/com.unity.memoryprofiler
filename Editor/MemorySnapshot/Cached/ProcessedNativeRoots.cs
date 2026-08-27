@@ -35,6 +35,14 @@ namespace Unity.MemoryProfiler.Editor
             GfxSize = l.GfxSize + r.GfxSize,
         };
 
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static NativeRootSize operator -(in NativeRootSize l, in NativeRootSize r) => new NativeRootSize
+        {
+            NativeSize = l.NativeSize - r.NativeSize,
+            ManagedSize = l.ManagedSize - r.ManagedSize,
+            GfxSize = l.GfxSize - r.GfxSize,
+        };
+
         public NativeRootSize Divide(ulong divisor, out NativeRootSize remainder)
         {
             remainder = default;
@@ -44,6 +52,11 @@ namespace Unity.MemoryProfiler.Editor
                 ManagedSize = ManagedSize.Divide(divisor, out remainder.ManagedSize),
                 GfxSize = GfxSize.Divide(divisor, out remainder.GfxSize),
             };
+        }
+
+        public override string ToString()
+        {
+            return $"ManagedSize: {ManagedSize.ToString()}, NativeSize: {NativeSize.ToString()}, GfxSize: {GfxSize.ToString()}";
         }
     }
 
@@ -129,6 +142,16 @@ namespace Unity.MemoryProfiler.Editor
         public NativeRootSize UnrootedMemory => m_UnknownRootMemory;
         NativeRootSize m_UnknownRootMemory;
 
+        /// <summary>
+        /// Total graphics memory whose owning native root/object is known (the sum accumulated into every
+        /// root's <see cref="ProcessedNativeRoot.AccumulatedRootSizes"/> GfxSize). This is the graphics memory
+        /// we can attribute, as opposed to <see cref="UnrootedMemory"/>'s GfxSize. Views use it to avoid
+        /// double-counting attributed graphics memory against the OS memory map's Device/untracked regions,
+        /// independent of any display filter — known-owner graphics memory must never be presented as Untracked.
+        /// </summary>
+        public MemorySize AccountedGraphicsResourceMemory => m_AccountedGraphicsResourceMemory;
+        MemorySize m_AccountedGraphicsResourceMemory;
+
         public MemorySize TotalMemoryInSnapshot => m_TotalMemoryInSnapshot;
         MemorySize m_TotalMemoryInSnapshot;
 
@@ -149,9 +172,13 @@ namespace Unity.MemoryProfiler.Editor
         LongToLongHashMap m_NativeRootIdToNativeRootIndex;
         LongToIntHashMap m_NativeRootIdToNativeObjectIndex;
 
+        public long VMAllocationCount { get; private set; }
+
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public long RootIdToMappedIndex(long rootId)
         {
+            if (!m_NativeRootIdToNativeObjectIndex.IsCreated || !m_NativeRootIdToNativeRootIndex.IsCreated)
+                return -1;
             return m_NoRootInfo ? m_NativeRootIdToNativeObjectIndex[rootId] : m_NativeRootIdToNativeRootIndex[rootId];
         }
 
@@ -277,6 +304,11 @@ namespace Unity.MemoryProfiler.Editor
                     throw new InvalidOperationException($"Could not resolve root reference id: {rootReferenceId}");
                 }
 
+                if (rootReferenceId == snapshot.NativeRootReferences.VMRootReferenceIndex.Index)
+                {
+                    ++VMAllocationCount;
+                }
+
                 ref var data = ref Data[rootIndex];
                 data.AccumulatedRootSizes.NativeSize += size;
                 data.NativeObjectOrRootIndex = rootSource;
@@ -345,6 +377,7 @@ namespace Unity.MemoryProfiler.Editor
                 ref var data = ref Data[rootIndex];
 
                 data.AccumulatedRootSizes.GfxSize += memorySize;
+                m_AccountedGraphicsResourceMemory += memorySize;
                 if (!data.AssociatedGraphicsResourceIndex.Valid)
                     data.AssociatedGraphicsResourceIndex = source;
                 else
@@ -397,6 +430,7 @@ namespace Unity.MemoryProfiler.Editor
                 var gfxSize = new MemorySize(totalSize - rootAccumulatedSize, 0);
 
                 data.AccumulatedRootSizes.GfxSize += gfxSize;
+                m_AccountedGraphicsResourceMemory += gfxSize;
             }
 
         }

@@ -213,7 +213,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 if (!snapshot.HasSceneRootsAndAssetbundles || SceneCount == 0)
                 {
-                    NativeObjectIndexToPrefabRootIndex = new LongToLongHashMap(0, Allocator.Persistent);
+                    if (!NativeObjectIndexToPrefabRootIndex.IsCreated)
+                        NativeObjectIndexToPrefabRootIndex = new LongToLongHashMap(0, Allocator.Persistent);
                     return;
                 }
 

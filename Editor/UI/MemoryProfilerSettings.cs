@@ -13,7 +13,7 @@ namespace Unity.MemoryProfiler.Editor
 {
     internal static class MemoryProfilerSettings
     {
-        // Opt-Out Dialog keys:
+        // Opt-out Dialog keys:
         public const string HeapWarningWindowOptOutKey = "Unity.MemoryProfiler.HeapWarningPopup";
 
         const string k_LastImportPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastImportPath";
@@ -26,7 +26,6 @@ namespace Unity.MemoryProfiler.Editor
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
         const string k_ShowReservedMemoryBreakdown = "Unity.MemoryProfiler.Editor.ShowReservedMemoryBreakdown";
         const string k_ShowMemoryMapView = "Unity.MemoryProfiler.Editor.ShowMemoryMapView";
-        const string k_EnableRootsAndImpact = "Unity.MemoryProfiler.Editor.EnableRootsAndImpact";
         const string k_ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocationsKey = "Unity.MemoryProfiler.Editor.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations";
         const string k_SnapshotCaptureFlagsKey = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureFlags.v2"; // upgraded to v2 because the default changed
         const string k_SnapshotCaptureCaptureWithScreenshot = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureWithScreenshot";
@@ -312,20 +311,6 @@ namespace Unity.MemoryProfiler.Editor
                 if (value == ShowMemoryMapView)
                     return;
                 EditorPrefs.SetBool(k_ShowMemoryMapView, value);
-            }
-        }
-
-        public static bool EnableRootsAndImpact
-        {
-            get
-            {
-                return EditorPrefs.GetBool(k_EnableRootsAndImpact, FeatureFlags.GenerateDataForRootsAndImpact_2025_11);
-            }
-            set
-            {
-                if (value == EnableRootsAndImpact)
-                    return;
-                EditorPrefs.SetBool(k_EnableRootsAndImpact, value);
             }
         }
 

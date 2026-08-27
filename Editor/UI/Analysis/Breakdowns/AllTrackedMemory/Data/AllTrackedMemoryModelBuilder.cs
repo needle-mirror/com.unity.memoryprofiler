@@ -49,18 +49,24 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_ItemId = (int)IAnalysisViewSelectable.Category.FirstDynamicId;
         }
+
         Dictionary<int, IndexableTreeViewListAndIndex<AllTrackedMemoryModel.ItemData>> m_IdToIndex;
 
-        public AllTrackedMemoryModel Build(AllTrackedMemoryModel baseModel, IEnumerable<int> treeNodeIds = null)
+        public void ClearIdToIndexCache()
+        {
+            TreeModelHelpers.ClearIdToIndexCache(ref m_IdToIndex);
+        }
+
+        public AllTrackedMemoryModel Build(AllTrackedMemoryModel baseModel, IEnumerable<int> treeNodeIdFilter = null)
         {
             var tree = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
 
             var totalMemory = new MemorySize();
 
-            if (treeNodeIds != null)
+            if (treeNodeIdFilter != null)
             {
                 var stack = new Stack<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
-                foreach (var id in treeNodeIds)
+                foreach (var id in treeNodeIdFilter)
                 {
                     // the only place where the base model has to be assumed as non-null.
                     var item = baseModel.RootNodes.GetItemById(ref m_IdToIndex, id);
@@ -99,7 +105,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <returns></returns>
         protected AllTrackedMemoryModel CreateDerivedModel(List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> rootNodes, MemorySize totalMemory, AllTrackedMemoryModel baseModel)
         {
-            return new AllTrackedMemoryModel(rootNodes, totalMemory, baseModel?.SelectionProcessor);
+            return new AllTrackedMemoryModel(rootNodes, totalMemory);
         }
 
         public AllTrackedMemoryModel Build(CachedSnapshot snapshot, in BuildArgs args)
@@ -111,14 +117,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var tree = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
             var totalMemory = new MemorySize();
-            if (!args.ExcludeAll)
-            {
-                tree = BuildAllMemoryBreakdown(snapshot, args, out totalMemory);
-                if (args.PathFilter != null)
-                    tree = BuildItemsAtPathInTreeExclusively(args.PathFilter, tree);
-            }
 
-            var model = new AllTrackedMemoryModel(tree, totalMemory, args.SelectionProcessor);
+            tree = BuildAllMemoryBreakdown(snapshot, args, out totalMemory);
+            if (args.PathFilter != null)
+                tree = BuildItemsAtPathInTreeExclusively(args.PathFilter, tree);
+
+            var model = new AllTrackedMemoryModel(tree, totalMemory);
             return model;
         }
 
@@ -215,13 +219,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (BuildManagedTree(snapshot, args, context.ManagedTypeName2ObjectsTreeMap, context.ManagedTypeName2NativeName2ObjectsTreeMap, context.ManagedMemoryVM, context.ManagedMemoryReserved, out var managedMemoryTree))
                     rootItems.Add(managedMemoryTree);
 
-                if (BuildTreeFromGroupByNameMap(k_ExecutablesGroupName, (int)IAnalysisViewSelectable.Category.ExecutablesAndMapped, context.ExecutablesName2SizeMap, out var executablesTree))
+                if (BuildTreeFromGroupByNameMap(k_ExecutablesGroupName, (int)IAnalysisViewSelectable.Category.ExecutablesAndMapped, context.ExecutablesName2SizeMap, out var executablesTree, args, ObjectStatus.ExecutablesAndMapped))
                     rootItems.Add(executablesTree);
 
                 // When we include Gfx resources we alter Untracked group to match the total size and need to make it clear in the table
                 var untrackedName = args.BreakdownGfxResources ? k_UntrackedEstimatedGroupName : UntrackedGroupName;
-                var selectionCategory = args.BreakdownGfxResources ? (int)IAnalysisViewSelectable.Category.UnknownEstimated : (int)IAnalysisViewSelectable.Category.Unknown;
-                if (BuildTreeFromGroupByNameMap(untrackedName, selectionCategory, context.UntrackedRegionsName2SizeMap, out var unaccountedRegionsTree))
+                var selectionCategory = args.BreakdownGfxResources ? (int)IAnalysisViewSelectable.Category.UntrackedEstimated : (int)IAnalysisViewSelectable.Category.Untracked;
+                if (BuildTreeFromGroupByNameMap(untrackedName, selectionCategory, context.UntrackedRegionsName2SizeMap, out var unaccountedRegionsTree, args, ObjectStatus.Untracked))
                     rootItems.Add(unaccountedRegionsTree);
 
                 if (BuildGraphicsMemoryTree(snapshot, args, context.GfxObjectIndex2SizeMap, context.GfxReservedRegionIndex2SizeMap, out var graphicsTree))
@@ -300,13 +304,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                         ProcessNativeAllocationForPotentialSplittingNonObjectRootedAllocationsByAllocation(snapshot, index, source, memorySize, filterArgs, context);
                         break;
                     case SourceIndex.SourceId.NativeMemoryRegion:
-                        ProcessNativeRegion(snapshot, source, memorySize, filterArgs, context.NativeRegionName2SizeMap, context.GfxReservedRegionIndex2SizeMap);
+                        ProcessNativeRegion(snapshot, source, memorySize, context.NativeRegionName2SizeMap, context.GfxReservedRegionIndex2SizeMap);
                         break;
                     case SourceIndex.SourceId.ManagedObject:
                         ProcessPureManagedObject(snapshot, source, memorySize, filterArgs, context.ManagedTypeName2ObjectsTreeMap, disambiguateUnityObjects ? context.ManagedTypeName2NativeName2ObjectsTreeMap : null);
                         break;
                     case SourceIndex.SourceId.ManagedHeapSection:
-                        ProcessManagedHeap(snapshot, source, memorySize, filterArgs, context);
+                        ProcessManagedHeap(snapshot, source, memorySize, context);
                         break;
 
                     case SourceIndex.SourceId.SystemMemoryRegion:
@@ -340,7 +344,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                         break;
                 }
             }
-            // handle Unkown Native allocation root
+            // handle Unknown Native allocation root
             {
                 var unknownAllocationRootIndex = k_FakeInvalidlyRootedAllocationIndex;
                 if (processedNativeRoots.UnrootedMemory.NativeSize.Committed > 0 &&
@@ -425,7 +429,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 // Add untracked graphics resources to untracked map
-                if (context.UntrackedGraphicsResources.Committed > 0 && SearchFilter(args, UntrackedGroupName, k_UntrackedGraphicsName))
+                if (context.UntrackedGraphicsResources.Committed > 0 && SearchFilter(args, UntrackedGroupName, k_UntrackedGraphicsName, ObjectStatus.Untracked))
                     AddItemSizeToMap(context.UntrackedRegionsName2SizeMap, k_UntrackedGraphicsName, context.UntrackedGraphicsResources);
 
                 // Reduce untracked
@@ -446,13 +450,19 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
-        bool SearchFilter(in BuildArgs args, in string scope, in string name = null)
+        bool SearchFilter(in BuildArgs args, in string scope, in string name = null, ObjectStatus objectStatus = ObjectStatus.None)
         {
-            using var mainGroupFilter = args.SearchFilter?.OpenScope(scope);
-            if (name == null)
-                return mainGroupFilter?.ScopePasses ?? true;
+            if (args.SearchFilter == null)
+                return true;
 
-            return mainGroupFilter?.Passes(name) ?? true;
+            using var mainGroupFilter = args.SearchFilter.OpenScope(scope, objectStatus);
+            // Gate by this item's OWN status plus a text match on its name/scope. Pass the real objectStatus
+            // (not default/None), since that is what makes Passes apply the exclusive status mask to this item.
+            // Deliberately do NOT fall back to ScopePasses here: an exclusive status mask must hard-exclude an
+            // item whose status isn't selected even when an ancestor scope matched — only inclusive filters
+            // propagate a parent match down to children (which is why Roots & Impact converts an exclusive mask
+            // to inclusive unless flattened).
+            return mainGroupFilter.Passes(name ?? scope, objectStatus);
         }
 
         // Only handles splitting non-UnityObject rooted allocations by allocation where requested.
@@ -583,7 +593,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             CachedSnapshot snapshot,
             SourceIndex source,
             MemorySize size,
-            in BuildArgs args,
             Dictionary<SourceIndex, MemorySize> regionsTotalMap,
             Dictionary<SourceIndex, MemorySize> gpuSizesMap)
         {
@@ -677,22 +686,25 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var name = nativeSource.GetName(snapshot);
                 if (args.DisambiguateUnityObjects && nativeObjectIndex > 0)
                 {
-                    id = NativeObjectTools.ProduceNativeObjectId(nativeObjectIndex, snapshot);
+                    id = NativeObjectTools.ProduceNativeObjectNameAndId(nativeObjectIndex, snapshot);
                 }
 
                 var groupSource = new SourceIndex(SourceIndex.SourceId.ManagedType, managedTypeIndex);
 
+                // Grab precomputed status before search filter so it can be searched
+                var managedStatus = snapshot.ObjectStatusComputation.GetStatus(nativeSource);
+
                 if (args.SearchFilter != null)
                 {
-                    using var outerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedGroupName);
-                    using var innerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
+                    using var outerGroupScope = args.SearchFilter.OpenScope(k_ManagedGroupName);
+                    using var innerGroupScope = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
                     // optimization, don't generate managed type name if the scope already passes
-                    if (!innerGroupNameFilter.ScopePasses)
+                    if (!innerGroupScope.ScopePasses)
                     {
-                        using var managedTypeNameFilter = args.SearchFilter.OpenScope(groupSource.GetName(snapshot));
-                        using var managedNameFilter = args.SearchFilter.OpenScope(name);
-                        // if id == null, this just checks if a parent scope passed
-                        if (!managedNameFilter.Passes(id))
+                        using var typeScope = args.SearchFilter.OpenScope(groupSource.GetName(snapshot));
+                        using var nameScope = args.SearchFilter.OpenScope(name);
+                        // if id == null, Passes(null, ...) falls back to ScopePasses (checks if a parent scope matched)
+                        if (!nameScope.ScopePasses && !nameScope.Passes(id, managedStatus))
                             return;
                     }
                 }
@@ -703,7 +715,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                     new AllTrackedMemoryModel.ItemData(
                         id ?? name,
                         size.ManagedSize,
-                        nativeSource)
+                        nativeSource,
+                        status: managedStatus)
                 );
 
                 //  add it to the map
@@ -742,15 +755,18 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var groupSource = new SourceIndex(SourceIndex.SourceId.ManagedType, managedTypeIndex);
 
+            // Grab precomputed status before search filter so it can be searched
+            var pureObjectStatus = snapshot.ObjectStatusComputation.GetStatus(source);
+
             if (args.SearchFilter != null)
             {
-                using var outerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedGroupName);
-                using var innerGroupNameFilter = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
+                using var outerGroupScope = args.SearchFilter.OpenScope(k_ManagedGroupName);
+                using var innerGroupScope = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
                 // optimization, don't generate managed type name if the scope already passes
-                if (!innerGroupNameFilter.ScopePasses)
+                if (!innerGroupScope.ScopePasses)
                 {
-                    using var managedTypeNameFilter = args.SearchFilter.OpenScope(groupSource.GetName(snapshot));
-                    if (!managedTypeNameFilter.Passes(name))
+                    using var typeScope = args.SearchFilter.OpenScope(groupSource.GetName(snapshot));
+                    if (!typeScope.Passes(name, pureObjectStatus))
                         return;
                 }
             }
@@ -761,7 +777,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 new AllTrackedMemoryModel.ItemData(
                     name,
                     size,
-                    source)
+                    source,
+                    status: pureObjectStatus)
             );
 
             managedTypeObjectsMap.GetAndAddToListOrCreateList(groupSource, treeItem);
@@ -771,7 +788,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             CachedSnapshot snapshot,
             SourceIndex source,
             MemorySize size,
-            in BuildArgs args,
             BuildContext context)
         {
             var managedHeaps = snapshot.ManagedHeapSections;
@@ -804,14 +820,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case EntriesMemoryMapCache.PointType.Mapped:
                 {
-                    if (SearchFilter(args, k_ExecutablesGroupName, name))
+                    if (SearchFilter(args, k_ExecutablesGroupName, name, ObjectStatus.ExecutablesAndMapped))
                         AddItemSizeToMap(context.ExecutablesName2SizeMap, name, size);
                     break;
                 }
                 case EntriesMemoryMapCache.PointType.Shared:
                 case EntriesMemoryMapCache.PointType.Untracked:
                 {
-                    if (SearchFilter(args, UntrackedGroupName, name))
+                    if (SearchFilter(args, UntrackedGroupName, name, ObjectStatus.Untracked))
                         AddItemSizeToMap(context.UntrackedRegionsName2SizeMap, name, size);
                     break;
                 }
@@ -820,7 +836,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // Keep graphics in untracked if we don't detail graphics resources
                     if (!args.BreakdownGfxResources)
                     {
-                        if (SearchFilter(args, UntrackedGroupName, name))
+                        if (SearchFilter(args, UntrackedGroupName, name, ObjectStatus.Untracked))
                             AddItemSizeToMap(context.UntrackedRegionsName2SizeMap, name, size);
                     }
                     else
@@ -867,6 +883,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             return total;
         }
 
+        static ObjectStatusWarningInfo AggregateWarningInfo(List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> items)
+        {
+            var result = default(ObjectStatusWarningInfo);
+            for (int i = 0; i < items.Count; i++)
+                result |= items[i].data.WarningInfo;
+            return result;
+        }
+
         bool BuildNativeTree(
             CachedSnapshot snapshot,
             in BuildArgs args,
@@ -878,28 +902,28 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
 
-            using var mainGroupNameFilter = args.SearchFilter?.OpenScope(k_NativeGroupName);
+            using var mainGroupScope = args.SearchFilter?.OpenScope(k_NativeGroupName);
             // Build Native Objects tree
             {
-                using var subGroupNameFilter = args.SearchFilter?.OpenScope(k_NativeObjectsGroupName);
+                using var subGroupScope = args.SearchFilter?.OpenScope(k_NativeObjectsGroupName);
                 SourceIndex NativeObjectIndex2GroupKey(SourceIndex x) => new SourceIndex(SourceIndex.SourceId.NativeType, snapshot.NativeObjects.NativeTypeArrayIndex[x.Index]);
 
                 string NativeObjectIndex2Name(SourceIndex x) => x.GetName(snapshot);
 
                 string GroupKey2Name(SourceIndex x) => x.GetName(snapshot);
-                SourceIndex GroupKey2Index(SourceIndex x) => x;
+                static SourceIndex GroupKey2Index(SourceIndex x) => x;
 
                 if (args.DisambiguateUnityObjects)
                 {
-                    string NativeObjectIndex2InstanceId(SourceIndex x) => NativeObjectTools.ProduceNativeObjectId(x.Index, snapshot);
+                    string NativeObjectIndex2InstanceId(SourceIndex x) => NativeObjectTools.ProduceNativeObjectNameAndId(x.Index, snapshot);
 
-                    GroupItemsNested(nativeObjectIndex2TotalMap, NativeObjectIndex2InstanceId, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, args.SearchFilter);
+                    GroupItemsNested(snapshot, nativeObjectIndex2TotalMap, NativeObjectIndex2InstanceId, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, args.SearchFilter);
                     if (BuildTreeFromGroupByIdMap(k_NativeObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeObjectsGroupName2TreeMap, out var unityObjectsRoot))
                         treeItems.Add(unityObjectsRoot);
                 }
                 else
                 {
-                    GroupItems(nativeObjectIndex2TotalMap, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, args.SearchFilter);
+                    GroupItems(snapshot, nativeObjectIndex2TotalMap, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, in args);
                     if (BuildTreeFromGroupByIdMap(k_NativeObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeObjectsGroupName2TreeMap, out var unityObjectsRoot))
                         treeItems.Add(unityObjectsRoot);
                 }
@@ -907,10 +931,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Build Unity Subsystems tree
             {
-                using var subGroupNameFilter = args.SearchFilter?.OpenScope(k_NativeSubsystemsGroupName);
+                using var subGroupScope = args.SearchFilter?.OpenScope(k_NativeSubsystemsGroupName);
                 string NativeRootReference2Name(SourceIndex x) => x.Id != SourceIndex.SourceId.NativeRootReference ? CachedSnapshot.UnrootedItemName : snapshot.NativeRootReferences.ObjectName[x.Index];
                 string NativeRootReference2GroupKey(SourceIndex x) => x.Id != SourceIndex.SourceId.NativeRootReference ? CachedSnapshot.UnrootedItemName : snapshot.NativeRootReferences.AreaName[x.Index];
-                string GroupKey2Name(string x) => x;
+                static string GroupKey2Name(string x) => x;
                 string Allocation2Name(SourceIndex source) =>
                     source.Id switch
                     {
@@ -918,30 +942,35 @@ namespace Unity.MemoryProfiler.Editor.UI
                         _ => source.GetName(snapshot)
                     };
 
-                GroupItems(nativeRootReference2TotalMap, NativeRootReference2Name, NativeRootReference2GroupKey, GroupKey2Name, false, out var nativeRootReferenceGroupName2TreeMap, args.SearchFilter, nativeRootReference2UnsafeAllocations2SizeMap, Allocation2Name);
+                GroupItems(snapshot, nativeRootReference2TotalMap, NativeRootReference2Name, NativeRootReference2GroupKey, GroupKey2Name, false, out var nativeRootReferenceGroupName2TreeMap, in args, nativeRootReference2UnsafeAllocations2SizeMap, Allocation2Name);
 
                 SourceIndex GroupKey2Index(string x) => new SourceIndex();
-                if (BuildTreeFromGroupByIdMap(k_NativeSubsystemsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeRootReferenceGroupName2TreeMap, out var unitySubsystemsRoot))
+                // The "Unrooted" subsystem group gets its own Selection Details description, shared with the Roots &
+                // Impact "Unrooted Native Subsystem Allocations" bucket; the other subsystem groups use dynamic ids.
+                static int SubGroupCategory(string groupName) => groupName == CachedSnapshot.UnrootedItemName
+                    ? (int)IAnalysisViewSelectable.Category.UnrootedNativeSubsystemAllocations
+                    : -1;
+                if (BuildTreeFromGroupByIdMap(k_NativeSubsystemsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeRootReferenceGroupName2TreeMap, out var unitySubsystemsRoot, subGroupNameToCategoryId: SubGroupCategory))
                     treeItems.Add(unitySubsystemsRoot);
             }
 
             // Build Native Memory Regions tree, which are "Reserved" memory
             {
-                using var subGroupNameFilter = args.SearchFilter?.OpenScope(k_ReservedItemName);
+                using var subGroupScope = args.SearchFilter?.OpenScope(k_ReservedItemName);
                 string NativeRootRegion2Name(SourceIndex x) => x.GetName(snapshot);
                 SourceIndex NativeRootRegion2GroupKey(SourceIndex x) => new SourceIndex(SourceIndex.SourceId.NativeMemoryRegion, snapshot.NativeMemoryRegions.ParentIndex[x.Index]);
 
                 string GroupIndex2Name(SourceIndex x) => x.GetName(snapshot);
-                GroupItems(nativeRegionIndex2TotalMap, NativeRootRegion2Name, NativeRootRegion2GroupKey, GroupIndex2Name, false, out var nativeRegionName2TreeMap, args.SearchFilter);
+                GroupItems(snapshot, nativeRegionIndex2TotalMap, NativeRootRegion2Name, NativeRootRegion2GroupKey, GroupIndex2Name, false, out var nativeRegionName2TreeMap, in args);
                 if (args.BreakdownNativeReserved)
                 {
-                    SourceIndex GroupKey2Index(SourceIndex x) => x;
+                    static SourceIndex GroupKey2Index(SourceIndex x) => x;
                     if (BuildTreeFromGroupByIdMap(k_ReservedItemName, (int)IAnalysisViewSelectable.Category.NativeReserved, false, GroupIndex2Name, GroupKey2Index, nativeRegionName2TreeMap, out var unityRegionsRoot))
                         treeItems.Add(unityRegionsRoot);
                 }
                 else
                 {
-                    if (BuildSingleFromGroupByIdMap(args, k_ReservedItemName, (int)IAnalysisViewSelectable.Category.NativeReserved, nativeRegionName2TreeMap, out var unityRegionsRoot))
+                    if (BuildSingleFromGroupByIdMap(args, k_ReservedItemName, (int)IAnalysisViewSelectable.Category.NativeReserved, nativeRegionName2TreeMap, out var unityRegionsRoot, ObjectStatus.Reserved))
                         treeItems.Add(unityRegionsRoot);
                 }
             }
@@ -956,7 +985,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     new AllTrackedMemoryModel.ItemData(
                         k_NativeGroupName,
                         totals,
-                        new SourceIndex()),
+                        new SourceIndex(),
+                        childCount: treeItems.Count)
+                    { WarningInfo = AggregateWarningInfo(treeItems) },
                     treeItems);
                 return true;
             }
@@ -978,7 +1009,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Build managed objects tree
             string GroupKey2Name(SourceIndex x) => x.GetName(snapshot);
-            SourceIndex GroupKey2Index(SourceIndex x) => x;
+            static SourceIndex GroupKey2Index(SourceIndex x) => x;
             if (args.DisambiguateUnityObjects)
             {
                 if (BuildTreeFromGroupByIdMap(k_ManagedObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, managedObjectTypes2NativeNames2ObjectsMap, out var managedObjectsRoot, managedObjectsMap))
@@ -988,27 +1019,29 @@ namespace Unity.MemoryProfiler.Editor.UI
                 treeItems.Add(managedObjectsRoot);
 
             // SearchFilter doesn't have to be applied to the managed objects, as their Tree is already fully build by the context builder and filtered right there
-            using var mainGroupNameFilter = args.SearchFilter?.OpenScope(k_ManagedGroupName);
-            // Add "VM"
-            if (SearchFilter(args, k_ManagedVMGroupName))
+            using var mainGroupScope = args.SearchFilter?.OpenScope(k_ManagedGroupName);
+            // Add the VirtualMachine memory usage.
+            if (PassesStatusFilter(args, k_ManagedVMGroupName, ObjectStatus.VirtualMachine))
             {
                 treeItems.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                m_ItemId++,
+                (int)IAnalysisViewSelectable.Category.VirtualMachineMemory,
                 new AllTrackedMemoryModel.ItemData(
                     k_ManagedVMGroupName,
                     managedMemoryVM,
-                    new SourceIndex())));
+                    new SourceIndex())
+                { WarningInfo = ObjectStatusWarningInfo.FromStatus(ObjectStatus.VirtualMachine) }));
             }
 
-            // Add "Reserved"
-            if (SearchFilter(args, k_ReservedItemName))
+            // Add "Reserved" — managed heap sections that don't contain live objects.
+            if (PassesStatusFilter(args, k_ReservedItemName, ObjectStatus.Reserved))
             {
                 treeItems.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     (int)IAnalysisViewSelectable.Category.ManagedReserved,
                     new AllTrackedMemoryModel.ItemData(
                         k_ReservedItemName,
                         managedMemoryReserved,
-                        new SourceIndex())));
+                        new SourceIndex())
+                    { WarningInfo = ObjectStatusWarningInfo.FromStatus(ObjectStatus.Reserved) }));
             }
 
             // Add root item
@@ -1021,7 +1054,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     new AllTrackedMemoryModel.ItemData(
                         k_ManagedGroupName,
                         totals,
-                        new SourceIndex()),
+                        new SourceIndex(),
+                        childCount: treeItems.Count)
+                    { WarningInfo = AggregateWarningInfo(treeItems) },
                     treeItems);
                 return true;
             }
@@ -1039,7 +1074,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
 
-            using var mainGroupNameFilter = args.SearchFilter?.OpenScope(GraphicsGroupName);
+            using var mainGroupScope = args.SearchFilter?.OpenScope(GraphicsGroupName);
 
             var nativeObjects = snapshot.NativeObjects;
             var nativeGfxResourceReferences = snapshot.NativeGfxResourceReferences;
@@ -1064,7 +1099,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             string ObjectIndex2Name(SourceIndex x) => x.GetName(snapshot);
             string GroupKey2Name(SourceIndex x) => x.GetName(snapshot);
-            SourceIndex GroupKey2Index(SourceIndex x) => x;
+            static SourceIndex GroupKey2Index(SourceIndex x) => x;
 
             if (gfxReserveRegionIndex2TotalMap.Count > 0)
             {
@@ -1075,17 +1110,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SourceIndex NativeRootRegion2GroupKey(SourceIndex x) => new SourceIndex(SourceIndex.SourceId.NativeMemoryRegion, snapshot.NativeMemoryRegions.ParentIndex[x.Index]);
 
                 string GroupIndex2Name(SourceIndex x) => x.GetName(snapshot);
-                GroupItems(gfxReserveRegionIndex2TotalMap, NativeRootRegion2Name, NativeRootRegion2GroupKey, GroupIndex2Name, false, out var nativeRegionName2TreeMap, args.SearchFilter);
+                GroupItems(snapshot, gfxReserveRegionIndex2TotalMap, NativeRootRegion2Name, NativeRootRegion2GroupKey, GroupIndex2Name, false, out var nativeRegionName2TreeMap, in args);
 
                 if (args.BreakdownNativeReserved)
                 {
-                    SourceIndex GroupKey2Index2(SourceIndex x) => x;
+                    static SourceIndex GroupKey2Index2(SourceIndex x) => x;
                     if (BuildTreeFromGroupByIdMap(k_ReservedItemName, (int)IAnalysisViewSelectable.Category.GraphicsReserved, false, GroupIndex2Name, GroupKey2Index2, nativeRegionName2TreeMap, out var unityRegionsRoot))
                         treeItems.Add(unityRegionsRoot);
                 }
                 else
                 {
-                    if (BuildSingleFromGroupByIdMap(args, k_ReservedItemName, (int)IAnalysisViewSelectable.Category.GraphicsReserved, nativeRegionName2TreeMap, out var unityRegionsRoot))
+                    if (BuildSingleFromGroupByIdMap(args, k_ReservedItemName, (int)IAnalysisViewSelectable.Category.GraphicsReserved, nativeRegionName2TreeMap, out var unityRegionsRoot, ObjectStatus.Reserved))
                         treeItems.Add(unityRegionsRoot);
                 }
             }
@@ -1100,17 +1135,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 string GraphicsResourceIndex2InstanceId(SourceIndex x)
                 {
                     if (x.Id == SourceIndex.SourceId.NativeObject)
-                        return NativeObjectTools.ProduceNativeObjectId(x.Index, snapshot);
+                        return NativeObjectTools.ProduceNativeObjectNameAndId(x.Index, snapshot);
                     // Instance ID 0 is invalid
                     return "ID: 0";
                 }
 
-                GroupItemsNested(objectIndex2TotalMap, GraphicsResourceIndex2InstanceId, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, unreliable, out var nestedObjectsGroupName2TreeMap, args.SearchFilter);
+                GroupItemsNested(snapshot, objectIndex2TotalMap, GraphicsResourceIndex2InstanceId, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, unreliable, out var nestedObjectsGroupName2TreeMap, args.SearchFilter);
                 return BuildTreeFromGroupByIdMap(GraphicsGroupName, (int)IAnalysisViewSelectable.Category.Graphics, unreliable, GroupKey2Name, GroupKey2Index, nestedObjectsGroupName2TreeMap, out tree, null, treeItems);
             }
             else
             {
-                GroupItems(objectIndex2TotalMap, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Name, unreliable, out var objectsGroupName2TreeMap, args.SearchFilter);
+                GroupItems(snapshot, objectIndex2TotalMap, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Name, unreliable, out var objectsGroupName2TreeMap, in args);
 
                 var selectionCategory = unreliable ? (int)IAnalysisViewSelectable.Category.GraphicsDisabled : (int)IAnalysisViewSelectable.Category.Graphics;
                 return BuildTreeFromGroupByIdMap(GraphicsGroupName, selectionCategory, unreliable, GroupKey2Name, GroupKey2Index, objectsGroupName2TreeMap, out tree, treeItems);
@@ -1121,7 +1156,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             MemorySize androidRuntimeSize,
             out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
         {
-            if (SearchFilter(args, k_AndroidRuntime) && (androidRuntimeSize.Committed > 0))
+            if (PassesStatusFilter(args, k_AndroidRuntime, ObjectStatus.Untracked) && (androidRuntimeSize.Committed > 0))
             {
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     (int)IAnalysisViewSelectable.Category.AndroidRuntime,
@@ -1134,13 +1169,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         void GroupItems<T>(
+            CachedSnapshot snapshot,
             Dictionary<SourceIndex, MemorySize> itemIndex2SizeMap,
             Func<SourceIndex, string> itemIndex2ItemName,
             Func<SourceIndex, T> itemIndex2GroupKey,
             Func<T, string> groupKey2GroupName,
             bool unreliable,
             out Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> group2itemsMap,
-            IScopedFilter<string> searchFilter,
+            in BuildArgs args,
             Dictionary<SourceIndex, MemorySizeTreeNode> itemsToSplitByAllocation = null,
             Func<SourceIndex, string> allocation2Name = null)
         {
@@ -1150,11 +1186,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var itemName = itemIndex2ItemName(item.Key);
                 var itemGroupKey = itemIndex2GroupKey(item.Key);
 
+                var itemStatus = snapshot.ObjectStatusComputation.GetStatus(item.Key);
                 // optimization, don't generate group names if the scope already passes
-                if (!(searchFilter?.CurrentScopePasses ?? true))
+                if (!(args.SearchFilter?.CurrentScopePasses ?? true))
                 {
-                    using var groupNameFilter = searchFilter?.OpenScope(groupKey2GroupName(itemGroupKey));
-                    if (!(groupNameFilter?.Passes(itemName) ?? true))
+                    using var groupScope = args.SearchFilter.OpenScope(groupKey2GroupName(itemGroupKey));
+                    if (!groupScope.ScopePasses && !groupScope.Passes(itemName, itemStatus))
                         continue;
                 }
                 List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> listOfSingleAllocations = null;
@@ -1176,14 +1213,21 @@ namespace Unity.MemoryProfiler.Editor.UI
                                 var childName = allocation2Name?.Invoke(childAllocation.Key) ?? $"Allocation {i++}";
                                 children.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                                     m_ItemId++,
-                                    new AllTrackedMemoryModel.ItemData(childName, childAllocation.Value.MemorySize, childAllocation.Key) { Unreliable = unreliable }
+                                    // Every leaf must carry its own status (e.g. Unrooted) so the status
+                                    // column shows it and an exclusive status filter can include/exclude it.
+                                    new AllTrackedMemoryModel.ItemData(childName, childAllocation.Value.MemorySize, childAllocation.Key)
+                                    { Unreliable = unreliable, WarningInfo = ObjectStatusWarningInfo.FromStatus(snapshot.ObjectStatusComputation.GetStatus(childAllocation.Key)) }
                                     ));
                             }
                         }
                         var name = allocation2Name?.Invoke(allocation.Key) ?? $"Allocation {i++}";
+                        // Carry this allocation's own status, combined with any child statuses, so the row
+                        // is never statusless (and so an exclusive status filter applies to it correctly).
+                        var allocationWarningInfo = ObjectStatusWarningInfo.FromStatus(snapshot.ObjectStatusComputation.GetStatus(allocation.Key))
+                            | (children != null ? AggregateWarningInfo(children) : default);
                         listOfSingleAllocations.Add(new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                             m_ItemId++,
-                            new AllTrackedMemoryModel.ItemData(name, allocation.Value.MemorySize, allocation.Key, childCount) { Unreliable = unreliable },
+                            new AllTrackedMemoryModel.ItemData(name, allocation.Value.MemorySize, allocation.Key, childCount) { Unreliable = unreliable, WarningInfo = allocationWarningInfo },
                             children)
                             );
                     }
@@ -1192,7 +1236,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Create item for native object.
                 var treeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     m_ItemId++,
-                    new AllTrackedMemoryModel.ItemData(itemName, item.Value, item.Key) { Unreliable = unreliable },
+                    new AllTrackedMemoryModel.ItemData(itemName, item.Value, item.Key) { Unreliable = unreliable, WarningInfo = ObjectStatusWarningInfo.FromStatus(itemStatus) | (listOfSingleAllocations != null ? AggregateWarningInfo(listOfSingleAllocations) : default) },
                     children: listOfSingleAllocations
                 );
 
@@ -1202,6 +1246,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         void GroupItemsNested<T>(
+            CachedSnapshot snapshot,
             Dictionary<T, MemorySize> itemIndex2SizeMap,
             Func<T, string> itemIndex2ItemID,
             Func<T, string> itemIndex2ItemName,
@@ -1210,7 +1255,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Func<T, string> groupKey2GroupName,
             bool unreliable,
             out Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> typeGroup2NameGroup2ItemsMap,
-            IScopedFilter<string> searchFilter)
+            CompoundSearchFilter searchFilter)
         {
             typeGroup2NameGroup2ItemsMap = new Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>>();
             foreach (var item in itemIndex2SizeMap)
@@ -1220,12 +1265,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var itemGroupId = itemIndex2GroupId(item.Key);
                 var itemIndex = itemIndex2Index(item.Key);
 
-                // optimization, don't generate group names if the scope already passes
-                if (!(searchFilter?.CurrentScopePasses ?? true))
+                // optimization, don't generate group names if the scope already passes.
+                // Must also enter when ExclusiveStatusFilter is active: even if the text scope passed,
+                // each item still needs an individual status check against the exclusive filter.
+                if (!(searchFilter?.SearchStringFilter?.CurrentScopePasses ?? true) || searchFilter?.ExclusiveStatusMask != null)
                 {
-                    using var groupNameFilter = searchFilter?.OpenScope(groupKey2GroupName(itemGroupId));
-                    using var itemNameFilter = searchFilter?.OpenScope(itemName);
-                    if (!(itemNameFilter?.Passes(itemID) ?? true))
+                    using var groupScope = searchFilter.OpenScope(groupKey2GroupName(itemGroupId));
+                    using var itemScope = searchFilter.OpenScope(itemName);
+
+                    var status = itemIndex.Id is not SourceIndex.SourceId.None
+                        ? snapshot.ObjectStatusComputation.GetStatus(itemIndex)
+                        : ObjectStatus.None;
+                    if (!itemScope.ScopePasses && !itemScope.Passes(itemID, status))
                         continue;
                 }
 
@@ -1249,43 +1300,51 @@ namespace Unity.MemoryProfiler.Editor.UI
             Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> typeGroup2NameGroup2ItemsMap,
             out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree,
             Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> typeGroup2itemsMap = null,
-            List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> treeItems = null)
+            List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> treeItems = null,
+            SourceIndex groupSourceIndex = default)
         {
             treeItems ??= new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(typeGroup2NameGroup2ItemsMap.Count);
-            string nameGroupKey2Name(string nameGroupName) => nameGroupName;
-            SourceIndex nameGroupKey2Index(string nameGroupName) => new SourceIndex();
             foreach (var group in typeGroup2NameGroup2ItemsMap)
             {
                 var itemsGroupKey = group.Key;
                 var itemsTree = group.Value;
 
-                BuildTreeFromGroupByIdMap(groupKey2Name(itemsGroupKey), m_ItemId++, unreliable, nameGroupKey2Name, nameGroupKey2Index, itemsTree, out var groupRoot);
+                static string nameGroupKey2Name(string nameGroupName) => nameGroupName;
+                // Use the first item in each name-group as the representative SourceIndex.
+                SourceIndex nameGroupKey2Index(string nameGroupName) =>
+                    itemsTree.TryGetValue(nameGroupName, out var nameGroupItems) && nameGroupItems.Count > 0
+                        ? nameGroupItems[0].data.Source
+                        : new SourceIndex();
 
-                // Merge items that are directly in this group with the ones in a subgroup (build up above) if there is a mix of both for this group.
-                if (typeGroup2itemsMap != null && typeGroup2itemsMap.TryGetValue(itemsGroupKey, out var groupedItems))
+                // Always rebuild the root with the correct typed source from the group key
+                // so the description column can display the proper type icon.
+                BuildTreeFromGroupByIdMap(groupKey2Name(itemsGroupKey), m_ItemId++, unreliable, nameGroupKey2Name, nameGroupKey2Index, itemsTree, out var groupRoot, groupSourceIndex: groupKey2Index(itemsGroupKey));
+
+                // Merge items that are directly in this group with the ones in a subgroup (built above) if there is a mix of both for this group.
+                // e.g. Leaked Shells that were added to the typeGroup2itemsMap and are in the same type group
+                // as other Managed Shells that are sub-grouped by the name of their native object.
+                if (groupRoot.hasChildren && typeGroup2itemsMap != null && typeGroup2itemsMap.TryGetValue(itemsGroupKey, out var groupedItems))
                 {
-                    var groupItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(groupRoot.children);
-                    groupItems.AddRange(groupedItems);
-
-                    var itemsTreeSize = SumListMemorySize(groupItems);
-                    groupRoot = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                        groupRoot.id,
-                        new AllTrackedMemoryModel.ItemData(
-                            groupRoot.data.Name,
-                            itemsTreeSize,
-                            groupKey2Index(itemsGroupKey),
-                            childCount: groupItems.Count),
-                        groupItems);
-
-                    // Remove this group so all remaining groups without mixed grouping can be added later.
+                    var children = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(groupRoot.children);
+                    children.AddRange(groupedItems);
                     typeGroup2itemsMap.Remove(itemsGroupKey);
+
+                    // Since the children changed, we need to rebuild the root to update its size and child count,
+                    // but we can reuse the same id and source.
+                    groupRoot = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
+                        groupRoot.id, new AllTrackedMemoryModel.ItemData(
+                            groupRoot.data.Name, SumListMemorySize(children),
+                            groupKey2Index(itemsGroupKey),
+                            childCount: children.Count)
+                        { WarningInfo = AggregateWarningInfo(children) },
+                        children);
                 }
                 treeItems.Add(groupRoot);
             }
 
             if (typeGroup2itemsMap != null && typeGroup2itemsMap.Count > 0)
             {
-                BuildTreeFromGroupByIdMap(groupName, m_ItemId++, unreliable, groupKey2Name, groupKey2Index, typeGroup2itemsMap, out var groupRoot);
+                BuildTreeFromGroupByIdMap(groupName, m_ItemId++, unreliable, groupKey2Name, groupKey2Index, typeGroup2itemsMap, out var groupRoot, groupSourceIndex: groupSourceIndex);
                 treeItems.AddRange(groupRoot.children);
             }
 
@@ -1299,8 +1358,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     new AllTrackedMemoryModel.ItemData(
                         groupName,
                         totalSize,
-                        new SourceIndex(),
-                        childCount: treeItems.Count),
+                        groupSourceIndex,
+                        childCount: treeItems.Count)
+                    { WarningInfo = AggregateWarningInfo(treeItems) },
                     treeItems);
 
                 return true;
@@ -1318,7 +1378,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             Func<T, SourceIndex> groupKey2Index,
             Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> group2itemsMap,
             out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree,
-            List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> treeItems = null)
+            List<TreeViewItemData<AllTrackedMemoryModel.ItemData>> treeItems = null,
+            SourceIndex groupSourceIndex = default,
+            Func<string, int> subGroupNameToCategoryId = null)
         {
             treeItems ??= new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(group2itemsMap.Count);
 
@@ -1330,9 +1392,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Calculate type size from all its objects.
                 var itemsTreeSize = SumListMemorySize(itemsTree);
 
+                // A sub-group can opt into a predefined category id (e.g. the "Unrooted" subsystem group) so it routes
+                // to its own Selection Details description; everything else uses a plain incremented row id.
+                var subGroupCategory = subGroupNameToCategoryId?.Invoke(itemsGroupName) ?? -1;
+                var subGroupItemId = subGroupCategory >= 0 ? subGroupCategory : m_ItemId++;
+
                 var typeItem = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
-                    m_ItemId++,
-                    new AllTrackedMemoryModel.ItemData(itemsGroupName, itemsTreeSize, groupKey2Index(group.Key), childCount: itemsTree.Count) { Unreliable = unreliable },
+                    subGroupItemId,
+                    new AllTrackedMemoryModel.ItemData(itemsGroupName, itemsTreeSize, groupKey2Index(group.Key), childCount: itemsTree.Count) { Unreliable = unreliable, WarningInfo = AggregateWarningInfo(itemsTree) },
                     itemsTree);
                 treeItems.Add(typeItem);
             }
@@ -1344,7 +1411,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     groupId,
-                    new AllTrackedMemoryModel.ItemData(groupName, totalSize, new SourceIndex(), childCount: treeItems.Count) { Unreliable = unreliable },
+                    new AllTrackedMemoryModel.ItemData(groupName, totalSize, groupSourceIndex, childCount: treeItems.Count) { Unreliable = unreliable, WarningInfo = AggregateWarningInfo(treeItems) },
                     treeItems);
 
                 return true;
@@ -1354,12 +1421,37 @@ namespace Unity.MemoryProfiler.Editor.UI
             return false;
         }
 
+        // Returns true when the item with the given logical status should be included given the
+        // current search filter. Checks both the text filter and the exclusive status mask.
+        static bool PassesStatusFilter(in BuildArgs args, string name, ObjectStatus status)
+        {
+            var filter = args.SearchFilter;
+            if (filter?.ExclusiveStatusMask.HasValue == true &&
+                (filter.ExclusiveStatusMask.Value & (1ul << (int)status)) == 0)
+                return false;
+            return filter?.PassesFlat(name, status) ?? true;
+        }
+
         bool BuildTreeFromGroupByNameMap(
             string groupName,
             int groupId,
             Dictionary<string, MemorySize> itemsMap,
-            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree,
+            in BuildArgs args,
+            ObjectStatus leafStatus = ObjectStatus.None)
         {
+            var searchFilter = args.SearchFilter;
+
+            // All items in this group share the same leafStatus, so one mask check covers all.
+            // Short-circuit immediately if the exclusive status filter rejects this status entirely.
+            if (searchFilter?.ExclusiveStatusMask.HasValue == true &&
+                (searchFilter.ExclusiveStatusMask.Value & (1ul << (int)leafStatus)) == 0)
+            {
+                tree = default;
+                return false;
+            }
+
+            var leafWarningInfo = ObjectStatusWarningInfo.FromStatus(leafStatus);
             var treeItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>(itemsMap.Count);
             foreach (var kvp in itemsMap)
             {
@@ -1367,13 +1459,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var name = kvp.Key;
                 var size = kvp.Value;
 
+                // Apply text search filter per item when active.
+                if (searchFilter != null && !searchFilter.PassesFlat(name, leafStatus))
+                    continue;
+
                 // Make tree view item
                 var item = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     m_ItemId++,
                     new AllTrackedMemoryModel.ItemData(
                         name,
                         size,
-                        new SourceIndex()));
+                        new SourceIndex())
+                    { WarningInfo = leafWarningInfo });
                 treeItems.Add(item);
             }
 
@@ -1388,7 +1485,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         groupName,
                         totalSize,
                         new SourceIndex(),
-                        childCount: treeItems.Count),
+                        childCount: treeItems.Count)
+                    { WarningInfo = AggregateWarningInfo(treeItems) },
                     treeItems);
 
                 return true;
@@ -1403,10 +1501,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             string groupName,
             int groupId,
             Dictionary<SourceIndex, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>> group2itemsMap,
-            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree)
+            out TreeViewItemData<AllTrackedMemoryModel.ItemData> tree,
+            ObjectStatus objectStatus)
         {
             // As it's collapses in single item, it can be filtered out
-            if (!SearchFilter(args, groupName))
+            if (!SearchFilter(args, groupName, objectStatus: objectStatus))
             {
                 tree = default;
                 return false;
@@ -1421,10 +1520,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     groupId,
+                    // This collapsed summary row has no backing SourceIndex, so GetStatus() can't classify
+                    // it. Assign the group's status explicitly so the row carries one (e.g. "Reserved")
+                    // instead of None — otherwise it can't match a status filter and gets dropped when an
+                    // exclusive status mask is active (even "all statuses", since None is never in the mask).
                     new AllTrackedMemoryModel.ItemData(
                         groupName,
                         totalSize,
-                        new SourceIndex()));
+                        new SourceIndex())
+                    { WarningInfo = ObjectStatusWarningInfo.FromStatus(objectStatus) });
 
                 return true;
             }
@@ -1485,20 +1589,16 @@ namespace Unity.MemoryProfiler.Editor.UI
         internal readonly struct BuildArgs
         {
             public BuildArgs(
-                IScopedFilter<string> searchFilter,
+                CompoundSearchFilter searchFilter,
                 IEnumerable<ITextFilter> pathFilter = null,
-                bool excludeAll = false,
                 bool breakdownNativeReserved = false,
                 bool disambiguateUnityObjects = false,
                 bool breakdownGfxResources = true,
-                Action<int, AllTrackedMemoryModel.ItemData> selectionProcessor = null,
                 string[] allocationRootNamesToSplitIntoSuballocations = null)
             {
                 SearchFilter = searchFilter;
                 PathFilter = pathFilter;
-                ExcludeAll = excludeAll;
                 BreakdownNativeReserved = breakdownNativeReserved;
-                SelectionProcessor = selectionProcessor;
                 DisambiguateUnityObjects = disambiguateUnityObjects;
                 BreakdownGfxResources = breakdownGfxResources;
                 AllocationRootNamesToSplitIntoSuballocations = allocationRootNamesToSplitIntoSuballocations;
@@ -1507,19 +1607,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// <summary>
             /// Only leaf items that pass directly or as part of their parent scope will be included.
             /// </summary>
-            public IScopedFilter<string> SearchFilter { get; }
+            public CompoundSearchFilter SearchFilter { get; }
 
             // Only items with a path (of names) that passes this filter will be included.
             public IEnumerable<ITextFilter> PathFilter { get; }
 
-            // If true, excludes all items. This is currently used by the All Of Memory Comparison functionality to show an empty table when particular comparison items (groups) are selected.
-            public bool ExcludeAll { get; }
-
             // If true, breakdown into separate native allocators will be added for native reserved group
             public bool BreakdownNativeReserved { get; }
-
-            // Selection processor for an item. Argument is the selected item object.
-            public Action<int, AllTrackedMemoryModel.ItemData> SelectionProcessor { get; }
 
             // If true, Unity Objects will be named after their Instance ID and grouped under the item which represents the name
             public bool DisambiguateUnityObjects { get; }

@@ -10,6 +10,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlAssetGuid = "3dd0da5afd7349e46be51745993b4f81";
         const string k_UssClass_Dark = "memory-profiler__dark";
         const string k_UssClass_Light = "memory-profiler__light";
+        public static string USSThemeClassToUse { get; private set; }
 
         const string k_UxmlIdentifierCaptureToolbarViewContainer = "memory-profiler-view__toolbar__container";
         const string k_UxmlIdentifierLoadedSnapshotsViewContainer = "memory-profiler-view__open-snapshots-view__container";
@@ -60,8 +61,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 throw new InvalidOperationException("Unable to create view from Uxml. Uxml must contain at least one child element.");
             view.style.flexGrow = 1;
 
-            var themeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
-            view.AddToClassList(themeUssClass);
+            USSThemeClassToUse = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
+            view.AddToClassList(USSThemeClassToUse);
 
             GatherReferencesInView(view);
 
@@ -125,9 +126,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             // When we load a new screenshot, UI needs to be forced refreshed
             // to repaint with the newly loaded textures
             m_ScreenshotsManager.ScreenshotLoaded += ScreenshotsLoaded;
-
-            // Register Analysis view controller as child controller, so that it'll get cleaned up with this one
-            AddChild(m_AnalysisViewController);
         }
 
         void ScreenshotsLoaded(string _) // we don't care about the path of the loaded screenshot here. We just needed to know that we need to repaint
@@ -138,9 +136,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void RefreshAnalysisView()
         {
-            // Reset state
-            m_AnalysisViewController?.Dispose();
-            m_AnalysisViewController = null;
+            // Keeping the child registration in step with this field is what lets the window's teardown reach
+            // the live analysis views, whose disposal blocks until their background builds stop reading the snapshot.
+            if (m_AnalysisViewController != null)
+            {
+                RemoveChild(m_AnalysisViewController);
+                m_AnalysisViewController.Dispose();
+                m_AnalysisViewController = null;
+            }
             m_AnalysisViewContainer.Clear();
 
             // Create new analysis controller
@@ -167,6 +170,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Send default view updated event
             MemoryProfilerAnalytics.SendOpenViewEvent(viewKeyForAnalytics, true);
 
+            AddChild(m_AnalysisViewController);
             m_AnalysisViewContainer.Add(m_AnalysisViewController.View);
         }
 

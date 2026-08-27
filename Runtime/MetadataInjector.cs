@@ -15,7 +15,7 @@ using UnityEngine.Profiling.Memory.Experimental;
 using UnityMemoryProfiler = UnityEngine.Profiling.Memory.Experimental.MemoryProfiler;
 using UnityMetaData = UnityEngine.Profiling.Memory.Experimental.MetaData;
 #endif
-#if LIVECYCLE_APIS_AVAILABLE
+#if LIFECYCLE_APIS_AVAILABLE
 using Unity.Scripting.LifecycleManagement;
 #endif
 
@@ -23,17 +23,23 @@ using Unity.Scripting.LifecycleManagement;
 namespace Unity.MemoryProfiler
 {
 #if !MEMPROFILER_DISABLE_METADATA_INJECTOR
-    internal static class MetadataInjector
+    internal static partial class MetadataInjector
     {
-#if LIVECYCLE_APIS_AVAILABLE
-        [AutoStaticsCleanupOnCodeReload] // AutoStaticsCleanup can handle IDisposable objects.
+#if LIFECYCLE_APIS_AVAILABLE
+        [AutoStaticsCleanup] // AutoStaticsCleanup can handle IDisposable objects.
 #endif
-        public static DefaultMetadataCollect DefaultCollector;
+        public static DefaultMetadataCollect DefaultCollector = null;
+#if LIFECYCLE_APIS_AVAILABLE
+        [AutoStaticsCleanup] // AutoStaticsCleanup can handle IDisposable objects.
+#endif        
         public static long CollectorCount = 0;
+#if LIFECYCLE_APIS_AVAILABLE
+        [AutoStaticsCleanup] // AutoStaticsCleanup can handle IDisposable objects.
+#endif
         public static byte DefaultCollectorInjected = 0;
 #if UNITY_EDITOR
-#if LIVECYCLE_APIS_AVAILABLE
-        [AfterAssemblyLoaded]
+#if LIFECYCLE_APIS_AVAILABLE
+        [OnCodeLoaded]
 #else
         [InitializeOnLoadMethod]
 #endif

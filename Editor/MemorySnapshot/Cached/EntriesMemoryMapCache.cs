@@ -74,6 +74,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
+            readonly bool HasValidAllocationBreakdownForNativeObjects = false;
+
             CachedSnapshot m_Snapshot;
             long m_ItemsCount;
             // The snapshot can easily contain int.MaxValue amount of objects, even more easily half that in Managed Objects
@@ -86,6 +88,7 @@ namespace Unity.MemoryProfiler.Editor
                 m_Snapshot = snapshot;
                 m_ItemsCount = 0;
                 m_CombinedData = default;
+                HasValidAllocationBreakdownForNativeObjects = m_Snapshot.m_SnapshotVersion >= FormatVersion.SystemMemoryResidentPagesVersion && m_Snapshot.NativeAllocations.Count > 0;
             }
 
             internal EntriesMemoryMapCache(DynamicArray<AddressPoint> m_Data)
@@ -322,7 +325,7 @@ namespace Unity.MemoryProfiler.Editor
                         }
 
                         var regionType = m_Snapshot.SystemMemoryRegions.RegionType[source.Index];
-                        switch ((SystemMemoryRegionEntriesCache.MemoryType)regionType)
+                        switch (regionType)
                         {
                             case SystemMemoryRegionEntriesCache.MemoryType.Device:
                                 return PointType.Device;
@@ -364,6 +367,18 @@ namespace Unity.MemoryProfiler.Editor
                             if (m_Snapshot.NativeMemoryRegions.GPUAllocatorIndices.Contains(memIndex))
                                 return PointType.Device;
                         }
+
+                        // The Mono/IL2CPP VM heap is allocated through Unity's native allocators, so it
+                        // surfaces here as NativeAllocations rooted to the VM root reference. Logically those
+                        // bytes ARE the managed runtime's backing store, so classify them as Managed. This is
+                        // the single point that makes every PointType-driven view (e.g. the All Memory summary)
+                        // report the VM heap as managed rather than native. It does not change the snapshot
+                        // total (channel-only) and does not affect the physical Memory Map view, which labels
+                        // allocations by source id rather than point type.
+                        var vmRoot = m_Snapshot.NativeRootReferences.VMRootReferenceIndex;
+                        if (vmRoot.Valid
+                            && m_Snapshot.NativeAllocations.RootReferenceId[source.Index] == m_Snapshot.NativeRootReferences.Id[vmRoot.Index])
+                            return PointType.Managed;
 
                         return PointType.Native;
                     }
@@ -540,8 +555,14 @@ namespace Unity.MemoryProfiler.Editor
                     Convert.ToInt32(m_Snapshot.NativeObjects.Count),
                     (long i) =>
                     {
-                        var address = m_Snapshot.NativeObjects.NativeObjectAddress[i];
-                        var size = m_Snapshot.NativeObjects.Size[i];
+                        var allocationIndex = HasValidAllocationBreakdownForNativeObjects ? m_Snapshot.NativeObjects.RootAllocationIndex[i] : -1;
+                        var useAllocationIndex = allocationIndex >= 0;
+                        var address = useAllocationIndex ? m_Snapshot.NativeAllocations.Address[allocationIndex] : m_Snapshot.NativeObjects.NativeObjectAddress[i];
+                        // NOTE: this means that the size of the native object's root allocation in the MemoryMapEntries is inflated by the ProfilerHeaderSize.
+                        // At the same time though, the size is also truncated to the root allocation in either case, which is highly likely less than the total sum of its native allocations,
+                        // so using the MemoryMapEntries size for the native object without doing some extra math to account for the other allocations and its graphics size is faulty regardless.
+                        // Using the root allocation is at least cleaner for the usage in the MemoryMap table, as it places the root allocation underneath the native object instead of the other way around.
+                        var size = useAllocationIndex ? m_Snapshot.NativeAllocations.Size[allocationIndex] : m_Snapshot.NativeObjects.Size[i];
                         bool valid = (size > 0);
                         return (valid, address, size);
                     });
@@ -671,9 +692,11 @@ namespace Unity.MemoryProfiler.Editor
                             hierarchyStack.Resize(startPointStackLevel, false);
 
                             // For Native Objects this is a known issue as their GPU size was included in older versions of the backend
-                            // So we only report this issue for newer snapshot versions as a reminder to fix it (i.e. bumping the above version is fine but).
-                            // Other types having the same issue is not a known issue, so we'd want to know about it for these
-                            if (point.Source.Id != SourceIndex.SourceId.NativeObject || m_Snapshot.m_SnapshotVersion > FormatVersion.SystemMemoryResidentPagesVersion)
+                            // So we only report this issue for newer snapshot versions and if we have info for the individual allocations
+                            // (as not all of its size and suballocations are going to be contiguous, but without allocation info, we can't report the object as only its first allocation).
+                            // as a reminder to fix it for other cases (i.e. terminating the undercut regions is fine but ideally unnecessary).
+                            // Other types having the same issue is not a known issue, so we'd want to know about it for these.
+                            if (HasValidAllocationBreakdownForNativeObjects || point.Source.Id != SourceIndex.SourceId.NativeObject)
                             {
                                 if (point.Source.Id == SourceIndex.SourceId.ManagedObject)
                                 {
@@ -704,7 +727,7 @@ namespace Unity.MemoryProfiler.Editor
                                             return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)} named \"{m_Snapshot.NativeObjects.ObjectName[connections[0].nativeObjectIndex]}\") ";
                                         return $"(Found as held by {connections[0].GenerateTypeName(m_Snapshot)}) ";
                                     }
-                                    Debug.LogWarning($"The snapshot contains faulty data, a Managed Object item ({ManagedObjectTools.ProduceManagedObjectName(containedManagedObject, m_Snapshot)} index: {containedManagedObject.ManagedObjectIndex}) of type {m_Snapshot.TypeDescriptions.TypeDescriptionName[containedManagedObject.ITypeDescription]} and size {containedManagedObject.Size} {GetFieldInfo(connectionsToContainedObject)}" +
+                                    Debug.LogError($"The snapshot contains faulty data, a Managed Object item ({ManagedObjectTools.ProduceManagedObjectName(containedManagedObject, m_Snapshot)} index: {containedManagedObject.ManagedObjectIndex}) of type {m_Snapshot.TypeDescriptions.TypeDescriptionName[containedManagedObject.ITypeDescription]} and size {containedManagedObject.Size} {GetFieldInfo(connectionsToContainedObject)}" +
                                         $"was nested within a Managed Object ({ManagedObjectTools.ProduceManagedObjectName(enclosingManagedObject, m_Snapshot)} index: {enclosingManagedObject.ManagedObjectIndex}) of the type {m_Snapshot.TypeDescriptions.TypeDescriptionName[enclosingManagedObject.ITypeDescription]} and size {enclosingManagedObject.Size} {GetFieldInfo(connectionsToEnclosedObject)} (Memory Map index: {i})!");
 #endif
                                     // detract the amount of memory that overlaps so that at least the totals are correct
@@ -716,8 +739,8 @@ namespace Unity.MemoryProfiler.Editor
                                     }
                                 }
 #if DEBUG_VALIDATION
-                                else
-                                    Debug.LogWarning($"The snapshot contains faulty data, an item of type {point.Source.Id} was nested within an item of the same type (index {i})!");
+                                else if (!IsKnownUdsReservationWrap(m_Snapshot, point.Source, parentPoint.Source))
+                                    Debug.LogError($"The snapshot contains faulty data, an item of type {point.Source.Id} was nested within an item of the same type (index {i})!");
 #endif
                             }
                         }
@@ -736,6 +759,54 @@ namespace Unity.MemoryProfiler.Editor
                     var dataIndex = hierarchyStack[j];
                     m_CombinedData[dataIndex] = new AddressPoint(m_CombinedData[dataIndex], currentCombinedDataIndex - dataIndex - 1);
                 }
+            }
+
+            /// <summary>
+            /// One narrowly-scoped known-legit case of same-type nesting that <see cref="PostProcess"/>'s
+            /// DEBUG_VALIDATION faulty-data report must not flag: the AssetDatabase/UDS shared-memory pool
+            /// reservation wrapping the real committed regions inside its span.
+            /// Tracked as COPT-3907 -- REMOVE this carve-out once the capture reports reserved vs
+            /// committed separately, so any remaining same-type region nesting is reported again.
+            /// UDS reserves a compile-time 16 GiB span twice (a mutable and a readonly view;
+            /// adjacent views get stitched into one 32 GiB region by <see cref="SystemMemoryRegionEntriesCache"/>
+            /// on load) and the engine capture reports that region at the FULL reserved span
+            /// because the sparse-reservation hint only clamps resident/used size, never region
+            /// size, so committed regions can land inside its range. Only Linux and macOS Editor
+            /// captures report reservations this way, and only editors with the UDS pool and
+            /// hint-based capture support (6000.4+) produce them, so the suppression is gated on
+            /// the capture's platform and Unity version besides the shape: an enclosing Mapped
+            /// SystemMemoryRegion at reservation scale (named '/dev/shm/udsMem&lt;hash&gt;' on Linux and
+            /// after the project path on macOS, with near-zero resident). TerminateUndercutRegions
+            /// has already corrected the map by the time this is consulted, so suppressing the report loses nothing.
+            /// Everything else, including small same-type region overlaps, still points at
+            /// genuinely faulty capture data and must be reported.
+            /// Full scope + drop criteria: InternalDocs~/SnapshotData.md "System memory regions".
+            /// </summary>
+            internal static bool IsKnownUdsReservationWrap(CachedSnapshot snapshot, SourceIndex nestedItem, SourceIndex enclosingItem)
+            {
+                if (nestedItem.Id != SourceIndex.SourceId.SystemMemoryRegion
+                    || enclosingItem.Id != SourceIndex.SourceId.SystemMemoryRegion)
+                    return false;
+                return snapshot != null && IsKnownUdsReservationWrap(
+                    snapshot.MetaData.TargetInfo?.RuntimePlatform,
+                    captureHasUdsPoolAndReservationHints: snapshot.MetaData.UnityVersionEqualOrNewer(6000, 4),
+                    snapshot.SystemMemoryRegions.RegionSize[enclosingItem.Index],
+                    snapshot.SystemMemoryRegions.RegionType[enclosingItem.Index])
+                    || false;
+            }
+
+            /// <summary>
+            /// Platform/version/shape gate for the UDS reservation carve-out, split out on plain values so the
+            /// gate logic is unit-testable without a Linux/macOS capture. See the
+            /// <see cref="IsKnownUdsReservationWrap(CachedSnapshot, SourceIndex, SourceIndex)"/> overload for the full rationale.
+            /// </summary>
+            internal static bool IsKnownUdsReservationWrap(RuntimePlatform? capturePlatform, bool captureHasUdsPoolAndReservationHints, ulong enclosingRegionSize, SystemMemoryRegionEntriesCache.MemoryType enclosingRegionType)
+            {
+                const ulong udsReservationSpanBytes = 16uL * 1024 * 1024 * 1024;
+                return capturePlatform is RuntimePlatform.LinuxEditor or RuntimePlatform.OSXEditor
+                    && captureHasUdsPoolAndReservationHints
+                    && enclosingRegionSize >= udsReservationSpanBytes
+                    && enclosingRegionType == SystemMemoryRegionEntriesCache.MemoryType.Mapped;
             }
 
             // Adds a fixed number of points from a container of the specific type

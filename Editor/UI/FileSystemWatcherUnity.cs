@@ -64,7 +64,7 @@ namespace Unity.MemoryProfiler.Editor
             m_Updater = null;
         }
 
-        async void Update(CancellationToken token)
+        async Task Update(CancellationToken token)
         {
             do
             {

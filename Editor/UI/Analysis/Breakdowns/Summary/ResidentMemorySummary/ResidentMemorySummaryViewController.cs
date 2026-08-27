@@ -1,4 +1,5 @@
 using System;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -21,7 +22,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         const string k_UxmlDetailsPageAssetGuid = "72d11bd2c44a8c24195879efaa3af5a3";
 
-        const string k_TotalLabelFormat = "Total Allocated: {0}";
+        static readonly string k_TotalLabelFormat = TextContent.TotalAllocatedFormat;
 
         // Model
         readonly IMemorySummaryModelBuilder<MemorySummaryModel> m_Builder;

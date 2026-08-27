@@ -42,7 +42,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     new MemorySummaryModel.Row(SummaryTextContent.kAllMemoryCategoryManaged, a.Managed, b.Managed, "managed", TextContent.ManagedDescription, null) { CategoryId = IAnalysisViewSelectable.Category.Managed },
                     new MemorySummaryModel.Row(SummaryTextContent.kAllMemoryCategoryMappedFiles, a.ExecutablesAndMapped, b.ExecutablesAndMapped, "executables", TextContent.ExecutablesAndMappedDescription, null)  { CategoryId = IAnalysisViewSelectable.Category.ExecutablesAndMapped },
                     new MemorySummaryModel.Row(SummaryTextContent.kAllMemoryCategoryGraphics, a.GraphicsAndDrivers, b.GraphicsAndDrivers, "gfx", TextContent.GraphicsEstimatedDescription, null)  { CategoryId = IAnalysisViewSelectable.Category.Graphics, SortPriority = MemorySummaryModel.RowSortPriority.Low, ResidentSizeUnavailable = true },
-                    new MemorySummaryModel.Row(SummaryTextContent.kAllMemoryCategoryUntrackedEstimated, a.Untracked, b.Untracked, "other", TextContent.UntrackedEstimatedDescription, DocumentationUrls.UntrackedMemoryDocumentation)  { CategoryId = IAnalysisViewSelectable.Category.Unknown, SortPriority = MemorySummaryModel.RowSortPriority.ShowLast, ResidentSizeUnavailable = true },
+                    new MemorySummaryModel.Row(SummaryTextContent.kAllMemoryCategoryUntrackedEstimated, a.Untracked, b.Untracked, "other", TextContent.UntrackedEstimatedDescription, DocumentationUrls.UntrackedMemoryDocumentation)  { CategoryId = IAnalysisViewSelectable.Category.Untracked, SortPriority = MemorySummaryModel.RowSortPriority.ShowLast, ResidentSizeUnavailable = true },
                 };
 
             // Add platform-specific categories
@@ -121,15 +121,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            // Add Mono or IL2CPP VM allocations
-            if (cs.NativeRootReferences.VMRootReferenceIndex.Valid)
-            {
-                // use root reference data with resident information as build for the ProcessedNativeRoots if the a VMRootReferenceIndex was found for the snapshot
-                var vmRootSize = cs.ProcessedNativeRoots.Data[cs.NativeRootReferences.VMRootReferenceIndex.Index].AccumulatedRootSizes.NativeSize;
-                summary.Managed += vmRootSize;
-                summary.Native -= vmRootSize;
-            }
-            else
+            // Reassign the Mono/IL2CPP VM heap from Native to Managed.
+            //
+            // For modern captures the VM heap is reported as NativeAllocations rooted to the VM root and is
+            // already classified as Managed at the source by EntriesMemoryMapCache.GetPointType, so
+            // CalculateTotals above has already counted it as Managed and nothing more is needed here.
+            //
+            // Older captures have no VM root reference (their VM heap predates routing through Unity's native
+            // allocators); fall back to the reported accumulated VM size and reassign it from Native here.
+            if (!cs.NativeRootReferences.VMRootReferenceIndex.Valid)
             {
                 var vmRootSize = cs.NativeRootReferences.AccumulatedSizeOfVMRoot;
                 ReassignMemoryToAnotherCategory(ref summary.Managed, ref summary.Native, vmRootSize);

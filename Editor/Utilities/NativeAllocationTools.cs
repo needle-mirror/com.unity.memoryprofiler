@@ -27,10 +27,14 @@ namespace Unity.MemoryProfiler.Editor
             if (snapshot.TableEntryNames?.TryGetNativeAllocationName(nativeAllocation.Index, out var cached) == true)
                 return cached;
 
-            if (snapshot.CrawledData.ConnectionsToMappedToSourceIndex.TryGetValue(nativeAllocation, out var references))
+            // If heap bytes are available, compute the name
+            if (snapshot.ManagedHeapSections.HeapBytesLoaded
+                && snapshot.CrawledData.ConnectionsToMappedToSourceIndex.TryGetValue(nativeAllocation, out var references))
             {
                 return ProduceNativeAllocationNameInternal(nativeAllocation, snapshot, ref references, truncateTypeNames);
             }
+
+            // Heap bytes unloaded and not in cache - return basic name
             return FormatAllocationAddress(nativeAllocation, snapshot);
         }
 

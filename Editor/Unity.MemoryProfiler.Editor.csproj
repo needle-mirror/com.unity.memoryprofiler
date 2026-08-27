@@ -29,12 +29,8 @@
       <Define>MEMORY_PROFILER_API_PUBLIC</Define>
     </UnityVersionDefine>
     <UnityVersionDefine Include="Unity">
-      <Expression>7000.0.0a1</Expression>
+      <Expression>6000.5.0b1</Expression>
       <Define>ENTITY_ID_CHANGED_SIZE</Define>
-    </UnityVersionDefine>
-    <UnityVersionDefine Include="Unity">
-      <Expression>7000.0.0a1</Expression>
-      <Define>CSHARP_7_3_OR_NEWER</Define>
     </UnityVersionDefine>
     <UnityVersionDefine Include="com.unity.collections">
       <Expression>2.1.0</Expression>
@@ -52,10 +48,6 @@
       <Expression>6000.3.0a1</Expression>
       <Define>SELECTION_USES_ENTITY_ID</Define>
     </UnityVersionDefine>
-    <UnityVersionDefine Include="Unity">
-      <Expression>7000.0.0a1</Expression>
-      <Define>UNITY_COLLECTIONS_CHANGED</Define>
-    </UnityVersionDefine>
     <UnityVersionDefine Include="Unity.Profiling.Core">
       <Expression>1.0.0</Expression>
       <Define>PROFILING_CORE_AVAILABLE</Define>
@@ -65,20 +57,13 @@
       <Define>S2AVAILABLE</Define>
     </UnityVersionDefine>
     <UnityVersionDefine Include="Unity">
-      <Expression>7000.0.0a1</Expression>
-      <Define>LIVECYCLE_APIS_AVAILABLE</Define>
+      <Expression>6000.5.0a9</Expression>
+      <Define>LIFECYCLE_APIS_AVAILABLE</Define>
     </UnityVersionDefine>
     <UnityVersionDefine Include="Unity">
       <Expression>6000.3.0a1</Expression>
       <Define>UNITY_6000_3_OR_NEWER</Define>
     </UnityVersionDefine>
     <UnityVersionDefine Include="Unity">
-      <Expression>7000.0.0a1</Expression>
-      <Define>ENABLE_MEMORY_PROFILER_DEBUG</Define>
-    </UnityVersionDefine>
-    <UnityVersionDefine Include="Unity">
-      <Expression>7000.0.0a1</Expression>
-      <Define>DEBUG_VALIDATION</Define>
-    </UnityVersionDefine>
   </ItemGroup>
 </Project>

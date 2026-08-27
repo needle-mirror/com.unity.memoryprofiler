@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -15,6 +16,45 @@ namespace Unity.MemoryProfiler.Editor
 #else
             treeView.sortingEnabled = enable;
 #endif
+        }
+
+        /// <summary>Cached reflected method, paired with the header type it was resolved against so a different header type re-resolves safely; avoids the lookup + GC cost on every call.</summary>
+        static MethodInfo s_ResizeToFitMethod;
+        static Type s_ResizeToFitType;
+
+        /// <summary>
+        /// Reflection shim for <c>MultiColumnCollectionHeader.ResizeToFit()</c>, which is internal. A prototype to
+        /// validate the workflow while we request that the API be made public; remove once it is reachable directly.
+        /// </summary>
+        /// <returns>True if the resize call was made, false if the header or method could not be resolved.</returns>
+        public static bool TryResizeColumnsToFit(this MultiColumnTreeView treeView)
+        {
+            // MultiColumnCollectionHeader identifies itself with this USS class name.
+            var header = treeView.Q(className: "unity-multi-column-header");
+            if (header == null)
+                return false;
+
+            var headerType = header.GetType();
+            if (s_ResizeToFitMethod == null || s_ResizeToFitType != headerType)
+            {
+                s_ResizeToFitType = headerType;
+                s_ResizeToFitMethod = headerType.GetMethod(
+                    "ResizeToFit",
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            }
+
+            if (s_ResizeToFitMethod == null)
+                return false;
+
+            try
+            {
+                s_ResizeToFitMethod.Invoke(header, null);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         public static void SetScrollViewVerticalScrollerVisibility(ScrollView view, bool alwaysOn)

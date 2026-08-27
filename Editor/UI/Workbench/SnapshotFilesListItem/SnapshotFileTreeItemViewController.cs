@@ -191,14 +191,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case SnapshotLoadedState.LoadedBase:
                 {
-                    m_OpenSnapshotTag.text = "A";
+                    m_OpenSnapshotTag.text = TextContent.SnapshotTagBase;
                     View.AddToClassList("memory-profile-snapshotfile__state__base");
                     UIElementsHelper.SetVisibility(m_OpenSnapshotTag, true);
                     break;
                 }
                 case SnapshotLoadedState.LoadedCompare:
                 {
-                    m_OpenSnapshotTag.text = "B";
+                    m_OpenSnapshotTag.text = TextContent.SnapshotTagCompare;
                     View.AddToClassList("memory-profile-snapshotfile__state__compare");
                     UIElementsHelper.SetVisibility(m_OpenSnapshotTag, true);
                     break;
@@ -228,15 +228,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 && ExportUtility.LoadCallstackMappingProviderConfig != null)
             {
 
-                const string openCallstacksButtonText = "Open Callstacks Table for Unknown Root (if callstack info was captured)";
-                binder.menu.AppendAction(openCallstacksButtonText,
+                binder.menu.AppendAction(TextContent.OpenCallstacksForUnknownRoot,
                     (a) =>
                     {
                         TryOpenCallstackWindow();
                     });
 
-                const string openInvertedCallstacksButtonText = "Open (Inverted) Callstacks Table for Unknown Root (if callstack info was captured)";
-                binder.menu.AppendAction(openInvertedCallstacksButtonText,
+                binder.menu.AppendAction(TextContent.OpenInvertedCallstacksForUnknownRoot,
                     (a) =>
                     {
                         TryOpenCallstackWindow(invertedCallstacks: true);
@@ -316,25 +314,25 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (string.IsNullOrEmpty(newSnapshotName))
             {
-                ShowRenameWarning("Name shouldn't be empty");
+                ShowRenameWarning(TextContent.RenameWarningEmpty);
                 return false;
             }
 
             if (!m_SnapshotDataService.ValidateName(newSnapshotName))
             {
-                ShowRenameWarning("Name contains invalid characters");
+                ShowRenameWarning(TextContent.RenameWarningInvalidCharacters);
                 return false;
             }
 
             if (!m_SnapshotDataService.PathLengthIsValid(Model.FullPath, newSnapshotName))
             {
-                ShowRenameWarning("File path is too long");
+                ShowRenameWarning(TextContent.RenameWarningPathTooLong);
                 return false;
             }
 
             if (!m_SnapshotDataService.CanRename(Model.FullPath, newSnapshotName) && (Model.Name != newSnapshotName))
             {
-                ShowRenameWarning("Snapshot with the same name already exist");
+                ShowRenameWarning(TextContent.RenameWarningDuplicate);
                 return false;
             }
 

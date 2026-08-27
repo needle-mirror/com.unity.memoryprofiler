@@ -6,20 +6,11 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 
-#if UNITY_COLLECTIONS_CHANGED
-using Allocator = Unity.Collections.AllocatorManager;
-using AllocatorType = Unity.Collections.AllocatorManager.AllocatorHandle;
-using static Unity.Collections.AllocatorManager;
-#else
-using Allocator = Unity.Collections.Allocator;
-using AllocatorType = Unity.Collections.Allocator;
-#endif
-
 namespace Unity.MemoryProfiler.Editor.Containers
 {
     internal struct NestedDynamicArray<T> : IDisposable, IEnumerable<DynamicArrayRef<T>> where T : unmanaged
     {
-        readonly AllocatorType m_Allocator;
+        readonly Allocator m_Allocator;
         DynamicArray<DynamicArrayRef<T>> m_NestedArrays;
         readonly DynamicArray<DynamicArray<T>> m_Data;
         public long SectionCount { readonly get; private set; }
@@ -138,7 +129,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 m_Data[0].Clear(false);
         }
 
-        static void InitializeEmpty(out DynamicArray<DynamicArray<T>> m_Data, ref bool clearArrayZero, AllocatorType m_Allocator)
+        static void InitializeEmpty(out DynamicArray<DynamicArray<T>> m_Data, ref bool clearArrayZero, Allocator m_Allocator)
         {
             // add a fake entry so BuildSections can create a list of 0 sized DynamicRefArrays.
             m_Data = new DynamicArray<DynamicArray<T>>(1, m_Allocator);
@@ -222,11 +213,28 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return m_NestedArrays[idx].GetUnsafeTypedPtr();
         }
 
+        public unsafe void MemSetAllData(byte value)
+        {
+            Checks.CheckEquals(true, IsCreated);
+            foreach (var dataBlock in m_Data)
+            {
+                UnsafeUtility.MemSet(dataBlock.GetUnsafePtr(), value, dataBlock.Count * sizeof(T));
+            }
+        }
 
         public void Dispose()
         {
             if (IsCreated)
             {
+                if (m_Data.IsCreated)
+                {
+                    for (var i = 0; i < m_Data.Count; i++)
+                    {
+                        ref var item = ref m_Data[i];
+                        if (item.IsCreated)
+                            item.Dispose();
+                    }
+                }
                 m_Data.Dispose();
                 m_NestedArrays.Dispose();
             }

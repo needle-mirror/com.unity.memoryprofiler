@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xmlns:Unity.MemoryProfiler.Editor.UI="Unity.MemoryProfiler.Editor.UI"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+
+    <engine:VisualElement name="roots-and-impact-table-view" class="table-view-base__container">
+        <Style src="RootsAndImpactTableView.uss"/>
+        <engine:VisualElement name="roots-and-impact-table-view__tree-view__main-container" class="table-view-base__tree-view__main-container">
+            <engine:MultiColumnTreeView name="roots-and-impact-table-view__tree-view" class="table-view-base__tree-view" sorting-enabled="true">
+                <engine:Columns reorderable="false">
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__description" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__total-impact" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__total-impact-resident" resizable="true" stretchable="false" optional="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__total-impact-bar" resizable="true" stretchable="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__own-size" resizable="true" stretchable="false" visible="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__exclusive-impact" resizable="true" stretchable="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__shared-pro-rata" resizable="true" stretchable="false" visible="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__shared-in-total" resizable="true" stretchable="false" visible="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__native-impact" resizable="true" stretchable="false" visible="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__managed-impact" resizable="true" stretchable="false" visible="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__gfx-impact" resizable="true" stretchable="false" visible="false"/>
+                    <engine:Column name="roots-and-impact-table-view__tree-view__column__status" resizable="true" stretchable="false" optional="false"/>
+                </engine:Columns>
+                <engine:SortColumnDescriptions>
+                    <engine:SortColumnDescription column-name="roots-and-impact-table-view__tree-view__column__total-impact" direction="descending"/>
+                </engine:SortColumnDescriptions>
+            </engine:MultiColumnTreeView>
+            <Unity.MemoryProfiler.Editor.UI:PaginationControl name="roots-and-impact-table-view__pager" class="roots-and-impact-table-view__pager"/>
+            <editor:Toolbar name="roots-and-impact-table-view__toolbar">
+                <engine:Toggle name="roots-and-impact-table-view__toolbar__flatten-toggle"/>
+                <engine:Toggle name="roots-and-impact-table-view__toolbar__exclusive-toggle"/>
+                <engine:Toggle name="roots-and-impact-table-view__toolbar__region-data-toggle"/>
+            </editor:Toolbar>
+            <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="roots-and-impact-table-view__loading-overlay"/>
+        </engine:VisualElement>
+        <engine:Label name="roots-and-impact-table-view__error-label" class="table-view-base__error-label"/>
+    </engine:VisualElement>
+
+</engine:UXML>

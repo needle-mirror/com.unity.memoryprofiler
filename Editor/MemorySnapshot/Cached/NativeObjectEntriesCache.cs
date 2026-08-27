@@ -17,6 +17,7 @@ using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.Col
 #endif
 using LongToLongHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, long>;
 using LongToIntHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, int>;
+using AddressToRootAllocationIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
 #else
 #if !ENTITY_ID_CHANGED_SIZE
 using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
@@ -27,6 +28,7 @@ using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<UnityEngin
 #endif
 using LongToLongHashMap = Unity.Collections.NativeHashMap<long, long>;
 using LongToIntHashMap = Unity.Collections.NativeHashMap<long, int>;
+using AddressToRootAllocationIndex = Unity.Collections.NativeHashMap<ulong, long>;
 #endif
 using HideFlags = UnityEngine.HideFlags;
 #if ENTITY_ID_STRUCT_AVAILABLE && !ENTITY_ID_CHANGED_SIZE
@@ -74,6 +76,12 @@ namespace Unity.MemoryProfiler.Editor
             public long Count;
             public string[] ObjectName;
             public DynamicArray<EntityId> InstanceId = default;
+            /// <summary>
+            /// The accumulated size of the native object, based on the size of all its allocations, but without their <see cref="AllocationHeaderSize"/>s, general header sizes and other overhead, including padding & alignment.
+            /// For snapshots taken before <see cref="FormatVersion.GfxResourceReferencesAndAllocatorsVersion"/> this also included the size of the graphics resources associated with the native object.
+            /// This might further differ from the size given via <see cref="ProcessedNativeRoot.AccumulatedRootSizes"/> in <see cref="ProcessedNativeRoots.Data"/> because
+            /// allocations placed outside of the System Memory Regions (<seealso cref="SystemMemoryRegionEntriesCache"/>) are not included in the latter, while they are included in this <see cref="Size"/>.
+            /// </summary>
             public DynamicArray<ulong> Size = default;
             public DynamicArray<int> NativeTypeArrayIndex = default;
             public DynamicArray<HideFlags> HideFlags = default;
@@ -85,12 +93,19 @@ namespace Unity.MemoryProfiler.Editor
             //secondary data
             public DynamicArray<int> RefCount = default;
             public AddressToInstanceId NativeObjectAddressToEntityId { private set; get; }
+            /// <summary>
+            /// The index of the allocation that was registered as the root for this native object, or -1 if it couldn't be found (e.g. because Native Allocations were not reported).
+            /// Note that the root allocation address is typically offset from the native object address by the <see cref="AllocationHeaderSize"/>, which can vary between snapshots,
+            /// so this offset should be taken into account when comparing the native object address to the root allocation address.
+            /// </summary>
+            public DynamicArray<long> RootAllocationIndex { private set; get; }
 
             public LongToIntHashMap RootReferenceIdToIndex { private set; get; }
             public LongToLongHashMap GCHandleIndexToIndex { private set; get; }
             public InstanceIdToNativeObjectIndex InstanceId2Index;
             public DynamicArray<SourceIndex> AssetBundles = default;
 
+            public readonly ulong AllocationHeaderSize = 0ul;
             public readonly ulong TotalSizes = 0ul;
             DynamicArray<int> MetaDataBufferIndicies = default;
             NestedDynamicArray<byte> MetaDataBuffers => m_MetaDataBuffersReadOp.CompleteReadAndGetNestedResults();
@@ -103,10 +118,11 @@ namespace Unity.MemoryProfiler.Editor
             }
 #endif
 
-            unsafe public NativeObjectEntriesCache(ref IFileReader reader, int assetBundleTypeIndex)
+            unsafe public NativeObjectEntriesCache(ref IFileReader reader, int assetBundleTypeIndex, NativeAllocationEntriesCache nativeAllocationEntries)
             {
                 Count = reader.GetEntryCount(EntryType.NativeObjects_InstanceId);
                 NativeObjectAddressToEntityId = new AddressToInstanceId((int)Count, Allocator.Persistent);
+                RootAllocationIndex = new DynamicArray<long>((int)Count, Allocator.Persistent);
                 RootReferenceIdToIndex = new LongToIntHashMap((int)Count, Allocator.Persistent);
                 GCHandleIndexToIndex = new LongToLongHashMap((int)Count, Allocator.Persistent);
                 InstanceId2Index = new InstanceIdToNativeObjectIndex((int)Count, Allocator.Persistent);
@@ -144,20 +160,36 @@ namespace Unity.MemoryProfiler.Editor
                     reader.Read(EntryType.NativeObjects_Name, tmp, 0, Count);
                     ConvertDynamicArrayByteBufferToManagedArray(tmp, ref ObjectName);
                 }
-
-                for (long i = 0; i < NativeObjectAddress.Count; ++i)
                 {
-                    var id = InstanceId[i];
-                    NativeObjectAddressToEntityId.Add(NativeObjectAddress[i], id);
-                    RootReferenceIdToIndex.Add(RootReferenceId[i], (int)i);
-                    InstanceId2Index[id] = (int)i;
-                    TotalSizes += Size[i];
-
-                    // While we're iterating over all objects anyways, collect all AssetBundle objects as they represent a special type of root.
-                    // This info is then used later for building Path From Root info as well as listing out AssetBundles as roots.
-                    if (NativeTypeArrayIndex[i] == assetBundleTypeIndex && assetBundleTypeIndex != NativeTypeEntriesCache.InvalidTypeIndex)
+                    var nativeAllocationEntriesCount = nativeAllocationEntries.Count;
+                    var mapNativeObjectIndexToRootAllocationIndex = nativeAllocationEntriesCount > 0;
+                    using var nativeAllocationAddressToAllocationIndex = new AddressToRootAllocationIndex((int)nativeAllocationEntriesCount, Allocator.Persistent);
+                    for (long i = 0; i < nativeAllocationEntriesCount; i++)
                     {
-                        AssetBundles.Push(new SourceIndex(SourceIndex.SourceId.NativeObject, i));
+                        nativeAllocationAddressToAllocationIndex.TryAdd(nativeAllocationEntries.Address[i], i);
+                    }
+                    // Ideally the profiler header size should be reported and read from the snapshot metadata, but until then we can try to calculate it based on the first few native objects and their corresponding allocations.
+                    AllocationHeaderSize = mapNativeObjectIndexToRootAllocationIndex ? GetProfilerHeaderSize(in nativeAllocationAddressToAllocationIndex, nativeAllocationEntries) : 0UL;
+                    for (long i = 0; i < NativeObjectAddress.Count; ++i)
+                    {
+                        var id = InstanceId[i];
+                        var address = NativeObjectAddress[i];
+                        NativeObjectAddressToEntityId.Add(address, id);
+
+                        RootAllocationIndex[i] = -1L;
+                        if (mapNativeObjectIndexToRootAllocationIndex && !nativeAllocationAddressToAllocationIndex.TryGetValue(address - AllocationHeaderSize, out RootAllocationIndex[i]))
+                            RootAllocationIndex[i] = -1L;
+
+                        RootReferenceIdToIndex.Add(RootReferenceId[i], (int)i);
+                        InstanceId2Index[id] = (int)i;
+                        TotalSizes += Size[i];
+
+                        // While we're iterating over all objects anyways, collect all AssetBundle objects as they represent a special type of root.
+                        // This info is then used later for building Path From Root info as well as listing out AssetBundles as roots.
+                        if (NativeTypeArrayIndex[i] == assetBundleTypeIndex && assetBundleTypeIndex != NativeTypeEntriesCache.InvalidTypeIndex)
+                        {
+                            AssetBundles.Push(new SourceIndex(SourceIndex.SourceId.NativeObject, i));
+                        }
                     }
                 }
 
@@ -194,6 +226,36 @@ namespace Unity.MemoryProfiler.Editor
 
                     m_MetaDataBuffersReadOp = reader.AsyncReadDynamicSizedArray<byte>(EntryType.ObjectMetaData_MetaDataBuffer, 0, sum, Allocator.Persistent);
                 }
+            }
+
+            ulong GetProfilerHeaderSize(in AddressToRootAllocationIndex nativeAllocationAddressToAllocationIndex, NativeAllocationEntriesCache nativeAllocationEntries)
+            {
+                // The object address starts after the profiler header but the profiler header is part of the each allocation, including the root allocation
+                // The profiler header size can vary between snapshots, based on Unity versions and native precompiler defines,
+                // so we try to use one of the first 10 objects to calculate the offset for each allocation here.
+                var profilerHeaderSize = 0ul;
+                if (NativeObjectAddress.Count > 0)
+                {
+                    for (long objectIndex = 0; objectIndex < 10; ++objectIndex)
+                    {
+                        const int maxProfilerHeaderSize = 65;
+                        var address = NativeObjectAddress[objectIndex];
+                        while (profilerHeaderSize < maxProfilerHeaderSize)
+                        {
+                            if (nativeAllocationAddressToAllocationIndex.TryGetValue(address - profilerHeaderSize, out var indexOfFirstRoot))
+                            {
+                                // Validate that the found root allocation is actually referenced by the native object, to avoid false positives in case of unrelated allocations with similar addresses.
+                                // We can do this by comparing the RootReferenceId of the native object to the RootReferenceId of the found root allocation, as they should match.
+                                if (RootReferenceId[objectIndex] == nativeAllocationEntries.RootReferenceId[indexOfFirstRoot])
+                                    return profilerHeaderSize;
+                                break;
+                            }
+                            ++profilerHeaderSize;
+                        }
+                        profilerHeaderSize = 0ul;
+                    }
+                }
+                return profilerHeaderSize;
             }
 
             /// <summary>
@@ -233,6 +295,7 @@ namespace Unity.MemoryProfiler.Editor
                 AssetBundles.Dispose();
                 ObjectName = null;
                 NativeObjectAddressToEntityId.Dispose();
+                RootAllocationIndex.Dispose();
                 RootReferenceIdToIndex.Dispose();
                 GCHandleIndexToIndex.Dispose();
                 InstanceId2Index.Dispose();
@@ -254,7 +317,24 @@ namespace Unity.MemoryProfiler.Editor
             public override long Count => m_Snapshot.NativeObjects.Count;
 
             protected override ref readonly DynamicArray<ulong> Addresses => ref m_Snapshot.NativeObjects.NativeObjectAddress;
-            public override ulong FullSize(long index) => m_Snapshot.NativeObjects.Size[this[index]];
+            /// <summary>
+            /// FullSize is used for <see cref="IndirectlySortedEntriesCache{TSortComparer, TUnsafeCache}.Find(ulong, bool)"/> which will
+            /// binary search the sorted cache for an address that points within the range of the native object.
+            /// Given that its allocations are not guaranteed to be contiguous, we can technically only check against the root allocation size.
+            /// Since that includes the profiler header and potential padding while the address starts after the header and without padding,
+            /// we need to exclude those from the root allocation size to get a more accurate range for the binary search.
+            /// This might deduct the footer size when running with the Debug Allocator but that is an acceptable margin of error.
+            /// Ideally though, searching for an address within a native object should be done via the <see cref="SortedNativeAllocationsCache"/> instead.
+            /// To get a native objects size, prefer to use <see cref="ProcessedNativeRoots.Data"/> or <see cref="NativeObjectEntriesCache.Size"/> instead.
+            /// </summary>
+            /// <param name="index"></param>
+            /// <returns></returns>
+            public override ulong FullSize(long index)
+            {
+                var i = this[index];
+                var rootAllocIndex = m_Snapshot.NativeObjects.RootAllocationIndex[i];
+                return rootAllocIndex >= 0 ? m_Snapshot.NativeAllocations.Size[rootAllocIndex] - (ulong)m_Snapshot.NativeAllocations.PaddingSize[rootAllocIndex] - (ulong)m_Snapshot.NativeAllocations.OverheadSize[rootAllocIndex] : m_Snapshot.NativeObjects.Size[i];
+            }
 
             public string Name(long index) => m_Snapshot.NativeObjects.ObjectName[this[index]];
             public EntityId InstanceId(long index) => m_Snapshot.NativeObjects.InstanceId[this[index]];
@@ -272,10 +352,14 @@ namespace Unity.MemoryProfiler.Editor
                 base.Preload();
                 if (!wasLoaded)
                 {
+                    // Since the sorting is done based on the address alone, passing the size in here is fine and is ignored for sorting.
                     m_UnsafeCache = new UnsafeAddressAndSizeCache(m_Sorting, Addresses, m_Snapshot.NativeObjects.Size);
                 }
             }
             UnsafeAddressAndSizeCache m_UnsafeCache;
+            /// <summary>
+            /// Using <see cref="DynamicArrayAlgorithms.BinarySearch{T}(T, ulong)"/> with this is not ideal given the potential size inaccuracies mentioned in <see cref="FullSize(long)"/>.
+            /// </summary>
             public override UnsafeAddressAndSizeCache UnsafeCache
             {
                 get

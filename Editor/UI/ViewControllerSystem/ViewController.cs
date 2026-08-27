@@ -81,6 +81,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             IsDisposed = true;
         }
 
+        /// <summary>
+        /// Is viewController currently registered as a child of this view controller, i.e. will it be disposed with it?
+        /// </summary>
+        internal bool IsChild(IViewController viewController)
+        {
+            return m_Children.Contains(viewController);
+        }
+
         // Add viewController as a child of this view controller.
         protected void AddChild(IViewController viewController)
         {

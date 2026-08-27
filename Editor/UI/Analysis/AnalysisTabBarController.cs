@@ -123,9 +123,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Create a model containing the available Analysis options for a single snapshot.
         void InitForSingleSnapshot(CachedSnapshot snapshot)
         {
-            const string unityObjectsDescription = "A breakdown of memory contributing to all Unity Objects.";
-            const string allTrackedMemoryDescription = "A breakdown of all tracked memory that Unity knows about.";
-            const string memoryMapViewDescription = "A memory map of all allocations reported for the process.";
+            var unityObjectsDescription = TextContent.UnityObjectsTabDescription;
+            var rootsAndImpactDescription = TextContent.RootsAndImpactTabDescription;
+            var allTrackedMemoryDescription = TextContent.AllTrackedMemoryTabDescription;
+            var memoryMapViewDescription = TextContent.MemoryMapTabDescription;
 
             m_Options = new List<Option>()
             {
@@ -134,10 +135,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 new Option(TextContent.UnityObjectsViewName,
                     new UnityObjectsBreakdownViewController(snapshot, unityObjectsDescription, m_SelectionDetails),
                     unityObjectsDescription),
-                new Option(TextContent.AllOfMemoryViewName,
-                    new AllTrackedMemoryBreakdownViewController(snapshot, allTrackedMemoryDescription, m_SelectionDetails),
-                    allTrackedMemoryDescription),
             };
+
+            m_Options.Add(new Option(TextContent.RootsAndImpactViewName,
+                new RootsAndImpactBreakdownViewController(snapshot, rootsAndImpactDescription, m_SelectionDetails),
+                rootsAndImpactDescription));
+
+            m_Options.Add(new Option(TextContent.AllOfMemoryViewName,
+                new AllTrackedMemoryBreakdownViewController(snapshot, allTrackedMemoryDescription, m_SelectionDetails),
+                allTrackedMemoryDescription));
 
             if (MemoryProfilerSettings.ShowMemoryMapView)
                 m_Options.Add(new Option(TextContent.MemoryMapViewName,
@@ -148,8 +154,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Create a model containing the available Analysis options when comparing two snapshots.
         void InitForComparisonBetweenSnapshots(CachedSnapshot baseSnapshot, CachedSnapshot comparedSnapshot)
         {
-            const string unityObjectsComparisonDescription = "A comparison of memory contributing to all Unity Objects in each capture.";
-            const string allTrackedMemoryComparisonDescription = "A comparison of all tracked memory in each capture.";
+            var unityObjectsComparisonDescription = TextContent.UnityObjectsComparisonTabDescription;
+            var allTrackedMemoryComparisonDescription = TextContent.AllTrackedMemoryComparisonTabDescription;
 
             m_Options = new List<Option>()
             {

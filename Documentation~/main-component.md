@@ -2,15 +2,19 @@
 
 The main panel of the Memory Profiler window displays various data visualizations about the selected memory [snapshot](snapshots.md) and is divided into the following tabs:
 
-* [**Summary tab**](#summary-tab): Provides an overview of how the memory in your application is distributed.
-* [**Unity Objects tab**](#unity-objects-tab): Provides a breakdown of how much memory each type of Unity object in the snapshot uses.
-* [**All Of Memory tab**](#all-of-memory-tab): Provides a breakdown of all the tracked memory in the snapshot, not limited to Unity objects.
+* [**Summary** tab](#summary-tab): Provides an overview of how the memory in your application is distributed.
+* [**Unity Objects** tab](#unity-objects-tab): Provides a breakdown of how much memory each type of Unity object in the snapshot uses.
+* [**All Of Memory** tab](#all-of-memory-tab): Provides a breakdown of all the tracked memory in the snapshot, not limited to Unity objects.
+* [**Memory Map** tab](#memory-map-tab): A breakdown of the allocated memory in the snapshot as it is laid out in the virtual address space.
+* [**Roots & Impact** tab](roots-and-impact.md): Attributes the memory in the snapshot to the roots that keep it allocated, and shows the impact each root has on memory.
 
 ![The main panel in the Memory Profiler window, with the Summary tab open displaying some data.](images/summary-tab.png)<br/>*The main panel in the Memory Profiler window, with the Summary tab open.*
 
 ## Summary tab
 
 The Summary tab displays general information about the state of memory in the selected snapshot or snapshots. You can investigate the information the Summary tab displays in more detail in the other available tabs.
+
+![The Summary tab](images/summary-tab.png)</br>_The Summary tab._
 
 The top of the tab sometimes displays contextual warnings or additional useful information about the snapshots, such as potential issues with your snapshot and insight about how to understand an Editor capture.
 
@@ -74,7 +78,9 @@ Use the checkboxes at the bottom of the window to change how the data is display
 
 # All Of Memory tab
 
-The **All Of Memory** tab displays a breakdown of all the memory in the selected snapshot. The memory usage displayed in this tab contains large sections of memory allocated from the following places:
+The **All Of Memory** tab displays a breakdown of all the memory in the selected snapshot. 
+
+The memory usage displayed in this tab contains large sections of memory allocated from the following places:
 
 * Through Unity and its graphics API integration.
 * Direct from the current platform's operating system. This type of allocation bypasses Unity's memory manager, making it __Untracked__. Memory can be directly allocated in this way through native plug-in code, or with C# methods such as `Marshall.AllocHGlobal`.
@@ -110,6 +116,28 @@ Tracked memory is divided into the following different top-level categories:
 The __Native__ and __Managed__ groups have a __Reserved__ subgroup which contains memory that Unity allocated but doesn't use at the moment of capture. For more information on how to adjust how Unity reserves memory for this purpose, refer to[Memory allocator customization](xref:um-memory-allocator-customization).
 
 For more information on Resident Memory refer to [Memory usage on device](memory-on-device.md).
+
+## Memory Map tab
+
+The Memory Map tab displays the allocated and resident size of all memory allocations in the snapshot. Select a memory address to learn more about the memory stored in this location.
+
+![The Memory Map tab](images/memory-map-tab.png)</br>_The Memory Map tab._
+
+To use the Memory Map tab, enable it in the Preferences window:
+
+1. Go to **Edit** > **Preferences**.
+2. Select **Analysis** > **Memory Profiler**.
+3. Enable the **Show Memory Map view** checkbox.
+
+The following columns are available in the Memory Map table:
+
+|__Category__|__Description__|
+|:---|:---|
+|**Address**| The address of a specific chunk of memory. |
+|**Type**| The type of memory allocation. |
+|**Allocated Size**| The amount of memory allocated to the process at this address. |
+|**Resident Size**| The amount of allocated memory at this address that exists in the physical memory (RAM) of this device.|
+|**Name**| The name of the object, the root of an allocation, the allocator name, a mapped file's name and path or an identifier supplied by the operating system for each top level entry. |
 
 ## Additional resources
 

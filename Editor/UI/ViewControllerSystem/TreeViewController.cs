@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -15,20 +16,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         string Name { get; }
     }
 
-    abstract class AbstractComparisonTreeViewController<TComparisonModel, TComparisonTreeItemData, TBaseModel, TBaseModelItemData>
-        : TreeViewController<TComparisonModel, TComparisonTreeItemData>
-        where TComparisonModel : TreeModel<TComparisonTreeItemData>, IComparisonTreeModel<TComparisonTreeItemData, TBaseModel>
-        where TComparisonTreeItemData : INamedTreeItemData
-        where TBaseModel : TreeModel<TBaseModelItemData>
-        where TBaseModelItemData : INamedTreeItemData
-    {
-        const string k_ErrorMessage = "At least one snapshot is from an outdated Unity version that is not fully supported.";
-        protected override string ModelBuilderErrorMessage => k_ErrorMessage;
-        protected AbstractComparisonTreeViewController(string idOfDefaultColumnWithPercentageBasedWidth, bool buildOnLoad = true) : base(idOfDefaultColumnWithPercentageBasedWidth, buildOnLoad)
-        {
-        }
-    }
-
     abstract class SingleSnapshotTreeViewController<TModel, TTreeItemData> : TreeViewController<TModel, TTreeItemData>
         where TModel : TreeModel<TTreeItemData> where TTreeItemData : IPrivateComparableItemData
     {
@@ -37,17 +24,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected abstract string UxmlIdentifier_TreeViewColumn__Size { get; }
         protected abstract string UxmlIdentifier_TreeViewColumn__ResidentSize { get; }
-        protected SingleSnapshotTreeViewController(string idOfDefaultColumnWithPercentageBasedWidth, bool buildOnLoad = true) : base(idOfDefaultColumnWithPercentageBasedWidth, buildOnLoad)
+        protected SingleSnapshotTreeViewController(string idOfDefaultColumnWithPercentageBasedWidth) : base(idOfDefaultColumnWithPercentageBasedWidth)
         {
             TableMode = AllTrackedMemoryTableMode.OnlyCommitted;
-            m_TreeNodeIdFilter = null;
         }
 
         protected AllTrackedMemoryTableMode TableMode { get; set; }
 
-        public bool ExcludeAllFilterApplied => m_TreeNodeIdFilter != null && m_TreeNodeIdFilter.Count == 0;
-        protected TModel m_BaseModelForTreeNodeIdFiltering;
-        protected List<int> m_TreeNodeIdFilter;
+        public abstract bool ExcludeAllFilterApplied { get; }
 
         // TODO: Move to TreeViewController after adjusting comparison tables to have Resident vs Committed info
         public virtual async Task SetColumnsVisibilityAsync(AllTrackedMemoryTableMode mode)
@@ -95,6 +79,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
+    static class TreeViewControllerHelper
+    {
+        public static readonly IList<int> ShowNoItemsAtAllFilter = new List<int>().AsReadOnly();
+    }
+
     /// <summary>
     /// Base Tree view controller class, abstracting shared code used by all Tree View Controllers
     /// </summary>
@@ -102,9 +91,6 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         const string k_UssClass_Dark = "table-view-base__dark";
         const string k_UssClass_Light = "table-view-base__light";
-
-        const string k_ErrorMessage = "Snapshot is from an outdated Unity version that is not fully supported.";
-        protected virtual string ModelBuilderErrorMessage => k_ErrorMessage;
 
         // Composed component for async model building
         AsyncModelBuildCoordinator<TModel> m_BuildCoordinator;
@@ -118,8 +104,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
         protected virtual List<TreeViewItemData<TTreeItemData>> RootNodes => m_Model.RootNodes;
         protected abstract Dictionary<string, Comparison<TreeViewItemData<TTreeItemData>>> SortComparisons { get; }
-        readonly bool m_BuildOnLoad;
-
         // View.
         protected MultiColumnTreeView m_TreeView;
         protected ActivityIndicatorOverlay m_LoadingOverlay;
@@ -132,13 +116,17 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         List<string> m_SelectionPath = new List<string>();
 
-        public TreeViewController(string idOfDefaultColumnWithPercentageBasedWidth, bool buildOnLoad = true)
+        public TreeViewController(string idOfDefaultColumnWithPercentageBasedWidth)
         {
             m_IDOfDefaultColumnWithPercentageBasedWidth = idOfDefaultColumnWithPercentageBasedWidth;
-            m_BuildOnLoad = buildOnLoad;
             m_BuildCoordinator = new AsyncModelBuildCoordinator<TModel>();
         }
 
+        /// <summary>
+        /// The default assumption for Memory Profiler tables is that they don't need a header context menu, so we provide an empty one by default.
+        /// If a view wants to allow Users to enable or disable optional columns, they can subscribe to this event with an empty handler to get the
+        /// default menu or provide or append their own menu items.
+        /// </summary>
         public event Action<ContextualMenuPopulateEvent> HeaderContextMenuPopulateEvent;
 
         public virtual void ClearSelection()
@@ -173,14 +161,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             var baseThemeUssClass = (EditorGUIUtility.isProSkin) ? k_UssClass_Dark : k_UssClass_Light;
             View.AddToClassList(baseThemeUssClass);
 
-            if (m_BuildOnLoad)
-                // Building on load in ViewLoaded is an automatic trigger, likely to be automatically triggered for accessing the .View property,
-                // which therefore doesn't expect an awaitable task.
-                // No caller or following code expects any part of the async build to be done.
-                // Therefore: Fire-and-forget with proper error handling.
-                FireAndForgetBuildModelAsync(false);
-            else
-                m_LoadingOverlay.Hide();
+            // The loading overlay starts visible (from UXML). Hide it here; the owner of this controller
+            // is responsible for calling TriggerBuild() to start the background build, which will show
+            // the overlay again and hide it on completion.
+            m_LoadingOverlay.Hide();
+        }
+
+        /// <summary>
+        /// Triggers a background model build. Shows the loading overlay until the build completes.
+        /// Call this after the view has been added to the UI hierarchy and all initial configuration
+        /// (e.g. column visibility, filters) is complete.
+        /// </summary>
+        public void TriggerBuild()
+        {
+            FireAndForgetBuildModelAsync(false);
         }
 
         [NonSerialized]
@@ -200,6 +194,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (SearchField != null)
             {
                 SearchField.RegisterValueChangedCallback(OnSearchValueChanged);
+                // Delayed search is generally preferable for TreeViews, which can be expensive to update and don't need to update on every keystroke to feel responsive.
+                var searchInput = SearchField.Q<TextInputBaseField<string>>();
+                if (searchInput != null)
+                {
+                    searchInput.isDelayed = true;
+                }
             }
 
             m_TreeView.selectionChanged += OnTreeViewSelectionChanged;
@@ -272,12 +272,12 @@ namespace Unity.MemoryProfiler.Editor.UI
         void GenerateContextMenu(ContextualMenuPopulateEvent evt, Column column)
         {
             if (HeaderContextMenuPopulateEvent == null)
-                GenerateEmptyContextMenu(evt, column);
+                GenerateEmptyContextMenu(evt);
             else
                 HeaderContextMenuPopulateEvent(evt);
         }
 
-        void GenerateEmptyContextMenu(ContextualMenuPopulateEvent evt, Column column)
+        protected void GenerateEmptyContextMenu(ContextualMenuPopulateEvent evt)
         {
             evt.menu.ClearItems();
             evt.StopImmediatePropagation();
@@ -332,33 +332,51 @@ namespace Unity.MemoryProfiler.Editor.UI
             await m_BuildCoordinator.BuildModelAsync(
                 GetModelBuilderTask,
                 GetModelSorterTask,
-                (model, success) => OnModelRebuild(success),
+                (model, success, modelHasNewTreeViewIds, exception) => OnModelRebuild(success, modelHasNewTreeViewIds, exception),
                 OnViewReloaded,
                 () => m_LoadingOverlay.Show(),
                 () => m_LoadingOverlay.Hide(),
                 justSort);
         }
 
-        protected virtual void OnModelRebuild(bool success)
+        protected virtual async Task FilterModelAsync<TModelBuilderArgs>(TModel baseModel, IList<int> treeNodeIdFilter, ModelBuildOrchestrator<TModel, TModelBuilderArgs> modelBuildOrchestrator)
+        {
+            await m_BuildCoordinator.BuildModelAsync(
+                (ct) => modelBuildOrchestrator.CreateBuildTask(default(TModelBuilderArgs), baseModel, treeNodeIdFilter, ct),
+                GetModelSorterTask,
+                (model, success, modelHasNewTreeViewIds, exception) => OnModelRebuild(success, modelHasNewTreeViewIds, exception),
+                OnViewReloaded,
+                () => m_LoadingOverlay.Show(),
+                () => m_LoadingOverlay.Hide(),
+                justSort: false);
+        }
+
+        protected virtual void OnModelRebuild(bool success, bool modelHasNewTreeViewIds, Exception exception = null)
         {
             if (success)
             {
-                // Refresh UI with new data model.
-                RefreshView();
+                // Refresh UI with new data model, but don't restore the selection if the model has new tree view Ids
+                RefreshView(restoreSelection: !modelHasNewTreeViewIds);
             }
             else
             {
                 // Display error message.
-                m_ErrorLabel.text = ModelBuilderErrorMessage;
+                if (exception != null)
+                    m_ErrorLabel.text = exception.Message;
+                else
+                    m_ErrorLabel.text = TextContent.UnclearViewLoadingIssue;
                 UIElementsHelper.SetElementDisplay(m_ErrorLabel, true);
             }
         }
 
-        protected virtual void RefreshView()
+        protected virtual void RefreshView(bool restoreSelection = true)
         {
             m_TreeView.SetRootItems(m_Model.RootNodes);
             m_TreeView.RefreshItems();
-            RestoreSelection();
+            if (restoreSelection)
+                RestoreSelection();
+            else
+                ClearSelection();
         }
 
         protected virtual void OnViewReloaded(bool success) { }
@@ -442,6 +460,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (disposing)
                 m_BuildCoordinator?.Dispose();
+
+            SearchField?.UnregisterValueChangedCallback(OnSearchValueChanged);
 
             base.Dispose(disposing);
         }

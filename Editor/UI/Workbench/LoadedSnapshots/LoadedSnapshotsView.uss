@@ -1,7 +1,14 @@
 #memory-profiler-loaded-snapshots__container
 {
     flex-grow: 1;
+    flex-shrink: 0;
     flex-direction: column;
+}
+
+#memory-profiler-loaded-snapshots__ribbon
+{
+    flex-shrink: 0;
+    flex-grow: 0;
 }
 
 .memory-profiler-loaded-snapshots__item

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -19,7 +20,6 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlTotalAvailableLabel = "memory-profile-snapshotfile__bar__available-label";
         const string k_UxmlTotalDataNotAvailableLabel = "memory-profile-snapshotfile__bar__not-available-label";
 
-        const string k_TotalMemoryNotAvailable = "N/A";
         const string k_Tooltip = "{0}\nPlatform: {1}\nScripting Backend: {2}\nUnity Version: {3}\nMetadata Description:\n{4}\n\nMax Available: {5}\nTotal Resident: {6}\nTotal Allocated: {7}";
         const string k_TooltipValueNotAvailable = "not available";
 
@@ -162,7 +162,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 UIElementsHelper.SetVisibility(m_TotalLabelResident, false);
                 UIElementsHelper.SetVisibility(m_TotalLabelAvailable, false);
                 UIElementsHelper.SetVisibility(m_TotalLabelDataNotAvailable, true);
-                m_TotalLabelDataNotAvailable.text = k_TotalMemoryNotAvailable;
+                m_TotalLabelDataNotAvailable.text = TextContent.NotAvailable;
             }
 
             View.tooltip = String.Format(k_Tooltip,

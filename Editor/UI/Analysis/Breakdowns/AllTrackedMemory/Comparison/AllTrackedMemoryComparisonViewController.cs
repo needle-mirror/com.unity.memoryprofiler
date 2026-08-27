@@ -1,6 +1,5 @@
 using System;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
@@ -10,9 +9,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     // Displays comparison between two All Tracked Memory trees.
     class AllTrackedMemoryComparisonViewController :
-        ComparisonViewController<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs, AllTrackedMemoryModel.ItemData>,
+        ComparisonViewController<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs, AllTrackedMemoryModel.ItemData, AllTrackedComparisonTableModel.ExtraData>,
         AllTrackedMemoryTableViewController.IResponder, IAnalysisViewSelectable, IViewControllerWithVisibilityEvents
     {
+        protected override ulong UnavailableStatusesForTable => ObjectStatusExtensions.AllOfMemoryTableUnavailableStatuses;
         readonly ISelectionDetails m_SelectionDetails;
 
         // View
@@ -47,54 +47,80 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void Dispose(bool disposing)
         {
             if (disposing)
+            {
                 m_SelectionDetails?.ClearSelection();
+            }
 
             base.Dispose(disposing);
         }
 
-        protected override async void ViewLoaded()
+        protected override Func<VisualElement> MakeDescriptionCell()
         {
-            m_SameSessionDiff = SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID && SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
+            return () =>
+            {
+                var label = new ObjectOrTypeLabel() { HideTypeInfoForObjects = true };
+                return label;
+            };
+        }
 
-            // Configure 'Base (A)' table.
+        protected override Action<VisualElement, int> BindCellForDescriptionColumn()
+        {
+            return (element, rowIndex) =>
+            {
+                var label = element.Q<ObjectOrTypeLabel>();
+                var itemData = m_TreeView.GetItemDataForIndex<AllTrackedComparisonTableModel.ComparisonData>(rowIndex);
+
+                var sourceInA = itemData.SourceIndex.InA;
+                var sourceInB = itemData.SourceIndex.InB;
+
+                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(SnapshotA, sourceInA, itemData.Name, out var displayName) &&
+                    !label.TrySetLabelDataFromSourceIndex(SnapshotB, sourceInB, displayName))
+                {
+                    // Category/group node with no typed source — show name as plain text.
+                    label.SetLabelData(SnapshotA, displayName, string.Empty);
+                }
+            };
+        }
+
+        protected override Action<VisualElement> DestroyDescriptionCell()
+        {
+            return element =>
+            {
+                var label = element.Q<ObjectOrTypeLabel>();
+                label.Dispose();
+            };
+        }
+
+        protected override void InitializeChildViewControllers(bool sameSession)
+        {
+            m_SameSessionDiff = sameSession;
+
+            // Configure 'Base (A)' table. SetColumnsVisibilityAsync and SetFiltersAsync are
+            // synchronous before the view is loaded — they only store state. Assert completion.
             m_BaseViewController = new AllTrackedMemoryTableViewController(
                 SnapshotA,
-                null,
-                false,
-                true,
-                m_SameSessionDiff,
-                this);
-            // Set table mode and filtering before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            await m_BaseViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
-            await m_BaseViewController.SetFiltersAsync(m_Model?.BaseModel, excludeAll: true);
-
-            BaseViewContainer.Add(m_BaseViewController.View);
-            AddChild(m_BaseViewController);
-            m_BaseViewController.HeaderContextMenuPopulateEvent += GenerateEmptyContextMenu;
+                compareMode: true,
+                disambiguateUnityObjects: sameSession,
+                responder: this);
+            // SetColumnsVisibilityAsync and SetFiltersAsync are synchronous before the view is loaded — they only store state. Assert completion.
+            m_BaseViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted).AssertCompleted();
+            m_BaseViewController.SetFiltersAsync(m_Model?.BaseModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter).AssertCompleted();
+            AddEmptyChildTableView(m_BaseViewController, BaseViewContainer);
 
             // Configure 'Compared (B)' table.
             m_ComparedViewController = new AllTrackedMemoryTableViewController(
                 SnapshotB,
-                null,
-                false,
-                true,
-                m_SameSessionDiff,
-                this);
-            // Set table mode before loading the view (via .View property triggering a build with buildOnLoad = true) to avoid triggering an immediate rebuild
-            await m_ComparedViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted);
-            await m_ComparedViewController.SetFiltersAsync(m_Model?.ComparedModel, excludeAll: true);
-
-            ComparedViewContainer.Add(m_ComparedViewController.View);
-            AddChild(m_ComparedViewController);
-            m_ComparedViewController.HeaderContextMenuPopulateEvent += GenerateEmptyContextMenu;
-
-            // After seting up base and Compared tables first, finalize the setup for the comparison table via base.ViewLoaded();
-            base.ViewLoaded();
+                compareMode: true,
+                disambiguateUnityObjects: sameSession,
+                responder: this);
+            m_ComparedViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted).AssertCompleted();
+            m_ComparedViewController.SetFiltersAsync(m_Model?.ComparedModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter).AssertCompleted();
+            AddEmptyChildTableView(m_ComparedViewController, ComparedViewContainer);
         }
 
-        protected override void RefreshView()
+        protected override void RefreshView(bool restoreSelection = true)
         {
-            base.RefreshView();
+            base.RefreshView(restoreSelection);
 
             // Resolve delayed selection
             if (m_SelectAfterLoadItemId.HasValue)
@@ -110,8 +136,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ClearSelection();
             m_BaseViewController.ClearSelection();
             m_ComparedViewController.ClearSelection();
-            m_BaseViewController.SetFilters(m_Model?.BaseModel, excludeAll: true);
-            m_ComparedViewController.SetFilters(m_Model?.ComparedModel, excludeAll: true);
+            m_BaseViewController.SetFilters(m_Model?.BaseModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter);
+            m_ComparedViewController.SetFilters(m_Model?.ComparedModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter);
         }
 
         protected override void OnTreeItemSelected(int itemId, AllTrackedComparisonTableModel.ComparisonData itemData)
@@ -119,51 +145,56 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_BaseViewController.ClearSelection();
             m_ComparedViewController.ClearSelection();
 
-            var selectedItem = m_TreeView.GetSelectedItems<AllTrackedComparisonTableModel.ComparisonData>().First();
+            var selectedItems = m_TreeView.GetSelectedItems<AllTrackedComparisonTableModel.ComparisonData>();
 
             m_WaitingForFilteringToBeAppliedToBaseView = true;
             m_WaitingForFilteringToBeAppliedToCompareView = true;
 
-            var filterComparisonTableByPath = !selectedItem.hasChildren;
-            // When disambiguating native objects by Instance ID, allow selecting the name items
-            // and showing children with the same name
-            var filterDownToChildren = !filterComparisonTableByPath && itemData.ItemPath.Count >= 4 &&
-                (m_SameSessionDiff && !selectedItem.children.First().hasChildren);
-            filterComparisonTableByPath |= filterDownToChildren;
+            // When disambiguating native objects by Instance ID, allow selecting the Type, Name and instance ID
+            // We don't want to throw the entire bathtub at the Base and Compared tables when a group node is selected in the comparison table,
+            // (though performance issues might no longer be a concern with TreeNodeId filtering, the UX value is questionable)
+            // but we do want to allow drilling down into the type/name/instanceID nodes for native objects (including their Graphics resources.
+            // We also want to allow drilling into Managed types on a per type level.
+            // Graphics has 1 less hierarchy layer before it goes to list out Types of Graphics assets compared to the Managed or Native tree.
+            // And here we allow showing the Base and Compared table for leaf nodes and those deep enough.
+            var isInGraphicsPath = itemData.ItemPath.Count > 0 && itemData.ItemPath[0] == AllTrackedMemoryModelBuilder.GraphicsGroupName;
+            var pathThreshhold = isInGraphicsPath ? 2 : 3;
 
-            if (filterComparisonTableByPath)
+            var filter = !selectedItems.First().hasChildren || (itemData.ItemPath.Count >= pathThreshhold);
+
+            if (filter)
             {
-                // Filter the base/compared tables to the current comparison table selection and search text filter.
-                var searchFilter = BuildTextFilterFromSearchText();
-                var itemPathFilter = new ITextFilter[itemData.ItemPath.Count + (filterDownToChildren ? 1 : 0)];
-                for (var i = 0; i < itemData.ItemPath.Count; i++)
-                {
-                    var pathComponent = itemData.ItemPath[i];
-                    itemPathFilter[i] = MatchesTextFilter.Create(pathComponent);
-                }
-                if (filterDownToChildren)
-                    itemPathFilter[itemPathFilter.Length - 1] = MatchesAllTextFilter.Create();
-                m_BaseViewController.SetFilters(m_Model?.BaseModel, searchFilter: searchFilter, itemPathFilter: itemPathFilter);
-                m_ComparedViewController.SetFilters(m_Model?.ComparedModel, searchFilter: searchFilter, itemPathFilter: itemPathFilter);
+                var treeViewIdsInA = new List<int>();
+                var treeViewIdsInB = new List<int>();
+
+                GetTreeViewIdsOfLeafNodesRecursively(ref treeViewIdsInA, ref treeViewIdsInB, selectedItems);
+                // Filter the base/compared tables based on the treeview ids in the selected comparison table.
+                m_BaseViewController.SetFilters(m_Model?.BaseModel, treeNodeIdFilter: treeViewIdsInA);
+                m_ComparedViewController.SetFilters(m_Model?.ComparedModel, treeNodeIdFilter: treeViewIdsInB);
             }
             else
             {
                 // Show an empty table if a non-leaf (group) node is selected in the comparison table.
-                m_BaseViewController.SetFilters(m_Model?.BaseModel, excludeAll: true);
-                m_ComparedViewController.SetFilters(m_Model?.ComparedModel, excludeAll: true);
+                m_BaseViewController.SetFilters(m_Model?.BaseModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter);
+                m_ComparedViewController.SetFilters(m_Model?.ComparedModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter);
             }
 
-            var snapshot = itemData.CountInA > 0 ? SnapshotA : SnapshotB;
-            var view = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, 0, new CachedSnapshot.SourceIndex());
-            m_SelectionDetails.SetSelection(view);
+            // Use ComparisonSourceIndex to create a typed details view, preferring InA.
+            var sourceInA = itemData.SourceIndex.InA;
+            var sourceInB = itemData.SourceIndex.InB;
+            ViewController detailsView;
+            if (sourceInA.Id != CachedSnapshot.SourceIndex.SourceId.None)
+                detailsView = BreakdownDetailsViewControllerFactory.Create(SnapshotA, itemId, itemData.Name, itemData.ChildCount, sourceInA);
+            else if (sourceInB.Id != CachedSnapshot.SourceIndex.SourceId.None)
+                detailsView = BreakdownDetailsViewControllerFactory.Create(SnapshotB, itemId, itemData.Name, itemData.ChildCount, sourceInB);
+            else
+            {
+                var snapshot = itemData.CountInA > 0 ? SnapshotA : SnapshotB;
+                detailsView = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, 0, new CachedSnapshot.SourceIndex());
+            }
+            m_SelectionDetails.SetSelection(detailsView);
         }
 
-        void GenerateEmptyContextMenu(ContextualMenuPopulateEvent evt)
-        {
-            // Compare mode doesn't allow column configuration
-            evt.menu.ClearItems();
-            evt.StopImmediatePropagation();
-        }
 
         bool TrySelectAndExpandTreeViewItem(int itemId)
         {
@@ -233,13 +264,38 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
         }
 
-        protected override AllTrackedMemoryModelBuilder.BuildArgs GetBaseModelBuilderArgs(IScopedFilter<string> itemNameFilter, bool sameSessionComparison)
+        protected override void TrackUsageAnalytics(IScopedFilter<string> itemNameFilter)
+        {
+            MemoryProfilerAnalytics.AddAllTrackedMemoryComparisonUsage(itemNameFilter != null, MemoryProfilerSettings.ShowReservedMemoryBreakdown, IncludeUnchanged);
+        }
+
+        protected override AllTrackedMemoryModelBuilder.BuildArgs GetBaseModelBuilderArgs(CompoundSearchFilter searchFilter, bool sameSessionComparison)
         {
             return new AllTrackedMemoryModelBuilder.BuildArgs(
-                searchFilter: itemNameFilter,
+                searchFilter: searchFilter,
                 breakdownNativeReserved: MemoryProfilerSettings.ShowReservedMemoryBreakdown,
                 disambiguateUnityObjects: sameSessionComparison,
                 allocationRootNamesToSplitIntoSuballocations: MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 ? MemoryProfilerSettings.AllocationRootsToSplit : null);
+        }
+
+        protected override bool ShowExtraDataToggle => true;
+
+        protected override void OnExtraDataToggleValueChanged(bool newValue) => SetStatusColumnsVisible(newValue);
+
+        protected override void ConfigureStatusColumns()
+        {
+            ConfigureStatusColumns(rowIndex =>
+            {
+                var data = m_TreeView.GetItemDataForIndex<AllTrackedComparisonTableModel.ComparisonData>(rowIndex);
+                return (data.ExtraData.WarningInfoInA, (int)data.CountInA, data.ExtraData.WarningInfoInB, (int)data.CountInB, data.ChildCount);
+            });
+
+            RegisterSortComparison(k_UxmlIdentifier_TreeViewColumn__StatusInA,
+                (x, y) => x.data.ExtraData.WarningInfoInA.GetStatusSortKey()
+                           .CompareTo(y.data.ExtraData.WarningInfoInA.GetStatusSortKey()));
+            RegisterSortComparison(k_UxmlIdentifier_TreeViewColumn__StatusInB,
+                (x, y) => x.data.ExtraData.WarningInfoInB.GetStatusSortKey()
+                           .CompareTo(y.data.ExtraData.WarningInfoInB.GetStatusSortKey()));
         }
     }
 }

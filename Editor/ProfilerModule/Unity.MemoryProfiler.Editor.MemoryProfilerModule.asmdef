@@ -23,6 +23,11 @@
             "name": "Unity",
             "expression": "6000.2.0a8",
             "define": "MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE"
+        },
+        {
+            "name": "Unity",
+            "expression": "6000.5.0a9",
+            "define": "LIFECYCLE_APIS_AVAILABLE"
         }
     ],
     "noEngineReferences": false

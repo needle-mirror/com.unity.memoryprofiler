@@ -12,7 +12,8 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         TType FilterValue { get; }
         bool CurrentScopePasses { get; }
-        IFilterScope<TType> OpenScope(TType scopeName, CachedSnapshot cachedSnapshot = null);
+        IFilterScope<TType> OpenScope(TType scopeName);
+        IFilterScope<TType> OpenEmptyScope();
 
         public interface IFilterScope<T> : IDisposable, ITableFilter<T>
         {

@@ -8,21 +8,18 @@ namespace Unity.MemoryProfiler.Editor
         public const uint X64ArchPtrSize = 8;
         public const uint X86ArchPtrSize = 4;
 
-        public static bool ValidateVirtualMachineInfo(VirtualMachineInformation vmInfo)
+        public static bool ValidateVirtualMachineInfo(VirtualMachineInformationFileData vmInfo)
         {
             if (!(vmInfo.PointerSize == X64ArchPtrSize || vmInfo.PointerSize == X86ArchPtrSize))
                 return false;
 
-            //partial checks to validate computations based on pointer size
-            var expectedObjHeaderSize = 2 * vmInfo.PointerSize;
+            // Mono/IL2CPP object headers are 2x pointer size (vtable pointer + sync-block index);
+            // CoreCLR headers are 1x pointer size (just the MethodTable* slot). Accept either layout.
+            var ptrSize = vmInfo.PointerSize;
+            var isMonoOrIl2CppLayout = vmInfo.ObjectHeaderSize == 2 * ptrSize && vmInfo.AllocationGranularity == 2 * ptrSize;
+            var isCoreClrLayout = vmInfo.ObjectHeaderSize == ptrSize && vmInfo.AllocationGranularity == ptrSize;
 
-            if (expectedObjHeaderSize != vmInfo.ObjectHeaderSize)
-                return false;
-
-            if (expectedObjHeaderSize != vmInfo.AllocationGranularity)
-                return false;
-
-            return true;
+            return isMonoOrIl2CppLayout || isCoreClrLayout;
         }
     }
 }

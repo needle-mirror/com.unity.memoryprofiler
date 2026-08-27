@@ -1,4 +1,3 @@
-<!-- Auto generated from '/Users/darius.skergelza/lanes/lane1/neutron/Packages/com.unity.memoryprofiler/Editor/ProfilerModule/Unity.MemoryProfiler.Editor.MemoryProfilerModule.asmdef' on 30 October 2024 11:51:09 +02 -->
 <Project Sdk="Unity.Sdk">
   <PropertyGroup>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
@@ -24,6 +23,10 @@
     <UnityVersionDefine Include="Unity">
       <Expression>6000.2.0a8</Expression>
       <Define>MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE</Define>
+    </UnityVersionDefine>
+    <UnityVersionDefine Include="Unity">
+      <Expression>6000.5.0a9</Expression>
+      <Define>LIFECYCLE_APIS_AVAILABLE</Define>
     </UnityVersionDefine>
   </ItemGroup>
 </Project>

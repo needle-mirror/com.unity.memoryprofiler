@@ -17,10 +17,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ViewLoaded();
 
             // Initialize Memory Map table as a child view controller.
-            m_TableViewController = new MemoryMapTableViewController(Snapshot, SearchField, responder: this);
+            m_TableViewController = new MemoryMapTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this);
             AddChild(m_TableViewController);
 
-            TableContainer.Add(m_TableViewController.View);
+            AddAndBuildChildTableView(m_TableViewController);
 
             // Memory Map always shows both Committed and Resident columns
             TableColumnsMode = AllTrackedMemoryTableMode.CommittedAndResident;

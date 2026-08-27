@@ -29,8 +29,8 @@ namespace Unity.MemoryProfiler.Editor
             public long Count;
 
             // From/To with the same index forms a pair "from->to"
-            public DynamicArray<int> From { private set; get; }
-            public DynamicArray<int> To { private set; get; }
+            public DynamicArray<SourceIndex> From { private set; get; }
+            public DynamicArray<SourceIndex> To { private set; get; }
 
             // TODO: Use Native Hashmaps of Native Lists for these to optimze out GC Allocs
             // List of objects referencing an object with the specfic key
@@ -55,49 +55,55 @@ namespace Unity.MemoryProfiler.Editor
             }
 #endif
 
-            unsafe public ConnectionEntriesCache(ref IFileReader reader, NativeObjectEntriesCache nativeObjects, long gcHandlesCount, bool connectionsNeedRemaping)
+            unsafe public ConnectionEntriesCache(ref IFileReader reader, NativeObjectEntriesCache nativeObjects, long gcHandlesCount)
             {
                 Count = reader.GetEntryCount(EntryType.Connections_From);
 
-                // Set allocator to `temp` if we're going to discard the data later
-                Allocator allocator = Allocator.Persistent;
-                if (Count > 0 && connectionsNeedRemaping)
-                    allocator = Allocator.Temp;
-
-                From = new DynamicArray<int>(Count, allocator);
-                To = new DynamicArray<int>(Count, allocator);
-
                 if (Count == 0)
+                {
+                    From = new DynamicArray<SourceIndex>(Count, Allocator.Persistent);
+                    To = new DynamicArray<SourceIndex>(Count, Allocator.Persistent);
                     return;
+                }
 
                 DynamicArray<EntityId> instanceIDFrom;
                 DynamicArray<EntityId> instanceIDTo;
                 if (reader.FormatVersion < FormatVersion.EntityIDAs8ByteStructs)
                 {
-                    From = reader.Read(EntryType.Connections_From, 0, Count, allocator).Result.Reinterpret<int>();
-                    To = reader.Read(EntryType.Connections_To, 0, Count, allocator).Result.Reinterpret<int>();
+                    using var oldFrom = reader.Read(EntryType.Connections_From, 0, Count, Allocator.Temp).Result.Reinterpret<int>();
+                    using var oldTo = reader.Read(EntryType.Connections_To, 0, Count, Allocator.Temp).Result.Reinterpret<int>();
                     // Clear the memory on alloc. The MemCpyStride in ConvertInstanceId won't initialize the blank spaces
                     instanceIDFrom = new DynamicArray<EntityId>(Count, Allocator.Temp, memClear: true);
                     instanceIDTo = new DynamicArray<EntityId>(Count, Allocator.Temp, memClear: true);
-                    From.ConvertInstanceIdIntsToEntityIds(ref instanceIDFrom);
-                    To.ConvertInstanceIdIntsToEntityIds(ref instanceIDTo);
+                    oldFrom.ConvertInstanceIdIntsToEntityIds(ref instanceIDFrom);
+                    oldTo.ConvertInstanceIdIntsToEntityIds(ref instanceIDTo);
+                    if (reader.FormatVersion < FormatVersion.NativeConnectionsAsInstanceIdsVersion)
+                    {
+                        From = new DynamicArray<SourceIndex>(Count, Allocator.Persistent);
+                        To = new DynamicArray<SourceIndex>(Count, Allocator.Persistent);
+                        for (long i = 0; i < Count; i++)
+                        {
+                            From[i] = OldUnifiedIndexToSourceIndex(oldFrom[i], gcHandlesCount);
+                            To[i] = OldUnifiedIndexToSourceIndex(oldTo[i], gcHandlesCount);
+                        }
+                    }
                 }
                 else
                 {
-                    instanceIDFrom = reader.Read(EntryType.Connections_From, 0, Count, allocator).Result.Reinterpret<EntityId>();
-                    instanceIDTo = reader.Read(EntryType.Connections_To, 0, Count, allocator).Result.Reinterpret<EntityId>();
+                    instanceIDFrom = reader.Read(EntryType.Connections_From, 0, Count, Allocator.Temp).Result.Reinterpret<EntityId>();
+                    instanceIDTo = reader.Read(EntryType.Connections_To, 0, Count, Allocator.Temp).Result.Reinterpret<EntityId>();
                 }
 
-                if (connectionsNeedRemaping)
-                    RemapInstanceIdsToUnifiedIndex(nativeObjects, gcHandlesCount, instanceIDFrom, instanceIDTo);
+                if (reader.FormatVersion >= FormatVersion.NativeConnectionsAsInstanceIdsVersion)
+                    RemapInstanceIdsToSourceIndices(nativeObjects, gcHandlesCount, instanceIDFrom, instanceIDTo);
 
                 instanceIDFrom.Dispose();
                 instanceIDTo.Dispose();
 
-                for (int i = 0; i < Count; i++)
+                for (long i = 0; i < Count; i++)
                 {
-                    var to = ToSourceIndex(To[i], gcHandlesCount);
-                    var from = ToSourceIndex(From[i], gcHandlesCount);
+                    var to = To[i];
+                    var from = From[i];
 
                     ReferencedBy.GetAndAddToListOrCreateList(to, from);
 
@@ -106,7 +112,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
-            SourceIndex ToSourceIndex(int index, long gcHandlesCount)
+            SourceIndex OldUnifiedIndexToSourceIndex(int index, long gcHandlesCount)
             {
                 if (index < gcHandlesCount)
                     return new SourceIndex(SourceIndex.SourceId.ManagedObject, index);
@@ -114,61 +120,54 @@ namespace Unity.MemoryProfiler.Editor
                 return new SourceIndex(SourceIndex.SourceId.NativeObject, index - gcHandlesCount);
             }
 
-            void RemapInstanceIdsToUnifiedIndex(NativeObjectEntriesCache nativeObjects, long gcHandlesCount,
+            void RemapInstanceIdsToSourceIndices(NativeObjectEntriesCache nativeObjects, long gcHandlesCount,
                 DynamicArray<EntityId> instanceIDFrom, DynamicArray<EntityId> instanceIDTo)
             {
                 var instanceIds = nativeObjects.InstanceId;
-                var gcHandlesIndices = nativeObjects.ManagedObjectIndex;
+                var managedObjectIndex = nativeObjects.ManagedObjectIndex;
 
                 // Create two temporary acceleration structures:
-                // - Native object EntityId to GC object
-                // - Native object EntityId to Unified Index
-                //
-                // Unified Index - [0..gcHandlesCount)[0..nativeObjects.Count]
-                var instanceIDToUnifiedIndex = new Dictionary<EntityId, int>();
-                var instanceIDToGcHandleIndex = new Dictionary<EntityId, int>();
+                // - Native object EntityId to Managed Object
+                // - Native object EntityId to Native Object
+                var instanceIDToNativeObject = new Dictionary<EntityId, SourceIndex>();
+                var instanceIDToManagedObject = new Dictionary<EntityId, SourceIndex>();
                 for (int i = 0; i < instanceIds.Count; ++i)
                 {
-                    if (gcHandlesIndices[i] != -1)
+                    if (managedObjectIndex[i] != -1)
                     {
-                        instanceIDToGcHandleIndex.Add(instanceIds[i], gcHandlesIndices[i]);
+                        instanceIDToManagedObject.Add(instanceIds[i], new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex[i]));
                     }
-                    instanceIDToUnifiedIndex.Add(instanceIds[i], (int)gcHandlesCount + i);
+                    instanceIDToNativeObject.Add(instanceIds[i], new SourceIndex(SourceIndex.SourceId.NativeObject, i));
                 }
 
 #if DEBUG_VALIDATION
-                if (instanceIDToGcHandleIndex.Count > 0)
+                if (instanceIDToManagedObject.Count > 0)
                     IndexOfFirstNativeToGCHandleConnection = Count;
 #endif
+                if (To.IsCreated)
+                    To.Dispose();
+                if (From.IsCreated)
+                    From.Dispose();
 
                 // Connections - reported Native objects connections
-                // Plus links between Native and Managed objects (instanceIDToGcHandleIndex)
-                var newFrom = new DynamicArray<int>(Count + instanceIDToGcHandleIndex.Count, Allocator.Persistent);
-                var newTo = new DynamicArray<int>(newFrom.Count, Allocator.Persistent);
-                // Add all Native to Native connections reported in snapshot as Unified Index
+                // Plus links between Native and Managed objects (instanceIDToManagedObject)
+                From = new DynamicArray<SourceIndex>(Count + instanceIDToManagedObject.Count, Allocator.Persistent);
+                To = new DynamicArray<SourceIndex>(From.Count, Allocator.Persistent);
+                // Add all Native to Native connections reported in snapshot as Source Index
                 for (long i = 0; i < Count; ++i)
                 {
-                    newFrom[i] = instanceIDToUnifiedIndex[instanceIDFrom[i]];
-                    newTo[i] = instanceIDToUnifiedIndex[instanceIDTo[i]];
+                    From[i] = instanceIDToNativeObject[instanceIDFrom[i]];
+                    To[i] = instanceIDToNativeObject[instanceIDTo[i]];
                 }
-
-                // Dispose of original data to save memory
-                // as we no longer need it
-                To.Dispose();
-                From.Dispose();
 
                 // Add all Managed to Native connections
-                var enumerator = instanceIDToGcHandleIndex.GetEnumerator();
-                for (long i = Count; i < newFrom.Count; ++i)
+                var enumerator = instanceIDToManagedObject.GetEnumerator();
+                for (long i = Count; i < From.Count; ++i)
                 {
                     enumerator.MoveNext();
-                    newFrom[i] = instanceIDToUnifiedIndex[enumerator.Current.Key];
-                    // elements in To that are `To[i] < gcHandlesCount` are indexes into the GCHandles list
-                    newTo[i] = enumerator.Current.Value;
+                    From[i] = instanceIDToNativeObject[enumerator.Current.Key];
+                    To[i] = enumerator.Current.Value;
                 }
-
-                From = newFrom;
-                To = newTo;
                 Count = From.Count;
             }
 

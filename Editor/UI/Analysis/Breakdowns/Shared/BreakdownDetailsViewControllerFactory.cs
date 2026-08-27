@@ -16,13 +16,28 @@ namespace Unity.MemoryProfiler.Editor.UI
                     IAnalysisViewSelectable.Category.ExecutablesAndMapped => new SimpleDetailsViewController(name, TextContent.ExecutablesAndMappedDescription, string.Empty),
                     IAnalysisViewSelectable.Category.Graphics => new SimpleDetailsViewController(name, TextContent.GraphicsEstimatedDescription, string.Empty),
                     IAnalysisViewSelectable.Category.GraphicsDisabled => new SimpleDetailsViewController(name, TextContent.GraphicsEstimatedDisabledDescription, string.Empty),
-                    IAnalysisViewSelectable.Category.Unknown => new SimpleDetailsViewController(name, TextContent.UntrackedDescription, string.Empty),
-                    IAnalysisViewSelectable.Category.UnknownEstimated => new SimpleDetailsViewController(name, TextContent.UntrackedEstimatedDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.Untracked => new SimpleDetailsViewController(name, TextContent.UntrackedDescription, string.Empty),
+
+                    IAnalysisViewSelectable.Category.VirtualMachineMemory => new SimpleDetailsViewController(name, TextContent.VirtualMachineMemoryDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.UnrootedNativeSubsystemAllocations => new SimpleDetailsViewController(name, TextContent.UnrootedNativeSubsystemAllocationsDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.UntrackedEstimated => new SimpleDetailsViewController(name, TextContent.UntrackedEstimatedDescription, string.Empty),
                     IAnalysisViewSelectable.Category.AndroidRuntime => new SimpleDetailsViewController(name, SummaryTextContent.kAllMemoryCategoryDescriptionAndroid, string.Empty),
 
                     IAnalysisViewSelectable.Category.NativeReserved => new SimpleDetailsViewController(name, TextContent.NativeReservedDescription, string.Empty),
                     IAnalysisViewSelectable.Category.ManagedReserved => new SimpleDetailsViewController(name, TextContent.ManagedReservedDescription, string.Empty),
                     IAnalysisViewSelectable.Category.GraphicsReserved => new SimpleDetailsViewController(name, TextContent.NativeReservedDescription, string.Empty),
+
+                    IAnalysisViewSelectable.Category.BrokenScriptReferences => new SimpleDetailsViewController(name, TextContent.RootsAndImpactBrokenScriptReferencesDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.StaticRoots => new SimpleDetailsViewController(name, TextContent.RootsAndImpactStaticRootsDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.DontDestroyOnLoadObjects => new SimpleDetailsViewController(name, TextContent.RootsAndImpactDontDestroyOnLoadDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.DontDestroyOnLoadDeletionQueue => new SimpleDetailsViewController(name, TextContent.RootsAndImpactDontDestroyOnLoadDeletionQueueDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.DontDestroyOnLoadScene => new SimpleDetailsViewController(name, TextContent.RootsAndImpactDontDestroyOnLoadSceneDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.SceneRoots => new SimpleDetailsViewController(name, TextContent.RootsAndImpactSceneRootsDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.AssetBundles => new SimpleDetailsViewController(name, TextContent.RootsAndImpactAssetBundlesDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.NativeObjectRoots => new SimpleDetailsViewController(name, TextContent.RootsAndImpactNativeObjectRootsDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.UnreferencedPrefabs => new SimpleDetailsViewController(name, TextContent.RootsAndImpactUnreferencedPrefabsDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.GCHandleRoots => new SimpleDetailsViewController(name, TextContent.RootsAndImpactGCHandleRootsDescription, string.Empty),
+                    IAnalysisViewSelectable.Category.NativeRootAllocations => new SimpleDetailsViewController(name, TextContent.RootsAndImpactNativeRootAllocationsDescription, string.Empty),
 
                     _ => throw new ArgumentException("Invalid or unknown item type"),
                 };
@@ -44,6 +59,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 CachedSnapshot.SourceIndex.SourceId.ManagedType => new TypeDetailsViewController(snapshot, source, childCount),
 
                 CachedSnapshot.SourceIndex.SourceId.GCHandleIndex => new SimpleDetailsViewController(name, TextContent.GCHandleDescription, string.Empty),
+
+                // Prefab entries are book-keeping units with no native/managed type of their own, so use the
+                // Prefab source itself here (routes to the prefab-specific HandlePrefabDetails panel) rather
+                // than the generic untyped-group ("group of items") panel.
+                CachedSnapshot.SourceIndex.SourceId.Prefab => new ObjectDetailsViewController(snapshot, source, name: name),
+
+                // Scene entries have their own scene-aware detail panel (name, path, memory impact); route
+                // to it instead of the generic untyped-group ("group of items") panel.
+                CachedSnapshot.SourceIndex.SourceId.Scene => new ObjectDetailsViewController(snapshot, source, name: name),
 
                 _ => new SimpleDetailsViewController(name, TextContent.NonTypedGroupDescription, string.Empty),
             };

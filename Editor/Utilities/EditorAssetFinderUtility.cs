@@ -613,9 +613,9 @@ namespace Unity.MemoryProfiler.Editor
             {
                 return await FindSceneObject(snapshot, unifiedUnityObjectInfo, cancellationToken);
             }
-            if (!snapshot.HasEntityIDAs8ByteStructs && unifiedUnityObjectInfo.IsRuntimeCreated)
+            if (unifiedUnityObjectInfo.IsManager || (!snapshot.HasEntityIDAs8ByteStructs && unifiedUnityObjectInfo.IsRuntimeCreated))
             {
-                // no dice, if it was a runtime created asset, and we couldn't find it as part of this session, there are no guarantees, not even close hits
+                // no dice, if it was a manager or a runtime created asset, and we couldn't find it as part of this session, there are no guarantees, not even close hits
                 return new Findings() { FailReason = SearchFailReason.NotFound };
             }
             if (unifiedUnityObjectInfo.IsPersistentAsset && !string.IsNullOrEmpty(unifiedUnityObjectInfo.NativeObjectName))

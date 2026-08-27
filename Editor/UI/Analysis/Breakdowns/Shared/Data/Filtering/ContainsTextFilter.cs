@@ -27,7 +27,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         // Test if the provided 'text' passes the filter. Returns true if 'text' is not null and contains the filter's 'Text', according to an ordinal, case-insensitive comparison. Otherwise, returns false.
-        public bool Passes(string text, CachedSnapshot cachedSnapshot = null)
+        public bool Passes(string text)
         {
             if (text == null)
                 return false;

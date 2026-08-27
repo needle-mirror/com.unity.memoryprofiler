@@ -653,5 +653,47 @@ namespace Unity.MemoryProfiler.Editor.Containers
         {
             return 16;
         }
+
+        const int k_HighestBitIndexFor64 = 6;
+        const int k_BitsPerElement = sizeof(long) * 8;
+        const int k_MaxIndexCountPerLong = k_BitsPerElement - 1;
+        /// <summary>
+        /// Returns the number of ulong elements needed to store a bitset of <paramref name="count"/> flags.
+        /// </summary>
+        /// <param name="count"></param>
+        /// <returns></returns>
+        public static long CountToUlongPackedBitsetCapacity(long count)
+        {
+            Checks.CheckCountNotNegative(count);
+
+            const int k_BitsPerElement = sizeof(ulong) * 8;
+            var elementCount = (count + (k_BitsPerElement - 1)) / k_BitsPerElement;
+            // The above line is clearer than the below, but the below is faster and avoids a divide instruction
+            // validate the equality in this rare call and fall back to using the bitshift operation in the SetBit
+            // and TestBit methods, which are called much more often.
+            Checks.CheckEquals(elementCount, (count + (k_BitsPerElement - 1)) >> k_HighestBitIndexFor64);
+            Checks.CheckEquals(Math.Log(k_BitsPerElement, 2), k_HighestBitIndexFor64);
+
+            return elementCount;
+        }
+
+        /// <summary>
+        /// Sets flag <paramref name="index"/> in a bitset packed 64 flags per ulong. The array copy shares
+        /// the receiver's native buffer, so the write is visible through the caller's instance.
+        ///
+        /// To get the count needed to populate such a bitset, use <see cref="CountToUlongPackedBitsetCapacity(long)"/>.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static void SetBit(this ref DynamicArray<ulong> bits, long index)
+            => bits[index >> k_HighestBitIndexFor64] |= 1ul << (int)(index & k_MaxIndexCountPerLong);
+
+        /// <summary>
+        /// Tests flag <paramref name="index"/> in a bitset packed 64 flags per ulong.
+        /// 
+        /// To get the count needed to populate such a bitset, use <see cref="CountToUlongPackedBitsetCapacity(long)"/>.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static bool TestBit(this ref DynamicArray<ulong> bits, long index)
+            => (bits[index >> k_HighestBitIndexFor64] & (1ul << (int)(index & k_MaxIndexCountPerLong))) != 0;
     }
 }

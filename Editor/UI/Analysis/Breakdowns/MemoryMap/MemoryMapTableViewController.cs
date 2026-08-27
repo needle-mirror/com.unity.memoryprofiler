@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.UIElements;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -11,14 +14,21 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         readonly MemoryMapBreakdownModelBuilder m_Builder = new MemoryMapBreakdownModelBuilder();
 
+        public MemoryMapBreakdownModel EmptyModel => new MemoryMapBreakdownModel(new(), default);
+
         public MemoryMapBreakdownModel Build(CachedSnapshot snapshot, MemoryMapBreakdownModelBuilder.BuildArgs args)
         {
             return m_Builder.Build(snapshot, args);
         }
 
-        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, List<int> treeNodeIdFilter)
+        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IList<int> treeNodeIdFilter)
         {
             return m_Builder.Build(baseModel, treeNodeIdFilter);
+        }
+
+        public void ClearIdToIndexCache()
+        {
+            m_Builder.ClearIdToIndexCache();
         }
     }
 
@@ -42,11 +52,17 @@ namespace Unity.MemoryProfiler.Editor.UI
         readonly IResponder m_Responder;
         protected override Dictionary<string, Comparison<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>> SortComparisons { get; }
 
+        public override bool ExcludeAllFilterApplied => m_FilterManager.TreeNodeIdFilter != null && m_FilterManager.TreeNodeIdFilter.Count == 0;
+
         // Composed components
         readonly TableFilterManager<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData> m_FilterManager;
         readonly ModelBuildOrchestrator<MemoryMapBreakdownModel, MemoryMapBreakdownModelBuilder.BuildArgs> m_BuildOrchestrator;
         TreeViewColumnManager<MemoryMapBreakdownModel.ItemData> m_ColumnManager;
         SizeCellRenderer m_SizeCellRenderer;
+
+        // View.
+        const int k_DefaultColumnWidth = 100;
+        const int k_WideColumnWidth = 180;
 
         public interface IResponder
         {
@@ -54,9 +70,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             void MemoryMapTableViewControllerSelectedItem(int itemId, MemoryMapTableViewController viewController, MemoryMapBreakdownModel.ItemData itemData);
         }
 
-        public MemoryMapTableViewController(CachedSnapshot snapshot, ToolbarSearchField searchField, IResponder responder)
+        public MemoryMapTableViewController(CachedSnapshot snapshot, ToolbarSearchField searchField, StatusFilterButton statusFilterButton, IResponder responder)
             : base(idOfDefaultColumnWithPercentageBasedWidth: null)
         {
+            // The Memory Map doesn't use the status filter, so hide it.
+            if (statusFilterButton != null)
+                UIElementsHelper.SetVisibility(statusFilterButton, false);
+
             m_Snapshot = snapshot;
             m_Responder = responder;
             SearchField = searchField;
@@ -96,17 +116,48 @@ namespace Unity.MemoryProfiler.Editor.UI
         public void SetFilters(
             MemoryMapBreakdownModel model = null,
             IScopedFilter<string> searchFilter = null,
-            bool excludeAll = false)
+            IList<int> treeNodeIdFilter = null)
+        {
+            // SetFilters is a listener to UI input (search filter changes) and therefore doesn't expect an awaitable task.
+            // No caller or following code expects any part of the asnyc build to be done.
+            FireAndForgetFilterAsync(model, searchFilter, treeNodeIdFilter);
+        }
+
+        async void FireAndForgetFilterAsync(
+            MemoryMapBreakdownModel model = null,
+            IScopedFilter<string> searchFilter = null,
+            IList<int> treeNodeIdFilter = null)
+        {
+            try
+            {
+                await SetFiltersAsync(model, searchFilter, treeNodeIdFilter);
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation is expected and acceptable - don't log
+            }
+            catch (Exception e)
+            {
+                // Log unexpected exceptions but don't rethrow (would crash the application in async void)
+                Debug.LogException(e);
+            }
+        }
+
+        public async Task SetFiltersAsync(
+            MemoryMapBreakdownModel model = null,
+            IScopedFilter<string> searchFilter = null,
+            IList<int> treeNodeIdFilter = null)
         {
             m_FilterManager.SearchFilter = searchFilter;
-            m_FilterManager.TreeNodeIdFilter = excludeAll ? new List<int>() : null;
+            m_FilterManager.TreeNodeIdFilter = treeNodeIdFilter;
+
+            if (model != m_FilterManager.BaseModelForTreeNodeIdFiltering)
+                m_BuildOrchestrator.ClearIdToIndexCache();
             m_FilterManager.BaseModelForTreeNodeIdFiltering = model;
 
-            // Update base class members for compatibility
-            m_TreeNodeIdFilter = m_FilterManager.TreeNodeIdFilter;
-            m_BaseModelForTreeNodeIdFiltering = m_FilterManager.BaseModelForTreeNodeIdFiltering;
-
-            _ = m_FilterManager.ApplyFiltersAsync(() => BuildModelAsync(false), IsViewLoaded);
+            await m_FilterManager.ApplyFiltersAsync(m_FilterManager.TreeNodeIdFilter != null ?
+                    () => FilterModelAsync(m_FilterManager.BaseModelForTreeNodeIdFiltering, m_FilterManager.TreeNodeIdFilter, m_BuildOrchestrator) :
+                    () => BuildModelAsync(false), IsViewLoaded);
         }
 
         protected override VisualElement LoadView()
@@ -141,38 +192,42 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Address,
-                "Address",
-                180,
+                TextContent.AddressTableColumnHeader,
+                k_WideColumnWidth,
                 BindCellForAddressColumn(),
-                MakeCellForAddressColumn);
+                makeCell: MakeCellForAddressColumn);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Size,
-                "Allocated Size",
-                100,
+                TextContent.AllocatedSizeTableColumnHeader,
+                k_DefaultColumnWidth,
                 m_SizeCellRenderer.CreateMemorySizeBinding<MemoryMapBreakdownModel.ItemData>(
                     item => item.TotalSize),
-                MakeCellForSizeColumn,
+                makeCell: MakeCellForSizeColumn,
                 visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ResidentSize,
-                "Resident Size",
-                100,
+                TextContent.ResidentSizeTableColumnHeader,
+                k_DefaultColumnWidth,
                 BindCellForResidentSizeColumn(),
                 visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Type,
-                "Type",
-                180,
-                BindCellForTypeColumn());
+                TextContent.TypeTableColumnHeader,
+                k_WideColumnWidth,
+                BindCellForTypeColumn(),
+                makeCell: () => new ObjectOrTypeLabel(),
+                destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose());
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Description,
-                "Name",
+                TextContent.NameTableColumnHeader,
                 0,
-                BindCellForNameColumn());
+                BindCellForNameColumn(),
+                makeCell: () => new ObjectOrTypeLabel() { HideTypeInfoForObjects = true },
+                destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose());
         }
 
         protected MemoryMapBreakdownModelBuilder.BuildArgs GetModelBuilderArgs()
@@ -210,7 +265,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             return (element, rowIndex) =>
             {
                 var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
-                ((Label)element).text = $"{(long)itemData.Address:X16}";
+                element.Q<Label>().text = $"{(long)itemData.Address:X16}";
             };
         }
 
@@ -228,10 +283,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (m_TreeView.GetParentIdForIndex(rowIndex) == -1)
                 {
                     var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
-                    ((Label)element).text = EditorUtility.FormatBytes((long)itemData.TotalSize.Resident);
+                    element.Q<Label>().text = EditorUtility.FormatBytes((long)itemData.TotalSize.Resident);
                 }
                 else
-                    ((Label)element).text = "";
+                    element.Q<Label>().text = "";
             };
         }
 
@@ -241,8 +296,89 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
                 string labelText = itemData.ItemType;
-                ((Label)element).text = labelText;
+                var label = element.Q<ObjectOrTypeLabel>();
+                switch (itemData.Source.Id)
+                {
+                    case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                        if (!label.TrySetLabelDataFromSourceIndex(m_Snapshot, itemData.Source, null))
+                        {
+                            // Category/group node with no typed source — show name as plain text.
+                            label.SetLabelData(m_Snapshot, labelText, string.Empty, dataType: ObjectOrTypeLabel.DataType.PureCSharpType, showDataTypeIcon: true);
+                        }
+                        else
+                            label.NativeObjectName = null; // Type column should not show native names, even for unified types.
+                        break;
+                    case CachedSnapshot.SourceIndex.SourceId.NativeType:
+                    case CachedSnapshot.SourceIndex.SourceId.ManagedType:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
+                    case CachedSnapshot.SourceIndex.SourceId.GfxResource:
+                    case CachedSnapshot.SourceIndex.SourceId.GCHandleIndex:
+                    case CachedSnapshot.SourceIndex.SourceId.Scene:
+                    case CachedSnapshot.SourceIndex.SourceId.Prefab:
+                    case CachedSnapshot.SourceIndex.SourceId.MemoryLabel:
+                    case CachedSnapshot.SourceIndex.SourceId.None:
+#if DEBUG_VALIDATION
+                        Debug.LogWarning($"Unexpected typed source {itemData.Source.Id} for Type column. Labeling as plain text.");
+#endif
+                        label.SetLabelData(m_Snapshot, labelText, null, dataType: ObjectOrTypeLabel.DataType.NativeUnityType, showDataTypeIcon: true);
+                        break;
+                    case CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
+                    case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
+                        // Category/group node with no typed source — show name as plain text.
+                        ObjectOrTypeLabel.DataType dataType = itemData.Source.Id switch
+                        {
+                            CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection => ObjectOrTypeLabel.DataType.PureCSharpType,
+                            CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion => DetermineTypeOfSystemRegion(rowIndex),
+                            _ => ObjectOrTypeLabel.DataType.NativeUnityType
+                        };
+                        label.SetLabelData(m_Snapshot, labelText, null, dataType: dataType, showDataTypeIcon: true);
+                        break;
+                    default:
+                        throw new NotImplementedException($"Unexpected source {itemData.Source.Id} for Type column.");
+                }
             };
+        }
+
+        ObjectOrTypeLabel.DataType DetermineTypeOfSystemRegion(int rowIndex)
+        {
+            var children = m_TreeView.GetChildrenIdsForIndex(rowIndex);
+            var includesManaged = false;
+            var includesNative = false;
+            foreach (var childId in children)
+            {
+                var itemData = m_TreeView.GetItemDataForId<MemoryMapBreakdownModel.ItemData>(childId);
+                switch (itemData.Source.Id)
+                {
+                    case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                    case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                    case CachedSnapshot.SourceIndex.SourceId.ManagedType:
+                        includesManaged = true;
+                        break;
+                    case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeType:
+                    case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
+                    case CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion:
+                        includesNative = true;
+                        break;
+                    case CachedSnapshot.SourceIndex.SourceId.None:
+                    case CachedSnapshot.SourceIndex.SourceId.GfxResource:
+                    case CachedSnapshot.SourceIndex.SourceId.GCHandleIndex:
+                    case CachedSnapshot.SourceIndex.SourceId.MemoryLabel:
+                    case CachedSnapshot.SourceIndex.SourceId.Scene:
+                    case CachedSnapshot.SourceIndex.SourceId.Prefab:
+                    default:
+                        break;
+                }
+
+                if (includesManaged && includesNative)
+                    return ObjectOrTypeLabel.DataType.UnifiedUnityType;
+            }
+            return includesManaged ? ObjectOrTypeLabel.DataType.PureCSharpType : ObjectOrTypeLabel.DataType.NativeUnityType;
         }
 
         Action<VisualElement, int> BindCellForNameColumn()
@@ -250,13 +386,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             return (element, rowIndex) =>
             {
                 var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
-                ((Label)element).text = itemData.Name;
+                var label = element.Q<ObjectOrTypeLabel>();
+                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(m_Snapshot, itemData.Source, itemData.Name, out var displayName))
+                {
+                    // Category/group node with no typed source — show name as plain text.
+                    label.SetLabelData(m_Snapshot, itemData.Source.Id is CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection ? null : displayName, string.Empty);
+                }
             };
         }
 
         protected override void OnTreeItemSelected(int itemId, MemoryMapBreakdownModel.ItemData itemData)
         {
             m_Responder?.MemoryMapTableViewControllerSelectedItem(itemId, this, itemData);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+
+            SearchFilterChanged -= OnSearchFilterChanged;
         }
     }
 }

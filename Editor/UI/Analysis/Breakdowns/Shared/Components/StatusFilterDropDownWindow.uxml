@@ -1,0 +1,11 @@
+<engine:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:engine="UnityEngine.UIElements"
+             editor-extension-mode="True">
+    <Style src="StatusFilterDropDown.uss"/>
+    <engine:Toggle name="status-filter-dropdown__select-all-toggle"
+                   class="status-filter-dropdown__select-all"/>
+    <engine:VisualElement name="status-filter-dropdown__separator-element"
+                          class="status-filter-dropdown__separator"/>
+    <engine:ScrollView name="status-filter-dropdown__scroll-view"
+                       class="status-filter-dropdown__scroll"/>
+</engine:UXML>
