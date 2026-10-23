@@ -375,9 +375,7 @@ namespace Unity.MemoryProfiler.Editor
                         // report the VM heap as managed rather than native. It does not change the snapshot
                         // total (channel-only) and does not affect the physical Memory Map view, which labels
                         // allocations by source id rather than point type.
-                        var vmRoot = m_Snapshot.NativeRootReferences.VMRootReferenceIndex;
-                        if (vmRoot.Valid
-                            && m_Snapshot.NativeAllocations.RootReferenceId[source.Index] == m_Snapshot.NativeRootReferences.Id[vmRoot.Index])
+                        if (NativeAllocationEntriesCache.IsVMHeapAllocation(m_Snapshot, source.Index))
                             return PointType.Managed;
 
                         return PointType.Native;

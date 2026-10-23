@@ -24,16 +24,28 @@ namespace Unity.MemoryProfiler.Editor.UI
         // The total size, in bytes, of memory accounted for in the original snapshot.
         public MemorySize TotalSnapshotMemorySize { get; }
 
-        // The data associated with each item in the tree.
-        public readonly struct ItemData : IPrivateComparableItemData
+        /// <summary>
+        /// Which kinds of memory an item and its (included) descendants contain.
+        /// </summary>
+        [Flags]
+        public enum ContentKinds : byte
         {
-            public ItemData(string name, ulong address, MemorySize size, string itemType, CachedSnapshot.SourceIndex source)
+            None = 0,
+            Managed = 1 << 0,
+            Native = 1 << 1,
+        }
+
+        // The data associated with each item in the tree.
+        public readonly struct ItemData : IPrivateComparableItemData, IHasSourceIndex
+        {
+            public ItemData(string name, ulong address, MemorySize size, string itemType, CachedSnapshot.SourceIndex source, ContentKinds contentKinds)
             {
                 Name = name;
                 Address = address;
                 TotalSize = size;
                 ItemType = itemType;
                 Source = source;
+                ContentKinds = contentKinds;
             }
 
             // The name of the element.
@@ -49,6 +61,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // The index into the CachedSnapshot's data, to retrieve relevant item from CachedSnapshot.
             public CachedSnapshot.SourceIndex Source { get; }
+
+            public ContentKinds ContentKinds { get; }
         }
     }
 }

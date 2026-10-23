@@ -23,16 +23,31 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlClass_BaseBar = k_UxmlClass + "__committed-bar";
         const string k_UxmlClass_InnerBar = k_UxmlClass + "__resident-bar";
         const string k_UxmlClass_InnerBarVisible = k_UxmlClass + "__resident-bar-visible";
+        const string k_UxmlClass_DeEmphasisTint = k_UxmlClass + "__de-emphasis-tint";
+        const string k_UxmlClass_TintedRemainder = k_UxmlClass + "__tinted-remainder";
 
         const string k_UxmlStyle_CategoryColor = "memory-category-color__";
 
+        [System.Flags]
         public enum VisibilityMode
         {
-            CommittedOnly,
-            ResidentOnly,
-            CommittedAndResident,
-            CommittedAndResidentOnHover,
-            ResidentOverCommitted
+            None = 0,
+
+            /// <summary>Size the bar by the resident size instead of the committed size.</summary>
+            SizeByResident = 1 << 0,
+            /// <summary>Draw the resident portion inside the committed bar.</summary>
+            ResidentBar = 1 << 1,
+            /// <summary>Only draw the <see cref="ResidentBar"/> while hovered.</summary>
+            ResidentBarOnHoverOnly = 1 << 2,
+            CommittedInTooltip = 1 << 3,
+            ResidentInTooltip = 1 << 4,
+
+            CommittedOnly = CommittedInTooltip,
+            ResidentOnly = SizeByResident | ResidentInTooltip,
+            CommittedAndResident = ResidentBar | CommittedInTooltip | ResidentInTooltip,
+            CommittedAndResidentOnHover = CommittedAndResident | ResidentBarOnHoverOnly,
+            ResidentOverCommitted = ResidentBar | ResidentInTooltip,
+            ResidentOnlyWithCommittedTooltip = ResidentOnly | CommittedInTooltip,
         }
 
         bool m_HoveredState;
@@ -55,6 +70,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
             m_BaseBar.AddToClassList(k_UxmlClass_BaseBar);
             Add(m_BaseBar);
+
+            // Must be added before the inner bar so the inner bar paints over it, tinting only the committed remainder.
+            var deEmphasisTint = new VisualElement();
+            deEmphasisTint.AddToClassList(k_UxmlClass_DeEmphasisTint);
+            m_BaseBar.Add(deEmphasisTint);
 
             m_InnerBar = new VisualElement()
             {
@@ -86,26 +106,37 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Draw the committed portion not covered by the resident bar in the category color under a translucent
+        /// grey, instead of a separate darker per-category color. Only applies while the resident bar is visible.
+        /// </summary>
+        public bool DeEmphasizeNonResidentPortion
+        {
+            get => ClassListContains(k_UxmlClass_TintedRemainder);
+            set => EnableInClassList(k_UxmlClass_TintedRemainder, value);
+        }
+
         // size - allocated/resident size to show
         // total - total allocated memory in bar
         // maxValue - total allocated across all bars if multiple shown (compare)
-        public void Set(string name, MemorySize size, ulong total, ulong maxValue)
+        public void Set(string name, MemorySize size, ulong total, ulong maxValue,
+            in MemorySummaryDataOverrides dataOverrides = default)
         {
             m_MemorySize = size;
 
             // Apply size to the container, rather than BaseBar
             // to make it work inside containers which contain multiple
             // MemoryUsageBar elements
-            var outerValue = m_VisibilityMode != VisibilityMode.ResidentOnly ? size.Committed : size.Resident;
+            var outerValue = Has(VisibilityMode.SizeByResident) ? size.Resident : size.Committed;
             var outerElementSize = maxValue > 0 ? (float)outerValue / maxValue : 0;
             SetWidthClamped(this, outerElementSize);
 
             var residentOfTotal = size.Committed > 0 ? (float)size.Resident / size.Committed : 0;
             SetWidthClamped(m_InnerBar, residentOfTotal);
 
-            bool showAllocated = (m_VisibilityMode != VisibilityMode.ResidentOnly) && (m_VisibilityMode != VisibilityMode.ResidentOverCommitted);
-            bool showResident = m_VisibilityMode != VisibilityMode.CommittedOnly;
-            tooltip = MemorySizeTooltipBuilder.MakeTooltip(name, size, total, showAllocated, showResident, string.Empty);
+            bool showAllocated = Has(VisibilityMode.CommittedInTooltip);
+            bool showResident = Has(VisibilityMode.ResidentInTooltip);
+            tooltip = MemorySizeTooltipBuilder.MakeTooltip(name, size, total, showAllocated, showResident, string.Empty, in dataOverrides);
 
             UpdateState();
         }
@@ -122,9 +153,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             elem.style.width = new StyleLength(Length.Percent(clampedWidth * 100));
         }
 
+        bool Has(VisibilityMode flag) => (m_VisibilityMode & flag) != 0;
+
         void UpdateState()
         {
-            if ((m_VisibilityMode == VisibilityMode.CommittedOnly) || (m_VisibilityMode == VisibilityMode.ResidentOnly))
+            if (!Has(VisibilityMode.ResidentBar))
             {
                 m_InnerBar.style.visibility = Visibility.Hidden;
                 RemoveFromClassList(k_UxmlClass_InnerBarVisible);
@@ -133,7 +166,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_InnerBar.style.visibility = Visibility.Visible;
 
-            if (((m_VisibilityMode == VisibilityMode.CommittedAndResidentOnHover) && !m_HoveredState))
+            if (Has(VisibilityMode.ResidentBarOnHoverOnly) && !m_HoveredState)
                 RemoveFromClassList(k_UxmlClass_InnerBarVisible);
             else
                 AddToClassList(k_UxmlClass_InnerBarVisible);

@@ -7,41 +7,55 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Format;
 using Unity.MemoryProfiler.Editor.Format.QueriedSnapshot;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling;
 using UnityEditor;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+using HeapSectionTypeNames = Unity.MemoryProfiler.Editor.CachedSnapshot.ManagedMemorySectionEntriesCache.HeapSectionTypeNames;
 
 namespace Unity.MemoryProfiler.Editor
 {
     internal static class ManagedMemorySectionEntriesCacheExtensions
     {
-        static readonly string[] k_SectionNames = new string[]
-        {
-            k_VMSection,
-            k_GCSection,
-            k_ActiveGCSection,
-            k_StackSection,
-            k_ManagedMemorySection,
-            k_Gen0Section,
-            k_Gen1Section,
-            k_Gen2Section,
-            k_LargeObjectHeapSection,
-            k_PinnedObjectHeapSection,
-            k_NonGCSection
-        };
-        static readonly string k_VMSection = L10n.Tr("Virtual Machine Memory Section");
-        static readonly string k_GCSection = L10n.Tr("Managed Heap Section");
-        static readonly string k_ActiveGCSection = L10n.Tr("Active Managed Heap Section");
-        static readonly string k_StackSection = L10n.Tr("Managed Stack Section");
-        static readonly string k_ManagedMemorySection = L10n.Tr("Managed Memory Section (unclear if Heap or Virtual Machine memory, please update Unity)");
-        static readonly string k_Gen0Section = L10n.Tr("Managed Heap Section (Gen0)");
-        static readonly string k_Gen1Section = L10n.Tr("Managed Heap Section (Gen1)");
-        static readonly string k_Gen2Section = L10n.Tr("Managed Heap Section (Gen2)");
-        static readonly string k_LargeObjectHeapSection = L10n.Tr("Managed Heap Section (Large Object Heap)");
-        static readonly string k_PinnedObjectHeapSection = L10n.Tr("Managed Heap Section (Pinned Object Heap)");
-        static readonly string k_NonGCSection = L10n.Tr("Managed Heap Section (Frozen/Non-GC)");
+        static readonly string k_VMSection = TextContent.Tr("Virtual Machine Memory Section");
+        static readonly string k_GCSection = TextContent.Tr("Managed Heap Section");
+        static readonly string k_ActiveGCSection = TextContent.Tr("Active Managed Heap Section");
+        static readonly string k_StackSection = TextContent.Tr("Managed Stack Section");
+        static readonly string k_ManagedMemorySection = TextContent.Tr("Managed Memory Section (unclear if Heap or Virtual Machine memory, please update Unity)");
+        static readonly string k_Gen0Section = TextContent.Tr("Managed Heap Section (Gen0)");
+        static readonly string k_Gen1Section = TextContent.Tr("Managed Heap Section (Gen1)");
+        static readonly string k_Gen2Section = TextContent.Tr("Managed Heap Section (Gen2)");
+        static readonly string k_LargeObjectHeapSection = TextContent.Tr("Managed Heap Section (Large Object Heap)");
+        static readonly string k_PinnedObjectHeapSection = TextContent.Tr("Managed Heap Section (Pinned Object Heap)");
+        static readonly string k_NonGCSection = TextContent.Tr("Managed Heap Section (Frozen/Non-GC)");
 
-        public static string SectionName(this ManagedMemorySectionEntriesCache cache, long index) => k_SectionNames[(int)cache.NamedHeapSectionType[index]];
+        /// <summary>
+        /// Display name for a named heap section type. Kept as a switch rather than an array indexed by the
+        /// enum so that adding a <see cref="HeapSectionTypeNames"/> member fails to compile (CS8509) instead
+        /// of silently returning nothing.
+        /// </summary>
+        // CS8524 (the *unnamed* enum value isn't covered) is suppressed: every defined value is handled below, and
+        // a runtime value is always a defined enum member. We deliberately keep no discard arm so that adding a new
+        // named section type still trips CS8509 (a -warnaserror+ build error) — suppressing CS8524 keeps that gate while
+        // not forcing a catch-all that would defeat it.
+#pragma warning disable CS8524
+        internal static string SectionName(HeapSectionTypeNames namedSectionType) => namedSectionType switch
+        {
+            HeapSectionTypeNames.VMSection => k_VMSection,
+            HeapSectionTypeNames.GCSection => k_GCSection,
+            HeapSectionTypeNames.ActiveGCSection => k_ActiveGCSection,
+            HeapSectionTypeNames.StackSection => k_StackSection,
+            HeapSectionTypeNames.ManagedMemorySection => k_ManagedMemorySection,
+            HeapSectionTypeNames.Gen0Section => k_Gen0Section,
+            HeapSectionTypeNames.Gen1Section => k_Gen1Section,
+            HeapSectionTypeNames.Gen2Section => k_Gen2Section,
+            HeapSectionTypeNames.LargeObjectHeapSection => k_LargeObjectHeapSection,
+            HeapSectionTypeNames.PinnedObjectHeapSection => k_PinnedObjectHeapSection,
+            HeapSectionTypeNames.NonGCSection => k_NonGCSection,
+        };
+#pragma warning restore CS8524
+
+        public static string SectionName(this ManagedMemorySectionEntriesCache cache, long index) => SectionName(cache.NamedHeapSectionType[index]);
     }
 
     internal partial class CachedSnapshot
@@ -371,7 +385,7 @@ namespace Unity.MemoryProfiler.Editor
             /// <param name="address">The address to search for.</param>
             /// <returns>The section index, or -1 if not found.</returns>
             [MethodImpl(MethodImplementationHelper.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = true, Debug = false)]
-            public long FindSectionContaining(ulong address)
+            public readonly long FindSectionContaining(ulong address)
             {
                 if (address == 0 || address < m_MinAddress || address >= m_MaxAddress)
                     return -1;
@@ -429,9 +443,7 @@ namespace Unity.MemoryProfiler.Editor
                         using var newSortedAddresses = new DynamicArray<ulong>(startAddresses.Count, Allocator.Temp);
                         using var newSortedSectionTypes = isStackMemory ? default : new DynamicArray<MemorySectionType>(startAddresses.Count, Allocator.Temp);
                         using var newSortedSectionTypeNames = new DynamicArray<HeapSectionTypeNames>(startAddresses.Count, Allocator.Temp);
-                        // Flags is only populated for heap sections (never stacks) — mirrors the
-                        // isStackMemory gating already used for associatedSectionType above.
-                        using var newSortedFlags = isStackMemory ? default : new DynamicArray<HeapChunkType>(startAddresses.Count, Allocator.Temp);
+                        using var newSortedFlags = associatedFlags.IsCreated ? new DynamicArray<HeapChunkType>(startAddresses.Count, Allocator.Temp) : default;
 
                         for (long i = 0; i < startAddresses.Count; ++i)
                         {
@@ -443,20 +455,18 @@ namespace Unity.MemoryProfiler.Editor
                             sortedToOriginalIndex[i] = idx;
 
                             if (!isStackMemory)
-                            {
                                 newSortedSectionTypes[i] = associatedSectionType[idx];
+                            if (newSortedFlags.IsCreated)
                                 newSortedFlags[i] = associatedFlags[idx];
-                            }
                         }
 
                         UnsafeUtility.MemCpy(startAddresses.GetUnsafePtr(), newSortedAddresses.GetUnsafePtr(), sizeof(ulong) * startAddresses.Count);
                         UnsafeUtility.MemCpy(associatedSectionTypeNames.GetUnsafePtr(), newSortedSectionTypeNames.GetUnsafePtr(), sizeof(HeapSectionTypeNames) * newSortedSectionTypeNames.Count);
 
                         if (!isStackMemory)
-                        {
                             UnsafeUtility.MemCpy(associatedSectionType.GetUnsafePtr(), newSortedSectionTypes.GetUnsafePtr(), sizeof(MemorySectionType) * associatedSectionType.Count);
+                        if (newSortedFlags.IsCreated)
                             UnsafeUtility.MemCpy(associatedFlags.GetUnsafePtr(), newSortedFlags.GetUnsafePtr(), sizeof(HeapChunkType) * associatedFlags.Count);
-                        }
                     }
 
                     using var sortedIndice = new DynamicArray<long>(startAddresses.Count, Allocator.Temp);
@@ -474,7 +484,8 @@ namespace Unity.MemoryProfiler.Editor
                 SectionSize.Dispose();
                 NamedHeapSectionType.Dispose();
                 SortedToOriginalIndex.Dispose();
-                Flags.Dispose();
+                if (Flags.IsCreated)
+                    Flags.Dispose();
 
                 if (m_BytesReadOp.IsCreated && !m_BytesUnloaded)
                 {

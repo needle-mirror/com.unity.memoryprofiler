@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using System.Collections.Generic;
 
@@ -26,19 +27,27 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifierDetailsFoldout = "details-panel__section-header__selection-details";
         const string k_UxmlIdentifierReferencesSelection = "reference-item-details__unity-item-title";
         const string k_UxmlIdentifierSelectedDetails = "selected-item-details";
+        const string k_UxmlIdentifierRefocusButton = "reference-item-details__refocus-button";
 
         public const string ReferencesLabelText = "References";
         public const string DetailsLabelText = "Selected Item Details";
 
+        internal CachedSnapshot.SourceIndex DataSource => m_DataSource;
+
         // State
         readonly CachedSnapshot m_Snapshot;
         readonly CachedSnapshot.SourceIndex m_DataSource;
+        readonly BreakdownTableId m_Table;
+        readonly ITableItemLocator m_CurrentTableLocator;
+        readonly AnalysisTabBarController m_TabController;
         readonly long m_ChildCount;
         readonly string m_DataSourceFallbackName;
         readonly string m_DataSourceFallbackDescription;
 
         bool m_ReferencesSectionExpanded;
         float m_ReferencesSectionExpandedSize;
+        // A view replaced before its first layout has no real height, which must not overwrite the remembered size.
+        bool m_ReferencesSectionLaidOut;
 
         bool m_ReferencesSectionHiddenBecauseThereIsNoRelevantData;
         bool ReferencesSectionExpanded => m_ReferencesSectionExpanded && !m_ReferencesSectionHiddenBecauseThereIsNoRelevantData;
@@ -54,14 +63,25 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_SelectedItemDetails;
 
         ObjectOrTypeLabel m_ReferenceSelection;
+        Button m_RefocusButton;
+        bool m_ReferenceSelectionDiffersFromRoot;
         PathsToRootDetailView m_PathsToRootDetailView;
+
+        /// <summary>
+        /// Internal for testing purposes.
+        /// </summary>
+        internal PathsToRootDetailView PathsToRootDetailView => m_PathsToRootDetailView;
         SelectedItemDetailsPanel m_SelectedObjectDetailsPanel;
         SelectedItemDetailsForTypesAndObjects m_SelectedObjectDetailsBuilder;
 
-        public ObjectDetailsViewController(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, long childCount = -1, string name = "", string description = "")
+        public ObjectDetailsViewController(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, BreakdownTableId table,
+            ITableItemLocator currentTableLocator = null, AnalysisTabBarController tabController = null, long childCount = -1, string name = "", string description = "")
         {
             m_Snapshot = snapshot;
             m_DataSource = source;
+            m_Table = table;
+            m_CurrentTableLocator = currentTableLocator;
+            m_TabController = tabController;
             m_ChildCount = childCount;
 
             m_ReferencesSectionExpanded = true;
@@ -81,14 +101,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // - We fetch actual size as it is only updated on visibility
                     //   state change. Don't ask for the size if reference section
                     //   is collapsed, the returned value will be wrong
-                    if (m_ReferencesSectionExpanded && !m_ReferencesSectionHiddenBecauseThereIsNoRelevantData)
+                    if (m_ReferencesSectionExpanded && !m_ReferencesSectionHiddenBecauseThereIsNoRelevantData && m_ReferencesSectionLaidOut)
                         m_ReferencesSectionExpandedSize = m_ReferencesFoldout.layout.height;
 
                     MemoryProfilerSettings.ObjectDetailsReferenceSectionVisible = m_ReferencesSectionExpanded;
                     MemoryProfilerSettings.ObjectDetailsReferenceSectionSize = m_ReferencesSectionExpandedSize;
                 }
 
-                m_PathsToRootDetailView?.OnDisable();
+                if (m_TabController != null)
+                    m_TabController.ActiveTableChanged -= UpdateRefocusButton;
+                TableRevealHelper.AnyTableRebuilt -= UpdateRefocusButton;
+
+                m_PathsToRootDetailView?.Dispose();
                 m_PathsToRootDetailView = null;
                 m_SelectedObjectDetailsPanel?.Dispose();
                 m_SelectedObjectDetailsPanel = null;
@@ -127,11 +151,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_DetailsSplitterDragline = m_DetailsSplitter.Q(k_UxmlIdentifierSplitterDragline);
             m_ReferencesSection = view.Q<VisualElement>(k_UxmlIdentifierReferencesSection);
             m_ReferencesFoldout = view.Q<Foldout>(k_UxmlIdentifierReferencesFoldout);
+            m_ReferencesFoldout.RegisterCallback<GeometryChangedEvent>(_ => m_ReferencesSectionLaidOut = true);
             m_ReferencesRibbonContainer = view.Q<Ribbon>(k_UxmlIdentifierReferencesRibbon);
             m_ReferencesIMGUIContainer = view.Q<IMGUIContainer>(k_UxmlIdentifierReferencesIMGUI);
             m_SelectionDetailsFolout = view.Q<Foldout>(k_UxmlIdentifierDetailsFoldout);
             m_ReferenceSelection = view.Q<ObjectOrTypeLabel>(k_UxmlIdentifierReferencesSelection);
             m_SelectedItemDetails = view.Q(k_UxmlIdentifierSelectedDetails);
+            m_RefocusButton = view.Q<Button>(k_UxmlIdentifierRefocusButton);
         }
 
         static bool HasReferencesData(CachedSnapshot snapshot, SourceIndex sourceIndex)
@@ -154,9 +180,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         void RefreshView()
         {
             // Paths to root
-            var header = new MultiColumnHeaderWithTruncateTypeName(PathsToRootDetailView.CreateDefaultMultiColumnHeaderState()) { canSort = false };
-            m_PathsToRootDetailView?.OnDisable();
-            m_PathsToRootDetailView = new PathsToRootDetailView(new TreeViewState(), header, m_ReferencesRibbonContainer);
+            var header = new MultiColumnHeaderWithTruncateTypeName(PathsToRootDetailView.CreateDefaultMultiColumnHeaderState());
+            m_PathsToRootDetailView?.Dispose();
+            m_PathsToRootDetailView = new PathsToRootDetailView(new TreeViewState(), header, m_ReferencesRibbonContainer, m_Table, m_CurrentTableLocator, m_TabController);
 
             var referencesSource = m_DataSource;
             if (m_DataSource.Id == SourceIndex.SourceId.NativeAllocation)
@@ -170,16 +196,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             m_PathsToRootDetailView.SetRoot(m_Snapshot, referencesSource);
-            m_PathsToRootDetailView.SelectionChangedEvt += UpdateSelectionDetails;
 
             // Reference selection
             m_ReferenceSelection.SwitchClasses(classToAdd: "object-or-type-label-selectable", classToRemove: "object-or-type-label");
-            m_ReferenceSelection.AddManipulator(new Clickable(() =>
-            {
-                m_PathsToRootDetailView.ClearSecondarySelection();
-                SetSelectedObjectToRoot();
-            }));
+            m_ReferenceSelection.AddManipulator(new Clickable(() => Refocus(m_ReferenceSelection.GetRect())));
+            m_PathsToRootDetailView.SelectionChangedEvt += OnReferenceSelected;
+            m_RefocusButton.text = TextContent.RefocusButtonLabel;
+            m_RefocusButton.tooltip = TextContent.RefocusButtonTooltip;
+            m_RefocusButton.clicked += () => Refocus(m_RefocusButton.GetRect());
+            if (m_TabController != null)
+                m_TabController.ActiveTableChanged += UpdateRefocusButton;
+            TableRevealHelper.AnyTableRebuilt += UpdateRefocusButton;
             m_ReferenceSelection.ContextMenuOpening += ShowCopyMenuForReferencesTitle;
+            m_ReferenceSelection.ContextMenuOpening += AppendSelectInMenuForReferencesTitle;
             m_ReferenceSelection.SetLabelData(m_Snapshot, referencesSource);
 
             // Foldout controls
@@ -251,7 +280,19 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void ShowCopyMenuForReferencesTitle(ContextualMenuPopulateEvent evt)
         {
-            m_SelectedObjectDetailsPanel?.ShowCopyMenu(evt, contextMenu: true);
+            m_SelectedObjectDetailsPanel?.ShowCopyMenu(evt, contextMenu: true, includeNavigation: false);
+        }
+
+        void AppendSelectInMenuForReferencesTitle(ContextualMenuPopulateEvent evt)
+        {
+            // The References title always represents this panel's root object, independent of whatever row is
+            // currently shown in the Selected Item Details section below (which tracks the last-clicked reference).
+            var entries = SelectInMenuBuilder.BuildEntries(m_Snapshot, m_DataSource, CurrentLocator, m_TabController, includeSelectInCurrentTable: true);
+            if (entries.Count == 0)
+                return;
+
+            evt.menu.AppendSeparator();
+            SelectInMenuBuilder.PopulateDropdownMenu(evt.menu, entries);
         }
 
         void CollapseReferencesSeletion()
@@ -296,7 +337,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else
             {
                 // Don't update size on initial update, as the layout isn't updated yet
-                if (!initial)
+                if (!initial && m_ReferencesSectionLaidOut)
                     m_ReferencesSectionExpandedSize = m_ReferencesFoldout.layout.height;
 
                 // Set to minimal size and enforce it so that user can't resize the section
@@ -306,20 +347,49 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        void SetSelectedObjectToRoot()
-        {
-            UpdateSelectionDetails(m_DataSource, m_DataSourceFallbackName, m_DataSourceFallbackDescription);
-        }
-
-        void UpdateSelectionDetails(CachedSnapshot.SourceIndex source)
+        void OnReferenceSelected(CachedSnapshot.SourceIndex source)
         {
             UpdateSelectionDetails(source, null, null);
+            m_ReferenceSelectionDiffersFromRoot = source != m_DataSource;
+            UpdateRefocusButton();
+        }
+
+        ITableItemLocator CurrentLocator => TableRevealHelper.ResolveCurrentLocator(m_TabController, m_CurrentTableLocator, m_DataSource, m_Snapshot);
+
+        void UpdateRefocusButton()
+        {
+            var currentLocator = CurrentLocator;
+            var tabChanged = m_TabController != null && m_TabController.ActiveLocator?.TableId != m_Table;
+            var itemNeedsRefocus = currentLocator != null
+                && (tabChanged || currentLocator.GetVisibility(m_DataSource, m_Snapshot).Status == ItemVisibility.State.HiddenByFilters);
+            m_RefocusButton.style.display = m_ReferenceSelectionDiffersFromRoot || itemNeedsRefocus ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        void ClearReferenceSelection()
+        {
+            m_PathsToRootDetailView.ClearSecondarySelection();
+            SetSelectedObjectToRoot();
+        }
+
+        void Refocus(Rect menuAnchor)
+        {
+            ClearReferenceSelection();
+            TableRevealHelper.RevealWithChoice(CurrentLocator, m_TabController, m_Snapshot,
+                m_DataSource, frame: true, select: true, menuAnchor);
+        }
+
+        void SetSelectedObjectToRoot()
+        {
+            m_ReferenceSelectionDiffersFromRoot = false;
+            UpdateRefocusButton();
+            UpdateSelectionDetails(m_DataSource, m_DataSourceFallbackName, m_DataSourceFallbackDescription);
         }
 
         void UpdateSelectionDetails(CachedSnapshot.SourceIndex source, string fallbackName, string fallbackDescription)
         {
             m_SelectedObjectDetailsPanel.Clear();
             m_SelectedObjectDetailsBuilder.SetSelection(source, fallbackName, fallbackDescription);
+            m_SelectedObjectDetailsPanel.SetPingSelectContext(source, m_CurrentTableLocator, m_TabController);
         }
     }
 }

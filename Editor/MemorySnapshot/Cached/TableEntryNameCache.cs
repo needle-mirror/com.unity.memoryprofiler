@@ -17,10 +17,10 @@ namespace Unity.MemoryProfiler.Editor
     /// Caches extra data needed for table entry names that require heap bytes access.
     /// This includes:
     /// - String previews (first 30 characters) for managed string objects
-    /// - Char[] previews for managed char array objects  
+    /// - Char[] previews for managed char array objects
     /// - Native allocation names (derived from managed references to native allocations)
     /// - Array descriptions (type[length] format) for array objects
-    /// 
+    ///
     /// Built during crawling and persists after heap bytes are unloaded.
     /// </summary>
     internal class TableEntryNameCache : IDisposable

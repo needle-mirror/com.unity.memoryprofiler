@@ -33,6 +33,10 @@
                 <VisualElement name="memory-usage-summary__content__total" class="memory-usage-summary__widget__content" />
             </VisualElement>
 
+            <VisualElement class="memory-usage-summary__widget">
+                <VisualElement name="memory-usage-summary__content__roots-and-impact" class="memory-usage-summary__widget__content" />
+            </VisualElement>
+
             <VisualElement class="memory-usage-summary__widget__group">
                 <VisualElement class="memory-usage-summary__widget memory-usage-summary__widget__group-item">
                     <VisualElement name="memory-usage-summary__content__managed" class="memory-usage-summary__widget__content" />

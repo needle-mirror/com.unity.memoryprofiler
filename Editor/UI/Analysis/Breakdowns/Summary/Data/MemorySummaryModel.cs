@@ -48,13 +48,23 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Sum of all row items for SnapshotB
         public ulong TotalB { get; }
 
+        /// <summary>Sum of the rows' resident sizes for SnapshotA. Only set by builders whose widgets scale bars against it.</summary>
+        public ulong ResidentTotalA { get; init; }
+
+        /// <summary>Sum of the rows' resident sizes for SnapshotB. See <see cref="ResidentTotalA"/>.</summary>
+        public ulong ResidentTotalB { get; init; }
+
         // Table rows
         public List<Row> Rows { get; }
 
         // Resident memory widget warning message
         public string ResidentMemoryWarning { get; }
 
-        public void Sort(SortableItemDataProperty column, SortDirection direction)
+        /// <summary>
+        /// Sorts rows by <paramref name="column"/>, comparing <see cref="MemorySize.Resident"/> instead of
+        /// <see cref="MemorySize.Committed"/> when <paramref name="useResidentSize"/> is set.
+        /// </summary>
+        public void Sort(SortableItemDataProperty column, SortDirection direction, bool useResidentSize = false)
         {
             Rows.Sort(Comparer<Row>.Create((l, r) =>
             {
@@ -65,13 +75,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 switch (column)
                 {
                     case SortableItemDataProperty.BaseSnapshot:
-                        return mod * l.BaseSize.Committed.CompareTo(r.BaseSize.Committed);
+                        return mod * ValueOf(l.BaseSize, useResidentSize).CompareTo(ValueOf(r.BaseSize, useResidentSize));
                     case SortableItemDataProperty.ComparedSnapshot:
-                        return mod * l.ComparedSize.Committed.CompareTo(r.ComparedSize.Committed);
+                        return mod * ValueOf(l.ComparedSize, useResidentSize).CompareTo(ValueOf(r.ComparedSize, useResidentSize));
                     case SortableItemDataProperty.Difference:
                     {
-                        var diffL = Math.Abs((long)l.BaseSize.Committed - (long)l.ComparedSize.Committed);
-                        var diffR = Math.Abs((long)r.BaseSize.Committed - (long)r.ComparedSize.Committed);
+                        var diffL = Math.Abs((long)ValueOf(l.BaseSize, useResidentSize) - (long)ValueOf(l.ComparedSize, useResidentSize));
+                        var diffR = Math.Abs((long)ValueOf(r.BaseSize, useResidentSize) - (long)ValueOf(r.ComparedSize, useResidentSize));
                         return mod * diffL.CompareTo(diffR);
                     }
                     default:
@@ -79,6 +89,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }));
         }
+
+        static ulong ValueOf(MemorySize size, bool useResidentSize) => useResidentSize ? size.Resident : size.Committed;
 
         /// <summary>
         /// Table row for memory summary views
@@ -95,6 +107,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Description = descr;
                 DocumentationUrl = docsUrl;
                 CategoryId = IAnalysisViewSelectable.Category.None;
+                StatusMask = 0;
+                DeepLinkFlatten = false;
                 SortPriority = RowSortPriority.Normal;
                 ResidentSizeUnavailable = false;
                 BaseCount = baseCount;
@@ -110,6 +124,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Description = descr;
                 DocumentationUrl = docsUrl;
                 CategoryId = IAnalysisViewSelectable.Category.None;
+                StatusMask = 0;
+                DeepLinkFlatten = false;
                 SortPriority = RowSortPriority.Normal;
                 ResidentSizeUnavailable = false;
                 BaseCount = baseCount;
@@ -160,6 +176,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// Associated unique category. Used to select matching items in TreeView.
             /// </summary>
             public IAnalysisViewSelectable.Category CategoryId { get; init; }
+
+            /// <summary>
+            /// Bitmask (bit N = <see cref="ObjectStatus"/> N) this row aggregates, for deep-linking into a
+            /// status-filtered view. 0 means the row is not deep-linkable.
+            /// </summary>
+            public ulong StatusMask { get; init; }
+
+            /// <summary>Whether a deep-link from this row opens the target view flattened rather than expanded.</summary>
+            public bool DeepLinkFlatten { get; init; }
 
             /// <summary>
             /// Indicates that element memory size value is imprecise.

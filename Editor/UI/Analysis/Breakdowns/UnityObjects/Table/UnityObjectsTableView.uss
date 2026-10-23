@@ -1,4 +1,4 @@
-/* 
+/*
  * UnityObjectsTableView.uss
  * Styles specific to the Unity Objects table view.
  * Imports common table view styles from TableViewBase.uss

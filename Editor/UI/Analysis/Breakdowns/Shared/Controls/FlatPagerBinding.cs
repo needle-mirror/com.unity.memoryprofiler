@@ -80,9 +80,27 @@ namespace Unity.MemoryProfiler.Editor.UI
             var model = m_CurrentModel();
             if (model == null || !model.IsPaged)
                 return;
+            ShowPage(model, page);
+        }
+
+        void ShowPage(IPagedFlatModel model, int page)
+        {
             model.MaterializePage(page);
             m_RefreshTreeViewRoots();
             m_Pager.SetState(model.CurrentPage, model.TotalPages);
+        }
+
+        /// <summary>Shows the page holding store row <paramref name="storeIndex"/>, for selecting it by the returned <paramref name="treeId"/>.</summary>
+        public bool TryShowRow(long storeIndex, out int treeId)
+        {
+            treeId = -1;
+            var model = m_CurrentModel();
+            if (model == null || !model.TryGetPageForRow(storeIndex, out var page))
+                return false;
+
+            ShowPage(model, page);
+            treeId = model.GetTreeIdForStoreIndex(storeIndex);
+            return true;
         }
 
         /// <summary>

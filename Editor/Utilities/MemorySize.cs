@@ -66,5 +66,35 @@ namespace Unity.MemoryProfiler.Editor
             remainder = new MemorySize(Committed > 0 ? Committed % divisor : 0, Resident > 0 ? Resident % divisor : 0);
             return new MemorySize(Committed > 0 ? Committed / divisor : 0, Resident > 0 ? Resident / divisor : 0);
         }
+
+        /// <summary>
+        /// Scales each channel by <paramref name="numerator"/>/<paramref name="denominator"/>, floored.
+        /// <paramref name="numerator"/> must be &lt;= <paramref name="denominator"/>.
+        /// </summary>
+        public MemorySize ScaleByFraction(ulong numerator, ulong denominator)
+        {
+            Checks.IsTrue(denominator != 0, "Division by 0!");
+            Checks.IsTrue(numerator <= denominator, "The fraction must not exceed 1!");
+            return new MemorySize(ScaleByFraction(Committed, numerator, denominator), ScaleByFraction(Resident, numerator, denominator));
+        }
+
+        static ulong ScaleByFraction(ulong value, ulong numerator, ulong denominator)
+        {
+            // Splitting off the quotient keeps both multiplies in range, as quotient * numerator <= value.
+            var quotient = value / denominator;
+            var remainder = value % denominator;
+            var scaledQuotient = quotient * numerator;
+            if (numerator == 0 || remainder <= ulong.MaxValue / numerator)
+                return scaledQuotient + remainder * numerator / denominator;
+            // Only reachable for denominators above 2^32, where the floored double estimate is within a byte or so.
+            return scaledQuotient + Math.Min(numerator - 1, (ulong)((double)remainder / denominator * numerator));
+        }
+
+        /// <summary>
+        /// Scales each channel by <paramref name="fraction"/>, floored. Prefer the integer-ratio overload when the
+        /// fraction is a ratio of two counts.
+        /// </summary>
+        public MemorySize ScaleByFraction(double fraction) =>
+            new MemorySize((ulong)(Committed * fraction), (ulong)(Resident * fraction));
     }
 }

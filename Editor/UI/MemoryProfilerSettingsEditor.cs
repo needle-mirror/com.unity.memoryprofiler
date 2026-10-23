@@ -10,24 +10,26 @@ namespace Unity.MemoryProfiler.Editor
     internal class MemoryProfilerSettingsEditor
     {
         public const string SettingsPath = "Preferences/Analysis/Memory Profiler";
-        class Content
+        internal class Content
         {
-            public static readonly GUIContent SnapshotPathLabel = EditorGUIUtility.TrTextContent("Memory Snapshot Storage Path");
-            public static readonly string OnlyRelativePaths = L10n.Tr("Only relative paths are allowed");
-            public static readonly string OKButton = L10n.Tr("OK");
-            public static readonly string InvalidPathWindow = L10n.Tr("Invalid Path");
-            public static readonly string MemoryProfilerPackageOverridesMemoryModuleUI = L10n.Tr("Replace Memory UI in Profiler Window", "If set to true, the Memory Profiler Module UI in the Profiler Window will be replaced with UI from the Memory Profiler package.");
-            public static readonly string ShowReservedMemoryBreakdown = L10n.Tr("Show reserved native memory breakdown", "If set to true, the Memory Profiler will show reserved native memory broken down to individual allocator in `All Of Memory` view.");
-            public static readonly string ShowAllSystemMemoryView = L10n.Tr("Show Memory Map view", "If set to true, the Memory Profiler will show additional `Memory Map` view with low-level OS system memory map with breakdown.");
-            public static readonly string AssetSearchSettings = L10n.Tr("Asset Search Provider Settings", "The Memory Profiler uses search features to search for assets listed in the capture within the currently open project. When it finds them, it allows selecting the asset and, if one exists, shows a preview of the asset in the Memory Profiler UI. There have been isolated reports of issues with opening the Memory Profiler based on the indexing of the used search providers. If you are experiencing problems with opening the Memory Profiler Window or extreme delays when selecting assets in it, you could try changing this setting. This setting also affects which providers will be used by the Open in Search button.");
+            public static readonly GUIContent SnapshotPathLabel = TextContent.TrTextContent("Memory Snapshot Storage Path");
+            public static readonly string OnlyRelativePaths = TextContent.Tr("Only relative paths are allowed");
+            public static readonly string OKButton = TextContent.Tr("OK");
+            public static readonly string InvalidPathWindow = TextContent.Tr("Invalid Path");
+            public static readonly GUIContent MemoryProfilerPackageOverridesMemoryModuleUI = TextContent.TrTextContent("Replace Memory UI in Profiler Window", "If set to true, the Memory Profiler Module UI in the Profiler Window will be replaced with UI from the Memory Profiler package.");
+            public static readonly GUIContent ShowReservedMemoryBreakdown = TextContent.TrTextContent("Show reserved native memory breakdown", "If set to true, the Memory Profiler will show reserved native memory broken down to individual allocator in `All Of Memory` view.");
+            public static readonly GUIContent ShowAllSystemMemoryView = TextContent.TrTextContent("Show Memory Map view", "If set to true, the Memory Profiler will show additional `Memory Map` view with low-level OS system memory map with breakdown.");
+            public static readonly GUIContent SortReferencesWithDifferentRootLast = TextContent.TrTextContent("Sort different-root references last", "If set to true, sorting the References panel by Depth lists rows whose shortest path to root terminates at a different root than the selected item's after all other rows, in either sort direction.");
+            public static readonly GUIContent ShowTotalImpactInPotentialSavings = TextContent.TrTextContent("Show total impact in Potential Savings", "If set to true, the `Potential Savings` widget's bar shows the total impact of each category with its exclusive impact marked inside it, and the legend lists the total impact. If set to false, the bar and legend show the exclusive impact only, and the total impact is available from the tooltips.");
+            public static readonly GUIContent AssetSearchSettings = TextContent.TrTextContent("Asset Search Provider Settings", "The Memory Profiler uses search features to search for assets listed in the capture within the currently open project. When it finds them, it allows selecting the asset and, if one exists, shows a preview of the asset in the Memory Profiler UI. There have been isolated reports of issues with opening the Memory Profiler based on the indexing of the used search providers. If you are experiencing problems with opening the Memory Profiler Window or extreme delays when selecting assets in it, you could try changing this setting. This setting also affects which providers will be used by the Open in Search button.");
 
-            public static readonly GUIContent TitleSettingsIcon = EditorGUIUtility.TrIconContent("_Popup", "Settings");
-            public static readonly GUIContent HelpIcon = EditorGUIUtility.TrIconContent("_Help", "Open Documentation");
-            public static readonly GUIContent ResetSettings = EditorGUIUtility.TrTextContent("Revert to default settings");
+            public static readonly GUIContent TitleSettingsIcon = TextContent.TrIconContent("_Popup", "Settings");
+            public static readonly GUIContent HelpIcon = TextContent.TrIconContent("_Help", "Open Documentation");
+            public static readonly GUIContent ResetSettings = TextContent.TrTextContent("Revert to default settings");
 
-            public static readonly GUIContent ResetOptOutDialogsButton = EditorGUIUtility.TrTextContent("Reset Opt-Out settings for dialog prompts", "All dialogs that you have previously opted out of will show up again when they get triggered.");
+            public static readonly GUIContent ResetOptOutDialogsButton = TextContent.TrTextContent("Reset Opt-Out settings for dialog prompts", "All dialogs that you have previously opted out of will show up again when they get triggered.");
 
-            public static readonly GUIContent ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations = EditorGUIUtility.TrTextContent("Parse pointer sized fields as ref. to native", "Normally, only some structs in the Unity.Entities namespace get their pointer sized fields examined as potentially pointing at native allocations when opening a snapshot. Enabling this option could lead to longer capture opening times, and increases the chance of false positives in the references found from managed fields to native allocations. This is only really usefull if you have code that stores pointers in fields that are not pointers or IntPtrs.");
+            public static readonly GUIContent ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations = TextContent.TrTextContent("Parse pointer sized fields as ref. to native", "Normally, only some structs in the Unity.Entities namespace get their pointer sized fields examined as potentially pointing at native allocations when opening a snapshot. Enabling this option could lead to longer capture opening times, and increases the chance of false positives in the references found from managed fields to native allocations. This is only really usefull if you have code that stores pointers in fields that are not pointers or IntPtrs.");
         }
         static class Style
         {
@@ -128,6 +130,8 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 MemoryProfilerSettings.ShowReservedMemoryBreakdown = EditorGUILayout.Toggle(Content.ShowReservedMemoryBreakdown, MemoryProfilerSettings.ShowReservedMemoryBreakdown);
                 MemoryProfilerSettings.ShowMemoryMapView = EditorGUILayout.Toggle(Content.ShowAllSystemMemoryView, MemoryProfilerSettings.ShowMemoryMapView);
+                MemoryProfilerSettings.SortReferencesWithDifferentRootLast = EditorGUILayout.Toggle(Content.SortReferencesWithDifferentRootLast, MemoryProfilerSettings.SortReferencesWithDifferentRootLast);
+                MemoryProfilerSettings.ShowTotalImpactInPotentialSavings = EditorGUILayout.Toggle(Content.ShowTotalImpactInPotentialSavings, MemoryProfilerSettings.ShowTotalImpactInPotentialSavings);
                 MemoryProfilerSettings.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations = EditorGUILayout.Toggle(Content.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations, MemoryProfilerSettings.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations);
 
                 if (MemoryProfilerSettings.InternalMode)

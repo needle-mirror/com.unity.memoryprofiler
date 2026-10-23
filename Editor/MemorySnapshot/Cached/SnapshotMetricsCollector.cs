@@ -110,7 +110,7 @@ namespace Unity.MemoryProfiler.Editor
 
         /// <summary>
         /// ProfilerMarkers need to be ended before yielding a coroutine or doing any async work, otherwise the timings will be incorrect.
-        /// This method allows to pause a specific timing step, and resume it later with <see cref="ResumePostProcessTiming(SnapshotMetrics.TimingStep)"/>, so that we can get accurate timings for post process steps even if they yield or do async work. 
+        /// This method allows to pause a specific timing step, and resume it later with <see cref="ResumePostProcessTiming(SnapshotMetrics.TimingStep)"/>, so that we can get accurate timings for post process steps even if they yield or do async work.
         /// </summary>
         /// <param name="step"></param>
         [IgnoredByDeepProfiler, Conditional("MEMORY_PROFILER_METRICS")]

@@ -16,7 +16,7 @@ namespace Unity.MemoryProfiler.Editor
             public long Count;
             public string[] TypeName;
             public DynamicArray<int> NativeBaseTypeArrayIndex = default;
-            const string k_Transform = "Transform";
+            public const string TransformTypeName = "Transform";
             public int TransformIdx { get; private set; } = InvalidTypeIndex;
             const string k_RectTransform = "RectTransform";
             public int RectTransformIdx { get; private set; } = InvalidTypeIndex;
@@ -85,7 +85,7 @@ namespace Unity.MemoryProfiler.Editor
                 BaseObjectIdx = Array.FindIndex(TypeName, x => x == k_BaseObject);
                 NamedObjectIdx = Array.FindIndex(TypeName, x => x == k_NamedObject);
 
-                TransformIdx = Array.FindIndex(TypeName, x => x == k_Transform);
+                TransformIdx = Array.FindIndex(TypeName, x => x == TransformTypeName);
                 RectTransformIdx = Array.FindIndex(TypeName, x => x == k_RectTransform);
                 GameObjectIdx = Array.FindIndex(TypeName, x => x == k_GameObject);
                 MonoBehaviourIdx = Array.FindIndex(TypeName, x => x == k_MonoBehaviour);

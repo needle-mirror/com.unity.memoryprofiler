@@ -89,13 +89,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             return m_Children.Contains(viewController);
         }
 
-        // Add viewController as a child of this view controller.
+        /// <summary>
+        /// Add viewController as a child of this view controller, so that it is disposed together with it.
+        /// A controller held in a field and re-created has to be re-registered on every swap, or teardown reaches
+        /// the stale instance instead of the live one.
+        /// </summary>
         protected void AddChild(IViewController viewController)
         {
             m_Children.Add(viewController);
         }
 
-        // Remove viewController from the children of this view controller.
+        /// <summary>
+        /// Remove viewController from the children of this view controller.
+        /// </summary>
         protected void RemoveChild(IViewController viewController)
         {
             m_Children.Remove(viewController);

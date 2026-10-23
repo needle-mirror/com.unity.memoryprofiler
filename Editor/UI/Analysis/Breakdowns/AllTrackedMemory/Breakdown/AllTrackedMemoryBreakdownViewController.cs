@@ -7,6 +7,8 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         AllTrackedMemoryTableViewController m_TableViewController;
 
+        public override BreakdownTableId TableId => BreakdownTableId.AllTrackedMemory;
+
         public AllTrackedMemoryBreakdownViewController(CachedSnapshot snapshot, string description, ISelectionDetails selectionDetails)
             : base(snapshot, description, selectionDetails)
         {
@@ -17,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ViewLoaded();
 
             // Initialize All Tracked Memory table as a child view controller.
-            m_TableViewController = new AllTrackedMemoryTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this);
+            m_TableViewController = new AllTrackedMemoryTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this) { TabController = TabController };
             AddChild(m_TableViewController);
 
             // SetColumnsVisibilityAsync is synchronous before the view is loaded (IsViewLoaded = false):
@@ -69,7 +71,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             AllTrackedMemoryTableViewController viewController,
             AllTrackedMemoryModel.ItemData itemData)
         {
-            ViewController detailsView = BreakdownDetailsViewControllerFactory.Create(Snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source);
+            ViewController detailsView = BreakdownDetailsViewControllerFactory.Create(Snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source, BreakdownTableId.AllTrackedMemory, this, TabController);
             SelectionDetails.SetSelection(detailsView);
         }
 

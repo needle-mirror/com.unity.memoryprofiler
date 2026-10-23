@@ -73,6 +73,26 @@
     background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/LeakedDynamicAssetErrorIcon.png');
 }
 
+.memory-profiler__light .data-type-icon__unified-managed-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/UnityObjectIconManagedHalf.png');
+}
+
+.memory-profiler__light .data-type-icon__unified-native-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/UnityObjectIconNativeHalf.png');
+}
+
+.memory-profiler__light .data-type-icon__leaked-dynamic-asset-managed-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/LeakedDynamicAssetErrorIconManagedHalf.png');
+}
+
+.memory-profiler__light .data-type-icon__leaked-dynamic-asset-native-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/LeakedDynamicAssetErrorIconNativeHalf.png');
+}
+
 .memory-profiler__light .no-icon__icon
 {
     background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/NoIconIcon.png');
@@ -102,6 +122,26 @@
 .memory-profiler__dark .data-type-icon__leaked-dynamic-asset
 {
     background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_LeakedDynamicAssetErrorIcon.png');
+}
+
+.memory-profiler__dark .data-type-icon__unified-managed-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_UnityObjectIconManagedHalf.png');
+}
+
+.memory-profiler__dark .data-type-icon__unified-native-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_UnityObjectIconNativeHalf.png');
+}
+
+.memory-profiler__dark .data-type-icon__leaked-dynamic-asset-managed-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_LeakedDynamicAssetErrorIconManagedHalf.png');
+}
+
+.memory-profiler__dark .data-type-icon__leaked-dynamic-asset-native-half
+{
+    background-image: resource('Packages/com.unity.memoryprofiler/Editor/UI/Icons/d_LeakedDynamicAssetErrorIconNativeHalf.png');
 }
 
 .memory-profiler__dark .no-icon__icon

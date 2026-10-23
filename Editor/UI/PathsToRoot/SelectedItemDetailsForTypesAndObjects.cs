@@ -37,7 +37,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 case CachedSnapshot.SourceIndex.SourceId.NativeObject:
                 case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
-                    HandleObjectDetails(type);
+                    HandleObjectDetails(type, source.Id);
                     break;
                 case CachedSnapshot.SourceIndex.SourceId.GfxResource:
                     if (m_CurrentSelectionObjectData.IsValid)
@@ -137,7 +137,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             AddMemoryImpactInfo(sourceIndex);
         }
 
-        internal void HandleObjectDetails(UnifiedTypeAndName type)
+        internal void HandleObjectDetails(UnifiedTypeAndName type, CachedSnapshot.SourceIndex.SourceId? rowHalf = null)
         {
             if (!m_CurrentSelectionObjectData.IsValid)
                 return;
@@ -158,7 +158,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else
             {
-                HandleUnityObjectDetails(selectedUnityObject);
+                HandleUnityObjectDetails(selectedUnityObject, rowHalf);
             }
         }
 
@@ -410,7 +410,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             });
         }
 
-        void AddMemoryImpactInfo(SourceIndex nativeIndex, SourceIndex managedIndex)
+        void AddMemoryImpactInfo(SourceIndex nativeIndex, SourceIndex managedIndex, SourceIndex.SourceId? selectedHalf)
         {
             if (!m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt)
             {
@@ -422,8 +422,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 // Both of these objects might own some impact of their counterpart so just adding their impacts
                 // together would lead to double counting.
-                AddMemoryImpactInfo(nativeIndex, TextContent.NativeObjectHeaderForImpactDifferentiator);
-                AddMemoryImpactInfo(managedIndex, TextContent.ManagedShellHeaderForImpactDifferentiator);
+                AddUnityObjectMemoryImpactInfo(nativeIndex, managedIndex, selectedHalf);
             }
             else if (nativeIndex.Valid)
             {
@@ -433,6 +432,91 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 AddMemoryImpactInfo(managedIndex);
             }
+        }
+
+        void AddUnityObjectMemoryImpactInfo(SourceIndex nativeIndex, SourceIndex managedIndex, SourceIndex.SourceId? selectedHalf)
+        {
+            var nativeLabel = TextContent.NativeObjectHeaderForImpactDifferentiator;
+            var managedLabel = TextContent.ManagedShellHeaderForImpactDifferentiator;
+            var rootAndImpactInfo = m_CachedSnapshot.RootAndImpactInfo;
+
+            var first = nativeIndex;
+            var firstLabel = nativeLabel;
+            var second = managedIndex;
+            var secondLabel = managedLabel;
+            string hint = null;
+            string secondRemark = null;
+            switch (rootAndImpactInfo.GetExclusiveOwnership(in nativeIndex, in managedIndex))
+            {
+                case RootAndImpactInfo.ExclusiveOwnershipResult.FirstExclusivelyOwnsSecond:
+                    hint = string.Format(TextContent.ExclusiveUnityObjectOwnershipFormat, nativeLabel, managedLabel);
+                    second = default;
+                    break;
+                case RootAndImpactInfo.ExclusiveOwnershipResult.SecondExclusivelyOwnsFirst:
+                    hint = string.Format(TextContent.ExclusiveUnityObjectOwnershipFormat, managedLabel, nativeLabel);
+                    first = managedIndex;
+                    firstLabel = managedLabel;
+                    second = default;
+                    break;
+                case RootAndImpactInfo.ExclusiveOwnershipResult.NotExclusive:
+                    if (TryDescribeReceivedShare(rootAndImpactInfo, selectedHalf, receiver: managedIndex, receiverLabel: managedLabel,
+                        source: nativeIndex, sourceLabel: nativeLabel, out hint, out secondRemark))
+                    {
+                        (first, firstLabel, second, secondLabel) = (managedIndex, managedLabel, nativeIndex, nativeLabel);
+                    }
+                    else if (!TryDescribeReceivedShare(rootAndImpactInfo, selectedHalf, receiver: nativeIndex, receiverLabel: nativeLabel,
+                        source: managedIndex, sourceLabel: managedLabel, out hint, out secondRemark))
+                    {
+                        hint = TextContent.NonExclusiveUnityObjectOwnershipLabel;
+                    }
+                    break;
+            }
+
+            if (hint != null)
+            {
+                m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameImpact, new InfoBox
+                {
+                    IssueLevel = InfoBox.IssueType.Info,
+                    Message = hint,
+                });
+            }
+
+            AddMemoryImpactInfo(first, firstLabel, showImpactExplanation: true);
+            if (!second.Valid)
+                return;
+            AddMemoryImpactInfo(second, secondLabel, showImpactExplanation: false);
+            if (secondRemark != null)
+            {
+                m_UI.AddInfoBox(secondLabel, new InfoBox
+                {
+                    IssueLevel = InfoBox.IssueType.Info,
+                    Message = secondRemark,
+                });
+            }
+        }
+
+        static bool TryDescribeReceivedShare(RootAndImpactInfo rootAndImpactInfo, SourceIndex.SourceId? selectedHalf, SourceIndex receiver, string receiverLabel, SourceIndex source, string sourceLabel,
+            out string hint, out string sourceRemark)
+        {
+            hint = null;
+            sourceRemark = null;
+            if (!rootAndImpactInfo.TryGetReceivedShareOfImpact(in receiver, in source, out var share, out var otherReferrerCount))
+                return false;
+            // A sole referrer that references its counterpart would have been reported as exclusive ownership instead.
+            if (otherReferrerCount == 0)
+                return false;
+
+            var sourceTotal = SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in rootAndImpactInfo.Impact, source).TotalImpact;
+            if (sourceTotal.SumUp().Committed == 0)
+                return false;
+            var format = selectedHalf == source.Id ? TextContent.NonExclusiveUnityObjectOwnershipShareFromSelectedHalfFormat
+                : selectedHalf == receiver.Id ? TextContent.NonExclusiveUnityObjectOwnershipShareToSelectedHalfFormat
+                : TextContent.NonExclusiveUnityObjectOwnershipShareFormat;
+            var formattedTotal = EditorUtility.FormatBytes((long)sourceTotal.SumUp().Committed);
+            var formattedShare = EditorUtility.FormatBytes((long)share.SumUp().Committed);
+            hint = string.Format(format, sourceLabel, formattedTotal, otherReferrerCount + 1, receiverLabel, formattedShare);
+            sourceRemark = string.Format(TextContent.NonExclusiveUnityObjectOwnershipShareSourceRemarkFormat, sourceLabel, formattedTotal, otherReferrerCount + 1, receiverLabel, formattedShare);
+            return true;
         }
 
         void AddMemoryImpactAvailabilityMessage()
@@ -460,7 +544,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        void AddMemoryImpactInfo(SourceIndex index, string unityObjectPartDifferentiator = "")
+        void AddMemoryImpactInfo(SourceIndex index, string unityObjectPartDifferentiator = "", bool showImpactExplanation = true)
         {
             if (!m_CachedSnapshot.RootAndImpactInfo.SuccessfullyBuilt)
             {
@@ -479,12 +563,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             var addLineSpacing = false;
             if (totalSum.Committed > 0)
             {
-                if (string.IsNullOrEmpty(unityObjectPartDifferentiator) || index.Id is SourceIndex.SourceId.NativeObject)
-                    m_UI.AddInfoBox(SelectedItemDetailsPanel.GroupNameImpact, new InfoBox
-                    {
-                        IssueLevel = InfoBox.IssueType.Info,
-                        Message = TextContent.AttributedImpactInfo
-                    });
+                if (showImpactExplanation)
+                    m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameImpact, TextContent.AttributedImpactInfoFoldoutTitle, TextContent.AttributedImpactInfo,
+                        options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SubFoldout | SelectedItemDynamicElementOptions.SubFoldoutCollapsed | SelectedItemDynamicElementOptions.SubFoldoutPersistState | SelectedItemDynamicElementOptions.SubFoldoutSpaced,
+                        documentationUrl: DocumentationUrls.MemoryImpactDocumentation);
 
                 if (!string.IsNullOrEmpty(unityObjectPartDifferentiator))
                 {
@@ -639,6 +721,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var objectAddress = m_CurrentSelectionObjectData.GetObjectPointer(m_CachedSnapshot, false);
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameAdvanced, TextContent.ManagedAddressRowLabel, DetailFormatter.FormatPointer(objectAddress));
+            m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameDebug, TextContent.ManagedIndexRowLabel, managedObjectInfo.ManagedObjectIndex.ToString());
         }
 
         void GetDetailedManagedReferenceCounts(long managedObjectIndex, long nativeObjectIndex, out long uniqueReferenceCount, out long uniqueManagedReferenceCount, out long uniqueNativeReferenceCount, out long repeatRefCount, out long nonUnityObjectGCHandleCount, out bool heldByGCHandle)
@@ -699,9 +782,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, description, EditorUtility.FormatBytes((long)value), $"{tooltipMessage} {value:N0} B");
         }
 
-        internal void HandleUnityObjectDetails(UnifiedUnityObjectInfo selectedUnityObject)
+        internal void HandleUnityObjectDetails(UnifiedUnityObjectInfo selectedUnityObject, CachedSnapshot.SourceIndex.SourceId? rowHalf = null)
         {
-            m_UI.SetItemName(selectedUnityObject);
+            m_UI.SetItemName(selectedUnityObject, rowHalf);
             NativeRootSize rootSize = default;
             if (selectedUnityObject.HasNativeSide)
             {
@@ -761,7 +844,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
 
             AddMemoryImpactInfo(selectedUnityObject.HasNativeSide ? new SourceIndex(SourceIndex.SourceId.NativeObject, selectedUnityObject.NativeObjectIndex) : default,
-                selectedUnityObject.HasManagedSide ? new SourceIndex(SourceIndex.SourceId.ManagedObject, selectedUnityObject.ManagedObjectIndex) : default);
+                selectedUnityObject.HasManagedSide ? new SourceIndex(SourceIndex.SourceId.ManagedObject, selectedUnityObject.ManagedObjectIndex) : default,
+                rowHalf);
 
             GetDetailedManagedReferenceCounts(selectedUnityObject.ManagedObjectIndex, selectedUnityObject.NativeObjectIndex, out var uniqueReferenceCount, out var uniqueManagedReferenceCount, out var uniqueNativeReferenceCount, out var repeatRefCount, out var nonUnityObjectGCHandleCount, out _);
 
@@ -1120,7 +1204,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 or ObjectStatus.GCHandleEntry or ObjectStatus.PrefabRoot or ObjectStatus.SceneRoot
                 or ObjectStatus.GraphicsBuffers or ObjectStatus.Untracked or ObjectStatus.Reserved
                 or ObjectStatus.ExecutablesAndMapped or ObjectStatus.VirtualMachine or ObjectStatus.Unrooted
-                or ObjectStatus.ReferencedUnrooted or ObjectStatus.BucketGroup => DetailHandlerKind.None,
+                or ObjectStatus.ReferencedUnrooted or ObjectStatus.BucketGroup
+                or ObjectStatus.FrozenHeapEntry
+                or ObjectStatus.StackHeld or ObjectStatus.FinalizerHeld or ObjectStatus.OtherHeld => DetailHandlerKind.None,
         };
 #pragma warning restore CS8524
 
@@ -1171,7 +1257,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else if (isUnityObjectType || m_CachedSnapshot.CrawledData.IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle.Contains(managedObjectIndex))
             {
-                // There may be some types that do not get properly found to be Unity Object types but which have objects with m_CachedPtr fields
+                // There may be some types that do not get properly found to be Unity Object types but which have objects with the UnityEngine.Object native link field (m_EntityId)
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameBasic, k_StatusLabelText, TextContent.LeakedShellHeldByGCHandleStatus, TextContent.LeakedShellHeldByGCHandleHint);
                 m_UI.AddDynamicElement(SelectedItemDetailsPanel.GroupNameHelp, k_HintLabelText, TextContent.LeakedShellHeldByGCHandleHint, options: SelectedItemDynamicElementOptions.PlaceFirstInGroup | SelectedItemDynamicElementOptions.SelectableLabel);
             }

@@ -4,16 +4,36 @@
     min-height: 30px;
 }
 
-#reference-item-details__unity-item-title
+#reference-item-details__title-row
 {
+    flex-direction: row;
     flex-shrink: 0;
-    font-size: 14px;
-    -unity-font-style: bold;
+    align-items: center;
+    overflow: hidden;
     margin-top: 10px;
     margin-left: 10px;
     margin-right: 10px;
+    min-height: 20px;
+}
+
+#reference-item-details__unity-item-title
+{
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 0;
+    font-size: 14px;
+    -unity-font-style: bold;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+#reference-item-details__refocus-button
+{
+    flex-shrink: 0;
+    height: 20px;
+    margin: 0 0 0 6px;
+    display: none;
 }
 
 .details-panel__section
@@ -64,6 +84,14 @@
     -unity-font-style: bold;
 }
 
+#selected-item-details__unity-item-subtitle
+{
+    display: none;
+    flex-shrink: 0;
+    color: rgba(136, 136, 136, 1);
+    margin-bottom: 4px;
+}
+
 .selected-item-details__area
 {
     flex-shrink: 0;
@@ -75,6 +103,44 @@
     flex-direction: row;
     margin-top: 4px;
     margin-bottom: 4px;
+}
+
+#selected-item-details__find-buttons > *
+{
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+#selected-item-details__find-buttons .unity-button
+{
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.selected-item-details__find-buttons__dropdown-button
+{
+    flex-direction: row;
+    align-items: center;
+    padding-left: 6px;
+    padding-right: 4px;
+}
+
+.selected-item-details__find-buttons__dropdown-button-label
+{
+    margin: 0;
+    padding: 0;
+    flex-shrink: 1;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.selected-item-details__find-buttons__dropdown-button > .unity-base-popup-field__arrow
+{
+    flex-shrink: 0;
+    margin-left: 4px;
+    align-self: center;
 }
 
 #selected-item-details__item-description-and-documentation-link
@@ -118,6 +184,11 @@
     -unity-font-style: bold;
     flex-shrink: 0;
     margin-bottom: 0px;
+}
+
+.selected-item-details__group__grouped-item__foldout--spaced
+{
+    margin-bottom: 6px;
 }
 
 .selected-item-details__group__grouped-item__foldout > .unity-foldout__content

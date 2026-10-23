@@ -32,7 +32,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
-    class UnityObjectsTableViewController : SingleSnapshotTreeViewController<UnityObjectsModel, UnityObjectsModel.ItemData>
+    class UnityObjectsTableViewController : SingleSnapshotTreeViewController<UnityObjectsModel, UnityObjectsModel.ItemData>, IFilterRelaxationTarget
     {
         /// <summary>Column visibility and mode changes only need a cell refresh, not a model rebuild (unlike AllTrackedMemory where switching committed/resident recomputes the model).</summary>
         protected override bool SwitchingTableModeRequiresRebuild { get; } = false;
@@ -52,6 +52,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_TreeViewColumn__Status = "unity-objects-table-view__tree-view__column__status";
         const string k_UxmlIdentifier_Toolbar = "unity-objects-table-view__toolbar";
         const string k_UxmlIdentifier_FlattenToggle = "unity-objects-table-view__toolbar__flatten-toggle";
+        const string k_UxmlIdentifier_ScaleBarsToggle = "unity-objects-table-view__toolbar__scale-bars-toggle";
         const string k_UxmlIdentifier_DuplicatesToggle = "unity-objects-table-view__toolbar__duplicates-toggle";
         const string k_UxmlIdentifier_LoadingOverlay = "unity-objects-table-view__loading-overlay";
         const string k_UxmlIdentifier_ErrorLabel = "unity-objects-table-view__error-label";
@@ -59,6 +60,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_Graphics_NotAvailable = "N/A";
 
         const string k_SessionStateKey_FlattenHierarchy = "com.unity.memoryprofiler.UnityObjectsTableViewController.flattenHierarchy";
+        const string k_SessionStateKey_ScaleBarsToParent = "com.unity.memoryprofiler.UnityObjectsTableViewController.scaleBarsToParent";
         const string k_SessionStateKey_ShowDuplicatesOnly = "com.unity.memoryprofiler.UnityObjectsTableViewController.showDuplicatesOnly";
 
         // Model.
@@ -84,6 +86,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         readonly TableFilterManager<UnityObjectsModel, UnityObjectsModel.ItemData> m_FilterManager;
         readonly ModelBuildOrchestrator<UnityObjectsModel, UnityObjectsModelBuilder.BuildArgs> m_BuildOrchestrator;
         TreeViewColumnManager<UnityObjectsModel.ItemData> m_ColumnManager;
+        protected override IColumnSumRefresher ColumnManager => m_ColumnManager;
         SizeCellRenderer m_SizeCellRenderer;
 
         // View.
@@ -105,6 +108,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_Snapshot = snapshot;
             m_SearchField = searchField;
+            m_StatusFilterButton = statusFilterButton;
             m_CompareMode = compareMode;
             m_Responder = responder;
             DisambiguateByInstanceId = disambiguateUnityObjects;
@@ -144,6 +148,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         ToolbarSearchField m_SearchField = null;
+        StatusFilterButton m_StatusFilterButton = null;
         protected override ToolbarSearchField SearchField => m_SearchField;
 
         public UnityObjectsModel Model => m_Model;
@@ -291,6 +296,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Initialize components that depend on m_TreeView
             m_ColumnManager = new TreeViewColumnManager<UnityObjectsModel.ItemData>(m_TreeView);
             m_SizeCellRenderer = new SizeCellRenderer(m_TreeView, () => TableMode, k_Graphics_NotAvailable, k_UssClass_Cell_Unreliable);
+            m_SizeCellRenderer.SetUpScaleBarsToParentToggle(view.Q<Toggle>(k_UxmlIdentifier_ScaleBarsToggle), k_SessionStateKey_ScaleBarsToParent);
 
             m_PagerBinding = new FlatPagerBinding<UnityObjectsFlatRowComparer.Column>(
                 m_Pager,
@@ -302,7 +308,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 TextContent.UnityObjectsNameColumnHeaderTooltip,
                 UnityObjectsFlatRowComparer.k_MaxColumns,
                 () => m_Model,
-                () => { m_TreeView.SetRootItems(m_Model.RootNodes); m_TreeView.RefreshItems(); });
+                () =>
+                {
+                    RefreshTreeViewRoots();
+                    // A page flip changes the page totals, and SetRootItems bypasses RefreshView.
+                    m_ColumnManager.RefreshColumnSums();
+                });
         }
 
         protected override void ConfigureTreeView()
@@ -314,7 +325,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 TextContent.DescriptionTableColumnHeader,
                 0,
                 BindCellForDescriptionColumn(),
-                makeCell: () => new ObjectOrTypeLabel() { HideTypeInfoForObjects = true },
+                makeCell: () => MakeLabelWithSelectInTableMenu(hideTypeInfoForObjects: true),
                 destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose(),
                 headerTooltip: TextContent.UnityObjectsNameColumnHeaderTooltip);
 
@@ -325,7 +336,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
                     item => item.TotalSize,
                     useResident: false),
-                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
+                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident,
+                sumProvider: () => m_Model?.TotalMemorySize.Committed ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__SizeBar,
@@ -344,7 +356,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 k_DefaultColumnWidth,
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
                     item => item.NativeSize),
-                visible: !m_CompareMode);
+                visible: !m_CompareMode,
+                pagedSumProvider: () => PagedSumOverTypesOrObjects(item => item.NativeSize, model => model.TotalNativeSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ManagedSize,
@@ -352,7 +365,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 k_DefaultColumnWidth,
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
                     item => item.ManagedSize),
-                visible: !m_CompareMode);
+                visible: !m_CompareMode,
+                pagedSumProvider: () => PagedSumOverTypesOrObjects(item => item.ManagedSize, model => model.TotalManagedSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ResidentSize,
@@ -361,14 +375,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SizeCellRenderer.CreateMemorySizeBinding<UnityObjectsModel.ItemData>(
                     item => item.TotalSize,
                     useResident: true),
-                visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
+                visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted,
+                sumProvider: () => m_Model?.TotalMemorySize.Resident ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__GpuSize,
                 TextContent.GraphicsSizeTableColumnHeader,
                 k_DefaultColumnWidth,
                 BindCellForGpuSizeColumn(),
-                visible: !m_CompareMode);
+                visible: !m_CompareMode,
+                pagedSumProvider: PagedGpuSum);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Status,
@@ -502,6 +518,48 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
         }
 
+        /// <summary>
+        /// The page and model-wide totals of a per-category size, committed or resident per the table mode.
+        /// The page total sums the materialized top-level rows (types, or objects when flattened), which counts each
+        /// object once since every object belongs to a single type. The unpaged model's page total is its model total.
+        /// </summary>
+        PagedColumnSum PagedSumOverTypesOrObjects(
+            Func<UnityObjectsModel.ItemData, MemorySize> sizeSelector, Func<UnityObjectsModel, MemorySize> modelTotalSelector)
+        {
+            if (m_Model == null)
+                return PagedColumnSum.Unpaged(0);
+
+            var resident = TableMode == AllTrackedMemoryTableMode.OnlyResident;
+            ulong Pick(MemorySize size) => resident ? size.Resident : size.Committed;
+
+            var modelTotal = Pick(modelTotalSelector(m_Model));
+            if (!m_Model.IsPaged)
+                return PagedColumnSum.Unpaged(modelTotal);
+
+            var pageTotal = m_Model.RootNodes.SumOverTopLevelRows(item => Pick(sizeSelector(item)));
+            return new PagedColumnSum(pageTotal, modelTotal);
+        }
+
+        /// <summary>
+        /// The GPU column's page and model-wide totals. GPU memory has no resident tracking, so the total is always
+        /// committed and not applicable in the resident-only table mode, matching the column's cells.
+        /// </summary>
+        PagedColumnSum PagedGpuSum()
+        {
+            if (m_Model == null)
+                return PagedColumnSum.Unpaged(0);
+
+            if (TableMode == AllTrackedMemoryTableMode.OnlyResident)
+                return default;
+
+            var modelTotal = m_Model.TotalGpuSize.Committed;
+            if (!m_Model.IsPaged)
+                return PagedColumnSum.Unpaged(modelTotal);
+
+            var pageTotal = m_Model.RootNodes.SumOverTopLevelRows(item => item.GpuSize.Committed);
+            return new PagedColumnSum(pageTotal, modelTotal);
+        }
+
         Action<VisualElement, int> BindCellForGpuSizeColumn()
         {
             return (element, rowIndex) =>
@@ -565,7 +623,123 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 // Frees the paged model's native row store.
                 DisposableModelSwap.ReplaceIfChanged(ref m_OwnedModel, null);
+                m_FilterManager.Dispose();
+                m_BuildOrchestrator.Dispose();
             }
+        }
+
+        public override BreakdownTableId TableId => BreakdownTableId.UnityObjects;
+
+        /// <summary>Whether <paramref name="id"/> is one this table can ever show, independent of any filter.</summary>
+        internal static bool CanEverContainSourceId(CachedSnapshot.SourceIndex.SourceId id)
+        {
+            switch (id)
+            {
+                case CachedSnapshot.SourceIndex.SourceId.NativeType:
+                case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedType:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        public override bool CanEverContain(CachedSnapshot.SourceIndex source) => CanEverContainSourceId(source.Id) && HasNativeObjectsOfType(m_Snapshot, source);
+
+        /// <summary>
+        /// False for a type that has no group row because <paramref name="snapshot"/> has no native objects of it, e.g. a
+        /// plain C# type or a MonoBehaviour type whose instances are all leaked shells. Managed types only group the objects
+        /// of the native base types that <see cref="UnityObjectsModelBuilder"/> disambiguates by managed type.
+        /// </summary>
+        internal static bool HasNativeObjectsOfType(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source)
+        {
+            var nativeObjects = snapshot.NativeObjects;
+            switch (source.Id)
+            {
+                case CachedSnapshot.SourceIndex.SourceId.NativeType:
+                    for (long i = 0; i < nativeObjects.Count; i++)
+                    {
+                        if (nativeObjects.NativeTypeArrayIndex[i] == source.Index)
+                            return true;
+                    }
+                    return false;
+                case CachedSnapshot.SourceIndex.SourceId.ManagedType:
+                    var managedObjects = snapshot.CrawledData.ManagedObjects;
+                    var nativeTypes = snapshot.NativeTypes;
+                    for (long i = 0; i < nativeObjects.Count; i++)
+                    {
+                        var managedObjectIndex = nativeObjects.ManagedObjectIndex[i];
+                        if (managedObjectIndex < 0 || managedObjects[managedObjectIndex].ITypeDescription != source.Index)
+                            continue;
+                        var nativeType = nativeObjects.NativeTypeArrayIndex[i];
+                        if (nativeType == nativeTypes.MonoBehaviourIdx || nativeType == nativeTypes.ScriptableObjectIdx || nativeType == nativeTypes.EditorScriptableObjectIdx)
+                            return true;
+                    }
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        /// <summary>
+        /// Diagnoses the filter dimensions this table shares with every other table (status mask, text search
+        /// against the item's own name); mirrors <see cref="RootsAndImpactTableViewController.ComputeVisibility"/>'s shape.
+        /// </summary>
+        public override ItemVisibility GetVisibility(CachedSnapshot.SourceIndex source, CachedSnapshot owner = null)
+        {
+            if (!CanEverContainSourceId(source.Id))
+                return new ItemVisibility(ItemVisibility.State.NotRepresentable);
+            if (!HasNativeObjectsOfType(m_Snapshot, source))
+                return new ItemVisibility(ItemVisibility.State.NoRow);
+
+            var blocking = TableRevealHelper.GetBlockingStatusAndOwnNameFilters(m_Snapshot, source, m_FilterManager.CompoundSearchFilter);
+
+            // Whether the item is a potential duplicate depends on which items the other filters let through, so it
+            // can't be diagnosed while they hide it; clear the duplicates filter along with them to guarantee the reveal.
+            blocking = WithDuplicatesBlockerIfHidden(blocking, m_ShowDuplicatesOnly);
+
+            if (blocking == TableFilterKind.None && m_ShowDuplicatesOnly)
+            {
+                if (m_Model == null)
+                    return new ItemVisibility(ItemVisibility.State.Unknown);
+
+                if (!HasRow(source))
+                    blocking |= TableFilterKind.DuplicatesOnly;
+            }
+
+            return ItemVisibility.FromBlockingFilters(blocking);
+        }
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal static TableFilterKind WithDuplicatesBlockerIfHidden(TableFilterKind blocking, bool showDuplicatesOnly)
+            => blocking != TableFilterKind.None && showDuplicatesOnly ? blocking | TableFilterKind.DuplicatesOnly : blocking;
+
+        protected override bool HasRow(CachedSnapshot.SourceIndex source)
+            => m_Model.IsPaged
+                ? m_Model.TryFindStoreIndex(source, out _)
+                : m_Model.RootNodes.TryFindItemPath(data => data.Source == source, out _, out _);
+
+        protected override bool TryRevealRow(CachedSnapshot.SourceIndex source, bool frame, bool select, CachedSnapshot owner)
+        {
+            if (!m_Model.IsPaged)
+                return TryRevealTreeRow(data => data.Source == source, frame, select);
+
+            return m_Model.TryFindStoreIndex(source, out var storeIndex)
+                && m_PagerBinding.TryShowRow(storeIndex, out var treeId)
+                && RevealTreeItem(treeId, frame, select);
+        }
+
+        /// <summary>See <see cref="RootsAndImpactTableViewController.ApplyFilterRelaxation"/>; the duplicates toggle is the only table-specific dimension here.</summary>
+        public void ApplyFilterRelaxation(TableFilterKind filtersToRelax)
+        {
+            TableRevealHelper.RelaxStatusAndTextFilters(filtersToRelax, m_StatusFilterButton, m_SearchField, m_FilterManager);
+            if ((filtersToRelax & TableFilterKind.DuplicatesOnly) != 0)
+            {
+                m_ShowDuplicatesOnly = false;
+                SessionState.SetBool(k_SessionStateKey_ShowDuplicatesOnly, false);
+                m_DuplicatesToggle.SetValueWithoutNotify(false);
+            }
+            FireAndForgetBuildModelAsync();
         }
 
         public interface IResponder

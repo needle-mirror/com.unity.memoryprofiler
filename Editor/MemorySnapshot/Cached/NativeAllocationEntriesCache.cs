@@ -70,6 +70,17 @@ namespace Unity.MemoryProfiler.Editor
                 AllocationSiteId.Dispose();
             }
 
+            /// <summary>
+            /// Whether the allocation is part of the Mono/IL2CPP VM heap, i.e. rooted to <see cref="NativeRootReferenceEntriesCache.VMRootReferenceIndex"/>.
+            /// </summary>
+            public static bool IsVMHeapAllocation(CachedSnapshot snapshot, long allocationIndex)
+            {
+                var vmRoot = snapshot.NativeRootReferences.VMRootReferenceIndex;
+                return vmRoot.Valid
+                    && snapshot.NativeAllocations.RootReferenceId.Count > 0
+                    && snapshot.NativeAllocations.RootReferenceId[allocationIndex] == snapshot.NativeRootReferences.Id[vmRoot.Index];
+            }
+
             public string ProduceAllocationNameForAllocation(CachedSnapshot snapshot, long allocationIndex, bool higlevelObjectNameOnlyIfAvailable = true, bool ignoreNativeObjectName = false)
             {
                 // Check if we have memory label roots information

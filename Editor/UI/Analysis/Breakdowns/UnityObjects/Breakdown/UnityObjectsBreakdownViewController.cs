@@ -6,6 +6,8 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         UnityObjectsTableViewController m_TableViewController;
 
+        public override BreakdownTableId TableId => BreakdownTableId.UnityObjects;
+
         public UnityObjectsBreakdownViewController(CachedSnapshot snapshot, string description, ISelectionDetails selectionDetails)
             : base(snapshot, description, selectionDetails)
         {
@@ -16,7 +18,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ViewLoaded();
 
             // Initialize Unity Objects table as a child view controller.
-            m_TableViewController = new UnityObjectsTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this);
+            m_TableViewController = new UnityObjectsTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this) { TabController = TabController };
             AddChild(m_TableViewController);
 
             // SetColumnsVisibilityAsync is synchronous before the view is loaded (IsViewLoaded = false):
@@ -63,7 +65,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             UnityObjectsTableViewController viewController,
             UnityObjectsModel.ItemData itemData)
         {
-            var view = BreakdownDetailsViewControllerFactory.Create(Snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source);
+            var view = BreakdownDetailsViewControllerFactory.Create(Snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source, BreakdownTableId.UnityObjects, this, TabController);
             SelectionDetails.SetSelection(view);
         }
 

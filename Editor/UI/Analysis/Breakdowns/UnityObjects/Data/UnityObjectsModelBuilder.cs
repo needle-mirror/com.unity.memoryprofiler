@@ -134,11 +134,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var names = new List<string>();
                 var totalMemorySize = new MemorySize();
-                CollectTypeMapLeafNodesToStore(typeIndexToTypeObjectsMap, store, names, ref totalMemorySize);
+                var totalNativeSize = new MemorySize();
+                var totalManagedSize = new MemorySize();
+                var totalGpuSize = new MemorySize();
+                CollectTypeMapLeafNodesToStore(typeIndexToTypeObjectsMap, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
                 foreach (var innerMap in disambiguatedTypeIndexToTypeObjectsMap.Values)
-                    CollectTypeMapLeafNodesToStore(innerMap, store, names, ref totalMemorySize);
-                CollectTypeMapLeafNodesToStore(nonDisambiguatedObjectsOfDisambiguatedNativeTypes, store, names, ref totalMemorySize);
-                return new UnityObjectsModel(store, names, m_FlattenedPageSize, totalMemorySize, totalMemoryInSnapshot);
+                    CollectTypeMapLeafNodesToStore(innerMap, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
+                CollectTypeMapLeafNodesToStore(nonDisambiguatedObjectsOfDisambiguatedNativeTypes, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
+                return new UnityObjectsModel(store, names, m_FlattenedPageSize, totalMemorySize, totalNativeSize, totalManagedSize, totalGpuSize, totalMemoryInSnapshot);
             }
             catch
             {
@@ -154,21 +157,24 @@ namespace Unity.MemoryProfiler.Editor.UI
             Dictionary<SourceIndex, DictionaryOrList> map,
             FlattenedRowStore<UnityObjectsCompactRow> store,
             List<string> names,
-            ref MemorySize totalMemorySize)
+            ref MemorySize totalMemorySize,
+            ref MemorySize totalNativeSize,
+            ref MemorySize totalManagedSize,
+            ref MemorySize totalGpuSize)
         {
             foreach (var typeObjects in map.Values)
             {
                 if (typeObjects.ListOfObjects != null)
                 {
                     foreach (var item in typeObjects.ListOfObjects)
-                        EmitItemToStore(item, store, names, ref totalMemorySize);
+                        EmitItemToStore(item, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
                 }
                 else if (typeObjects.MapOfObjects != null)
                 {
                     foreach (var objList in typeObjects.MapOfObjects.Values)
                     {
                         foreach (var item in objList)
-                            EmitItemToStore(item, store, names, ref totalMemorySize);
+                            EmitItemToStore(item, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
                     }
                 }
             }
@@ -180,7 +186,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             TreeViewItemData<UnityObjectsModel.ItemData> item,
             FlattenedRowStore<UnityObjectsCompactRow> store,
             List<string> names,
-            ref MemorySize totalMemorySize)
+            ref MemorySize totalMemorySize,
+            ref MemorySize totalNativeSize,
+            ref MemorySize totalManagedSize,
+            ref MemorySize totalGpuSize)
         {
             if (item.hasChildren)
             {
@@ -189,6 +198,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     names.Add(child.data.Name);
                     store.Add(new UnityObjectsCompactRow(child.id, child.data, names.Count - 1));
                     totalMemorySize += child.data.TotalSize;
+                    totalNativeSize += child.data.NativeSize;
+                    totalManagedSize += child.data.ManagedSize;
+                    totalGpuSize += child.data.GpuSize;
                 }
             }
             else
@@ -196,6 +208,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 names.Add(item.data.Name);
                 store.Add(new UnityObjectsCompactRow(item.id, item.data, names.Count - 1));
                 totalMemorySize += item.data.TotalSize;
+                totalNativeSize += item.data.NativeSize;
+                totalManagedSize += item.data.ManagedSize;
+                totalGpuSize += item.data.GpuSize;
             }
         }
 

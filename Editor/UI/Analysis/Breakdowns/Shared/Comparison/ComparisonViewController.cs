@@ -14,6 +14,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         : TreeViewController<
             ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>,
             ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>.ComparisonData>
+        , IFilterRelaxationTarget, IComparisonSubTables
         where TBaseModelItemData : INamedTreeItemData
         where TBaseModel : TreeModel<TBaseModelItemData>
     {
@@ -35,6 +36,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_TreeViewColumn__CountInB = "comparison-view__tree-view__column__count-in-b";
         const string k_UxmlIdentifier_FlattenToggle = "comparison-view__toolbar__flatten-toggle";
         const string k_UxmlIdentifier_UnchangedToggle = "comparison-view__toolbar__unchanged-toggle";
+        const string k_UxmlIdentifier_ScaleBarsToggle = "comparison-view__toolbar__scale-bars-toggle";
         const string k_UxmlIdentifier_StatusToggle = "comparison-view__toolbar__status-toggle";
         protected const string k_UxmlIdentifier_TreeViewColumn__StatusInA = "comparison-view__tree-view__column__status-in-a";
         protected const string k_UxmlIdentifier_TreeViewColumn__StatusInB = "comparison-view__tree-view__column__status-in-b";
@@ -50,6 +52,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         static protected string SpecificComparisonViewSessionStateKeyName => typeof(TBaseModel).Name;
         static readonly string k_SessionStateKey_FlattenHierarchy = $"com.unity.memoryprofiler.ComparisonViewController.{SpecificComparisonViewSessionStateKeyName}.flattenHierarchy";
+        static readonly string k_SessionStateKey_ScaleBarsToParent = $"com.unity.memoryprofiler.ComparisonViewController.{SpecificComparisonViewSessionStateKeyName}.scaleBarsToParent";
         static readonly string k_SessionStateKey_IncludeUnchanged = $"com.unity.memoryprofiler.ComparisonViewController.{SpecificComparisonViewSessionStateKeyName}.includeUnchanged";
         static readonly string k_SessionStateKey_CompareExtraData = $"com.unity.memoryprofiler.ComparisonViewController.{SpecificComparisonViewSessionStateKeyName}.compareExtraData";
 
@@ -102,6 +105,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Composed components - using orchestrator pattern for consistency
         ComparisonModelBuildOrchestrator<ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>, ComparisonModelBuilderArgs> m_BuildOrchestrator;
         ComparisonTableColumnManager<ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>.ComparisonData> m_ColumnManager;
+        protected override IColumnSumRefresher ColumnManager => m_ColumnManager;
         IExclusiveStatusFilterManager m_TableFilterManager;
 
         // View.
@@ -111,6 +115,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         Toggle m_FlattenToggle;
         Toggle m_UnchangedToggle;
         Toggle m_ExtraDataToggle;
+        Toggle m_ScaleBarsToggle;
         TwoPaneSplitView m_SplitView;
         DetailedSizeBar m_TotalSizeBarA;
         DetailedSizeBar m_TotalSizeBarB;
@@ -164,6 +169,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected CachedSnapshot SnapshotB { get; }
 
+        protected override CachedSnapshot GetSelectionSourceOwner(ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>.ComparisonData item)
+            => item.SourceIndex.InB.Valid ? SnapshotB : SnapshotA;
+
         protected MultiColumnTreeView TreeView => m_TreeView;
 
         protected VisualElement BaseViewContainer { get; private set; }
@@ -190,9 +198,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             // Child view controllers must exist before base.ViewLoaded() runs ConfigureTreeView()
             // and before TriggerBuild() starts the comparison model build.
-            var sameSession = SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID
-                && SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
-            InitializeChildViewControllers(sameSession);
+            InitializeChildViewControllers(IsSameSessionComparison);
 
             m_SplitView.RegisterCallback<GeometryChangedEvent>(ConfigureSplitViewLayout);
 
@@ -234,6 +240,74 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Called synchronously before the comparison view's own UI setup and model build are triggered.
         // SetColumnsVisibilityAsync and SetFiltersAsync are synchronous before the child view is loaded.
         protected abstract void InitializeChildViewControllers(bool sameSession);
+
+        public abstract ITableItemLocator BaseTable { get; }
+        public abstract ITableItemLocator ComparedTable { get; }
+
+        public bool SubTableShows(ITableItemLocator subTable, CachedSnapshot.SourceIndex source, CachedSnapshot owner)
+        {
+            var snapshot = subTable == null ? null : subTable == BaseTable ? SnapshotA : subTable == ComparedTable ? SnapshotB : null;
+            return snapshot != null && (owner == null || owner == snapshot) && subTable is IShowsRows rows && rows.ShowsRow(source);
+        }
+
+        bool IsSameSessionComparison => SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID
+            && SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
+
+        public bool TryGetCounterpart(CachedSnapshot.SourceIndex source, CachedSnapshot owner, out CachedSnapshot.SourceIndex counterpart, out CachedSnapshot counterpartOwner, out bool matchedByAddress)
+        {
+            counterpart = default;
+            matchedByAddress = false;
+            counterpartOwner = owner == SnapshotA ? SnapshotB : owner == SnapshotB ? SnapshotA : null;
+            return counterpartOwner != null && IsSameSessionComparison && TryGetCounterpart(owner, source, counterpartOwner, out counterpart, out matchedByAddress);
+        }
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal static bool TryGetCounterpart(CachedSnapshot owner, CachedSnapshot.SourceIndex source, CachedSnapshot counterpartOwner, out CachedSnapshot.SourceIndex counterpart, out bool matchedByAddress)
+        {
+            counterpart = default;
+            matchedByAddress = false;
+            switch (source.Id)
+            {
+                case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                    if (!TryGetNativeCounterpartIndex(owner, source.Index, counterpartOwner, out var nativeIndex))
+                        return false;
+                    counterpart = new CachedSnapshot.SourceIndex(CachedSnapshot.SourceIndex.SourceId.NativeObject, nativeIndex);
+                    return true;
+                case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                    var managedObject = owner.CrawledData.ManagedObjects[source.Index];
+                    if (managedObject.NativeObjectIndex >= CachedSnapshot.NativeObjectEntriesCache.FirstValidObjectIndex
+                        && TryGetNativeCounterpartIndex(owner, managedObject.NativeObjectIndex, counterpartOwner, out var shellsNativeIndex))
+                    {
+                        var shellIndex = counterpartOwner.NativeObjects.ManagedObjectIndex[shellsNativeIndex];
+                        if (shellIndex < ManagedData.FirstValidObjectIndex)
+                            return false;
+                        counterpart = new CachedSnapshot.SourceIndex(CachedSnapshot.SourceIndex.SourceId.ManagedObject, shellIndex);
+                        return true;
+                    }
+
+                    if (!TryGetCounterpartByAddress(owner, managedObject, counterpartOwner, out var managedIndex))
+                        return false;
+                    counterpart = new CachedSnapshot.SourceIndex(CachedSnapshot.SourceIndex.SourceId.ManagedObject, managedIndex);
+                    matchedByAddress = true;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Addresses can be reused after a collection, so this also requires the same type to keep false positives rare.
+        /// Internal for testing purposes.
+        /// </summary>
+        internal static bool TryGetCounterpartByAddress(CachedSnapshot owner, ManagedObjectInfo managedObject, CachedSnapshot counterpartOwner, out long managedIndex)
+            => counterpartOwner.CrawledData.MangedObjectIndexByAddress.TryGetValue(managedObject.PtrObject, out managedIndex)
+                && GetManagedTypeName(owner, managedObject) == GetManagedTypeName(counterpartOwner, counterpartOwner.CrawledData.ManagedObjects[managedIndex]);
+
+        static bool TryGetNativeCounterpartIndex(CachedSnapshot owner, long nativeIndex, CachedSnapshot counterpartOwner, out long counterpartIndex)
+            => counterpartOwner.NativeObjects.InstanceId2Index.TryGetValue(owner.NativeObjects.InstanceId[nativeIndex], out counterpartIndex);
+
+        static string GetManagedTypeName(CachedSnapshot snapshot, ManagedObjectInfo managedObject)
+            => managedObject.IsKnownType ? snapshot.TypeDescriptions.TypeDescriptionName[managedObject.ITypeDescription] : null;
 
         /// <summary>
         /// Registers a child table view controller for the comparison bottom-panel (base or compared):
@@ -288,6 +362,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_FlattenToggle = view.Q<Toggle>(k_UxmlIdentifier_FlattenToggle);
             m_UnchangedToggle = view.Q<Toggle>(k_UxmlIdentifier_UnchangedToggle);
             m_ExtraDataToggle = view.Q<Toggle>(k_UxmlIdentifier_StatusToggle);
+            m_ScaleBarsToggle = view.Q<Toggle>(k_UxmlIdentifier_ScaleBarsToggle);
             m_LoadingOverlay = view.Q<ActivityIndicatorOverlay>(k_UxmlIdentifier_LoadingOverlay);
             m_BaseTitleLabel = view.Q<Label>(k_UxmlIdentifier_BaseTitleLabel);
             BaseDescriptionLabel = view.Q<Label>(k_UxmlIdentifier_BaseDescriptionLabel);
@@ -312,6 +387,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Initialize column manager for consistent column configuration
             m_ColumnManager = new ComparisonTableColumnManager<ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>.ComparisonData>(m_TreeView);
+            m_ColumnManager.SetUpScaleBarsToParentToggle(m_ScaleBarsToggle, k_SessionStateKey_ScaleBarsToParent);
 
             m_PagerBinding = new FlatPagerBinding<ComparisonFlatRowComparer.Column>(
                 m_Pager,
@@ -323,7 +399,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 TextContent.DescriptionTableColumnHeader,
                 ComparisonFlatRowComparer.k_MaxColumns,
                 () => m_Model,
-                () => { m_TreeView.SetRootItems(m_Model.RootNodes); m_TreeView.RefreshItems(); });
+                () =>
+                {
+                    m_ColumnManager.InvalidateRowCaches();
+                    RefreshTreeViewRoots();
+                });
 
             // Configure standard comparison columns using column manager
             m_ColumnManager.ConfigureColumn(
@@ -345,20 +425,26 @@ namespace Unity.MemoryProfiler.Editor.UI
                 item => item.SizeDelta,
                 () => m_Model.LargestAbsoluteSizeDelta);
 
+            // Model totals cover top-level rows only, since each row's size already includes its children.
             m_ColumnManager.ConfigureSizeDeltaColumn(
                 k_UxmlIdentifier_TreeViewColumn__SizeDelta,
                 TextContent.SizeDifferenceTableColumnHeader,
-                item => item.SizeDelta);
+                item => item.SizeDelta,
+                sumProvider: () => m_Model == null
+                    ? 0
+                    : Convert.ToInt64(m_Model.TotalSizeB.Committed) - Convert.ToInt64(m_Model.TotalSizeA.Committed));
 
             m_ColumnManager.ConfigureSizeColumn(
                 k_UxmlIdentifier_TreeViewColumn__TotalSizeInA,
                 string.Format(TextContent.SizeInTableColumnHeader, TextContent.SnapshotTagBase),
-                item => Convert.ToInt64(item.TotalSizeInA.Committed));
+                item => Convert.ToInt64(item.TotalSizeInA.Committed),
+                sumProvider: () => m_Model == null ? 0 : Convert.ToInt64(m_Model.TotalSizeA.Committed));
 
             m_ColumnManager.ConfigureSizeColumn(
                 k_UxmlIdentifier_TreeViewColumn__TotalSizeInB,
                 string.Format(TextContent.SizeInTableColumnHeader, TextContent.SnapshotTagCompare),
-                item => Convert.ToInt64(item.TotalSizeInB.Committed));
+                item => Convert.ToInt64(item.TotalSizeInB.Committed),
+                sumProvider: () => m_Model == null ? 0 : Convert.ToInt64(m_Model.TotalSizeB.Committed));
 
             m_ColumnManager.ConfigureCountColumn(
                 k_UxmlIdentifier_TreeViewColumn__CountInA,
@@ -388,8 +474,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override Func<ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>> GetModelBuilderTask(CancellationToken cancellationToken)
         {
             // Build arguments for the comparison model
-            var sameSessionComparison = SnapshotA.MetaData.SessionGUID != MetaData.InvalidSessionGUID &&
-                                       SnapshotA.MetaData.SessionGUID == SnapshotB.MetaData.SessionGUID;
+            var sameSessionComparison = IsSameSessionComparison;
             var itemNameFilter = BuildTextFilterFromSearchText();
             var baseModelArgs = GetBaseModelBuilderArgs(itemNameFilter, sameSessionComparison);
             var comparisonArgs = GetComparisonModelBuilderArgs();
@@ -620,6 +705,134 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// Override to react to the new value, e.g. to show/hide columns that display extra data.
         /// </summary>
         protected virtual void OnExtraDataToggleValueChanged(bool newValue) { }
+
+        /// <summary>
+        /// Reduced diagnosis: found-or-not against the current model, matching either side (<see cref="ComparisonSourceIndex.InA"/>/<see cref="ComparisonSourceIndex.InB"/>).
+        /// A missing item is reported as hidden by every active filter, since which one hides it isn't known.
+        /// </summary>
+        public override ItemVisibility GetVisibility(CachedSnapshot.SourceIndex source, CachedSnapshot owner = null)
+        {
+            if (!CanEverContain(source))
+                return new ItemVisibility(ItemVisibility.State.NotRepresentable);
+
+            if (m_Model == null)
+                return new ItemVisibility(ItemVisibility.State.Unknown);
+
+            var found = m_Model.IsPaged
+                ? TryFindStoreIndex(source, owner, out _)
+                : m_Model.RootNodes.TryFindItemPath(MatchesSide(source, owner), out _, out _);
+
+            return found
+                ? new ItemVisibility(ItemVisibility.State.Visible)
+                : new ItemVisibility(ItemVisibility.State.HiddenByFilters, GetActiveFilters());
+        }
+
+        TableFilterKind GetActiveFilters()
+        {
+            var active = TableFilterKind.None;
+            if (!IncludeUnchanged)
+                active |= TableFilterKind.HideUnchanged;
+            if (!string.IsNullOrEmpty(m_SearchField.value))
+                active |= TableFilterKind.TextSearch;
+            if (m_TableFilterManager?.ExclusiveStatusMask != null)
+                active |= TableFilterKind.StatusMask;
+            return active;
+        }
+
+        public void ApplyFilterRelaxation(TableFilterKind filtersToRelax)
+        {
+            if ((filtersToRelax & TableFilterKind.HideUnchanged) != 0)
+                m_UnchangedToggle.SetValueWithoutNotify(true);
+            if ((filtersToRelax & TableFilterKind.TextSearch) != 0)
+                m_SearchField.SetValueWithoutNotify(string.Empty);
+            if ((filtersToRelax & TableFilterKind.StatusMask) != 0)
+                m_StatusFilterButton?.SetMask(null);
+            FireAndForgetBuildModelAsync(false);
+        }
+
+        protected override bool TryRevealRow(CachedSnapshot.SourceIndex source, bool frame, bool select, CachedSnapshot owner)
+        {
+            if (select)
+                SetPendingSubTableSelection(source, owner);
+
+            var revealed = !m_Model.IsPaged
+                ? TryRevealTreeRow(MatchesSide(source, owner), frame, select)
+                : TryFindStoreIndex(source, owner, out var storeIndex)
+                && m_PagerBinding.TryShowRow(storeIndex, out var treeId)
+                && RevealTreeItem(treeId, frame, select);
+
+            if (!select)
+                return revealed;
+            if (!revealed)
+                m_PendingSubTableSource = default;
+            else if (PendingSubTable is IShowsRows rows && rows.ShowsRow(m_PendingSubTableSource))
+                // The row was already selected, so its sub-tables won't reload to consume the pending selection.
+                TrySelectPendingSubTableItem();
+            return revealed;
+        }
+
+        CachedSnapshot.SourceIndex m_PendingSubTableSource;
+        bool m_PendingSubTableIsCompared;
+
+        ITableItemLocator PendingSubTable => m_PendingSubTableIsCompared ? ComparedTable : BaseTable;
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal CachedSnapshot.SourceIndex PendingSubTableSource => m_PendingSubTableSource;
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal void SetPendingSubTableSelection(CachedSnapshot.SourceIndex source, CachedSnapshot owner)
+        {
+            var onlyA = owner != null && owner == SnapshotA;
+            var onlyB = owner != null && owner == SnapshotB;
+            FindBaseItemIds(source, onlyA, onlyB, out var idInA, out var idInB);
+            m_PendingSubTableSource = idInA >= 0 || idInB >= 0 ? source : default;
+            m_PendingSubTableIsCompared = idInA < 0;
+        }
+
+        /// <summary>
+        /// Selects the object a "Select In" reveal targeted in the Base or Compared sub-table, which lists all items merged into the revealed row.
+        /// Call once both sub-tables reloaded after a row selection; false if nothing was pending or it isn't listed, so the caller can fall back.
+        /// </summary>
+        protected bool TrySelectPendingSubTableItem()
+        {
+            var source = m_PendingSubTableSource;
+            m_PendingSubTableSource = default;
+            return source.Valid && PendingSubTable != null && PendingSubTable.TryRevealAndSelect(source, frame: true);
+        }
+
+        bool TryFindStoreIndex(CachedSnapshot.SourceIndex source, CachedSnapshot owner, out long storeIndex)
+        {
+            var onlyA = owner != null && owner == SnapshotA;
+            var onlyB = owner != null && owner == SnapshotB;
+            FindBaseItemIds(source, onlyA, onlyB, out var idInA, out var idInB);
+            return m_Model.TryFindStoreIndex(source, onlyA, onlyB, idInA, idInB, out storeIndex);
+        }
+
+        Func<ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>.ComparisonData, bool> MatchesSide(CachedSnapshot.SourceIndex source, CachedSnapshot owner)
+        {
+            var onlyA = owner != null && owner == SnapshotA;
+            var onlyB = owner != null && owner == SnapshotB;
+            FindBaseItemIds(source, onlyA, onlyB, out var idInA, out var idInB);
+            return data => TableRevealHelper.MatchesComparisonSide(data.SourceIndex, source, onlyA, onlyB)
+                || TableRevealHelper.ListsBaseItem(data.TreeViewIdsInA, idInA)
+                || TableRevealHelper.ListsBaseItem(data.TreeViewIdsInB, idInB);
+        }
+
+        /// <summary>
+        /// Ids of <paramref name="source"/>'s items in the Base/Compared models, which a row merging it by name with others lists in TreeViewIdsInA/B.
+        /// </summary>
+        void FindBaseItemIds(CachedSnapshot.SourceIndex source, bool onlyA, bool onlyB, out int idInA, out int idInB)
+        {
+            idInA = onlyB ? -1 : FindBaseItemId(m_Model.BaseModel, source);
+            idInB = onlyA ? -1 : FindBaseItemId(m_Model.ComparedModel, source);
+        }
+
+        internal static int FindBaseItemId(TBaseModel model, CachedSnapshot.SourceIndex source)
+        {
+            if (model == null || !source.Valid)
+                return -1;
+            return model.RootNodes.TryFindItemPath(data => data is IHasSourceIndex item && item.Source == source, out var id, out _) ? id : -1;
+        }
 
         protected override void Dispose(bool disposing)
         {

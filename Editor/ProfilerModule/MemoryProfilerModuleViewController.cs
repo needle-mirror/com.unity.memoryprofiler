@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.MemoryProfiler.Editor;
 using Unity.MemoryProfiler.Editor.UI;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling.Editor;
 using UnityEditor;
 using UnityEditor.Networking.PlayerConnection;
@@ -17,8 +18,8 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
     {
         const string k_UxmlAssetGuid = "48d21a1a975e6e44faaf6d938009e4f6";
 
-        public static readonly string k_LabelNoFrameDataAvailable = L10n.Tr("No frame data available. Select a frame from the charts above to see its details here.");
-        public static readonly string k_LabelOpenMemoryProfiler = L10n.Tr("Open Memory Profiler");
+        public static readonly string k_LabelNoFrameDataAvailable = TextContent.Tr("No frame data available. Select a frame from the charts above to see its details here.");
+        public static readonly string k_LabelOpenMemoryProfiler = TextContent.Tr("Open Memory Profiler");
 
         MemoryProfilerModuleOverride m_OverrideMemoryProfilerModule;
 

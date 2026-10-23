@@ -30,6 +30,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         Toggle = 1 << 6,
         ToggleOn = 1 << 7,
         SubFoldout = 1 << 8,
+        SubFoldoutCollapsed = 1 << 9,
+        SubFoldoutPersistState = 1 << 10,
+        SubFoldoutSpaced = 1 << 11,
     }
     internal class SelectedItemDetailsPanel : IDisposable
     {
@@ -68,6 +71,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Label m_Title;
         ObjectOrTypeLabel m_UnityObjectTitle;
+        Label m_UnityObjectSubtitle;
         bool m_NonObjectTitle = true;
         bool NonObjectTitleShown
         {
@@ -75,6 +79,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_NonObjectTitle = value;
                 UIElementsHelper.SwitchVisibility(m_Title, m_UnityObjectTitle, m_NonObjectTitle);
+                UIElementsHelper.SetElementDisplay(m_UnityObjectSubtitle, false);
+                m_UnityObjectSubtitle.text = string.Empty;
             }
         }
 
@@ -88,6 +94,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         Button m_QuickSearchButton;
 
         CancellationTokenSource m_SearchCancellationTokenSource;
+
+        VisualElement m_SelectInButtonHolder;
+        Button m_SelectInButton;
+
+        CachedSnapshot.SourceIndex m_PingSelectSource;
+        ITableItemLocator m_CreatingTableLocator;
+        ITableItemLocator CurrentLocator => TableRevealHelper.ResolveCurrentLocator(m_TabController, m_CreatingTableLocator, m_PingSelectSource, m_CachedSnapshot);
+        AnalysisTabBarController m_TabController;
 
         // This button is hidden for the moment as
         // - It may cause confusion that it would copy the entire details section
@@ -130,6 +144,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         TextField m_Description;
         Button m_DocumentationButton;
         string m_DocumentationURL = null;
+        internal Action<string> DocumentationUrlOpener = Application.OpenURL;
         VisualElement m_DynamicElements;
         public VisualElement Root { get => m_DynamicElements; }
 
@@ -198,6 +213,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Title.AddManipulator(new ContextualMenuManipulator(evt => ShowCopyMenu(evt, contextMenu: true)));
             m_UnityObjectTitle = detailsPanelRoot.Q<ObjectOrTypeLabel>("selected-item-details__unity-item-title");
             m_UnityObjectTitle.ContextMenuOpening += evt => ShowCopyMenu(evt, contextMenu: true);
+            m_UnityObjectSubtitle = detailsPanelRoot.Q<Label>("selected-item-details__unity-item-subtitle");
             NoItemSelected();
 
             m_Description = detailsPanelRoot.Q<TextField>("selected-item-details__item-description");
@@ -226,10 +242,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_QuickSearchButton = detailsPanelRoot.Q<Button>("selected-item-details__find-buttons__quick-search");
             m_QuickSearchButton.clicked += OnQuickSearch;
 
+            m_SelectInButtonHolder = m_FindButtonsHolder.Q("selected-item-details__find-buttons__find-in-other-table__holder");
+            m_SelectInButton = detailsPanelRoot.Q<Button>("selected-item-details__find-buttons__find-in-other-table");
+            m_SelectInButton.Q<Label>("selected-item-details__find-buttons__find-in-other-table__label").text = TextContent.SelectInButtonLabel;
+            m_SelectInButton.clickable.clicked += ShowSelectInMenu;
+
             UIElementsHelper.SetVisibility(m_SelectInEditorButton, false);
             UIElementsHelper.SetVisibility(m_SearchInEditorButton, false);
             UIElementsHelper.SetVisibility(m_QuickSearchButton, false);
             UIElementsHelper.SetVisibility(m_CopyButton, false);
+            RefreshPingSelectButtons();
 
             m_PreviewFoldoutHeader = detailsPanelRoot.Q("selected-item-details__preview-area");
             m_Preview = m_PreviewFoldoutHeader.Q<Image>("selected-item-details__preview");
@@ -257,7 +279,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         // UI TK version
-        public void ShowCopyMenu(ContextualMenuPopulateEvent evt, bool contextMenu = true)
+        public void ShowCopyMenu(ContextualMenuPopulateEvent evt, bool contextMenu = true, bool includeNavigation = true)
         {
             if (m_NonObjectTitle)
             {
@@ -273,6 +295,23 @@ namespace Unity.MemoryProfiler.Editor.UI
                 AddCopyOption(evt.menu, CopyDetailsOption.ManagedTypeName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.ManagedTypeName), contextMenu: contextMenu);
                 AddCopyOption(evt.menu, CopyDetailsOption.NativeTypeName, disabled: string.IsNullOrEmpty(m_UnityObjectTitle.NativeTypeName), contextMenu: contextMenu);
             }
+
+            if (includeNavigation)
+                AppendSelectInMenu(evt.menu);
+        }
+
+        /// <summary>
+        /// Appends the "Select In..." entries after the Copy entries, for context menus opened on this
+        /// panel's title labels. Shared with <see cref="ObjectDetailsViewController"/>'s References title menu.
+        /// </summary>
+        public void AppendSelectInMenu(DropdownMenu menu)
+        {
+            var entries = SelectInMenuBuilder.BuildEntries(m_CachedSnapshot, m_PingSelectSource, CurrentLocator, m_TabController, includeSelectInCurrentTable: true);
+            if (entries.Count == 0)
+                return;
+
+            menu.AppendSeparator();
+            SelectInMenuBuilder.PopulateDropdownMenu(menu, entries);
         }
 
         void AddCopyOption(DropdownMenu menu, CopyDetailsOption option, bool contextMenu = false, bool saveAsDefault = true, bool disabled = false)
@@ -430,6 +469,32 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Called whenever the SourceIndex shown in Selection Details changes (initial selection, or a click in
+        /// the References panel), to point the "Select In..." buttons at the newly shown object.
+        /// </summary>
+        public void SetPingSelectContext(CachedSnapshot.SourceIndex source, ITableItemLocator currentTableLocator, AnalysisTabBarController tabController)
+        {
+            m_PingSelectSource = source;
+            m_CreatingTableLocator = currentTableLocator;
+            m_TabController = tabController;
+            RefreshPingSelectButtons();
+        }
+
+        void RefreshPingSelectButtons()
+        {
+            var enabled = m_PingSelectSource.Valid && (CurrentLocator != null || m_TabController != null);
+            m_SelectInButton.SetEnabled(enabled);
+            m_SelectInButtonHolder.tooltip = enabled ? string.Empty : TextContent.SelectInNoLocatorTooltip;
+            m_SelectInButton.tooltip = TextContent.SelectInButtonTooltip;
+        }
+
+        void ShowSelectInMenu()
+        {
+            var entries = SelectInMenuBuilder.BuildEntries(m_CachedSnapshot, m_PingSelectSource, CurrentLocator, m_TabController, includeSelectInCurrentTable: true);
+            SelectInMenuBuilder.ShowAsGenericMenu(m_SelectInButton.GetRect(), entries, underSelectInSubmenu: false);
+        }
+
         void NoItemSelected()
         {
             UIElementsHelper.SetVisibility(m_CopyButton, false);
@@ -481,7 +546,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             CreateDetailsGroup(subGroupName, parentGroup: parentGroupName);
         }
 
-        public void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel, Action onInteraction = null)
+        public void AddDynamicElement(string groupName, string title, string content, string tooltip = null, SelectedItemDynamicElementOptions options = SelectedItemDynamicElementOptions.ShowTitle | SelectedItemDynamicElementOptions.SelectableLabel, Action onInteraction = null, string documentationUrl = null)
         {
             if (groupName == GroupNameDebug && !ShowDebugInfo)
                 return;
@@ -496,9 +561,30 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (options.HasFlag(SelectedItemDynamicElementOptions.SubFoldout))
             {
                 // reparent everything under the foldout and make that the container item to be added to the group
+                subFoldout.RemoveFromHierarchy();
                 subFoldout.Add(groupedItem);
                 groupedItem = subFoldout;
                 subFoldout.text = title;
+                var expandedByDefault = !options.HasFlag(SelectedItemDynamicElementOptions.SubFoldoutCollapsed);
+                if (options.HasFlag(SelectedItemDynamicElementOptions.SubFoldoutPersistState))
+                {
+                    var foldoutSessionStateKey = GetFoldoutSessionStateKey(title);
+                    subFoldout.SetValueWithoutNotify(SessionState.GetBool(foldoutSessionStateKey, expandedByDefault));
+                    subFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutSessionStateKey, evt.newValue));
+                }
+                else
+                    subFoldout.SetValueWithoutNotify(expandedByDefault);
+
+                if (options.HasFlag(SelectedItemDynamicElementOptions.SubFoldoutSpaced))
+                    subFoldout.AddToClassList("selected-item-details__group__grouped-item__foldout--spaced");
+
+                if (!string.IsNullOrEmpty(documentationUrl))
+                {
+                    var documentationButton = new Button(() => DocumentationUrlOpener(documentationUrl)) { tooltip = TextContent.OpenManualTooltip };
+                    documentationButton.AddToClassList("icon-button");
+                    documentationButton.AddToClassList("icon-button__help-icon");
+                    subFoldout.Q<Toggle>().Add(documentationButton);
+                }
             }
 
             if (options.HasFlag(SelectedItemDynamicElementOptions.PlaceFirstInGroup))
@@ -690,7 +776,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, sourceIndex, itemName);
         }
 
-        public void SetItemName(UnifiedUnityObjectInfo unityObjectInfo)
+        public void SetItemName(UnifiedUnityObjectInfo unityObjectInfo, CachedSnapshot.SourceIndex.SourceId? rowHalf = null)
         {
             UIElementsHelper.SetVisibility(m_CopyButton, k_FeatureFlagCopyButtonActive);
             m_SelectedUnityObject = unityObjectInfo;
@@ -722,10 +808,23 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             NonObjectTitleShown = false;
             m_UnityObjectTitle.SetLabelData(m_CachedSnapshot, unityObjectInfo);
+            SetUnityObjectSubtitle(in unityObjectInfo, rowHalf);
 
             m_SearchCancellationTokenSource?.Cancel();
             var cts = m_SearchCancellationTokenSource = new CancellationTokenSource();
             StartSearch(unityObjectInfo, cts);
+        }
+
+        void SetUnityObjectSubtitle(in UnifiedUnityObjectInfo unityObjectInfo, CachedSnapshot.SourceIndex.SourceId? rowHalf)
+        {
+            string subtitle = unityObjectInfo.IsFullUnityObject switch
+            {
+                true when rowHalf == CachedSnapshot.SourceIndex.SourceId.ManagedObject => TextContent.SelectedItemManagedHalfSubtitle,
+                true when rowHalf == CachedSnapshot.SourceIndex.SourceId.NativeObject => TextContent.SelectedItemNativeHalfSubtitle,
+                _ => null,
+            };
+            m_UnityObjectSubtitle.text = subtitle ?? string.Empty;
+            UIElementsHelper.SetElementDisplay(m_UnityObjectSubtitle, !string.IsNullOrEmpty(subtitle));
         }
 
         void StartSearch(UnifiedUnityObjectInfo unityObjectInfo, CancellationTokenSource cts)
@@ -895,6 +994,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_SearchInEditorButton, false);
             UIElementsHelper.SetVisibility(m_QuickSearchButton, false);
             UIElementsHelper.SetVisibility(m_CopyButton, false);
+            m_PingSelectSource = default;
+            m_CreatingTableLocator = null;
+            m_TabController = null;
+            RefreshPingSelectButtons();
             foreach (var item in m_GroupedElements.Children())
             {
                 UIElementsHelper.SetVisibility(item, false);

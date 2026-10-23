@@ -35,8 +35,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Progress = 0.0f;
             m_IsComplete = 1;
 
-#if !LIFECYCLE_APIS_AVAILABLE 
+#if !LIFECYCLE_APIS_AVAILABLE
+            // Fallback for editors without lifecycle APIs; the handler unsubscribes itself.
+#pragma warning disable UAC0006
             AppDomain.CurrentDomain.DomainUnload += OnDomainUnload;
+#pragma warning restore UAC0006
 #endif
         }
 
@@ -51,7 +54,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         static void OnDomainUnload(object sender, EventArgs args)
         {
             ClearOnDomainUnload();
+#pragma warning disable UAC0006
             AppDomain.CurrentDomain.DomainUnload -= OnDomainUnload;
+#pragma warning restore UAC0006
         }
 #endif
 

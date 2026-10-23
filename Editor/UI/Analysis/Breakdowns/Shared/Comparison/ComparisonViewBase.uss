@@ -1,4 +1,4 @@
-/* 
+/*
  * ComparisonViewBase.uss
  * Shared base styles for comparison view components.
  * Import this after TableViewBase.uss for tree view basics.
@@ -48,7 +48,7 @@
     flex-shrink: 1;
     margin-right: 16px;
     overflow: hidden;
-	padding-top: 3px;
+    padding-top: 3px;
     white-space: normal;
     text-overflow: ellipsis;
 }
@@ -164,6 +164,11 @@
 .comparison-view-base__footer-toolbar .unity-toggle__text
 {
     padding-left: 4px;
+}
+
+.comparison-view-base__footer-toolbar .table-view-base__footer-toolbar__rebuild-options
+{
+    padding-right: 0px;
 }
 
 /* ========================================

@@ -43,12 +43,18 @@ namespace Unity.MemoryProfiler.Editor.UI
         bool m_ShowResidentMemory;
         bool m_SelectionEnabled;
         readonly bool m_ShowResidentSize; // Controls visibility of resident memory in cells and tooltips
+        bool m_ShowResidentSizeOnly;
+        bool m_DeEmphasizeNonResidentPortion;
+        string m_TooltipHint;
+
+        readonly MemorySummaryDataOverrides m_DataOverrides;
 
         public event Action<MemorySummaryModel, int> OnRowSelected;
         public event Action<MemorySummaryModel, int, bool> OnRowHovered;
         public event Action<MemorySummaryModel, int> OnRowDoubleClick;
 
-        public GenericMemorySummaryViewController(IMemorySummaryModelBuilder<MemorySummaryModel> builder, bool showResidentSize)
+        public GenericMemorySummaryViewController(IMemorySummaryModelBuilder<MemorySummaryModel> builder, bool showResidentSize,
+            in MemorySummaryDataOverrides dataOverrides = default)
         {
             m_Builder = builder;
 
@@ -58,9 +64,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SelectionEnabled = true;
             m_ShowResidentSize = showResidentSize;
             m_TotalLabelFormat = k_BreakdownTotalFormatString;
+
+            m_DataOverrides = dataOverrides;
         }
 
         public Action InspectAction { get; set; }
+
+        /// <summary>Optional provider of per-row Inspect actions for the legend and the Selection Details panel.</summary>
+        public MemorySummaryRowActionProvider RowActionProvider { get; set; }
 
         public string TotalLabelFormat
         {
@@ -69,7 +80,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 m_TotalLabelFormat = value;
                 if (m_BreakdowBarViewController != null)
+                {
                     m_BreakdowBarViewController.TotalLabelFormat = m_TotalLabelFormat;
+                    RefreshTotalLabelSpacer();
+                }
             }
         }
 
@@ -84,6 +98,87 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_NormalizeBars = value;
                 if (m_BreakdowBarViewController != null)
                     m_BreakdowBarViewController.Normalize = value;
+            }
+        }
+
+        /// <summary>
+        /// Size the bars by and show the resident portion in the legend, while tooltips still report the
+        /// committed size. Potential Savings uses this to show exclusive impact with total impact in the tooltips.
+        /// </summary>
+        public bool ShowResidentSizeOnly
+        {
+            get => m_ShowResidentSizeOnly;
+            set
+            {
+                if (m_ShowResidentSizeOnly == value)
+                    return;
+
+                // Update() can rebuild the model with fewer rows than the stale selected index.
+                if (m_Model != null && m_SelectedRow >= m_Model.Rows.Count)
+                    m_SelectedRow = -1;
+
+                // The re-sort below can move the selected row, so reselect it by name afterwards.
+                var selectedRowName = m_SelectedRow >= 0 ? m_Model.Rows[m_SelectedRow].Name : null;
+                if (selectedRowName != null)
+                    ClearSelection();
+
+                m_ShowResidentSizeOnly = value;
+                if (m_Model != null)
+                {
+                    if (!m_Model.CompareMode)
+                        m_Model.Sort(MemorySummaryModel.SortableItemDataProperty.BaseSnapshot, MemorySummaryModel.SortDirection.Descending, m_ShowResidentSizeOnly);
+                    else
+                        m_Model.Sort(MemorySummaryModel.SortableItemDataProperty.Difference, MemorySummaryModel.SortDirection.Descending, m_ShowResidentSizeOnly);
+                }
+                if (m_BreakdowBarViewController != null)
+                {
+                    m_BreakdowBarViewController.ShowResidentSizeOnly = value;
+                    m_LegendTableViewController.ShowResidentSizeOnly = value;
+                }
+
+                if (selectedRowName != null)
+                {
+                    var newIndex = m_Model.Rows.FindIndex(row => row.Name == selectedRowName);
+                    if (newIndex >= 0)
+                    {
+                        m_SelectedRow = newIndex;
+                        m_LegendTableViewController.SetRowSelected(m_SelectedRow, true);
+                        m_BreakdowBarViewController.SetCellSelected(m_SelectedRow, true);
+                    }
+                }
+            }
+        }
+
+        /// <summary>Optional line appended to the bar and legend tooltips.</summary>
+        public string TooltipHint
+        {
+            get => m_TooltipHint;
+            set
+            {
+                if (m_TooltipHint == value)
+                    return;
+
+                m_TooltipHint = value;
+                if (m_BreakdowBarViewController != null)
+                {
+                    m_BreakdowBarViewController.TooltipHint = value;
+                    m_LegendTableViewController.TooltipHint = value;
+                }
+            }
+        }
+
+        /// <summary>See <see cref="MemoryBarElement.DeEmphasizeNonResidentPortion"/>.</summary>
+        public bool DeEmphasizeNonResidentPortion
+        {
+            get => m_DeEmphasizeNonResidentPortion;
+            set
+            {
+                if (m_DeEmphasizeNonResidentPortion == value)
+                    return;
+
+                m_DeEmphasizeNonResidentPortion = value;
+                if (m_BreakdowBarViewController != null)
+                    m_BreakdowBarViewController.DeEmphasizeNonResidentPortion = value;
             }
         }
 
@@ -172,11 +267,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_Model = m_Builder.Build();
 
-            // Pre-sort data
+            // Pre-sort by whichever value (Committed or Resident) is displayed.
             if (!m_Model.CompareMode)
-                m_Model.Sort(MemorySummaryModel.SortableItemDataProperty.BaseSnapshot, MemorySummaryModel.SortDirection.Descending);
+                m_Model.Sort(MemorySummaryModel.SortableItemDataProperty.BaseSnapshot, MemorySummaryModel.SortDirection.Descending, m_ShowResidentSizeOnly);
             else
-                m_Model.Sort(MemorySummaryModel.SortableItemDataProperty.Difference, MemorySummaryModel.SortDirection.Descending);
+                m_Model.Sort(MemorySummaryModel.SortableItemDataProperty.Difference, MemorySummaryModel.SortDirection.Descending, m_ShowResidentSizeOnly);
 
             RefreshView();
         }
@@ -209,24 +304,30 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_InspectBtn.clicked += () => { InspectAction?.Invoke(); };
 
                 // Breakdown bar
-                m_BreakdowBarViewController = new MemorySummaryBarViewController(m_Model)
+                m_BreakdowBarViewController = new MemorySummaryBarViewController(m_Model, in m_DataOverrides)
                 {
                     TotalLabelFormat = m_TotalLabelFormat,
                     Normalize = m_NormalizeBars,
                     ShowResidentMemory = m_ShowResidentSize,
+                    ShowResidentSizeOnly = m_ShowResidentSizeOnly,
+                    DeEmphasizeNonResidentPortion = m_DeEmphasizeNonResidentPortion,
+                    TooltipHint = m_TooltipHint,
                 };
-                m_BreakdowBarViewController.OnRowHovered += RowHovered;
+                m_BreakdowBarViewController.OnRowHovered += BarCellHovered;
                 m_BreakdowBarViewController.OnRowClicked += RowClicked;
                 m_BreakdowBarViewController.OnRowDoubleClicked += (e) => OnRowDoubleClick?.Invoke(m_Model, e);
                 AddChild(m_BreakdowBarViewController);
                 m_BreakdownBars.Add(m_BreakdowBarViewController.View);
 
                 // Legend table
-                m_LegendTableViewController = new MemorySummaryLegendViewController(m_Model)
+                m_LegendTableViewController = new MemorySummaryLegendViewController(m_Model, in m_DataOverrides)
                 {
                     ShowResidentSize = m_ShowResidentSize,
+                    ShowResidentSizeOnly = m_ShowResidentSizeOnly,
+                    TooltipHint = m_TooltipHint,
+                    RowActionProvider = RowActionProvider,
                 };
-                m_LegendTableViewController.OnRowHovered += RowHovered;
+                m_LegendTableViewController.OnRowHovered += LegendRowHovered;
                 m_LegendTableViewController.OnRowClicked += RowClicked;
                 m_LegendTableViewController.OnRowDoubleClicked += (e) => OnRowDoubleClick?.Invoke(m_Model, e);
                 AddChild(m_LegendTableViewController);
@@ -243,11 +344,16 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            if (m_TotalLabelFormat != null)
-            {
-                m_TotalLabelSpacer.text = string.Format(m_TotalLabelFormat, EditorUtility.FormatBytes((long)m_Model.TotalA));
-            }
+            RefreshTotalLabelSpacer();
             View.RegisterCallback<GeometryChangedEvent>(ViewLayoutPerformedAfterRefresh);
+        }
+
+        void RefreshTotalLabelSpacer()
+        {
+            if (m_TotalLabelFormat == null || m_TotalLabelSpacer == null)
+                return;
+
+            m_TotalLabelSpacer.text = m_BreakdowBarViewController.FormatTotalLabel(m_Model.TotalA, m_Model.ResidentTotalA);
         }
 
         void ViewLayoutPerformedAfterRefresh(GeometryChangedEvent evt)
@@ -259,15 +365,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_BreakdowBarViewController.SetMinimumWidthExcludingTotalLabel(legendWidth);
         }
 
-        void RowHovered(int index, bool state)
+        // A bar hover reveals every bar's split for comparison; a legend row hover only splits its own bar.
+        void BarCellHovered(int index, bool state) => RowHovered(index, state, revealSplitOnAllBars: true);
+
+        void LegendRowHovered(int index, bool state) => RowHovered(index, state, revealSplitOnAllBars: false);
+
+        void RowHovered(int index, bool state, bool revealSplitOnAllBars)
         {
             OnRowHovered?.Invoke(m_Model, index, state);
 
             m_LegendTableViewController.SetRowHovered(index, state);
-            m_BreakdowBarViewController.SetCellHovered(index, state);
+            m_BreakdowBarViewController.SetCellHovered(index, state, revealSplitOnAllBars);
         }
 
-        void RowClicked(int index)
+        internal void RowClicked(int index)
         {
             if (!m_SelectionEnabled)
                 return;
@@ -280,16 +391,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             OnRowSelected?.Invoke(m_Model, m_SelectedRow);
         }
 
+        /// <summary>Test-only seam exposing the currently selected row index.</summary>
+        internal int SelectedRowForTesting => m_SelectedRow;
+
         public ViewController MakeSelection(int index)
         {
             if (index >= m_Model.Rows.Count)
                 throw new ArgumentException($"Item index out of range. Expected smaller than {m_Model.Rows.Count}, got {index}.");
 
-            var name = m_Model.Rows[index].Name;
-            var descr = m_Model.Rows[index].Description;
-            var docsUrl = m_Model.Rows[index].DocumentationUrl;
-
-            return new SimpleDetailsViewController(name, descr, docsUrl);
+            var row = m_Model.Rows[index];
+            return new SimpleDetailsViewController(row.Name, row.Description, row.DocumentationUrl, RowActionProvider, row);
         }
     }
 }

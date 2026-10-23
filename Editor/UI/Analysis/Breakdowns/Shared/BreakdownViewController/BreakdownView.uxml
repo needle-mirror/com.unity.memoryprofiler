@@ -3,10 +3,10 @@
         <Style src="BreakdownView.uss"/>
         <engine:VisualElement name="breakdown-view__search-field-container" class="table-view__config-top-container">
             <engine:DropdownField name="breakdown-view__mode-dropdown"/>
-			<engine:VisualElement name="breakdown-view__search-and-filter-group" class="table-view__search-and-filter-group">
-				<editor:ToolbarSearchField name="breakdown-view__search-field" class="table-view__search-field" />
-					<Unity.MemoryProfiler.Editor.UI:StatusFilterButton name="breakdown-view__status-filter-button"/>
-			</engine:VisualElement>
+            <engine:VisualElement name="breakdown-view__search-and-filter-group" class="table-view__search-and-filter-group">
+                <editor:ToolbarSearchField name="breakdown-view__search-field" class="table-view__search-field" />
+                <Unity.MemoryProfiler.Editor.UI:StatusFilterButton name="breakdown-view__status-filter-button"/>
+            </engine:VisualElement>
         </engine:VisualElement>
         <Unity.MemoryProfiler.Editor.UI:DetailedSizeBar name="breakdown-view__table-size-bar"/>
         <engine:VisualElement name="breakdown-view__table-container"/>

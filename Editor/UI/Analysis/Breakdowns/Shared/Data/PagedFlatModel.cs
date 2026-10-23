@@ -305,6 +305,24 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_CurrentPage = 0;
         }
 
+        /// <summary>
+        /// Locates the page and in-page offset of a store row in the current filter+sort order. m_Order holds
+        /// no reverse index, so this is a linear scan over the matching rows (M) — an accepted cost for a
+        /// manual reveal click, not a hot path.
+        /// </summary>
+        public bool TryGetPageForRow(long storeIndex, out int page)
+        {
+            for (long i = 0; i < m_Order.Count; i++)
+            {
+                if (m_Order[i] != storeIndex)
+                    continue;
+                page = (int)(i / m_PageSize);
+                return true;
+            }
+            page = 0;
+            return false;
+        }
+
         /// <summary>Refills the model's RootNodes list with the rows of <paramref name="page"/> (clamped).</summary>
         public void MaterializePage(int page)
         {

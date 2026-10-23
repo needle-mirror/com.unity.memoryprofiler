@@ -225,48 +225,52 @@
 
 /*
  * Top Unity Objects category colors (for committed and resident sections)
+ *
+ * Unlike the categories above, these have no separate darkened committed variant: the second selector
+ * keeps the committed section in the category color once the resident split is revealed, and the bars
+ * that show a split de-emphasize it with .memory-bar-element__de-emphasis-tint instead.
  */
-.memory-category-color__grp-1
+.memory-category-color__grp-1, .memory-bar-element__resident-bar-visible .memory-category-color__grp-1
 {
     background-color: #614985;
 }
 
-.memory-category-color__grp-2
+.memory-category-color__grp-2, .memory-bar-element__resident-bar-visible .memory-category-color__grp-2
 {
     background-color: #8068C6;
 }
 
-.memory-category-color__grp-3
+.memory-category-color__grp-3, .memory-bar-element__resident-bar-visible .memory-category-color__grp-3
 {
     background-color: #ADA6C1;
 }
 
-.memory-category-color__grp-4
+.memory-category-color__grp-4, .memory-bar-element__resident-bar-visible .memory-category-color__grp-4
 {
     background-color: #AB69B0;
 }
 
-.memory-category-color__grp-5
+.memory-category-color__grp-5, .memory-bar-element__resident-bar-visible .memory-category-color__grp-5
 {
     background-color: #A54F43;
 }
 
-.memory-category-color__grp-6
+.memory-category-color__grp-6, .memory-bar-element__resident-bar-visible .memory-category-color__grp-6
 {
     background-color: #EC7735;
 }
 
-.memory-category-color__grp-7
+.memory-category-color__grp-7, .memory-bar-element__resident-bar-visible .memory-category-color__grp-7
 {
     background-color: #ECAE35;
 }
 
-.memory-category-color__grp-8
+.memory-category-color__grp-8, .memory-bar-element__resident-bar-visible .memory-category-color__grp-8
 {
     background-color: #D8C38D;
 }
 
-.memory-category-color__grp-other
+.memory-category-color__grp-other, .memory-bar-element__resident-bar-visible .memory-category-color__grp-other
 {
     background-color: #7B7B7B;
 }

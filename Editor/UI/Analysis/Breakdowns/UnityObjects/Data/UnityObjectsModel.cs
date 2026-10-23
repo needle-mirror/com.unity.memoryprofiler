@@ -23,10 +23,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             : base(treeRootNodes)
         {
             var totalMemorySize = new MemorySize();
+            var totalNativeSize = new MemorySize();
+            var totalManagedSize = new MemorySize();
+            var totalGpuSize = new MemorySize();
             foreach (var rootItem in treeRootNodes)
+            {
                 totalMemorySize += rootItem.data.TotalSize;
+                totalNativeSize += rootItem.data.NativeSize;
+                totalManagedSize += rootItem.data.ManagedSize;
+                totalGpuSize += rootItem.data.GpuSize;
+            }
 
             TotalMemorySize = totalMemorySize;
+            TotalNativeSize = totalNativeSize;
+            TotalManagedSize = totalManagedSize;
+            TotalGpuSize = totalGpuSize;
 
             // Workaround for inflated resident due to fake gfx resources
             TotalSnapshotMemorySize = MemorySize.Max(totalSnapshotMemorySize, totalMemorySize);
@@ -43,11 +54,17 @@ namespace Unity.MemoryProfiler.Editor.UI
             List<string> names,
             int pageSize,
             MemorySize totalMemorySize,
+            MemorySize totalNativeSize,
+            MemorySize totalManagedSize,
+            MemorySize totalGpuSize,
             MemorySize totalSnapshotMemorySize)
             : base(new List<TreeViewItemData<ItemData>>())
         {
             m_Store = store;
             TotalMemorySize = totalMemorySize;
+            TotalNativeSize = totalNativeSize;
+            TotalManagedSize = totalManagedSize;
+            TotalGpuSize = totalGpuSize;
             // Workaround for inflated resident due to fake gfx resources
             TotalSnapshotMemorySize = MemorySize.Max(totalSnapshotMemorySize, totalMemorySize);
 
@@ -63,6 +80,17 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         /// <summary>The total size, in bytes, of memory accounted for in the breakdown.</summary>
         public MemorySize TotalMemorySize { get; }
+
+        /// <summary>
+        /// The native portion of <see cref="TotalMemorySize"/> over every row, regardless of paging.
+        /// </summary>
+        public MemorySize TotalNativeSize { get; }
+
+        /// <summary>The managed portion of <see cref="TotalMemorySize"/>; see <see cref="TotalNativeSize"/>.</summary>
+        public MemorySize TotalManagedSize { get; }
+
+        /// <summary>The GPU (graphics) portion of <see cref="TotalMemorySize"/>; see <see cref="TotalNativeSize"/>.</summary>
+        public MemorySize TotalGpuSize { get; }
 
         /// <summary>The total size, in bytes, of memory accounted for in the original snapshot.</summary>
         public MemorySize TotalSnapshotMemorySize { get; }
@@ -122,6 +150,35 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>Refills <see cref="TreeModel{T}.RootNodes"/> with the rows of <paramref name="page"/>.</summary>
         public void MaterializePage(int page) => m_Paged?.MaterializePage(page);
 
+        /// <summary>
+        /// Linear scan for the store index of the row whose <see cref="UnityObjectsCompactRow.Source"/> matches
+        /// <paramref name="source"/>. False for the hierarchical (non-paged) model, which has no store to scan.
+        /// </summary>
+        public bool TryFindStoreIndex(CachedSnapshot.SourceIndex source, out long index)
+        {
+            index = -1;
+            if (m_Store == null)
+                return false;
+
+            for (long i = 0; i < m_Store.Count; i++)
+            {
+                if (m_Store[i].Source == source)
+                {
+                    index = i;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public bool TryGetPageForRow(long storeIndex, out int page)
+        {
+            page = 0;
+            return m_Paged != null && m_Paged.TryGetPageForRow(storeIndex, out page);
+        }
+
+        public int GetTreeIdForStoreIndex(long storeIndex) => m_Store[storeIndex].TreeId;
+
         public void Dispose()
         {
             m_Paged?.Dispose();
@@ -129,7 +186,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         /// <summary>The data associated with each item in the tree.</summary>
-        public readonly struct ItemData : IPrivateComparableItemData
+        public readonly struct ItemData : IPrivateComparableItemData, IHasSourceIndex
         {
             public ItemData(
                 string name,

@@ -92,7 +92,7 @@ namespace Unity.MemoryProfiler.Editor
             /// NOTE: This method is not ideal for use with the <see cref="SortedNativeObjectsCache"/> as it would only find the root allocations,
             /// and only within their user allocation, i.e. not including their header. Instead use it with the <see cref="SortedNativeAllocationsCache"/>
             /// and use the <see cref="SortedNativeAllocationsCache.RootReferenceId(long)"/> to find any potential native object associated with the allocation.
-            /// 
+            ///
             /// </summary>
             /// <param name="address"></param>
             /// <param name="onlyDirectAddressMatches"></param>

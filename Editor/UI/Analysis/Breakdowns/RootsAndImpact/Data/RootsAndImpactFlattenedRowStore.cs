@@ -22,6 +22,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         public readonly int ChildCount;
         public readonly int TreeId;
         /// <summary>
+        /// The number of referrers this row's impact was divided across (see <see cref="RootAndImpactInfo.GetReferrerCount"/>);
+        /// <see cref="RootAndImpactInfo.ReferrerData.SingleReferrer"/> if it never divided and for synthetic rows.
+        /// </summary>
+        public readonly long ReferrerCount;
+        /// <summary>
         /// -1 resolves the display name from Source; otherwise an index into the model's special-name list
         /// (synthetic/region rows whose name is a TextContent constant, not derivable from Source).
         /// </summary>
@@ -63,6 +68,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             GroupHeader = 1 << 2,
             /// <summary>Ancestor that doesn't match a status filter itself but has matching descendants (visual de-emphasis). Tree-mode only.</summary>
             FilterMatchAncestor = 1 << 3,
+            /// <summary>The row's own ownership-tree parent received none of its impact (see <see cref="RootAndImpactInfo.TryGetOrphanedSplitRedirect"/>).</summary>
+            ParentExcludedFromSplit = 1 << 4,
         }
 
         /// <summary>Bucket sentinel for synthetic rows that participate in no bucket-name reveal (regions, unrooted).</summary>
@@ -86,7 +93,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             byte bucketId,
             bool isRegionData,
             bool isGroupHeader = false,
-            bool isFilterMatchAncestor = false)
+            bool isFilterMatchAncestor = false,
+            long referrerCount = RootAndImpactInfo.ReferrerData.SingleReferrer,
+            bool parentExcludedFromSplit = false)
         {
             TreeId = treeId;
             Source = source;
@@ -102,7 +111,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Flags = (ownSize.GfxSize.Committed > 0 ? Flags.OwnSizeIncludesGraphics : Flags.None)
                 | (isRegionData ? Flags.RegionData : Flags.None)
                 | (isGroupHeader ? Flags.GroupHeader : Flags.None)
-                | (isFilterMatchAncestor ? Flags.FilterMatchAncestor : Flags.None);
+                | (isFilterMatchAncestor ? Flags.FilterMatchAncestor : Flags.None)
+                | (parentExcludedFromSplit ? Flags.ParentExcludedFromSplit : Flags.None);
+            ReferrerCount = referrerCount;
             SpecialNameId = specialNameId;
             Depth = depth;
             BucketId = bucketId;
@@ -120,10 +131,15 @@ namespace Unity.MemoryProfiler.Editor.UI
         public bool IsFilterMatchAncestor => (m_Flags & Flags.FilterMatchAncestor) != 0;
 
         /// <summary>
-        /// True when the Hide Exclusive-Only toggle removes this row: it has only exclusive impact, no shared
-        /// pro-rata. No cascade is needed, because an exclusive-only node's whole subtree is exclusive-only by
-        /// how the ownership tree and impact are built. Region rows look exclusive-only but are not subject to
-        /// the toggle, so the model excludes them from this gate.
+        /// True if this row's ownership-tree parent received none of its impact (see <see cref="RootAndImpactInfo.TryGetOrphanedSplitRedirect"/>).
+        /// </summary>
+        public bool ParentExcludedFromSplit => (m_Flags & Flags.ParentExcludedFromSplit) != 0;
+
+        /// <summary>
+        /// True when this row has only exclusive impact, no shared pro-rata, making it a Hide Exclusive-Only
+        /// candidate. The model still keeps it when a descendant survives the toggle, as a descendant can carry
+        /// shared impact its shortest-path parent did not receive. Region rows look exclusive-only but are not
+        /// subject to the toggle, so the model excludes them from this gate.
         /// </summary>
         public bool IsExclusiveOnly => SharedProRataSum.Committed == 0 && ExclusiveImpactSum.Committed > 0;
 

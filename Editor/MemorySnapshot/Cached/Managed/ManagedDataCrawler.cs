@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -31,7 +32,7 @@ using InstanceIdToNativeObjectIndex = Unity.MemoryProfiler.Editor.Containers.Col
 using AddressToIndex = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<ulong, long>;
 #else
 using AddressToManagedIndexHashMap = Unity.Collections.NativeHashMap<ulong, long>;
-using TypeIndexToCrawlerDataIndexHashMap  = Unity.Collections.NativeHashMap<int, long>;
+using TypeIndexToCrawlerDataIndexHashMap = Unity.Collections.NativeHashMap<int, long>;
 #if !ENTITY_ID_CHANGED_SIZE
 using AddressToInstanceId = Unity.Collections.NativeHashMap<ulong, Unity.MemoryProfiler.Editor.EntityId>;
 using InstanceIdToNativeObjectIndex = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.EntityId, long>;
@@ -202,7 +203,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
         class IntermediateCrawlData :
             IDisposable, IChunkedCrawlerJobManagerBase
         {
-            public List<int> TypesWithStaticFields { get; }
+            public ref DynamicArray<int> TypesWithStaticFields => ref m_TypesWithStaticFields;
+            DynamicArray<int> m_TypesWithStaticFields;
             /// <summary>
             /// Types with a non-empty <see cref="CachedSnapshot.TypeDescriptionEntriesCache.StaticFieldSlots"/>
             /// row (format v20+) — resolved-address static fields, consumed directly by
@@ -212,13 +214,12 @@ namespace Unity.MemoryProfiler.Editor.Managed
             /// <c>TypeDescriptions_StaticFieldBytes</c>, so <see cref="TypesWithStaticFields"/> is empty
             /// whenever this list is populated, and vice versa for pre-v20 files.
             /// </summary>
-            public List<int> TypesWithStaticFieldSlots { get; }
+            public ref DynamicArray<int> TypesWithStaticFieldSlots => ref m_TypesWithStaticFieldSlots;
+            DynamicArray<int> m_TypesWithStaticFieldSlots;
             public ref DynamicArray<StackCrawlData> CrawlDataStack => ref m_CrawlDataStack;
             DynamicArray<StackCrawlData> m_CrawlDataStack;
             public BlockList<ManagedConnection> ManagedConnections => CachedMemorySnapshot.CrawledData.Connections;
             public CachedSnapshot CachedMemorySnapshot { get; }
-            public ref DynamicArray<int> DuplicatedGCHandleTargetsStack => ref m_DuplicatedGCHandleTargetsStack;
-            DynamicArray<int> m_DuplicatedGCHandleTargetsStack;
             NativeHashSet<int> m_TypesWithObjectsThatMayStillNeedNativeTypeConnection;
             public ref NativeHashSet<int> TypesWithObjectsThatMayStillNeedNativeTypeConnection => ref m_TypesWithObjectsThatMayStillNeedNativeTypeConnection;
             public ref FieldLayouts StaticFieldLayoutInfo => ref m_StaticFieldLayoutInfo;
@@ -233,24 +234,33 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
             public long MaxObjectIndexFindableViaPointers => MemoryProfilerSettings.FeatureFlags.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects ? CachedMemorySnapshot.GcHandles.UniqueCount : 0;
 
+            /// <summary>
+            /// Object starts from the backend-provided object table, not created when the snapshot has none or no heap bytes to walk.
+            /// CoreCLR captures static values after the heap, so a static can point at memory that holds no captured object;
+            /// static-rooted pointers are only followed if they hit an object start listed here.
+            /// </summary>
+            public BackendObjectAddressIndex BackendObjects { get; }
+
             public IntermediateCrawlData(CachedSnapshot snapshot)
             {
-                m_DuplicatedGCHandleTargetsStack = new DynamicArray<int>(0, k_InitialStackSize, Allocator.Persistent);
+                if (snapshot.HasBackendManagedGraph && snapshot.ManagedHeapSections.Count > 0)
+                    BackendObjects = new BackendObjectAddressIndex(snapshot.ManagedHeapSections, snapshot.ManagedObjects.Target);
+
                 CachedMemorySnapshot = snapshot;
                 m_CrawlDataStack = new DynamicArray<StackCrawlData>(0, k_InitialStackSize, Allocator.Persistent, memClear: k_MemClearCrawlDataStack);
                 m_TypesWithObjectsThatMayStillNeedNativeTypeConnection = new NativeHashSet<int>(100, Allocator.Persistent);
 
-                TypesWithStaticFields = new List<int>();
-                TypesWithStaticFieldSlots = new List<int>();
+                m_TypesWithStaticFields = new DynamicArray<int>(0, 16, Allocator.Persistent);
+                m_TypesWithStaticFieldSlots = new DynamicArray<int>(0, 16, Allocator.Persistent);
                 for (int i = 0; i != snapshot.TypeDescriptions.Count; ++i)
                 {
                     if (snapshot.TypeDescriptions.HasStaticFieldData(i))
                     {
-                        TypesWithStaticFields.Add(i);
+                        m_TypesWithStaticFields.Push(i);
                     }
                     if (snapshot.TypeDescriptions.HasStaticFieldSlotData(snapshot, i))
                     {
-                        TypesWithStaticFieldSlots.Add(i);
+                        m_TypesWithStaticFieldSlots.Push(i);
                     }
                 }
 
@@ -310,7 +320,6 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
             public void Dispose()
             {
-                m_DuplicatedGCHandleTargetsStack.Dispose();
                 m_FieldLayouts.Dispose();
 
                 // This should have been disposed of immediately after crawling static fields
@@ -319,6 +328,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 m_CrawlDataStack.Dispose();
                 m_NativeObjectOrAllocationFinder.Dispose();
                 m_TypesWithObjectsThatMayStillNeedNativeTypeConnection.Dispose();
+                m_TypesWithStaticFields.Dispose();
+                m_TypesWithStaticFieldSlots.Dispose();
+                if (BackendObjects.IsCreated)
+                    BackendObjects.Dispose();
             }
         }
         public const string ConnectNativeToManageObjectProfilerMarkerName = "Crawler.ConnectNativeToManageObject";
@@ -332,73 +345,170 @@ namespace Unity.MemoryProfiler.Editor.Managed
 
         public const string GatherIntermediateCrawlDataMarkerName = "GatherIntermediateCrawlData";
         static readonly ProfilerMarker k_GatherIntermediateCrawlDataMarker = new ProfilerMarker(GatherIntermediateCrawlDataMarkerName);
+        public const string GatherManagedRootDataMarkerName = "GatherManagedRootData";
+        static readonly ProfilerMarker k_GatherManagedRootDataMarker = new ProfilerMarker(GatherManagedRootDataMarkerName);
+        public const string GatherFrozenHeapObjectDataMarkerName = "GatherFrozenHeapObjectData";
+        static readonly ProfilerMarker k_GatherFrozenHeapObjectDataMarker = new ProfilerMarker(GatherFrozenHeapObjectDataMarkerName);
 
+        // GCHandleEntriesCache guarantees every row targets a unique address (duplicates from pre-19.3
+        // files are removed once at load, see GCHandleEntriesCache.RemoveDuplicateTargets) - every
+        // GcHandles row index is pushed as-is, both as its ManagedObjectIndex and as the SourceIndex
+        // handed to the crawl stack, with no separate discovery/dedup pass needed.
         static void GatherIntermediateCrawlData(CachedSnapshot snapshot, IntermediateCrawlData crawlData, ref DynamicArray<StackCrawlData> crawlerStack)
         {
             using var _ = k_GatherIntermediateCrawlDataMarker.Auto();
-            unsafe
+            ref var managedHeapSections = ref snapshot.ManagedHeapSections;
+            var vmInfo = snapshot.VirtualMachineInformation;
+
+            for (int i = 0; i != snapshot.GcHandles.Count; i++)
             {
-                var uniqueHandlesPtr = (ulong*)UnsafeUtility.Malloc(sizeof(ulong) * snapshot.GcHandles.Count, UnsafeUtility.AlignOf<ulong>(), Allocator.Temp);
-                var uniqueHandlesHeapBytesPtr = (BytesAndOffset*)UnsafeUtility.Malloc(sizeof(BytesAndOffset) * snapshot.GcHandles.Count, UnsafeUtility.AlignOf<BytesAndOffset>(), Allocator.Temp);
-
-                ulong* uniqueHandlesBegin = uniqueHandlesPtr;
-                BytesAndOffset* uniqueHandlesHeapBytesBegin = uniqueHandlesHeapBytesPtr;
-                var writtenRange = 0L;
-
-                ref var managedHeapSections = ref snapshot.ManagedHeapSections;
-                var vmInfo = snapshot.VirtualMachineInformation;
-
-                // Parse all handles
-                for (int i = 0; i != snapshot.GcHandles.Count; i++)
+                var target = snapshot.GcHandles.Target[i];
+                var moi = new ManagedObjectInfo
                 {
-                    var target = snapshot.GcHandles.Target[i];
-                    var moi = new ManagedObjectInfo
-                    {
-                        ManagedObjectIndex = i,
-                        ITypeDescription = -1,
-                        NativeObjectIndex = -1,
-                    };
-                    managedHeapSections.Find(target, vmInfo, out moi.data);
+                    ManagedObjectIndex = i,
+                    ITypeDescription = -1,
+                    NativeObjectIndex = -1,
+                };
+                managedHeapSections.Find(target, vmInfo, out moi.data);
 
-                    //this can only happen pre 19.3 scripting snapshot implementations where we dumped all handle targets but not the handles.
-                    //Eg: multiple handles can have the same target. Future facing we need to start adding that as we move forward
-                    if (snapshot.CrawledData.MangedObjectIndexByAddress.ContainsKey(target))
-                    {
-                        moi.PtrObject = target;
-                        crawlData.DuplicatedGCHandleTargetsStack.Push(i);
-                    }
-                    else
-                    {
-                        snapshot.CrawledData.MangedObjectIndexByAddress.Add(target, moi.ManagedObjectIndex);
-                        *(uniqueHandlesBegin++) = target;
-                        *(uniqueHandlesHeapBytesBegin++) = moi.data;
-                        ++writtenRange;
-                    }
+                snapshot.CrawledData.MangedObjectIndexByAddress.Add(target, moi.ManagedObjectIndex);
+                crawlData.CachedMemorySnapshot.CrawledData.ManagedObjects.Push(moi);
 
-                    crawlData.CachedMemorySnapshot.CrawledData.ManagedObjects.Push(moi);
-                }
-                uniqueHandlesBegin = uniqueHandlesPtr; //reset iterator
-                uniqueHandlesHeapBytesBegin = uniqueHandlesHeapBytesPtr;
-                ulong* uniqueHandlesEnd = uniqueHandlesPtr + writtenRange;
-                var gcHandleIndex = 0L;
-                //add handles for processing
-                while (uniqueHandlesBegin != uniqueHandlesEnd)
-                {
-                    var address = UnsafeUtility.ReadArrayElement<ulong>(uniqueHandlesBegin++, 0);
-                    var bytesAndOffsets = UnsafeUtility.ReadArrayElement<BytesAndOffset>(uniqueHandlesHeapBytesBegin++, 0);
-                    crawlerStack.Push(new StackCrawlData(address, referenceOwner: new SourceIndex(SourceIndex.SourceId.GCHandleIndex, gcHandleIndex++), bytesAndOffsets: bytesAndOffsets), memClearForExcessExpansion: k_MemClearCrawlDataStack);
-                }
-                UnsafeUtility.Free(uniqueHandlesPtr, Allocator.Temp);
-                UnsafeUtility.Free(uniqueHandlesHeapBytesPtr, Allocator.Temp);
-
-                // Update the unique count
-                snapshot.GcHandles.UniqueCount = writtenRange;
+                crawlerStack.Push(new StackCrawlData(target, referenceOwner: new SourceIndex(SourceIndex.SourceId.GCHandleIndex, i), bytesAndOffsets: moi.data), memClearForExcessExpansion: k_MemClearCrawlDataStack);
             }
         }
+
+        /// <summary>
+        /// Seeds discovery from <see cref="CachedSnapshot.ManagedRoots"/> (Stack / Finalizer / Other, and Handle
+        /// as a fallback), in addition to <see cref="GatherIntermediateCrawlData"/>'s GcHandles-only seeding —
+        /// closes the crawl-completeness gap where the byte walk never consumed these root kinds at all. Only
+        /// runs when <see cref="CachedSnapshot.HasManagedRoots"/>; on older/Mono/IL2CPP files this is a no-op
+        /// and GcHandles-only seeding is unchanged. Rows whose target is already claimed by the GcHandles pass
+        /// (<see cref="ManagedData.MangedObjectIndexByAddress"/>) are skipped — first-claim wins, since a real
+        /// object reachable from multiple roots only needs one discovery path.
+        /// </summary>
+        static void GatherManagedRootData(CachedSnapshot snapshot, IntermediateCrawlData crawlData, ref DynamicArray<StackCrawlData> crawlerStack)
+        {
+            if (!snapshot.HasManagedRoots)
+                return;
+
+            using var _ = k_GatherManagedRootDataMarker.Auto();
+            var managedRoots = snapshot.ManagedRoots;
+            ref var managedHeapSections = ref snapshot.ManagedHeapSections;
+            var vmInfo = snapshot.VirtualMachineInformation;
+            var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
+
+            var resolvedManagedObjectIndices = new DynamicArray<long>(managedRoots.Count, Allocator.Persistent);
+            if (resolvedManagedObjectIndices.Count > 0)
+            {
+                var invalidIndex = ManagedData.InvalidObjectIndex;
+                unsafe { UnsafeUtility.MemCpyReplicate(resolvedManagedObjectIndices.GetUnsafePtr(), &invalidIndex, sizeof(long), (int)resolvedManagedObjectIndices.Count); }
+            }
+
+            for (long i = 0; i < managedRoots.Count; i++)
+            {
+                var target = managedRoots.Target[i];
+                if (target == 0)
+                    continue; // row's address couldn't be resolved from this file — not seedable, not a bug (see ManagedRootsEntriesCache.Target)
+
+                if (objectsByAddress.TryGetValue(target, out var existingIndex))
+                {
+                    // Already discovered via GcHandles (or an earlier ManagedRoots row targeting the same
+                    // address) — first-claim wins, this row just resolves to the existing object.
+                    resolvedManagedObjectIndices[i] = existingIndex;
+                    continue;
+                }
+
+                var moi = new ManagedObjectInfo
+                {
+                    ManagedObjectIndex = crawlData.CachedMemorySnapshot.CrawledData.ManagedObjects.Count,
+                    ITypeDescription = -1,
+                    NativeObjectIndex = -1,
+                };
+                managedHeapSections.Find(target, vmInfo, out moi.data);
+
+                objectsByAddress.Add(target, moi.ManagedObjectIndex);
+                resolvedManagedObjectIndices[i] = moi.ManagedObjectIndex;
+                crawlData.CachedMemorySnapshot.CrawledData.ManagedObjects.Push(moi);
+
+                crawlerStack.Push(new StackCrawlData(target, referenceOwner: new SourceIndex(SourceIndex.SourceId.ManagedRoot, i), bytesAndOffsets: moi.data), memClearForExcessExpansion: k_MemClearCrawlDataStack);
+            }
+
+            snapshot.CrawledData.ManagedRootIndexToManagedObjectIndex = resolvedManagedObjectIndices;
+        }
+
+        /// <summary>
+        /// Seeds discovery for backend <see cref="CachedSnapshot.ManagedObjects"/> rows living on a heap section
+        /// the GC exempts from normal per-object rooting, that neither the byte walk nor
+        /// <see cref="GatherManagedRootData"/> ever finds — see <see cref="SourceIndex.SourceId.ManagedHeapSection"/>'s
+        /// doc comment for which objects this covers and why the section's exemption is what keeps them alive.
+        /// Records them in <see cref="ManagedData.FrozenHeapManagedObjectIndices"/>, which
+        /// <see cref="RootAndImpactInfo"/> uses to seed one root per frozen heap object. Only
+        /// runs when <see cref="CachedSnapshot.HasBackendManagedGraph"/> (CoreCLR; Mono / IL2CPP never populate
+        /// <see cref="CachedSnapshot.ManagedObjects"/>, so there's nothing to scan here for them) and when
+        /// per-section <see cref="ManagedMemorySectionEntriesCache.Flags"/> is populated (format v20+ — older
+        /// files can't identify which sections are frozen/pinned, so there's nothing safe to seed).
+        /// </summary>
+        static void GatherFrozenHeapObjectData(CachedSnapshot snapshot, IntermediateCrawlData crawlData, ref DynamicArray<StackCrawlData> crawlerStack)
+        {
+            if (!snapshot.HasBackendManagedGraph || snapshot.ManagedHeapSections.Flags.Count == 0)
+                return;
+
+            using var _ = k_GatherFrozenHeapObjectDataMarker.Auto();
+            var managedObjects = snapshot.ManagedObjects;
+            ref var managedHeapSections = ref snapshot.ManagedHeapSections;
+            var vmInfo = snapshot.VirtualMachineInformation;
+            var objectsByAddress = snapshot.CrawledData.MangedObjectIndexByAddress;
+
+            var sectionToManagedObjectIndex = new DynamicArray<long>(managedHeapSections.Count, Allocator.Persistent);
+            if (sectionToManagedObjectIndex.Count > 0)
+            {
+                var invalidIndex = ManagedData.InvalidObjectIndex;
+                unsafe { UnsafeUtility.MemCpyReplicate(sectionToManagedObjectIndex.GetUnsafePtr(), &invalidIndex, sizeof(long), (int)sectionToManagedObjectIndex.Count); }
+            }
+            var frozenHeapObjectIndices = new DynamicArray<long>(0, managedObjects.Count, Allocator.Persistent);
+
+            for (long i = 0; i < managedObjects.Count; i++)
+            {
+                var target = managedObjects.Target[i];
+                if (target == 0 || objectsByAddress.ContainsKey(target))
+                    continue; // already discovered via GcHandles or ManagedRoots — first-claim wins
+
+                var moi = new ManagedObjectInfo
+                {
+                    ManagedObjectIndex = crawlData.CachedMemorySnapshot.CrawledData.ManagedObjects.Count,
+                    ITypeDescription = -1,
+                    NativeObjectIndex = -1,
+                };
+                managedHeapSections.Find(target, vmInfo, out moi.data);
+                if (!moi.data.IsValid)
+                    continue; // heap bytes unloaded or address outside any known section — nothing to root against
+
+                var sectionIndex = moi.data.HeapSectionIndex;
+                var sectionFlag = managedHeapSections.Flags[sectionIndex];
+                if (sectionFlag != HeapChunkType.NonGC && sectionFlag != HeapChunkType.PinnedObjectHeap)
+                    continue; // lives on an ordinary GC section — not exempt from rooting, so not this function's population to seed
+
+                objectsByAddress.Add(target, moi.ManagedObjectIndex);
+                crawlData.CachedMemorySnapshot.CrawledData.ManagedObjects.Push(moi);
+
+                if (sectionToManagedObjectIndex[sectionIndex] == ManagedData.InvalidObjectIndex)
+                    sectionToManagedObjectIndex[sectionIndex] = moi.ManagedObjectIndex; // first object on this section not already claimed by another root - not necessarily the section's first frozen/pinned object
+                frozenHeapObjectIndices.Push(moi.ManagedObjectIndex);
+
+                crawlerStack.Push(new StackCrawlData(target, referenceOwner: new SourceIndex(SourceIndex.SourceId.ManagedHeapSection, sectionIndex), bytesAndOffsets: moi.data), memClearForExcessExpansion: k_MemClearCrawlDataStack);
+            }
+
+            snapshot.CrawledData.ManagedHeapSectionIndexToManagedObjectIndex = sectionToManagedObjectIndex;
+            snapshot.CrawledData.FrozenHeapManagedObjectIndices = frozenHeapObjectIndices;
+        }
+
         public const string CrawlHandleRootedObjectsMarkerName = "Crawl GC Handle Rooted Objects";
         static readonly ProfilerMarker k_CrawlHandleRootedObjectsMarker = new ProfilerMarker(CrawlHandleRootedObjectsMarkerName);
-        public const string CrawlHandlesOldDataMarkerName = "Adjust for Old Snapshot Data";
-        static readonly ProfilerMarker k_CrawlHandlesOldDataMarker = new ProfilerMarker(CrawlHandlesOldDataMarkerName);
+        public const string CrawlManagedRootRootedObjectsMarkerName = "Crawl Managed Root Rooted Objects";
+        static readonly ProfilerMarker k_CrawlManagedRootRootedObjectsMarker = new ProfilerMarker(CrawlManagedRootRootedObjectsMarkerName);
+        public const string CrawlFrozenHeapObjectsMarkerName = "Crawl Frozen Heap Objects";
+        static readonly ProfilerMarker k_CrawlFrozenHeapObjectsMarker = new ProfilerMarker(CrawlFrozenHeapObjectsMarkerName);
         public const string CrawlStaticsMarker = "Crawl Static Fields";
         static readonly ProfilerMarker k_CrawlStaticsMarker = new ProfilerMarker(CrawlStaticsMarker);
         public const string CrawlStaticallyReferencedObjectsMarker = "Crawl Statically Rooted Objects";
@@ -407,7 +517,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         static readonly ProfilerMarker k_CrawlUnityObjectConnectionsMarker = new ProfilerMarker(CrawlUnityObjectConnectionsMarkerName);
         public const string CrawlFinalizeMarkerName = "Crawler Finalizing";
         static readonly ProfilerMarker k_CrawlFinalizeMarker = new ProfilerMarker(CrawlFinalizeMarkerName);
-        public const int CrawlStepCount = 8;
+        public const int CrawlStepCount = 11;
         public static IEnumerator<EnumerationStatus> Crawl(CachedSnapshot snapshot, EnumerationStatus status)
         {
             Debug.Assert(!(snapshot.CrawledData?.Crawled ?? false), "Crawling an already crawled snapshot.");
@@ -441,6 +551,16 @@ namespace Unity.MemoryProfiler.Editor.Managed
             var gcHandleHeldObjectsToCrawl = new DynamicArray<StackCrawlData>(0, snapshot.GcHandles.Count, Allocator.Persistent, memClear: k_MemClearCrawlDataStack);
             GatherIntermediateCrawlData(snapshot, crawlData, ref gcHandleHeldObjectsToCrawl);
 
+            yield return status.IncrementStep(stepStatus: "Enqueueing Managed Roots for crawling.");
+
+            var managedRootHeldObjectsToCrawl = new DynamicArray<StackCrawlData>(0, snapshot.ManagedRoots.Count, Allocator.Persistent, memClear: k_MemClearCrawlDataStack);
+            GatherManagedRootData(snapshot, crawlData, ref managedRootHeldObjectsToCrawl);
+
+            yield return status.IncrementStep(stepStatus: "Enqueueing frozen heap objects for crawling.");
+
+            var frozenHeapObjectsToCrawl = new DynamicArray<StackCrawlData>(0, snapshot.ManagedObjects.Count, Allocator.Persistent, memClear: k_MemClearCrawlDataStack);
+            GatherFrozenHeapObjectData(snapshot, crawlData, ref frozenHeapObjectsToCrawl);
+
             yield return status.IncrementStep(stepStatus: "Reading Managed Heap bytes");
 
             // Start with static fields and enqueue any heap objects held by their fields
@@ -465,19 +585,18 @@ namespace Unity.MemoryProfiler.Editor.Managed
             gcHandleHeldObjectsToCrawl.Dispose();
             CrawlStep(crawlData, k_CrawlHandleRootedObjectsMarker);
 
-            if (crawlData.DuplicatedGCHandleTargetsStack.Count > 0)
-            {
-                yield return status.IncrementStep(stepStatus: "Adjusting for pre 2019.3 snapshot format data");
-                using var _ = k_CrawlHandlesOldDataMarker.Auto();
-                //copy crawled object source data for duplicate objects
-                foreach (var i in crawlData.DuplicatedGCHandleTargetsStack)
-                {
-                    var ptr = snapshot.CrawledData.ManagedObjects[i].PtrObject;
-                    snapshot.CrawledData.ManagedObjects[i] = snapshot.CrawledData.ManagedObjects[snapshot.CrawledData.MangedObjectIndexByAddress[ptr]];
-                }
-            }
-            else
-                status.IncrementStep(stepStatus: "Skipped");
+            //crawl Managed Root (Stack/Finalizer/Other, and Handle fallback) held objects data
+            yield return status.IncrementStep(stepStatus: "Crawling Managed Root held objects and their references.");
+            crawlData.CrawlDataStack.PushRange(managedRootHeldObjectsToCrawl, memClearForExcessExpansion: k_MemClearCrawlDataStack);
+            managedRootHeldObjectsToCrawl.Dispose();
+            CrawlStep(crawlData, k_CrawlManagedRootRootedObjectsMarker);
+
+            //crawl frozen heap objects (NonGC-heap objects with no root of their own)
+            yield return status.IncrementStep(stepStatus: "Crawling frozen heap objects.");
+            crawlData.CrawlDataStack.PushRange(frozenHeapObjectsToCrawl, memClearForExcessExpansion: k_MemClearCrawlDataStack);
+            frozenHeapObjectsToCrawl.Dispose();
+            CrawlStep(crawlData, k_CrawlFrozenHeapObjectsMarker);
+
             //crawl connection data
             yield return status.IncrementStep(stepStatus: "Mapping out Unity Object references");
             {
@@ -665,7 +784,8 @@ namespace Unity.MemoryProfiler.Editor.Managed
         /// Asserts the byte-derived managed-to-managed edge set matches the backend-provided
         /// <see cref="CachedSnapshot.ManagedReferences"/> set. Compares by object address rather than row index,
         /// since the byte crawl's <see cref="ManagedObjectInfo.ManagedObjectIndex"/> order need not match the
-        /// file's object table order. Logs any divergence as an error.
+        /// file's object table order. Logs one warning with the divergence counts and the most common
+        /// source type -> target type groups, each with a sample edge and the source field holding it.
         /// </summary>
         static void ValidateByteEdgesAgainstBackendGraph(CachedSnapshot snapshot)
         {
@@ -696,15 +816,107 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     byteEdges.Add((managedObjects[c.IndexFrom.Index].PtrObject, managedObjects[c.IndexTo.Index].PtrObject));
             }
 
+            var backendOnly = new List<(ulong From, ulong To)>();
             foreach (var e in fileEdges)
             {
                 if (!byteEdges.Contains(e))
-                    Debug.LogError($"Backend managed reference 0x{e.Item1:X}->0x{e.Item2:X} was not produced by the byte crawl.");
+                    backendOnly.Add(e);
             }
+            var byteOnly = new List<(ulong From, ulong To)>();
             foreach (var e in byteEdges)
             {
                 if (!fileEdges.Contains(e))
-                    Debug.LogError($"Byte-crawled managed reference 0x{e.Item1:X}->0x{e.Item2:X} is missing from the backend graph.");
+                    byteOnly.Add(e);
+            }
+            if (backendOnly.Count == 0 && byteOnly.Count == 0)
+                return;
+
+            var backendRowByAddress = new Dictionary<ulong, long>();
+            for (long i = 0; i < backendObjects.Count; i++)
+                backendRowByAddress[backendObjects.Target[i]] = i;
+
+            var message = new StringBuilder($"Managed reference graph divergence: {backendOnly.Count} of {fileEdges.Count} backend references were not produced by the byte crawl, "
+                + $"{byteOnly.Count} of {byteEdges.Count} byte-crawled references are missing from the backend graph.");
+            AppendTopDivergenceGroups(message, "Backend-only", backendOnly, snapshot, backendRowByAddress);
+            AppendTopDivergenceGroups(message, "Byte-crawl-only", byteOnly, snapshot, backendRowByAddress);
+            Debug.LogWarning(message.ToString());
+        }
+
+        static void AppendTopDivergenceGroups(StringBuilder message, string label, List<(ulong From, ulong To)> edges, CachedSnapshot snapshot, Dictionary<ulong, long> backendRowByAddress)
+        {
+            const int k_MaxGroups = 10;
+            if (edges.Count == 0)
+                return;
+
+            var groups = new Dictionary<(int SourceType, bool SourceCrawled, int TargetType), (long Count, ulong From, ulong To)>();
+            foreach (var e in edges)
+            {
+                var key = (GetTypeIndex(snapshot, backendRowByAddress, e.From), snapshot.CrawledData.MangedObjectIndexByAddress.ContainsKey(e.From), GetTypeIndex(snapshot, backendRowByAddress, e.To));
+                groups[key] = groups.TryGetValue(key, out var group) ? (group.Count + 1, group.From, group.To) : (1, e.From, e.To);
+            }
+
+            var sortedGroups = new List<KeyValuePair<(int SourceType, bool SourceCrawled, int TargetType), (long Count, ulong From, ulong To)>>(groups);
+            sortedGroups.Sort((a, b) => b.Value.Count.CompareTo(a.Value.Count));
+            message.Append($"\n{label} references by source type -> target type, top {Math.Min(k_MaxGroups, sortedGroups.Count)} of {sortedGroups.Count} groups:");
+            for (int i = 0; i < sortedGroups.Count && i < k_MaxGroups; i++)
+            {
+                var key = sortedGroups[i].Key;
+                var value = sortedGroups[i].Value;
+                message.Append($"\n  {value.Count}x {GetTypeName(snapshot, key.SourceType)}{(key.SourceCrawled ? "" : " (source not crawled)")} -> {GetTypeName(snapshot, key.TargetType)}, "
+                    + $"e.g. 0x{value.From:X} -> 0x{value.To:X}: {DescribeReferencingField(snapshot, backendRowByAddress, value.From, value.To)}");
+            }
+        }
+
+        static string GetTypeName(CachedSnapshot snapshot, int typeIndex)
+        {
+            return typeIndex >= 0 ? snapshot.TypeDescriptions.TypeDescriptionName[typeIndex] : "<unknown type>";
+        }
+
+        static int GetTypeIndex(CachedSnapshot snapshot, Dictionary<ulong, long> backendRowByAddress, ulong address)
+        {
+            if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(address, out var crawledIndex))
+                return snapshot.CrawledData.ManagedObjects[crawledIndex].ITypeDescription;
+            if (backendRowByAddress.TryGetValue(address, out var backendRow))
+                return (int)snapshot.ManagedObjects.TypeIndex[backendRow];
+            return -1;
+        }
+
+        // Scans the source object's bytes for the target address and names the instance field at that offset.
+        static string DescribeReferencingField(CachedSnapshot snapshot, Dictionary<ulong, long> backendRowByAddress, ulong from, ulong to)
+        {
+            const long k_MaxScannedBytes = 4096;
+            if (!snapshot.FindHeapBytes(from, out var bytes, out var referenceScope))
+                return "source bytes not captured";
+
+            using (referenceScope)
+            {
+                var pointerSize = (long)snapshot.VirtualMachineInformation.PointerSize;
+                var typeIndex = GetTypeIndex(snapshot, backendRowByAddress, from);
+                long objectSize = 0;
+                if (snapshot.CrawledData.MangedObjectIndexByAddress.TryGetValue(from, out var crawledIndex))
+                    objectSize = snapshot.CrawledData.ManagedObjects[crawledIndex].Size;
+                if (objectSize <= 0)
+                    objectSize = SizeOfObjectInBytes(snapshot, typeIndex, typeIndex, bytes, snapshot.ManagedHeapSections, ignoreErrorsBecauseObjectIsSpeculative: true);
+                if (objectSize <= 0)
+                    return "source object size unknown";
+                var size = Math.Min(objectSize, k_MaxScannedBytes);
+
+                for (long offset = 0; offset + pointerSize <= size && bytes.CouldFitAllocation(offset + pointerSize); offset += pointerSize)
+                {
+                    if (bytes.Add((ulong)offset).TryReadPointer(out var value) != BytesAndOffset.PtrReadError.Success || value != to)
+                        continue;
+
+                    if (typeIndex >= 0)
+                    {
+                        foreach (var field in snapshot.TypeDescriptions.FieldIndicesInstance[typeIndex])
+                        {
+                            if (snapshot.FieldDescriptions.Offset[field] == offset)
+                                return $"field '{snapshot.FieldDescriptions.FieldDescriptionName[field]}' (+0x{offset:X})";
+                        }
+                    }
+                    return $"+0x{offset:X} (array element or nested field)";
+                }
+                return $"target not in the first {size} source bytes";
             }
         }
 #endif
@@ -736,7 +948,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             using var _ = k_CrawlStaticsMarker.Auto();
             var snapshot = crawlData.CachedMemorySnapshot;
             var virtualMachineInformation = snapshot.VirtualMachineInformation;
-            using var typeIndexToCrawlerDataIndex = new TypeIndexToCrawlerDataIndexHashMap(crawlData.TypesWithStaticFields.Count, Allocator.Persistent);
+            using var typeIndexToCrawlerDataIndex = new TypeIndexToCrawlerDataIndexHashMap((int)crawlData.TypesWithStaticFields.Count, Allocator.Persistent);
             using var staticTypeFieldCrawlerData = new DynamicArray<StaticFieldsCrawlerJobChunk.StaticTypeFieldCrawlerData>(
                 0, k_IdealJobCount, Allocator.Persistent);
             long totalStaticFieldCount = 0L;
@@ -745,8 +957,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
             ref var nativeObjectOrAllocationFinder = ref crawlData.NativeObjectOrAllocationFinder;
 
             // build full static field crawling data
-            foreach (var iTypeDescription in crawlData.TypesWithStaticFields)
+            ref var typesWithStaticFields = ref crawlData.TypesWithStaticFields;
+            for (long iTypeWithStaticFields = 0; iTypeWithStaticFields < typesWithStaticFields.Count; ++iTypeWithStaticFields)
             {
+                var iTypeDescription = typesWithStaticFields[iTypeWithStaticFields];
                 var fieldLayouts = GetFullFieldLayoutForCrawling(crawlData, iTypeDescription, useStaticFields: true);
                 if (fieldLayouts.Count <= 0)
                     continue;
@@ -820,21 +1034,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
         }
 
         /// <summary>
-        /// Format v20+ static-field crawl path: TypeDescriptions_StaticFieldSlots already carries
-        /// resolved slot bytes (not offsets into a whole-type blob), so this bypasses
-        /// StaticFieldsCrawlerJobChunk entirely — a lightweight, non-Burst, sequential walk.
-        /// A reference-typed field's slot holds the pointer itself: read it and push one
-        /// StackCrawlData directly, same as a GC-handle-held object. A value-typed field's slot
-        /// holds the value's own bytes inline (statics aren't boxed just because they're static),
-        /// so any reference nested inside it is walked via BuildFieldLayoutForCrawling/
-        /// CrawlRawObjectData — the exact same field-layout machinery already used for a value
-        /// type embedded as an instance field, just fed the slot's own bytes (isStaticType:true,
-        /// no header to skip) instead of a heap object's bytes past its header. Field attribution
-        /// comes from positionally pairing FieldIndicesOwnedStatic[iType] (in declaration order)
-        /// with ParseStaticFieldSlots's one-group-per-field decode of the same type's blob — both
-        /// are built from the same per-type static-field enumeration, so their orders match. A
-        /// field with a count of 0 (unresolved, or a not-yet-supported Mono/IL2CPP thread-static
-        /// — see GAPS.md) simply contributes nothing.
+        /// Crawls static fields from the v20+ TypeDescriptions_StaticFieldSlots data. Runs sequentially because it
+        /// pushes onto the shared, non-parallel-safe crawlData.CrawlDataStack.
+        /// A reference-typed slot holds the pointer; a value-typed slot holds the value's bytes inline, walked with
+        /// the field layout (no header). Slot groups pair with FieldIndicesOwnedStatic[iType] by position; a zero-count group contributes nothing.
         /// </summary>
         static void CrawlStaticFieldSlots(IntermediateCrawlData crawlData)
         {
@@ -842,107 +1045,121 @@ namespace Unity.MemoryProfiler.Editor.Managed
             var snapshot = crawlData.CachedMemorySnapshot;
             var pointerSize = snapshot.VirtualMachineInformation.PointerSize;
             var maxObjectIndexFindableViaPointers = crawlData.MaxObjectIndexFindableViaPointers;
-
-            foreach (var iTypeDescription in crawlData.TypesWithStaticFieldSlots)
+            var structLayout = new DynamicArray<FieldLayoutInfo>(0, 4, Allocator.Temp);
+            try
             {
-                var ownedStaticFields = snapshot.TypeDescriptions.FieldIndicesOwnedStatic[iTypeDescription];
-                var blob = snapshot.TypeDescriptions.StaticFieldSlots[iTypeDescription];
-
-                var slotByteSizes = new int[ownedStaticFields.Count];
-                var fieldTypeIndices = new int[ownedStaticFields.Count];
-                for (int i = 0; i < ownedStaticFields.Count; ++i)
+                ref var typesWithStaticFieldSlots = ref crawlData.TypesWithStaticFieldSlots;
+                for (long iTypeWithSlots = 0; iTypeWithSlots < typesWithStaticFieldSlots.Count; ++iTypeWithSlots)
                 {
-                    fieldTypeIndices[i] = snapshot.FieldDescriptions.TypeIndex[ownedStaticFields[i]];
-                    slotByteSizes[i] = FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize(snapshot, ownedStaticFields[i]);
-                }
-
-                var slotGroups = TypeDescriptionEntriesCache.ParseStaticFieldSlots(blob, slotByteSizes);
-                if (slotGroups.Length != ownedStaticFields.Count)
-                {
-                    Debug.LogError($"TypeDescriptions_StaticFieldSlots group count ({slotGroups.Length}) doesn't match " +
-                        $"FieldIndicesOwnedStatic count ({ownedStaticFields.Count}) for type index {iTypeDescription}. Skipping.");
-                    continue;
-                }
-
-                var referenceOwner = new SourceIndex(SourceIndex.SourceId.ManagedType, iTypeDescription);
-                var blobBytesAndOffset = new BytesAndOffset(blob, pointerSize, iTypeDescription, isStaticType: true);
-                for (int fieldOrdinal = 0; fieldOrdinal < ownedStaticFields.Count; ++fieldOrdinal)
-                {
-                    var fieldIndex = ownedStaticFields[fieldOrdinal];
-                    var fieldTypeIndex = fieldTypeIndices[fieldOrdinal];
-                    var group = slotGroups[fieldOrdinal];
-                    if (group.Count == 0)
-                        continue;
-
-                    // CoreCLR PTR/FNPTR and array-shaped statics store the pointee/element type in
-                    // TypeIndex, not the field's own type - same misclassification risk
-                    // BuildFieldLayoutEntryForField already guards against for instance fields.
-                    var elementType = snapshot.FieldDescriptions.ElementType[fieldIndex];
-                    bool isReferenceByElementType = FieldDescriptionEntriesCache.IsPointerLikeElementType(elementType, true)
-                        || FieldDescriptionEntriesCache.IsArrayShapedElementType(elementType, true);
-                    bool isValueTypeField = !isReferenceByElementType && fieldTypeIndex >= 0 && snapshot.TypeDescriptions.HasFlag(fieldTypeIndex, TypeFlags.kValueType);
-                    int slotByteSize = slotByteSizes[fieldOrdinal];
-
-                    // The slot IS the value's bytes - walk its own field layout, same machinery an
-                    // instance value-type field already uses (BuildFieldLayoutEntryForField), but built
-                    // directly here (not via CrawlRawObjectData(fieldTypeIndex, ...)) so the resulting
-                    // connections attribute back to the true outer static field (fieldIndex) rather than
-                    // one of the struct's own field indices, and so
-                    // OffsetFromReferenceOwnerHeaderStartToFieldOnValueType comes out relative to this
-                    // field's own start (offset 0) - the coordinate space
-                    // ObjectData.GetFieldByFieldDescriptionsIndex's nested-field search expects, matching
-                    // how an ordinary instance value-type field is walked (no header to skip either way,
-                    // since a static slot has no object header). Built once per field, reused for every
-                    // thread-static slot below - the layout itself doesn't depend on which slot's bytes
-                    // it's later walked against.
-                    DynamicArray<FieldLayoutInfo> structLayout = default;
-                    if (isValueTypeField)
+                    var iTypeDescription = typesWithStaticFieldSlots[iTypeWithSlots];
+                    var ownedStaticFields = snapshot.TypeDescriptions.FieldIndicesOwnedStatic[iTypeDescription];
+                    var blob = snapshot.TypeDescriptions.StaticFieldSlots[iTypeDescription];
+                    var slotByteSizes = snapshot.TypeDescriptions.GetStaticFieldSlotByteSizes(snapshot, iTypeDescription);
+                    var slotGroups = snapshot.TypeDescriptions.GetStaticFieldSlotGroups(snapshot, iTypeDescription);
+                    if (slotGroups.Count != ownedStaticFields.Count)
                     {
-                        structLayout = new DynamicArray<FieldLayoutInfo>(0, 4, Allocator.Temp);
-                        BuildFieldLayoutEntryForField(crawlData, ref structLayout, iTypeDescription, useStaticFields: true, objectHeaderSizeSkippedByCrawler: 0, fieldIndex, fieldOffset: 0);
-                        if (structLayout.Count > 1)
-                            DynamicArrayAlgorithms.IntrospectiveSort(structLayout, 0, structLayout.Count);
-                        for (var i = structLayout.Count - 1; i >= 1; --i)
-                            structLayout[i] = new FieldLayoutInfo(structLayout[i], structLayout[i - 1].OffsetFromPreviousAddress, 0);
-                        if (structLayout.Count > 0)
-                            structLayout[0] = new FieldLayoutInfo(structLayout[0], 0, 0);
+                        Debug.LogError($"TypeDescriptions_StaticFieldSlots group count ({slotGroups.Count}) doesn't match " +
+                            $"FieldIndicesOwnedStatic count ({ownedStaticFields.Count}) for type index {iTypeDescription}. Skipping.");
+                        continue;
                     }
 
-                    for (int slot = 0; slot < group.Count; ++slot)
+                    var referenceOwner = new SourceIndex(SourceIndex.SourceId.ManagedType, iTypeDescription);
+                    var blobBytesAndOffset = new BytesAndOffset(blob, pointerSize, iTypeDescription, isStaticType: true);
+                    for (int fieldOrdinal = 0; fieldOrdinal < ownedStaticFields.Count; ++fieldOrdinal)
                     {
-                        var slotBytesAndOffset = blobBytesAndOffset.Add((ulong)(group.SlotDataOffset + slot * slotByteSize));
+                        var fieldIndex = ownedStaticFields[fieldOrdinal];
+                        var fieldTypeIndex = snapshot.FieldDescriptions.TypeIndex[fieldIndex];
+                        var group = slotGroups[fieldOrdinal];
+                        if (group.Count == 0)
+                            continue;
 
+                        // CoreCLR PTR/FNPTR and array-shaped statics store the pointee/element type in
+                        // TypeIndex, not the field's own type - same misclassification risk
+                        // BuildFieldLayoutEntryForField already guards against for instance fields.
+                        var elementType = snapshot.FieldDescriptions.ElementType[fieldIndex];
+                        bool isPointerLikeField = FieldDescriptionEntriesCache.IsPointerLikeElementType(elementType, true);
+                        bool isReferenceByElementType = isPointerLikeField
+                            || FieldDescriptionEntriesCache.IsArrayShapedElementType(elementType, true);
+                        bool isValueTypeField = !isReferenceByElementType && fieldTypeIndex >= 0 && snapshot.TypeDescriptions.HasFlag(fieldTypeIndex, TypeFlags.kValueType);
+                        int slotByteSize = slotByteSizes[fieldOrdinal];
+
+                        // The slot IS the value's bytes - walk its own field layout, same machinery an
+                        // instance value-type field already uses (BuildFieldLayoutEntryForField), but built
+                        // directly here (not via CrawlRawObjectData(fieldTypeIndex, ...)) so the resulting
+                        // connections attribute back to the true outer static field (fieldIndex) rather than
+                        // one of the struct's own field indices, and so
+                        // OffsetFromReferenceOwnerHeaderStartToFieldOnValueType comes out relative to this
+                        // field's own start (offset 0) - the coordinate space
+                        // ObjectData.GetFieldByFieldDescriptionsIndex's nested-field search expects, matching
+                        // how an ordinary instance value-type field is walked (no header to skip either way,
+                        // since a static slot has no object header). Built once per field, reused for every
+                        // thread-static slot below - the layout itself doesn't depend on which slot's bytes
+                        // it's later walked against.
                         if (isValueTypeField)
                         {
-                            DynamicArrayRef<FieldLayoutInfo> structLayoutRef = structLayout;
-                            CrawlRawObjectData(
-                                in snapshot.ManagedHeapSections, in snapshot.VirtualMachineInformation, in snapshot.CrawledData.MangedObjectIndexByAddress,
-                                in crawlData.NativeObjectOrAllocationFinder, crawlData.ConfigurableCrawlerOptions,
-                                ref crawlData.CrawlDataStack, in structLayoutRef, in slotBytesAndOffset, in referenceOwner, maxObjectIndexFindableViaPointers,
-                                allowStackExpansion: true);
+                            structLayout.Clear(false);
+                            BuildFieldLayoutEntryForField(crawlData, ref structLayout, iTypeDescription, useStaticFields: true, objectHeaderSizeSkippedByCrawler: 0, fieldIndex, fieldOffset: 0);
+                            if (structLayout.Count > 1)
+                                DynamicArrayAlgorithms.IntrospectiveSort(structLayout, 0, structLayout.Count);
+                            for (var i = structLayout.Count - 1; i >= 1; --i)
+                                structLayout[i] = new FieldLayoutInfo(structLayout[i], structLayout[i - 1].OffsetFromPreviousAddress, 0);
+                            if (structLayout.Count > 0)
+                                structLayout[0] = new FieldLayoutInfo(structLayout[0], 0, 0);
                         }
-                        else
+
+                        for (int slot = 0; slot < group.Count; ++slot)
                         {
-                            if (slotBytesAndOffset.TryReadPointer(out var address) != BytesAndOffset.PtrReadError.Success
-                                || address == 0)
-                                continue;
-                            // Resolve the target's heap bytes now (same as every other crawl-root push -
-                            // see the GC-handle path above) rather than leaving Bytes unset: CrawlPointer's
-                            // new-discovery branch has no fallback resolution step for a plain managed
-                            // reference with an invalid BytesAndOffset and no native counterpart, so an
-                            // unresolved push here is silently dropped instead of discovering the object.
-                            snapshot.ManagedHeapSections.Find(address, snapshot.VirtualMachineInformation, out BytesAndOffset targetBytesAndOffset);
-                            crawlData.CrawlDataStack.Push(new StackCrawlData(address,
-                                bytesAndOffsets: targetBytesAndOffset,
-                                referenceOwner: referenceOwner,
-                                fieldIndexOfTheFieldOnTheReferenceOwner: fieldIndex),
-                                memClearForExcessExpansion: k_MemClearCrawlDataStack);
+                            var slotBytesAndOffset = blobBytesAndOffset.Add((ulong)(group.SlotDataOffset + slot * slotByteSize));
+
+                            if (isValueTypeField)
+                            {
+                                DynamicArrayRef<FieldLayoutInfo> structLayoutRef = structLayout;
+                                CrawlRawObjectData(
+                                    in snapshot.ManagedHeapSections, in snapshot.VirtualMachineInformation, in snapshot.CrawledData.MangedObjectIndexByAddress,
+                                    in crawlData.NativeObjectOrAllocationFinder, crawlData.ConfigurableCrawlerOptions,
+                                    ref crawlData.CrawlDataStack, in structLayoutRef, in slotBytesAndOffset, in referenceOwner, maxObjectIndexFindableViaPointers,
+                                    allowStackExpansion: true);
+                            }
+                            else if (isPointerLikeField)
+                            {
+                                // A raw native pointer (PTR/FNPTR), not a managed reference - route through
+                                // the same CrawlRawFieldData path an instance PTR/FNPTR field uses, so a
+                                // target that isn't a managed object gets checked against
+                                // NativeObjectOrAllocationFinder instead of being dropped.
+                                if (slotBytesAndOffset.TryReadPointer(out var address) != BytesAndOffset.PtrReadError.Success
+                                    || address == 0)
+                                    continue;
+                                CrawlRawFieldData(address, FieldReferenceType.Ptr, maxObjectIndexFindableViaPointers,
+                                    in snapshot.CrawledData.MangedObjectIndexByAddress, in snapshot.ManagedHeapSections, in snapshot.VirtualMachineInformation,
+                                    ref crawlData.CrawlDataStack, in crawlData.NativeObjectOrAllocationFinder, crawlData.ConfigurableCrawlerOptions,
+                                    iTypeDescription, in referenceOwner,
+                                    allowStackExpansion: true,
+                                    fieldIndexOfTheFieldOnTheReferenceOwner: fieldIndex);
+                            }
+                            else
+                            {
+                                if (slotBytesAndOffset.TryReadPointer(out var address) != BytesAndOffset.PtrReadError.Success
+                                    || address == 0)
+                                    continue;
+                                // Resolve the target's heap bytes now (same as every other crawl-root push -
+                                // see the GC-handle path above) rather than leaving Bytes unset: CrawlPointer's
+                                // new-discovery branch has no fallback resolution step for a plain managed
+                                // reference with an invalid BytesAndOffset and no native counterpart, so an
+                                // unresolved push here is silently dropped instead of discovering the object.
+                                snapshot.ManagedHeapSections.Find(address, snapshot.VirtualMachineInformation, out BytesAndOffset targetBytesAndOffset);
+                                crawlData.CrawlDataStack.Push(new StackCrawlData(address,
+                                    bytesAndOffsets: targetBytesAndOffset,
+                                    referenceOwner: referenceOwner,
+                                    fieldIndexOfTheFieldOnTheReferenceOwner: fieldIndex),
+                                    memClearForExcessExpansion: k_MemClearCrawlDataStack);
+                            }
                         }
                     }
-
-                    if (isValueTypeField)
-                        structLayout.Dispose();
                 }
+            }
+            finally
+            {
+                structLayout.Dispose();
             }
         }
 
@@ -1033,11 +1250,14 @@ namespace Unity.MemoryProfiler.Editor.Managed
             if (snapshot.TypeDescriptions.Count == 0)
                 return;
 
-            var cachedPtrOffset = snapshot.TypeDescriptions.IFieldUnityObjectMCachedPtrOffset;
-            var cachedPtrOffsetPlusFieldSize = cachedPtrOffset + snapshot.VirtualMachineInformation.PointerSize;
+            // Field on UnityEngine.Object linking a managed shell to its native object: the native object's
+            // EntityId (current runtimes) or a raw native pointer (m_CachedPtr, snapshots from older runtimes).
+            var nativeLinkOffset = snapshot.TypeDescriptions.IFieldUnityObjectNativeLinkOffset;
+            var nativeLinkIsEntityId = snapshot.TypeDescriptions.UnityObjectNativeLinkIsEntityId;
+            var nativeLinkOffsetPlusFieldSize = nativeLinkOffset + snapshot.TypeDescriptions.UnityObjectNativeLinkFieldSize;
 
 #if DEBUG_VALIDATION
-            // These are used to double-check that all Native -> Managed connections reported via GCHandles on Native Objects are correctly found via m_CachedPtr
+            // These are used to double-check that all Native -> Managed connections reported via GCHandles on Native Objects are correctly found via the native link field (m_EntityId / legacy m_CachedPtr)
             var firstManagedToNativeConnection = snapshot.CrawledData.Connections.Count;
             var managedObjectAddressToNativeObjectIndex = new Dictionary<ulong, long>();
 #endif
@@ -1091,7 +1311,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     //    var baseTypeIsUnityType = false;
                     //    foreach (var field in typeFields)
                     //    {
-                    //        if (field == snapshot.TypeDescriptions.IFieldUnityObjectMCachedPtr)
+                    //        if (field == snapshot.TypeDescriptions.IFieldUnityObjectNativeLink)
                     //        {
                     //            baseTypeIsUnityType = true;
                     //            break;
@@ -1110,11 +1330,11 @@ namespace Unity.MemoryProfiler.Editor.Managed
                         var typeFields = snapshot.TypeDescriptions.FieldIndicesInstance[objectInfo.ITypeDescription];
                         foreach (var field in typeFields)
                         {
-                            if (field == snapshot.TypeDescriptions.IFieldUnityObjectMCachedPtr)
+                            if (field == snapshot.TypeDescriptions.IFieldUnityObjectNativeLink)
                             {
                                 isOrCouldBeAUnityObject = true;
 #if DEBUG_VALIDATION
-                                Debug.LogError($"Found an object of type {snapshot.TypeDescriptions.TypeDescriptionName[objectInfo.ITypeDescription]} with an m_CachedPtr field but no parent type that would indicate that it is a Unity Object type.");
+                                Debug.LogError($"Found an object of type {snapshot.TypeDescriptions.TypeDescriptionName[objectInfo.ITypeDescription]} with a UnityEngine.Object native link field but no parent type that would indicate that it is a Unity Object type.");
 #endif
                                 break;
                             }
@@ -1130,13 +1350,13 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     {
                         var instanceID = CachedSnapshot.NativeObjectEntriesCache.InstanceIDNone;
                         var heapSection = objectInfo.data;
-                        if (heapSection.IsValid && heapSection.CouldFitAllocation(cachedPtrOffsetPlusFieldSize))
-                            heapSection = heapSection.Add((ulong)cachedPtrOffset);
+                        if (heapSection.IsValid && heapSection.CouldFitAllocation(nativeLinkOffsetPlusFieldSize))
+                            heapSection = heapSection.Add((ulong)nativeLinkOffset);
 #if DEBUG_VALIDATION
                         else // in case there was a broken resolution of the heap section on first crawl, which should only be possible to happen if it was a GC Handle held item, that did not resolve to a valid managed object
                         {
-                            if (snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)cachedPtrOffset, snapshot.VirtualMachineInformation, out heapSection)
-                                && heapSection.TryReadPointer(out var cachedPtr) == BytesAndOffset.PtrReadError.Success)
+                            if (snapshot.ManagedHeapSections.Find(objectInfo.PtrObject + (ulong)nativeLinkOffset, snapshot.VirtualMachineInformation, out heapSection)
+                                && heapSection.CouldFitAllocation(snapshot.TypeDescriptions.UnityObjectNativeLinkFieldSize))
                                 Debug.LogError("Managed Object didn't have valid heap associated");
                         }
 #endif
@@ -1144,7 +1364,13 @@ namespace Unity.MemoryProfiler.Editor.Managed
                         {
                             // Don't warn if this was an attempt to fix broken data
                             if (isUnityType)
-                                Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at cachedPtr offset(" + cachedPtrOffset + ")");
+                                Debug.LogWarning("Managed object (addr:" + objectInfo.PtrObject + ", index:" + objectInfo.ManagedObjectIndex + ") does not have data at native link field offset(" + nativeLinkOffset + ")");
+                        }
+                        else if (nativeLinkIsEntityId)
+                        {
+                            // The shell stores the native object's EntityId. An unbound shell (fake null, or its
+                            // object destroyed) has EntityId.None, or an id no native object in the snapshot has.
+                            instanceID = EntityId.FromULong(heapSection.ReadUInt64());
                         }
                         else
                         {
@@ -1204,10 +1430,24 @@ namespace Unity.MemoryProfiler.Editor.Managed
                             // (outside of the GCHandle held by the Native Object).
                             // If a Managed shell isn't collectable, it adds to the ref count
                             // (we increase the ref count regardless of collectability as the selection details already discount self references for us)
-                            // of the Native Object it points to via its m_CachedPtr.
+                            // of the Native Object it points to via its m_EntityId (legacy snapshots: m_CachedPtr).
                             // Other managed pointers do not contribute to the ref count.
                             // Note: before the connection overhaul, the reported connections parsed in AddupRawRefCount already included Managed -> Native references, adding to the ref count there
                             ++snapshot.NativeObjects.RefCount[objectInfo.NativeObjectIndex];
+
+                            if (nativeLinkIsEntityId)
+                            {
+                                // The generic crawler only finds Managed -> Native references through pointer-typed fields.
+                                // With a legacy m_CachedPtr that produced a "managed shell -> its native object" reference
+                                // (with field info) while crawling the shell; an EntityId is not a pointer, so add that
+                                // reference here to keep the (unconsolidated) reference views identical.
+                                crawlData.ManagedConnections.Add(ManagedConnection.MakeConnection(snapshot,
+                                    new SourceIndex(SourceIndex.SourceId.ManagedObject, objectInfo.ManagedObjectIndex),
+                                    new SourceIndex(SourceIndex.SourceId.NativeObject, objectInfo.NativeObjectIndex),
+                                    snapshot.TypeDescriptions.IFieldUnityObjectNativeLink,
+                                    valueTypeFieldOwningITypeDescription: -1, valueTypeFieldFrom: -1,
+                                    offsetFromReferenceOwnerHeaderStartToFieldOnValueType: 0, arrayIndexFrom: -1));
+                            }
 #if DEBUG_VALIDATION
                             managedObjectAddressToNativeObjectIndex.Add(objectInfo.PtrObject, objectInfo.NativeObjectIndex);
 #endif
@@ -1239,7 +1479,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             // and before reporting GCHandles, the GCHandles associated with native objects should always point at valid managed objects.
             // Or at least for snapshots taken since the fix for UUM-31235 landed, which suspends the PreloadManager (and a later PR that locks object creation) for the duration of reporting both managed data and native objects.
 
-            // Double-check that all Native -> Managed connections reported via GCHandles on Native Objects have been correctly found via m_CachedPtr
+            // Double-check that all Native -> Managed connections reported via GCHandles on Native Objects have been correctly found via the native link field
             if (snapshot.Connections.IndexOfFirstNativeToGCHandleConnection >= 0)
             {
                 for (long nativeConnectionIndex = snapshot.Connections.IndexOfFirstNativeToGCHandleConnection; nativeConnectionIndex < snapshot.Connections.Count; nativeConnectionIndex++)
@@ -1266,7 +1506,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         /// Byte-free equivalent of <see cref="ConnectNativeToManageObject"/> for the backend-graph / no-heap-bytes
         /// path: walks the file's GC-handle -&gt; native-object map
         /// (<see cref="CachedSnapshot.NativeObjectEntriesCache.GCHandleIndexToIndex"/>) and resolves each handle's
-        /// target through the address map to the managed shell row, instead of reading <c>m_CachedPtr</c> from heap bytes.
+        /// target through the address map to the managed shell row, instead of reading the native link field (<c>m_EntityId</c>) from heap bytes.
         /// </summary>
         static void ConnectNativeToManagedShellsFromBackendGraph(IntermediateCrawlData crawlData)
         {
@@ -1670,12 +1910,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
             }
         }
 
-        // The returned layout's OffsetFromPreviousAddress chain is always in unboxed (header-exclusive)
-        // coordinates when useStaticFields is false - every consumer walks it against bytes that already
-        // start at the first field: CrawlObject adds ObjectHeaderSize itself before walking a reference
-        // type's instance layout, and value-type array elements / static-field slots have no header at
-        // all. The layout is cached per type index (FieldLayouts), so it must never carry offsets that
-        // depend on which caller asked for it.
+        /// <summary>
+        /// With <paramref name="useStaticFields"/> false the layout offsets are header-exclusive, because CrawlObject adds ObjectHeaderSize itself and
+        /// value-type array elements and static slots have no header. It is cached per type, so offsets must not depend on the caller.
+        /// </summary>
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static DynamicArrayRef<FieldLayoutInfo> GetFullFieldLayoutForCrawling(IntermediateCrawlData crawlData, int typeDescriptionIndex, bool useStaticFields)
         {
@@ -1732,6 +1970,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                         for (long i = 0; i < fieldLayoutInfos.Count; i++)
                         {
                             absoluteOffset += fieldLayoutInfos[i].OffsetFromPreviousAddress;
+                            // Each entry is a pointer-sized read, so the whole pointer must fit, not just its start.
                             if (absoluteOffset + snapshotForValidation.VirtualMachineInformation.PointerSize > unboxedSize)
                                 Debug.LogError($"Field layout offset {absoluteOffset} for type {snapshotForValidation.TypeDescriptions.TypeDescriptionName[iTypeDescription]} exceeds its unboxed size {unboxedSize} - boxed/unboxed coordinate mixing suspected.");
                         }
@@ -1759,20 +1998,12 @@ namespace Unity.MemoryProfiler.Editor.Managed
             var fieldOffsetsAreHeaderInclusive = !useStaticFields;
             var objectHeaderSizeSkippedByCrawler = isNonStaticReferenceType ? (int)snapshot.VirtualMachineInformation.ObjectHeaderSize : 0;
 
-            // Format v20+: static fields live in TypeDescriptions_StaticFieldSlots, addressed by
-            // per-field ordinal (ParseStaticFieldSlots), not FieldDescriptions_Offset - the native
-            // writer hardcodes that to 0 for every GC-static field (there's no instance layout to offset into).
-            // A type with no resolved static-slot data at all (e.g. legacy pre-v20 fallback) parses to
-            // an empty group array, in which case FieldDescriptions.Offset is used instead below.
-            TypeDescriptionEntriesCache.StaticFieldSlotGroup[] staticSlotGroups = null;
-            if (useStaticFields && snapshot.HasStaticFieldSlotsAndFlags)
-            {
-                var slotByteSizes = ObjectData.ComputeOwnedStaticSlotByteSizes(snapshot, fields);
-                var groups = TypeDescriptionEntriesCache.ParseStaticFieldSlots(snapshot.TypeDescriptions.StaticFieldSlots[iTypeDescription], slotByteSizes);
-                if (groups.Length == fields.Count)
-                    staticSlotGroups = groups;
-            }
-            var usesStaticFieldSlots = staticSlotGroups != null;
+            // v20+ statics are addressed by field ordinal via GetStaticFieldSlotGroups, since FieldDescriptions.Offset is 0 for GC statics.
+            // Types without slot data (e.g. pre-v20) have no groups and fall back to FieldDescriptions.Offset below.
+            var staticSlotGroups = useStaticFields && snapshot.HasStaticFieldSlotsAndFlags
+                ? snapshot.TypeDescriptions.GetStaticFieldSlotGroups(snapshot, iTypeDescription)
+                : default;
+            var usesStaticFieldSlots = staticSlotGroups.Count > 0 && staticSlotGroups.Count == fields.Count;
 
             int staticFieldOrdinal = 0;
             foreach (var iField in fields)
@@ -1845,14 +2076,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 && FieldDescriptionEntriesCache.IsArrayShapedElementType(snapshot.FieldDescriptions.ElementType[iField], snapshot.HasBackendManagedGraph);
 
             var isValueTypeField = !isArrayShapedField && snapshot.TypeDescriptions.HasFlag(iField_TypeDescription_TypeIndex, TypeFlags.kValueType);
-            // A pointer-sized value type (System.IntPtr, System.UIntPtr, or a single-pointer-field
-            // wrapper struct) is still recursed into. IntPtr's own layout is pre-registered and its
-            // entry retyped to FieldReferenceType.IntPtr (see the ITypeIntPtr handling in
-            // IntermediateCrawlData's constructor), so the recursion below picks up an entry that
-            // already bypasses the '*'-in-name check further down - skipping the recursion here would
-            // instead fall through to the leaf push, get classified as Ptr, fail that check, and drop
-            // the field's connections silently.
-            var recurseIntoValueType = isValueTypeField;
+            // Recurse into value types that can hold a pointer (size >= pointer size, or unknown size). IntPtr is pre-registered as FieldReferenceType.IntPtr
+            // in IntermediateCrawlData's constructor, so recursing into it is safe. See AGENTS.md in this folder.
+            var valueTypeSize = isValueTypeField ? snapshot.TypeDescriptions.Size[iField_TypeDescription_TypeIndex] : 0;
+            var recurseIntoValueType = isValueTypeField && (valueTypeSize <= 0 || valueTypeSize >= snapshot.VirtualMachineInformation.PointerSize);
             if (recurseIntoValueType)
             {
                 // Lookup existing field layout info for this nested value type, or get it generated
@@ -1948,7 +2175,12 @@ namespace Unity.MemoryProfiler.Editor.Managed
             ManagedObjectInfo obj;
             bool wasAlreadyCrawled = false;
             BytesAndOffset byteOffset = data.Bytes;
-            bool referenceOwnerIsNativeObject = false;
+            // Computed unconditionally (not just on the "already known object" branch below) so it
+            // matches the same handle-held-by-native-object check ManagedConnection.MakeConnection
+            // makes for SourceId.GCHandleIndex — otherwise a GCHandle-rooted object first reached via
+            // the "not yet known" branch skips this check entirely and MakeConnection asserts.
+            bool referenceOwnerIsNativeObject = data.ReferenceOwner.Id == SourceIndex.SourceId.GCHandleIndex
+                && snapshot.NativeObjects.GCHandleIndexToIndex.ContainsKey(data.ReferenceOwner.Index);
 
             // if FieldFromITypeDescription differs from the type of the holding Type or Object, that's because the field is held by a value type
             var valueTypeFieldOwningITypeDescription = data.ReferenceOwner.Id switch
@@ -1960,6 +2192,11 @@ namespace Unity.MemoryProfiler.Editor.Managed
             var idx = data.ManagedObjectIndex;
             if (idx < 0 && !objectsByAddress.GetOrInitializeValue(data.Address, out idx, -1))
             {
+                // Static values can be stale, see BackendObjects.
+                if (data.ReferenceOwner.Id == SourceIndex.SourceId.ManagedType && crawlData.BackendObjects.IsCreated
+                    && !crawlData.BackendObjects.Contains(data.Address))
+                    return false;
+
                 if (!byteOffset.IsValid)
                 {
 #if DEBUG_VALIDATION
@@ -1986,9 +2223,9 @@ namespace Unity.MemoryProfiler.Editor.Managed
 #if DEBUG_VALIDATION
                         if (data.SourceIndexOfNativeItem.Id == SourceIndex.SourceId.NativeObject &&
                             data.ReferenceOwner.Id == SourceIndex.SourceId.ManagedObject &&
-                            data.FieldIndexOfTheFieldOnTheReferenceOwner == snapshot.TypeDescriptions.IFieldUnityObjectMCachedPtr)
+                            data.FieldIndexOfTheFieldOnTheReferenceOwner == snapshot.TypeDescriptions.IFieldUnityObjectNativeLink)
                         {
-                            // Check that this m_CachedPtr references from Managed Shell to Native Object has already been linked up to the managed object up with the Native one
+                            // Check that this native link field reference from Managed Shell to Native Object has already been linked up to the managed object up with the Native one
                             Checks.CheckEquals(objectList[data.ReferenceOwner.Index].NativeObjectIndex, data.SourceIndexOfNativeItem.Index);
                             Checks.CheckEquals(snapshot.NativeObjects.ManagedObjectIndex[data.SourceIndexOfNativeItem.Index], data.ReferenceOwner.Index);
                         }
@@ -2047,8 +2284,6 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 {
                     wasAlreadyCrawled = true;
                 }
-                if (data.ReferenceOwner.Id == SourceIndex.SourceId.GCHandleIndex && idx < snapshot.GcHandles.UniqueCount && obj.NativeObjectIndex >= 0)
-                    referenceOwnerIsNativeObject = true;
             }
             if (!obj.IsValid())
                 return false;
@@ -2060,7 +2295,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             objectList[obj.ManagedObjectIndex] = obj;
             objectsByAddress[obj.PtrObject] = obj.ManagedObjectIndex;
 
-            // The ReferenceOwner should always be valid and either a Managed Object, Managed Type or a GCHandle.
+            // The ReferenceOwner should always be valid and either a Managed Object, Managed Type, GCHandle, ManagedRoot, or ManagedHeapSection.
             Checks.IsTrue(data.ReferenceOwner.Valid);
             // Native object connections are added separately, so they are ignored here. Otherwise we'd add their references twice, and here via the GCHandle instead of the native object.
             if (data.ReferenceOwner.Valid && !referenceOwnerIsNativeObject)
@@ -2100,6 +2335,12 @@ namespace Unity.MemoryProfiler.Editor.Managed
                     return fieldBasedTypeInfo;
                 case SourceIndex.SourceId.GCHandleIndex:
                     return gcHandleBasedTypeInfo;
+                case SourceIndex.SourceId.ManagedRoot:
+                case SourceIndex.SourceId.ManagedHeapSection:
+                    // Same as a GCHandle: neither a root nor a heap section has a field of its own to infer a
+                    // more specific type from — the byte walk will still resolve the object's real type once it
+                    // parses its header via TryParseObjectHeader.
+                    return snapshot.TypeDescriptions.ITypeObject;
                 default:
                     throw new NotImplementedException();
             }
@@ -2144,8 +2385,13 @@ namespace Unity.MemoryProfiler.Editor.Managed
             Debug.Assert(snapshot.GcHandles.UniqueCount > managedObjectIndex, "The index of the managed object is invalid for a GCHandle held object");
             // regular GC Handles can hold anything of type object and are otherwise not specifying what type of object they are holding
             var heldAsType = snapshot.TypeDescriptions.ITypeObject;
-            // However, if a native object was reported to hold a GC Handle to a managed object, we can infer the base type of the managed object
-            if (snapshot.NativeObjects.GCHandleIndexToIndex.GetOrInitializeValue(managedObjectIndex, out nativeObjectIndex, -1))
+            nativeObjectIndex = -1;
+            // GCHandleIndexToIndex is keyed by raw GCHandle index, which only equals managedObjectIndex when
+            // ObjectIndicesMatchGCHandleOrder holds (the byte-walk path this function is exclusively called
+            // from today). Guard explicitly rather than querying with the wrong key on a future caller that
+            // reaches here with that flag false.
+            if (snapshot.CrawledData.ObjectIndicesMatchGCHandleOrder
+                && snapshot.NativeObjects.GCHandleIndexToIndex.GetOrInitializeValue(managedObjectIndex, out nativeObjectIndex, -1))
             {
                 var typeInfo = snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[nativeObjectIndex]];
                 if (typeInfo.ManagedTypeIndex != TypeDescriptionEntriesCache.ITypeInvalid)
@@ -2485,7 +2731,11 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 }
                 if (info.ITypeDescription < 0)
                 {
-                    if (heap.Find(ptrIdentity, snapshot.VirtualMachineInformation, out BytesAndOffset boIdentity) && boIdentity.IsValid)
+                    // Mono headers point at a vtable that points at the class. CoreCLR headers point at the type directly,
+                    // so dereferencing again would just read whatever object the first word happens to point at.
+                    if (snapshot.IsCoreClr)
+                        resolveFailed = true;
+                    else if (heap.Find(ptrIdentity, snapshot.VirtualMachineInformation, out BytesAndOffset boIdentity) && boIdentity.IsValid)
                     {
                         boIdentity.TryReadPointer(out var ptrTypeInfo);
                         info.PtrTypeInfo = ptrTypeInfo;

@@ -16,6 +16,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlColumnA = "memory-summary__legend__snapshot-a-column";
         const string k_UxmlColumnB = "memory-summary__legend__snapshot-b-column";
         const string k_UxmlColumnDiff = "memory-summary__legend__diff-column";
+        const string k_UxmlColumnInspect = "memory-summary__legend__inspect-column";
         // Legend table column elements
         const string k_UxmlColumnHeader = "memory-summary__legend__column-controls";
         const string k_UxmlColumnCells = "memory-summary__legend__cells";
@@ -27,6 +28,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlCellColorBox = "memory-summary__legend__color-box";
         const string k_UxmlCellColorBoxFree = "memory-summary__legend__color-box__unused";
         const string k_UxmlCellColorBoxReserved = "memory-summary__legend__used-reserved";
+        const string k_UxmlCellInspectButton = "memory-summary__legend__inspect-button";
+        const string k_UxmlInspectCell = "memory-summary__legend__inspect-cell";
+        const string k_UxmlCellRowClass = "memory-summary__legend__row";
         //  Element states
         const string k_UxmlCellHoverStateClass = "memory-summary__element-hovered";
         const string k_UxmlCellSelectedStateClass = "memory-summary__element-selected";
@@ -52,19 +56,29 @@ namespace Unity.MemoryProfiler.Editor.UI
         Column m_ColumnSnapshotA;
         Column m_ColumnSnapshotB;
         Column m_ColumnDifference;
+        Column m_ColumnInspect;
 
         bool m_ShowResidentSize;
         bool m_UseResidentAsSource;
+        bool m_ShowResidentSizeOnly;
+        string m_TooltipHint;
+
+        readonly MemorySummaryDataOverrides m_DataOverrides;
 
         public event Action<int, bool> OnRowHovered;
         public event Action<int> OnRowClicked;
         public event Action<int> OnRowDoubleClicked;
 
-        public MemorySummaryLegendViewController(MemorySummaryModel model)
+        /// <summary>Optional provider of per-row deep-link actions, shown as inline Inspect buttons.</summary>
+        public MemorySummaryRowActionProvider RowActionProvider { get; set; }
+
+        public MemorySummaryLegendViewController(MemorySummaryModel model, in MemorySummaryDataOverrides dataOverrides = default)
         {
             m_Model = model;
             m_ShowResidentSize = false;
             m_UseResidentAsSource = false;
+
+            m_DataOverrides = dataOverrides;
         }
 
         public bool ShowResidentSize
@@ -89,12 +103,46 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Show the resident size as each row's value, keeping the committed size in tooltips, unlike
+        /// <see cref="UseResidentAsSource"/>.
+        /// </summary>
+        public bool ShowResidentSizeOnly
+        {
+            get => m_ShowResidentSizeOnly;
+            set
+            {
+                if (m_ShowResidentSizeOnly == value)
+                    return;
+
+                m_ShowResidentSizeOnly = value;
+                if (IsViewLoaded)
+                    RefreshView();
+            }
+        }
+
+        /// <summary>Optional line appended to every row's tooltip.</summary>
+        public string TooltipHint
+        {
+            get => m_TooltipHint;
+            set
+            {
+                if (m_TooltipHint == value)
+                    return;
+
+                m_TooltipHint = value;
+                if (IsViewLoaded)
+                    RefreshView();
+            }
+        }
+
         public void SetRowHovered(int index, bool state)
         {
             SetCellHoverState(m_ColumnName.CellsContainer, index, state);
             SetCellHoverState(m_ColumnSnapshotA.CellsContainer, index, state);
             SetCellHoverState(m_ColumnSnapshotB.CellsContainer, index, state);
             SetCellHoverState(m_ColumnDifference.CellsContainer, index, state);
+            SetCellHoverState(m_ColumnInspect.CellsContainer, index, state);
         }
 
         public void SetRowSelected(int index, bool state)
@@ -103,6 +151,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetCellSelectedState(m_ColumnSnapshotA.CellsContainer, index, state);
             SetCellSelectedState(m_ColumnSnapshotB.CellsContainer, index, state);
             SetCellSelectedState(m_ColumnDifference.CellsContainer, index, state);
+            SetCellSelectedState(m_ColumnInspect.CellsContainer, index, state);
         }
 
         protected override VisualElement LoadView()
@@ -131,6 +180,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             GatherColumnReferences(k_UxmlColumnA, ref m_ColumnSnapshotA);
             GatherColumnReferences(k_UxmlColumnB, ref m_ColumnSnapshotB);
             GatherColumnReferences(k_UxmlColumnDiff, ref m_ColumnDifference);
+            GatherColumnReferences(k_UxmlColumnInspect, ref m_ColumnInspect);
 
             m_NameCellUxml = ViewControllerUtility.LoadVisualTreeAssetFromUxml(k_UxmlNameCellGuid);
             m_SizeCellUxml = ViewControllerUtility.LoadVisualTreeAssetFromUxml(k_UxmlSizeCellGuid);
@@ -158,6 +208,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_ColumnSnapshotB.Header, m_Model.CompareMode);
             UIElementsHelper.SetVisibility(m_ColumnDifference.Header, m_Model.CompareMode);
             UIElementsHelper.SetVisibility(m_ColumnDifference.Root, m_Model.CompareMode);
+            // Re-shown with the Inspect cells below if any row is inspectable.
+            UIElementsHelper.SetVisibility(m_ColumnInspect.Header, false);
 
             // Build names column for the Legend Table
             RefreshColumnCells(ref m_ColumnName, (rowId, row, reusableCell) =>
@@ -220,6 +272,24 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return MakeSizeCell(rowId, reusableCell, row.BaseSize);
                 });
             }
+
+            var anyInspectable = false;
+            if (RowActionProvider != null)
+            {
+                for (int i = 0; i < m_Model.Rows.Count; i++)
+                {
+                    if (RowActionProvider.HasAction(m_Model.Rows[i]))
+                    {
+                        anyInspectable = true;
+                        break;
+                    }
+                }
+            }
+            // Outside compare mode a header here would misalign the rows.
+            UIElementsHelper.SetVisibility(m_ColumnInspect.Header, m_Model.CompareMode && anyInspectable);
+            UIElementsHelper.SetVisibility(m_ColumnInspect.Root, anyInspectable);
+            if (anyInspectable)
+                RefreshColumnCells(ref m_ColumnInspect, (rowId, row, reusableCell) => MakeInspectCell(rowId, reusableCell));
         }
 
         void RefreshColumnCells(ref Column column, Func<int, MemorySummaryModel.Row, VisualElement, VisualElement> makeCell)
@@ -288,6 +358,36 @@ namespace Unity.MemoryProfiler.Editor.UI
             return item;
         }
 
+        /// <summary>
+        /// Builds or updates an Inspect cell. Rows without an action get a disabled button so the column stays aligned.
+        /// </summary>
+        VisualElement MakeInspectCell(int rowId, VisualElement reusableCell)
+        {
+            var row = m_Model.Rows[rowId];
+            var inspectAction = RowActionProvider?.GetAction(row);
+
+            var item = reusableCell ?? new VisualElement();
+            if (reusableCell == null)
+            {
+                item.AddToClassList(k_UxmlCellRowClass);
+                item.AddToClassList(k_UxmlInspectCell);
+                RegisterCellCallbacks(item, rowId);
+                var newButton = new Button { name = k_UxmlCellInspectButton, text = "→" };
+                newButton.AddToClassList(k_UxmlCellInspectButton);
+                // Keep the deep-link click from also selecting the row behind it.
+                newButton.RegisterCallback<PointerDownEvent>(e => e.StopPropagation());
+                // Reads the action from userData so reused cells don't allocate a new handler per update.
+                newButton.clicked += () => (newButton.userData as Action)?.Invoke();
+                item.Add(newButton);
+            }
+
+            var button = item.Q<Button>(k_UxmlCellInspectButton);
+            button.userData = inspectAction;
+            button.tooltip = inspectAction != null ? RowActionProvider.Tooltip : null;
+            button.SetEnabled(inspectAction != null);
+            return item;
+        }
+
         VisualElement MakeSizeCell(int rowId, VisualElement reusableCell, MemorySize size)
         {
             return MakeSizeCell(rowId, reusableCell, (long)size.Committed, (long)size.Resident);
@@ -295,7 +395,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         VisualElement MakeSizeCell(int rowId, VisualElement reusableCell, long committed, long resident)
         {
-            long valToUse = m_ShowResidentSize && m_UseResidentAsSource ? resident : committed;
+            long valToUse = m_ShowResidentSize && (m_UseResidentAsSource || m_ShowResidentSizeOnly) ? resident : committed;
             // FormatBytes doesn't handle negative values, sadly (and it's probably too late to change that now)
             var sizeText = EditorUtility.FormatBytes(Math.Abs(valToUse));
             if (valToUse < 0)
@@ -327,11 +427,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             var showResident = m_ShowResidentSize && !row.ResidentSizeUnavailable;
             if (m_Model.CompareMode)
             {
-                toolTipText = MemorySizeTooltipBuilder.MakeTooltip("\nA:", row.BaseSize, m_Model.TotalA, showAllocated, showResident, " - ");
-                toolTipText += MemorySizeTooltipBuilder.MakeTooltip("\nB:", row.ComparedSize, m_Model.TotalB, showAllocated, showResident, " - ");
+                toolTipText = MemorySizeTooltipBuilder.MakeTooltip("\nA:", row.BaseSize, m_Model.TotalA, showAllocated, showResident, " - ", in m_DataOverrides);
+                toolTipText += MemorySizeTooltipBuilder.MakeTooltip("\nB:", row.ComparedSize, m_Model.TotalB, showAllocated, showResident, " - ", in m_DataOverrides);
             }
             else
-                toolTipText = MemorySizeTooltipBuilder.MakeTooltip(string.Empty, row.BaseSize, m_Model.TotalA, showAllocated, showResident, string.Empty);
+                toolTipText = MemorySizeTooltipBuilder.MakeTooltip(string.Empty, row.BaseSize, m_Model.TotalA, showAllocated, showResident, string.Empty, in m_DataOverrides);
+
+            if (!string.IsNullOrEmpty(m_TooltipHint))
+                toolTipText += "\n\n" + m_TooltipHint;
 
             return toolTipText;
         }

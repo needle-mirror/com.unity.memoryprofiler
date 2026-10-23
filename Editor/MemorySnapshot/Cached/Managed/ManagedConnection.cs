@@ -101,7 +101,7 @@ namespace Unity.MemoryProfiler.Editor
 
         /// <summary>
         /// Unity Objects that have a Managed and a Native object have these two reference each other.
-        /// If a Managed Object is found while crawling that has an m_CachedPtr that points to a valid Native Object,
+        /// If a Managed Object is found while crawling whose native link field (m_EntityId; m_CachedPtr in older snapshots) identifies a valid Native Object,
         /// a <see cref="ManagedConnection"/> is created, but only for the direction Native -> Managed.
         /// This represents the only <see cref="ManagedConnection"/> with a Native Object -> Managed Object connection.
         /// Any other Native Object -> Managed Object connection would only be reported via <seealso cref="CachedSnapshot.Connections"/>.
@@ -183,6 +183,10 @@ namespace Unity.MemoryProfiler.Editor
                     {
                         Debug.LogError($"Can't form a connection from a GCHandle (index: {fromIndex.Index}) if that handle is held by a Native Object (index: {nativeObjectIndex}). Use the Native Object to create the connection instead.");
                     }
+                    break;
+                case SourceIndex.SourceId.ManagedRoot:
+                case SourceIndex.SourceId.ManagedHeapSection:
+                    // No field info for either — see ObjectConnection's equivalent switch for why.
                     break;
                 default:
                     if (toIndex.Id != SourceIndex.SourceId.ManagedObject)

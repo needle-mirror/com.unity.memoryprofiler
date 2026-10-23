@@ -44,12 +44,18 @@ namespace Unity.MemoryProfiler.Editor.UI
         bool m_ForceShowResidentBars;
         bool m_ShowSnapshotLabels;
         bool m_UseResidentAsSourceInTooltips;
+        bool m_ShowResidentSizeOnly;
+        bool m_DeEmphasizeNonResidentPortion;
+        string m_TooltipHint;
+        int m_SelectedCellIndex = -1;
+
+        readonly MemorySummaryDataOverrides m_DataOverrides;
 
         public event Action<int, bool> OnRowHovered;
         public event Action<int> OnRowClicked;
         public event Action<int> OnRowDoubleClicked;
 
-        public MemorySummaryBarViewController(MemorySummaryModel model)
+        public MemorySummaryBarViewController(MemorySummaryModel model, in MemorySummaryDataOverrides dataOverrides = default)
         {
             m_Model = model;
 
@@ -57,6 +63,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_ShowResidentMemory = false;
             m_ForceShowResidentBars = false;
             m_ShowSnapshotLabels = false;
+
+            m_DataOverrides = dataOverrides;
         }
 
         public string TotalLabelFormat
@@ -67,6 +75,23 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_TotalLabelFormat = value;
                 if (IsViewLoaded)
                     RefreshTotalLabels();
+            }
+        }
+
+        /// <summary>Optional line appended to every bar cell's tooltip.</summary>
+        public string TooltipHint
+        {
+            get => m_TooltipHint;
+            set
+            {
+                if (m_TooltipHint == value)
+                    return;
+
+                m_TooltipHint = value;
+                if (!IsViewLoaded)
+                    return;
+
+                RefreshView();
             }
         }
 
@@ -105,6 +130,36 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        /// <summary>Size the bars by the resident portion instead of the committed size, which stays in the tooltip.</summary>
+        public bool ShowResidentSizeOnly
+        {
+            get => m_ShowResidentSizeOnly;
+            set
+            {
+                if (m_ShowResidentSizeOnly == value)
+                    return;
+
+                m_ShowResidentSizeOnly = value;
+                if (IsViewLoaded)
+                    RefreshView();
+            }
+        }
+
+        /// <summary>See <see cref="MemoryBarElement.DeEmphasizeNonResidentPortion"/>.</summary>
+        public bool DeEmphasizeNonResidentPortion
+        {
+            get => m_DeEmphasizeNonResidentPortion;
+            set
+            {
+                if (m_DeEmphasizeNonResidentPortion == value)
+                    return;
+
+                m_DeEmphasizeNonResidentPortion = value;
+                if (IsViewLoaded)
+                    RefreshView();
+            }
+        }
+
         public bool ForceShowResidentBars
         {
             get => m_ForceShowResidentBars;
@@ -130,14 +185,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public void SetCellHovered(int index, bool state)
+        /// <param name="revealSplitOnAllBars">Reveal the committed/resident split on every bar rather than only the hovered one.</param>
+        public void SetCellHovered(int index, bool state, bool revealSplitOnAllBars = true)
         {
-            SetCellHoverState(m_CellsA, index, state);
-            SetCellHoverState(m_CellsB, index, state);
+            SetCellHoverState(m_CellsA, index, state, revealSplitOnAllBars);
+            SetCellHoverState(m_CellsB, index, state, revealSplitOnAllBars);
         }
 
         public void SetCellSelected(int index, bool state)
         {
+            if (state)
+                m_SelectedCellIndex = index;
+            else if (m_SelectedCellIndex == index)
+                m_SelectedCellIndex = -1;
+
             SetCellSelectedState(m_CellsA, index, state);
             SetCellSelectedState(m_CellsB, index, state);
         }
@@ -188,26 +249,51 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void RefreshView()
         {
-            var maxValue = Math.Max(m_Model.TotalA, m_Model.TotalB);
+            var scaleTotalA = ScaleTotalOf(m_Model.TotalA, m_Model.ResidentTotalA);
+            var scaleTotalB = ScaleTotalOf(m_Model.TotalB, m_Model.ResidentTotalB);
+            var maxValue = Math.Max(scaleTotalA, scaleTotalB);
 
             // Build breakdown bar for snapshot *A*
-            var maxValueBarA = m_NormalizeBars ? m_Model.TotalA : maxValue;
+            var maxValueBarA = m_NormalizeBars ? scaleTotalA : maxValue;
             var accumulatedTotalA = RefreshBar(m_BarA, ref m_CellsA, m_Model.TotalA, maxValueBarA, (row) => { return row.BaseSize; });
-            MakeRemainderCell(m_BarA, accumulatedTotalA.Committed, maxValueBarA);
+            MakeRemainderCell(m_BarA, BarExtentOf(accumulatedTotalA), maxValueBarA);
             UIElementsHelper.SetVisibility(m_SnapshotLabelA, m_ShowSnapshotLabels && m_Model.CompareMode);
 
             // Build breakdown bar for snapshot *B*
             UIElementsHelper.SetVisibility(m_ContainerB, m_Model.CompareMode);
             if (m_Model.CompareMode)
             {
-                var maxValueBarB = m_NormalizeBars ? m_Model.TotalB : maxValue;
+                var maxValueBarB = m_NormalizeBars ? scaleTotalB : maxValue;
                 var accumulatedTotalB = RefreshBar(m_BarB, ref m_CellsB, m_Model.TotalB, maxValueBarB, (row) => { return row.ComparedSize; });
-                MakeRemainderCell(m_BarB, accumulatedTotalB.Committed, maxValueBarB);
+                MakeRemainderCell(m_BarB, BarExtentOf(accumulatedTotalB), maxValueBarB);
                 UIElementsHelper.SetVisibility(m_SnapshotLabelB, m_ShowSnapshotLabels);
             }
 
+            RestoreCellStateAfterRebuild();
             RefreshTotalLabels();
         }
+
+        /// <summary>
+        /// Reapplies USS-class state lost when cells are rebuilt. Hover is not restored: the pointer is not over
+        /// a freshly replaced cell, so no MouseLeaveEvent would ever clear it.
+        /// </summary>
+        void RestoreCellStateAfterRebuild()
+        {
+            if (m_SelectedCellIndex >= m_Model.Rows.Count)
+                m_SelectedCellIndex = -1;
+
+            if (m_SelectedCellIndex >= 0)
+            {
+                SetCellSelectedState(m_CellsA, m_SelectedCellIndex, true);
+                SetCellSelectedState(m_CellsB, m_SelectedCellIndex, true);
+            }
+
+            RefreshCellsForceResidentBar(m_CellsA, m_ForceShowResidentBars);
+            RefreshCellsForceResidentBar(m_CellsB, m_ForceShowResidentBars);
+        }
+
+        /// <summary>The total the bars are scaled against: the resident total in <see cref="ShowResidentSizeOnly"/> mode.</summary>
+        ulong ScaleTotalOf(ulong committedTotal, ulong residentTotal) => m_ShowResidentSizeOnly ? residentTotal : committedTotal;
 
         void RefreshTotalLabels()
         {
@@ -216,9 +302,17 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (m_TotalLabelFormat != null)
             {
-                m_TotalA.text = string.Format(m_TotalLabelFormat, EditorUtility.FormatBytes((long)m_Model.TotalA));
-                m_TotalB.text = string.Format(m_TotalLabelFormat, EditorUtility.FormatBytes((long)m_Model.TotalB));
+                m_TotalA.text = FormatTotalLabel(m_Model.TotalA, m_Model.ResidentTotalA);
+                m_TotalB.text = FormatTotalLabel(m_Model.TotalB, m_Model.ResidentTotalB);
             }
+        }
+
+        /// <summary>Formats the bar label. <c>{0}</c> is the total the bar is scaled against, <c>{1}</c> the resident total.</summary>
+        public string FormatTotalLabel(ulong committedTotal, ulong residentTotal)
+        {
+            return string.Format(m_TotalLabelFormat,
+                EditorUtility.FormatBytes((long)ScaleTotalOf(committedTotal, residentTotal)),
+                EditorUtility.FormatBytes((long)residentTotal));
         }
 
         MemorySize RefreshBar(VisualElement root, ref MemoryBarElement[] cells, ulong total, ulong maxValue, Func<MemorySummaryModel.Row, MemorySize> accessor)
@@ -248,16 +342,31 @@ namespace Unity.MemoryProfiler.Editor.UI
             var cell = new MemoryBarElement();
 
             if (m_ShowResidentMemory && !ignoreResidentMemory)
-                cell.Mode = m_UseResidentAsSourceInTooltips ? MemoryBarElement.VisibilityMode.ResidentOverCommitted : MemoryBarElement.VisibilityMode.CommittedAndResidentOnHover;
+            {
+                if (m_ShowResidentSizeOnly)
+                    cell.Mode = MemoryBarElement.VisibilityMode.ResidentOnlyWithCommittedTooltip;
+                else
+                    cell.Mode = m_UseResidentAsSourceInTooltips ? MemoryBarElement.VisibilityMode.ResidentOverCommitted : MemoryBarElement.VisibilityMode.CommittedAndResidentOnHover;
+            }
             else
                 cell.Mode = MemoryBarElement.VisibilityMode.CommittedOnly;
 
-            cell.Set(name, size, total, maxValue);
+            cell.DeEmphasizeNonResidentPortion = m_DeEmphasizeNonResidentPortion;
+            cell.Set(name, size, total, maxValue, in m_DataOverrides);
+            if (!string.IsNullOrEmpty(m_TooltipHint))
+                cell.tooltip += "\n\n" + m_TooltipHint;
             cell.SetStyle(styleId);
             RegisterCellCallbacks(cell, rowId);
             return cell;
         }
 
+        /// <summary>The size a bar cell is drawn at: the resident portion in <see cref="ShowResidentSizeOnly"/> mode.</summary>
+        ulong BarExtentOf(MemorySize size) => m_ShowResidentSizeOnly ? size.Resident : size.Committed;
+
+        /// <summary>
+        /// Pads a bar out to the other snapshot's larger scale in compare mode. It is not part of this snapshot's
+        /// memory, so it never carries a category or de-emphasis color.
+        /// </summary>
         void MakeRemainderCell(VisualElement root, ulong value, ulong total)
         {
             if (value >= total)
@@ -286,7 +395,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             });
         }
 
-        void SetCellHoverState(MemoryBarElement[] cells, int index, bool state)
+        void SetCellHoverState(MemoryBarElement[] cells, int index, bool state, bool revealSplitOnAllBars)
         {
             if ((cells == null) || (index >= cells.Length))
                 return;
@@ -297,8 +406,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             else
                 element.RemoveFromClassList(k_UxmlLegendTableCellHoverStateClass);
 
-            // As by design, reveal all resident bars if one cell is hovered
-            RefreshCellsForceResidentBar(cells, state);
+            if (revealSplitOnAllBars)
+                RefreshCellsForceResidentBar(cells, state);
+            else
+                RefreshCellForceResidentBar(element, state);
         }
 
         void SetCellSelectedState(MemoryBarElement[] cells, int index, bool state)
@@ -318,7 +429,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (cells == null)
                 return;
 
-            if (!m_ShowResidentMemory)
+            foreach (var cell in cells)
+                RefreshCellForceResidentBar(cell, state);
+        }
+
+        void RefreshCellForceResidentBar(MemoryBarElement cell, bool state)
+        {
+            if (!m_ShowResidentMemory || m_ShowResidentSizeOnly)
                 return;
 
             MemoryBarElement.VisibilityMode newMode;
@@ -327,8 +444,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             else
                 newMode = MemoryBarElement.VisibilityMode.ResidentOverCommitted;
 
-            foreach (var cell in cells)
-                cell.Mode = newMode;
+            cell.Mode = newMode;
         }
     }
 }

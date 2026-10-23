@@ -1,4 +1,4 @@
-/* 
+/*
  * ComparisonView.uss
  * Styles for shared comparison view component.
  * Most styles now come from ComparisonViewBase.uss
@@ -23,7 +23,7 @@
     flex-grow: 1;
     flex-shrink: 1;
     margin-left: 8px;
-	padding-top: 3px;
+    padding-top: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
 }

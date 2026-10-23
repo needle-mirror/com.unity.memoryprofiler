@@ -30,6 +30,19 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public void* GetUnsafePtr();
     }
 
+    static class DynamicArrayExtensions
+    {
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public static void SetBit<T>(this ref T bits, long index) where T : unmanaged, ILongIndexedContainer<ulong>
+            => bits[index >> 6] |= 1ul << (int)(index & 63);
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+
+        public static bool TestBit<T>(this ref T bits, long index) where T : unmanaged, ILongIndexedContainer<ulong>
+            => (bits[index >> 6] & (1ul << (int)(index & 63))) != 0;
+    }
+
     /// <summary>
     /// DynamicArrayRef is a readonly, lighter weight, non owning, sub-data, possibly type-converting, handle/view into a <see cref="DynamicArray{T}"/>.
     /// It is used, in particular, for <seealso cref="NestedDynamicArray{T}"/>, where it provides simple views into the nested data

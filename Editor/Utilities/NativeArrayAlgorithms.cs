@@ -689,7 +689,7 @@ namespace Unity.MemoryProfiler.Editor.Containers
 
         /// <summary>
         /// Tests flag <paramref name="index"/> in a bitset packed 64 flags per ulong.
-        /// 
+        ///
         /// To get the count needed to populate such a bitset, use <see cref="CountToUlongPackedBitsetCapacity(long)"/>.
         /// </summary>
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]

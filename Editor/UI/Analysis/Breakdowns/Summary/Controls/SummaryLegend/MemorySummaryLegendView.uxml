@@ -28,6 +28,16 @@
             <Instance template="memory-summary__legend__column-template" name="memory-summary__legend__diff-column">
                 <AttributeOverrides element-name="memory-summary__legend__header-icon-text" text="Diff"/>
             </Instance>
+
+            <VisualElement name="memory-summary__legend__inspect-column" class="memory-summary__legend__inspect-column">
+                <VisualElement name="memory-summary__legend__column-controls">
+                    <Label display-tooltip-when-elided="true" name="emptyspaceholder" class="memory-summary__legend__empty-space-holder" />
+                </VisualElement>
+
+                <VisualElement class="memory-summary__legend__list memory-summary__legend__top-border" />
+                <VisualElement name="memory-summary__legend__cells" />
+                <VisualElement class="memory-summary__legend__list memory-summary__legend__bottom-border" />
+            </VisualElement>
         </VisualElement>
     </VisualElement>
 </UXML>

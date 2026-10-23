@@ -61,11 +61,30 @@ namespace Unity.MemoryProfiler.Editor.UI
             ApplyCurrentFilter();
         }
 
+        /// <summary>
+        /// Turns the filter on with <paramref name="mask"/>, or off when it is null, without firing the change callback;
+        /// the caller drives the rebuild. A zero mask is ignored, since 0 would mean "ObjectStatus.None only".
+        /// </summary>
+        public void SetMask(ulong? mask)
+        {
+            if (m_FilterManager == null || mask == 0)
+                return;
+
+            if (mask.HasValue)
+            {
+                m_CurrentMask = mask.Value;
+                UpdateDropdownLabel(mask.Value);
+            }
+            m_EnableToggle.SetValueWithoutNotify(mask.HasValue);
+            ApplyCurrentFilter();
+        }
+
         void OnToggleChanged(ChangeEvent<bool> evt)
         {
             ApplyCurrentFilter();
             m_OnFilterChanged?.Invoke();
         }
+
 
         void OnDropdownClicked()
         {

@@ -36,7 +36,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public MemorySize TotalSnapshotMemorySize { get; }
 
         // The data associated with each item in the tree.
-        public readonly struct ItemData : IPrivateComparableItemData
+        public readonly struct ItemData : IPrivateComparableItemData, IHasSourceIndex
         {
             public ItemData(
                 string name,

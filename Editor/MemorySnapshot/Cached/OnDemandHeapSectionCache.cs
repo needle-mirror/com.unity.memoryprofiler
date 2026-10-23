@@ -25,7 +25,7 @@ namespace Unity.MemoryProfiler.Editor
         /// When heap bytes are unloaded and on-demand loading is used, returns a DIRECT REFERENCE to cached data (Allocator.Persistent).
         /// The caller MUST dispose the <paramref name="referenceScope"/>
         /// <see cref="HeapSectionCacheReferenceScope"/> when done with the <paramref name="refreshedBytes"/>, unless false is returned.
-        /// When heap bytes are loaded in memory, <paramref name="referenceScope"/> 
+        /// When heap bytes are loaded in memory, <paramref name="referenceScope"/>
         /// will be a default scope (safe to dispose without effect
         /// and <paramref name="refreshedBytes"/> points directly to cached memory.
         /// </remarks>
@@ -80,8 +80,8 @@ namespace Unity.MemoryProfiler.Editor
         /// When heap bytes are unloaded and on-demand loading is used, returns a DIRECT REFERENCE to cached data (Allocator.Persistent).
         /// The caller MUST dispose the <paramref name="referenceScope"/>
         /// <see cref="HeapSectionCacheReferenceScope"/> when done with the <paramref name="bytesAndOffset"/>, unless false is returned.
-        /// When heap bytes are loaded in memory, <paramref name="referenceScope"/> 
-        /// will be a default scope (safe to dispose without effect) 
+        /// When heap bytes are loaded in memory, <paramref name="referenceScope"/>
+        /// will be a default scope (safe to dispose without effect)
         /// and <paramref name="bytesAndOffset"/> points directly to loaded memory.
         /// </remarks>
         /// <param name="address">The memory address to find in the managed heap.</param>
@@ -115,8 +115,8 @@ namespace Unity.MemoryProfiler.Editor
         /// <see cref="HeapSectionCacheReferenceScope"/> when done with the <paramref name="bytesAndOffset"/>, unless false is returned.
         /// </para>
         /// <para>
-        /// When heap bytes are loaded in memory, <paramref name="referenceScope"/> 
-        /// will be a default scope (safe to dispose without effect) 
+        /// When heap bytes are loaded in memory, <paramref name="referenceScope"/>
+        /// will be a default scope (safe to dispose without effect)
         /// and <paramref name="bytesAndOffset"/> points directly to loaded memory.
         /// </para>
         /// <para>
@@ -204,11 +204,11 @@ namespace Unity.MemoryProfiler.Editor
         /// <remarks>
         /// This method retrieves an entire heap section by its index. The section index must be valid
         /// (within the range [0, <see cref="ManagedMemorySectionEntriesCache.Count"/>)).
-        /// See <see cref="FindHeapBytes(ulong, out BytesAndOffset, out MemorySectionType, out HeapSectionCacheReferenceScope)"/> 
+        /// See <see cref="FindHeapBytes(ulong, out BytesAndOffset, out MemorySectionType, out HeapSectionCacheReferenceScope)"/>
         /// for information about memory management and disposal requirements.
         /// </remarks>
         /// <param name="heapSectionIndex">
-        /// The zero-based index of the heap section to retrieve. 
+        /// The zero-based index of the heap section to retrieve.
         /// Must be in the range [0, <see cref="ManagedMemorySectionEntriesCache.Count"/>).
         /// </param>
         /// <param name="bytesAndOffset">
@@ -235,10 +235,10 @@ namespace Unity.MemoryProfiler.Editor
         /// Uses on-demand loading if heap bytes have been unloaded after crawling.
         /// </summary>
         /// <remarks>
-        /// This method retrieves a heap section by its index and creates a <see cref="BytesAndOffset"/> 
+        /// This method retrieves a heap section by its index and creates a <see cref="BytesAndOffset"/>
         /// positioned at a specific address within that section. The address must fall within the section's
         /// address range. This is useful when you know both the section index and the specific address you need.
-        /// See <see cref="FindHeapBytes(ulong, out BytesAndOffset, out MemorySectionType, out HeapSectionCacheReferenceScope)"/> 
+        /// See <see cref="FindHeapBytes(ulong, out BytesAndOffset, out MemorySectionType, out HeapSectionCacheReferenceScope)"/>
         /// for information about memory management and disposal requirements.
         /// </remarks>
         /// <param name="heapSectionIndex">
@@ -246,7 +246,7 @@ namespace Unity.MemoryProfiler.Editor
         /// Must be in the range [0, <see cref="ManagedMemorySectionEntriesCache.Count"/>).
         /// </param>
         /// <param name="address">
-        /// The specific memory address within the section. 
+        /// The specific memory address within the section.
         /// Must be within the section's address range [StartAddress, StartAddress + Size).
         /// </param>
         /// <param name="bytesAndOffset">
@@ -259,7 +259,7 @@ namespace Unity.MemoryProfiler.Editor
         /// but unnecessary when <see langword="false"/> is returned or <see cref="HeapSectionCacheReferenceScope.IsValid"/> is <see langword="false"/>.
         /// </param>
         /// <returns>
-        /// <see langword="true"/> if the section was loaded successfully and the address is valid; 
+        /// <see langword="true"/> if the section was loaded successfully and the address is valid;
         /// otherwise, <see langword="false"/>.
         /// </returns>
         public bool GetHeapBytes(long heapSectionIndex, ulong address, out BytesAndOffset bytesAndOffset, out HeapSectionCacheReferenceScope referenceScope)
@@ -359,7 +359,7 @@ namespace Unity.MemoryProfiler.Editor
 
             // Thread synchronization for all non-atomic LRU operations
             readonly object m_LruLock = new object();
-            // Semaphore to serialize file loading operations - prevents concurrent readOp.Complete() 
+            // Semaphore to serialize file loading operations - prevents concurrent readOp.Complete()
             // calls which can cause job system deadlock
             readonly SemaphoreSlim m_LoadingSemaphore = new SemaphoreSlim(1, 1);
             // LRU order: most recently used at the end
@@ -566,7 +566,7 @@ namespace Unity.MemoryProfiler.Editor
                     // The reference scope then ensures that the section is kept as loaded until the caller disposes of it.
                     referenceScope.Acquire(this, sectionIndex);
 
-                    // Fast path: check if already cached 
+                    // Fast path: check if already cached
                     lock (m_PerSectionStripedLockPool[sectionIndex % k_PerSectionLockPoolSize])
                     {
                         m_DisposalLock.ExitReadLock();
@@ -602,7 +602,7 @@ namespace Unity.MemoryProfiler.Editor
                             // otherwise, check again if it's loaded or being loaded by another thread
                         }
 
-                        // Load the section 
+                        // Load the section
                         var loadSuccess = LoadSection(sectionIndex, out cachedBytesRef);
                         if (!loadSuccess)
                             referenceScope.Dispose();

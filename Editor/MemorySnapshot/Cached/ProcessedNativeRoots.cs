@@ -54,6 +54,28 @@ namespace Unity.MemoryProfiler.Editor
             };
         }
 
+        /// <summary>
+        /// Scales each channel by <paramref name="numerator"/>/<paramref name="denominator"/>, floored.
+        /// <paramref name="numerator"/> must be &lt;= <paramref name="denominator"/>.
+        /// </summary>
+        public NativeRootSize ScaleByFraction(ulong numerator, ulong denominator) => new NativeRootSize
+        {
+            NativeSize = NativeSize.ScaleByFraction(numerator, denominator),
+            ManagedSize = ManagedSize.ScaleByFraction(numerator, denominator),
+            GfxSize = GfxSize.ScaleByFraction(numerator, denominator),
+        };
+
+        /// <summary>
+        /// Scales each channel by <paramref name="fraction"/>, floored. Prefer the integer-ratio overload when the
+        /// fraction is a ratio of two counts.
+        /// </summary>
+        public NativeRootSize ScaleByFraction(double fraction) => new NativeRootSize
+        {
+            NativeSize = NativeSize.ScaleByFraction(fraction),
+            ManagedSize = ManagedSize.ScaleByFraction(fraction),
+            GfxSize = GfxSize.ScaleByFraction(fraction),
+        };
+
         public override string ToString()
         {
             return $"ManagedSize: {ManagedSize.ToString()}, NativeSize: {NativeSize.ToString()}, GfxSize: {GfxSize.ToString()}";

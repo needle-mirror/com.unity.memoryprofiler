@@ -8,6 +8,14 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.MemoryProfiler.Editor.Containers;
+
+#if !UNMANAGED_NATIVE_HASHMAP_AVAILABLE
+using SourceIndexHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex>;
+using AssetBundleHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.MemoryProfiler.Editor.AssetBundleSavings>;
+#else
+using SourceIndexHashMap = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex>;
+using AssetBundleHashMap = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.MemoryProfiler.Editor.AssetBundleSavings>;
+#endif
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.EnumerationUtilities;
 using Unity.MemoryProfiler.Editor.Extensions;
@@ -16,7 +24,9 @@ using Unity.MemoryProfiler.Editor.UI;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling;
 using Unity.Profiling.Memory;
-using UnityEngine;
+#if !DEBUG_VALIDATION
+using Unity.Collections.LowLevel.Unsafe;
+#endif
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using Debug = UnityEngine.Debug;
 
@@ -273,6 +283,8 @@ namespace Unity.MemoryProfiler.Editor
         public const long IndexInNestedArrayForManagedTypes = 5;
         public const long IndexInNestedArrayForGCHandles = 6;
         public const long IndexInNestedArrayForMangedObjects = 7;
+        public const long IndexInNestedArrayForManagedRoots = 8;
+        public const long IndexInNestedArrayForManagedHeapSections = 9;
         readonly long m_OffsetToNativeRootReferences;
         readonly long m_OffsetToScenes;
         readonly long m_OffsetToPrefabs;
@@ -281,6 +293,8 @@ namespace Unity.MemoryProfiler.Editor
         readonly long m_OffsetToManagedTypes;
         readonly long m_OffsetToGcHandles;
         readonly long m_OffsetToManagedObjects;
+        readonly long m_OffsetToManagedRoots;
+        readonly long m_OffsetToManagedHeapSections;
         public readonly long TotalCount;
         internal SourceIndexToRootAndImpactInfoMapper(CachedSnapshot snapshot)
         {
@@ -292,7 +306,9 @@ namespace Unity.MemoryProfiler.Editor
             m_OffsetToManagedTypes = m_OffsetToNativeAllocations + snapshot.NativeAllocations.Count;
             m_OffsetToGcHandles = m_OffsetToManagedTypes + snapshot.TypeDescriptions.Count;
             m_OffsetToManagedObjects = m_OffsetToGcHandles + snapshot.GcHandles.Count;
-            TotalCount = m_OffsetToManagedObjects + snapshot.CrawledData.ManagedObjects.Count;
+            m_OffsetToManagedRoots = m_OffsetToManagedObjects + snapshot.CrawledData.ManagedObjects.Count;
+            m_OffsetToManagedHeapSections = m_OffsetToManagedRoots + snapshot.ManagedRoots.Count;
+            TotalCount = m_OffsetToManagedHeapSections + snapshot.ManagedHeapSections.Count;
         }
 
         internal long SourceIndexToRootAndImpactGroupIndex(SourceIndex sourceIndex)
@@ -308,7 +324,7 @@ namespace Unity.MemoryProfiler.Editor
                 case SourceIndex.SourceId.NativeAllocation:
                     return m_OffsetToNativeAllocations + sourceIndex.Index;
                 case SourceIndex.SourceId.ManagedHeapSection:
-                    break;
+                    return m_OffsetToManagedHeapSections + sourceIndex.Index;
                 case SourceIndex.SourceId.NativeObject:
                     return m_OffsetToNativeObjects + sourceIndex.Index;
                 case SourceIndex.SourceId.ManagedObject:
@@ -327,6 +343,8 @@ namespace Unity.MemoryProfiler.Editor
                     return m_OffsetToScenes + sourceIndex.Index;
                 case SourceIndex.SourceId.Prefab:
                     return m_OffsetToPrefabs + sourceIndex.Index;
+                case SourceIndex.SourceId.ManagedRoot:
+                    return m_OffsetToManagedRoots + sourceIndex.Index;
                 default:
                     break;
             }
@@ -343,7 +361,7 @@ namespace Unity.MemoryProfiler.Editor
 
         internal DynamicArray<long> GetOffsets(int typeSize)
         {
-            var offsets = new DynamicArray<long>(IndexInNestedArrayForMangedObjects + 2, Allocator.Temp);
+            var offsets = new DynamicArray<long>(IndexInNestedArrayForManagedHeapSections + 2, Allocator.Temp);
             offsets[IndexInNestedArrayForNativeRootReferences] = m_OffsetToNativeRootReferences * typeSize;
             offsets[IndexInNestedArrayForScenes] = m_OffsetToScenes * typeSize;
             offsets[IndexInNestedArrayForPrefabs] = m_OffsetToPrefabs * typeSize;
@@ -352,6 +370,8 @@ namespace Unity.MemoryProfiler.Editor
             offsets[IndexInNestedArrayForManagedTypes] = m_OffsetToManagedTypes * typeSize;
             offsets[IndexInNestedArrayForGCHandles] = m_OffsetToGcHandles * typeSize;
             offsets[IndexInNestedArrayForMangedObjects] = m_OffsetToManagedObjects * typeSize;
+            offsets[IndexInNestedArrayForManagedRoots] = m_OffsetToManagedRoots * typeSize;
+            offsets[IndexInNestedArrayForManagedHeapSections] = m_OffsetToManagedHeapSections * typeSize;
             offsets[offsets.Count - 1] = TotalCount * typeSize;
             return offsets;
         }
@@ -377,6 +397,8 @@ namespace Unity.MemoryProfiler.Editor
                 case SourceIndex.SourceId.GCHandleIndex:
                 case SourceIndex.SourceId.Scene:
                 case SourceIndex.SourceId.Prefab:
+                case SourceIndex.SourceId.ManagedRoot:
+                case SourceIndex.SourceId.ManagedHeapSection:
                     return true;
                 default:
                     return false;
@@ -400,7 +422,7 @@ namespace Unity.MemoryProfiler.Editor
                 SourceIndex.SourceId.SystemMemoryRegion => throw new NotImplementedException(),
                 SourceIndex.SourceId.NativeMemoryRegion => throw new NotImplementedException(),
                 SourceIndex.SourceId.NativeAllocation => IndexInNestedArrayForNativeAllocations,
-                SourceIndex.SourceId.ManagedHeapSection => throw new NotImplementedException(),
+                SourceIndex.SourceId.ManagedHeapSection => IndexInNestedArrayForManagedHeapSections,
                 SourceIndex.SourceId.NativeObject => IndexInNestedArrayForNativeObjects,
                 SourceIndex.SourceId.ManagedObject => IndexInNestedArrayForMangedObjects,
                 SourceIndex.SourceId.NativeType => throw new NotImplementedException(),
@@ -411,6 +433,7 @@ namespace Unity.MemoryProfiler.Editor
                 SourceIndex.SourceId.MemoryLabel => throw new NotImplementedException(),
                 SourceIndex.SourceId.Scene => IndexInNestedArrayForScenes,
                 SourceIndex.SourceId.Prefab => IndexInNestedArrayForPrefabs,
+                SourceIndex.SourceId.ManagedRoot => IndexInNestedArrayForManagedRoots,
                 _ => throw new NotImplementedException()
             };
             return ref data[nestedIndex];
@@ -456,21 +479,44 @@ namespace Unity.MemoryProfiler.Editor
             SharedInTotal = l.SharedInTotal + r.SharedInTotal,
         };
     }
+
+    /// <summary>
+    /// Per-AssetBundle recoverable memory, produced by <see cref="RootAndImpactInfo.CrawlAssetBundles"/>.
+    /// <see cref="RecoverableImpact"/> is the bundle's unused content plus the unused fraction of its own size.
+    /// <see cref="RecoverableOwnSize"/> is that unused own-size fraction, already included in
+    /// <see cref="RecoverableImpact"/>'s Exclusive channel.
+    /// </summary>
+    readonly struct AssetBundleSavings
+    {
+        public AssetBundleSavings(MemoryImpact recoverableImpact, MemorySize recoverableOwnSize, long usedRootEntries, long unusedRootEntries)
+        {
+            RecoverableImpact = recoverableImpact;
+            RecoverableOwnSize = recoverableOwnSize;
+            UsedRootEntries = usedRootEntries;
+            UnusedRootEntries = unusedRootEntries;
+        }
+
+        public MemoryImpact RecoverableImpact { get; }
+        public MemorySize RecoverableOwnSize { get; }
+        public long UsedRootEntries { get; }
+        public long UnusedRootEntries { get; }
+    }
+
     /// <summary>
     /// Use this to get the root and impact information for each object.
     /// The <see cref="NestedDynamicArray{T}"/> structures are indexed by
     /// <see cref="SourceIndexToRootAndImpactInfoMapper.SourceIndexToRootAndImpactGroupIndex(SourceIndex)"/>
-    /// and you can use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(ref NestedDynamicArray{T}, SourceIndex)"/>
+    /// and you can use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(in NestedDynamicArray{T}, SourceIndex)"/>
     /// to get information for a specific SourceIndex.
     /// </summary>
     class RootAndImpactInfo : IDisposable
     {
-        public const int ProcessStepCount = 9;
+        public const int ProcessStepCount = 11;
         public bool SuccessfullyBuilt => m_Processed && OwnedChildList is { IsCreated: true, Count: > 0 };
         /// <summary>
         /// Shortest root path info for each item, entailing its root, its parent and its depth.
         ///
-        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(ref NestedDynamicArray{T}, SourceIndex)"/>
+        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(in NestedDynamicArray{T}, SourceIndex)"/>
         /// to get the <see cref="ShortestRootPathInfo"/> for a specific SourceIndex.
         /// </summary>
         public ref NestedDynamicArray<ShortestRootPathInfo> ShortestPathInfo => ref m_ShortestPathInfo;
@@ -481,7 +527,7 @@ namespace Unity.MemoryProfiler.Editor
         /// Use this to get single child references or get the index to the child count in <see cref="OwnedChildList"/>,
         /// and the child indices following that.
         ///
-        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(ref NestedDynamicArray{T}, SourceIndex)"/>
+        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(in NestedDynamicArray{T}, SourceIndex)"/>
         /// to get the <see cref="ReferencesListInfo"/> for a specific SourceIndex.
         /// </summary>
         public ref NestedDynamicArray<ReferencesListInfo> RootPathOwnedReferencesLookup => ref m_RootPathOwnedReferencesLookup;
@@ -509,7 +555,7 @@ namespace Unity.MemoryProfiler.Editor
         /// For a more comprehensive list that includes such references, use <see cref="ObjectConnection.GetAllReferencingObjects(CachedSnapshot, SourceIndex, ref List{ObjectData}, HashSet{SourceIndex}, ObjectConnection.UnityObjectReferencesSearchMode, bool)"/>
         /// For showing object by their rooting structure, this is sufficient and avoids mis-attribution of impact.
         ///
-        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(ref NestedDynamicArray{T}, SourceIndex)"/>
+        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(in NestedDynamicArray{T}, SourceIndex)"/>
         /// to get the <see cref="ReferencesListInfo"/> for a specific SourceIndex.
         /// </summary>
         public ref NestedDynamicArray<ReferencesListInfo> UnownedReferencesLookup => ref m_UnownedReferencesLookup;
@@ -526,7 +572,7 @@ namespace Unity.MemoryProfiler.Editor
         /// <summary>
         /// The Memory impact attributed to each item.
         ///
-        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(ref NestedDynamicArray{T}, SourceIndex)"/>
+        /// Use <see cref="SourceIndexToRootAndImpactInfoMapper.GetNestedElement{T}(in NestedDynamicArray{T}, SourceIndex)"/>
         /// to get the <see cref="MemoryImpact"/> for a specific SourceIndex.
         /// </summary>
         public ref NestedDynamicArray<MemoryImpact> Impact => ref m_Impact;
@@ -551,6 +597,31 @@ namespace Unity.MemoryProfiler.Editor
 
         public NativeRootSize ReferencedUnrootedMemory;
         public NativeRootSize UnreferencedUnrootedMemory;
+
+        /// <summary>
+        /// Per-AssetBundle recoverable memory, keyed by the bundle's native-object <see cref="SourceIndex"/>.
+        /// Valid because <see cref="PreprocessAssetBundles"/> keeps bundles out of every earlier bucket, so used
+        /// content goes to its scene/static owners and a bundle only gains impact from its own unused contents.
+        /// Summed across bundles it is a clean partition, as shared unused content is split pro-rata.
+        /// </summary>
+        AssetBundleHashMap m_AssetBundleSavings;
+        MemoryImpact m_TotalAssetBundleRecoverableImpact;
+
+        /// <summary>
+        /// Total recoverable memory across all AssetBundles, including the pro-rata share of memory shared with other roots.
+        /// </summary>
+        public NativeRootSize TotalAssetBundleRecoverable => m_TotalAssetBundleRecoverableImpact.TotalImpact;
+
+        /// <summary>
+        /// The exclusively-owned portion of <see cref="TotalAssetBundleRecoverable"/>.
+        /// </summary>
+        public NativeRootSize TotalAssetBundleRecoverableExclusive => m_TotalAssetBundleRecoverableImpact.Exclusive;
+
+        /// <summary>
+        /// Recoverable memory for one AssetBundle. Returns <c>false</c> if <paramref name="assetBundle"/> is not a loaded AssetBundle.
+        /// </summary>
+        public bool TryGetAssetBundleSavings(SourceIndex assetBundle, out AssetBundleSavings savings)
+            => m_AssetBundleSavings.TryGetValue(assetBundle, out savings);
 
         bool m_Processed = false;
 
@@ -588,6 +659,552 @@ namespace Unity.MemoryProfiler.Editor
         // missing-script object (e.g. a DontDestroyOnLoad one claimed by an earlier bucket) for a leak.
         NativeHashSet<SourceIndex> m_BrokenScriptReferenceObjects;
         public bool IsBrokenScriptReference(SourceIndex index) => m_BrokenScriptReferenceObjects.IsCreated && m_BrokenScriptReferenceObjects.Contains(index);
+
+        /// <summary>Initial capacity for <see cref="m_SkippedGCHandles"/>; a handle skipped because its target is already rooted elsewhere is usually a small fraction of all GCHandles.</summary>
+        const int k_SkippedGCHandlesDefaultCount = 32;
+
+        /// <summary>
+        /// Pairs the referrer count an item's own accumulated impact was divided across (<see cref="Count"/>)
+        /// with the order in which that division completed (<see cref="CompletionIndex"/>). Both are recorded
+        /// together, exactly once, by the same <see cref="AttributeImpact"/> call that finalizes an item — see
+        /// <see cref="m_ReferrerData"/> — and are liable to be read together (a consumer reconstructing a
+        /// referrer's byte share also needs to know whether the selected item was still live when the division
+        /// happened), hence one struct rather than two parallel array reads.
+        /// </summary>
+        public readonly struct ReferrerData
+        {
+            /// <summary>See <see cref="IsExclusivelyOwned"/>.</summary>
+            internal const long SingleReferrer = 1;
+
+            /// <summary>See <see cref="IsNeverRecorded"/>. Deliberately 0 rather than e.g. a large sentinel, so dividing by it by mistake throws (<c>DivideByZeroException</c>) instead of silently misbehaving.</summary>
+            internal const long NotRecorded = 0;
+
+            /// <summary>See <see cref="IsRoot"/>.</summary>
+            internal const long NoReferrer = -1;
+
+            /// <summary>See <see cref="CompletedImpactAttribution"/>.</summary>
+            internal const long NotCompleted = 0;
+
+            public readonly long Count;
+            public readonly long CompletionIndex;
+
+            /// <summary>Whether this item's entire impact went to a single referee, i.e. <see cref="Count"/> is neither a root, an unset value, nor a real split. This includes the scene-hierarchy redirect fallback, which reattributes wholesale to one ancestor.</summary>
+            public bool IsExclusivelyOwned => Count == SingleReferrer;
+
+            /// <summary>Whether this entry is the zero-cleared default — <see cref="AttributeImpact"/> never processed this item at all.</summary>
+            public bool IsNeverRecorded => Count == NotRecorded;
+
+            /// <summary>Whether <see cref="Count"/> reflects a genuine ownership-forest root — no referee to divide across.</summary>
+            public bool IsRoot => Count == NoReferrer;
+
+            /// <summary>Whether this item's impact attribution has completed (and, since both fields are always written together, therefore also recorded a <see cref="Count"/>).</summary>
+            public bool CompletedImpactAttribution => CompletionIndex != NotCompleted;
+
+            public ReferrerData(long count, long completionIndex)
+            {
+                Count = count;
+                CompletionIndex = completionIndex;
+            }
+        }
+
+        /// <summary>
+        /// Monotonically increasing counter handed out (and post-incremented) by <see cref="SetReferrerData"/>
+        /// each time some item's <see cref="Marker.FullyDistributedImpact"/> transitions to true. Starts at 1
+        /// so the first completed item's index is distinguishable from <see cref="ReferrerData.NotCompleted"/>.
+        /// </summary>
+        long m_NextImpactCompletionIndex = 1;
+
+        /// <summary>
+        /// AssetBundle sources whose <see cref="ReferrerData"/> has been reset at least once by
+        /// <see cref="ClearReferrerData"/> (see <see cref="CrawlAssetBundles"/>). Tracked because
+        /// <see cref="GetImpactCompletionIndex"/> only ever reports such a source's LATER, post-reset
+        /// completion — see <see cref="m_AssetBundleResetBoundaryCompletionIndex"/> and
+        /// <see cref="DidReceiveShareOfDistributedImpact"/>.
+        /// </summary>
+        NativeHashSet<SourceIndex> m_ResetAssetBundleSources;
+
+        /// <summary>
+        /// GCHandles skipped by <see cref="CrawlGCHandleRoots"/>/<see cref="SeedAndClaimGCHandleOwnershipBucket"/>
+        /// because their target is already rooted elsewhere — deliberately finalized (<see cref="Marker.FullyDistributedImpact"/>
+        /// set) without ever going through <see cref="AttributeImpact"/>, so their <see cref="ReferrerData"/> stays
+        /// <see cref="ReferrerData.IsNeverRecorded"/> just like a genuinely still-open item's. <see cref="Marker"/>
+        /// itself is disposed once crawling finishes (see <see cref="ReadOrProcess"/>), so this set is what lets
+        /// <see cref="DidReceiveShareOfDistributedImpact"/> tell the two apart after the build completes.
+        /// </summary>
+        NativeHashSet<SourceIndex> m_SkippedGCHandles;
+
+        /// <summary>Initial capacity for <see cref="m_StaticsStorageArrays"/>; a CoreCLR capture holds only a handful of statics storage arrays.</summary>
+        const int k_StaticsStorageArraysDefaultCount = 8;
+
+        /// <summary>
+        /// CoreCLR's statics storage arrays (see <see cref="CollectStaticsStorageArrays"/>). Like a
+        /// GCHandle, such an array is bookkeeping rather than an owner, so <see cref="AttributeImpact"/> strikes it
+        /// from any referee list that also holds a real owner — e.g. the declaring type of a static it stores.
+        /// </summary>
+        NativeHashSet<SourceIndex> m_StaticsStorageArrays;
+        bool m_HasStaticsStorageArrays;
+
+        /// <summary>Initial capacity for <see cref="m_SourcesThatStruckBookkeepingReferees"/>; on CoreCLR every statically held object lands here.</summary>
+        const int k_SourcesThatStruckBookkeepingRefereesDefaultCount = 1024;
+
+        /// <summary>
+        /// Items whose referee list mixed bookkeeping referees (see <see cref="IsBookkeepingReferee"/>) with real owners, so
+        /// <see cref="AttributeImpact"/> struck the bookkeeping ones. Lets <see cref="DidReceiveShareOfDistributedImpact"/> tell
+        /// that such a referee, though still open when the item completed, received none of its impact.
+        /// </summary>
+        NativeHashSet<SourceIndex> m_SourcesThatStruckBookkeepingReferees;
+
+        /// <summary>
+        /// The value <see cref="m_NextImpactCompletionIndex"/> held right before <see cref="CrawlAssetBundles"/>
+        /// started resetting AssetBundles' <see cref="ReferrerData"/> — every completion index strictly below
+        /// this one was recorded before any AssetBundle bucket work began. <see cref="ReferrerData.NotCompleted"/>
+        /// (0) until that happens. Used by <see cref="DidReceiveShareOfDistributedImpact"/> to tell a reset
+        /// AssetBundle's fleeting pre-crawl completion (<see cref="PreprocessAssetBundles"/>) apart from its
+        /// real, later re-completion, since <see cref="GetImpactCompletionIndex"/> only ever reports the latter.
+        /// </summary>
+        long m_AssetBundleResetBoundaryCompletionIndex = ReferrerData.NotCompleted;
+
+        /// <summary>
+        /// Referrer count and completion index (same <see cref="NestedDynamicArray{T}"/> indexing as
+        /// <see cref="m_Impact"/>, see <see cref="SourceIndexToRootAndImpactInfoMapper"/>), keyed together as
+        /// one <see cref="ReferrerData"/> per item because they are always written together (by
+        /// <see cref="SetReferrerData"/>, <see cref="SetSingleReferrerCount"/> or <see cref="SetNoReferrerCount"/>,
+        /// at the end of that item's own <see cref="AttributeImpact"/> call) and are liable to be read
+        /// together. Recording the count lets a consumer reconstruct exactly how many bytes per channel a
+        /// specific referrer received (<c>TotalImpact.Divide(N, out remainder)</c>, plus the remainder bonus
+        /// for whichever referrer got it); recording the completion index lets a consumer tell whether a
+        /// particular referrer was still live (not yet itself fully distributed) at the moment the division
+        /// happened — see <see cref="DidReceiveShareOfDistributedImpact"/>.
+        /// An item's own <see cref="m_Impact"/> entry is frozen once these are written (only already-processed
+        /// children could have written into it, and none of those run again), so querying either field
+        /// afterwards is safe regardless of read order.
+        /// Kept as a separate parallel array rather than fields on <see cref="MemoryImpact"/> so that struct
+        /// (which is read on the hot per-node path by every consumer, most of which need neither field) stays
+        /// cache-lean.
+        /// Zero-cleared on allocation, which doubles as every item's correct "never processed" starting value —
+        /// <see cref="ReferrerData.IsNeverRecorded"/> and <c>!</c><see cref="ReferrerData.CompletedImpactAttribution"/>
+        /// necessarily agree, since nothing ever writes one field without the other; see <see cref="ValidateMarkers"/>.
+        /// Reset back to this same zero-cleared default by <see cref="ClearReferrerData"/> on the one path that
+        /// re-processes an item (the AssetBundle bucket; see <see cref="CrawlAssetBundles"/>), so a later
+        /// re-completion is never confused with a stale earlier one.
+        /// </summary>
+        NestedDynamicArray<ReferrerData> m_ReferrerData;
+
+        /// <summary>
+        /// The full <see cref="ReferrerData"/> (referrer count and completion index) recorded for
+        /// <paramref name="index"/>. See <see cref="m_ReferrerData"/>.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public ReferrerData GetReferrerData(in SourceIndex index)
+            => SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ReferrerData, index);
+
+        /// <summary>
+        /// The referrer count <paramref name="index"/>'s own accumulated impact was divided across when it
+        /// bubbled up; see <see cref="ReferrerData.IsExclusivelyOwned"/>/<see cref="ReferrerData.IsRoot"/> to
+        /// interpret it. See <see cref="m_ReferrerData"/>.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public long GetReferrerCount(in SourceIndex index)
+            => GetReferrerData(in index).Count;
+
+        /// <summary>
+        /// The completion index <paramref name="index"/>'s marker was most recently stamped with when its
+        /// <see cref="Marker.FullyDistributedImpact"/> transitioned to true; see
+        /// <see cref="ReferrerData.CompletedImpactAttribution"/> to check whether that has ever happened. See
+        /// <see cref="m_ReferrerData"/>.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public long GetImpactCompletionIndex(in SourceIndex index)
+            => GetReferrerData(in index).CompletionIndex;
+
+        /// <summary>
+        /// Records <paramref name="count"/> alongside the next value from
+        /// <see cref="m_NextImpactCompletionIndex"/> as <paramref name="index"/>'s <see cref="ReferrerData"/>.
+        /// Call exactly once per transition of <see cref="Marker.FullyDistributedImpact"/> to true — never on
+        /// a re-read of an already-completed item.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        void SetReferrerData(ref Marker marker, in SourceIndex index, long count)
+        {
+            marker.FullyDistributedImpact = true;
+            SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ReferrerData, index) = new ReferrerData(count, m_NextImpactCompletionIndex++);
+        }
+
+        /// <summary>Records <paramref name="index"/> as having exactly one live referee. See <see cref="SetReferrerData"/>.</summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        void SetSingleReferrerCount(ref Marker marker, in SourceIndex index)
+            => SetReferrerData(ref marker, in index, ReferrerData.SingleReferrer);
+
+        /// <summary>Records <paramref name="index"/> as a genuine ownership-forest root — self-terminating, no referee to divide across. See <see cref="SetReferrerData"/>.</summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        void SetNoReferrerCount(ref Marker marker, in SourceIndex index)
+            => SetReferrerData(ref marker, in index, ReferrerData.NoReferrer);
+
+        /// <summary>
+        /// Resets <paramref name="index"/>'s <see cref="ReferrerData"/> back to the zero-cleared "never
+        /// recorded" default. Call exactly once per reset of <see cref="Marker.FullyDistributedImpact"/> back
+        /// to false (see <see cref="CrawlAssetBundles"/>), so a later re-completion is never confused with the
+        /// stale earlier one.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        void ClearReferrerData(ref Marker marker, in SourceIndex index)
+        {
+            marker.FullyDistributedImpact = false;
+            SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ReferrerData, index) = default;
+            m_ResetAssetBundleSources.Add(index);
+        }
+
+        /// <summary>
+        /// True iff <paramref name="candidateSource"/> ("X") actually distributed its impact
+        /// (<see cref="ReferrerData.CompletedImpactAttribution"/>) AND <paramref name="selectedSource"/>
+        /// ("S", the currently-selected item) was still live at that moment — i.e. S had not yet completed
+        /// at all, or completed strictly LATER than X did. Callers should use this rather than re-deriving
+        /// the comparison inline: the ordering direction (a later completion index means the item was still
+        /// open, and therefore eligible to receive a share, when the earlier one closed) is easy to get
+        /// backwards.
+        /// Also correctly handles a reset AssetBundle (<see cref="m_ResetAssetBundleSources"/>) as
+        /// <paramref name="selectedSource"/>: its recorded completion index reflects only its LATER
+        /// re-completion, so a naive comparison would wrongly treat it as still open for a candidate that
+        /// actually completed while the AssetBundle was in its fleeting FIRST (pre-crawl) completed state.
+        /// Also correctly handles a GCHandle skipped by <see cref="CrawlGCHandleRoots"/>/
+        /// <see cref="SeedAndClaimGCHandleOwnershipBucket"/> because its target is already rooted elsewhere:
+        /// such a handle is marked <see cref="Marker.FullyDistributedImpact"/> without ever going through
+        /// <see cref="AttributeImpact"/>, so its completion index is <see cref="ReferrerData.NotCompleted"/>
+        /// just like a genuinely still-open item — but unlike one, it can never receive a share of anything,
+        /// since <see cref="AttributeImpact"/> will never run for it again.
+        /// Also correctly handles a bookkeeping referee (<see cref="IsBookkeepingReferee"/>) that
+        /// <see cref="AttributeImpact"/> struck from <paramref name="candidateSource"/>'s referee list because a real
+        /// owner was also on it: it was still open, but received none of the impact.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public bool DidReceiveShareOfDistributedImpact(in SourceIndex selectedSource, in SourceIndex candidateSource)
+        {
+            var candidateCompletion = GetImpactCompletionIndex(in candidateSource);
+            if (candidateCompletion == ReferrerData.NotCompleted)
+                return false;
+            if (IsBookkeepingReferee(selectedSource) && m_SourcesThatStruckBookkeepingReferees.IsCreated
+                && m_SourcesThatStruckBookkeepingReferees.Contains(candidateSource))
+                return false;
+            var selectedCompletion = GetImpactCompletionIndex(in selectedSource);
+            if (selectedCompletion == ReferrerData.NotCompleted)
+            {
+                // NotCompleted alone is ambiguous: it covers both "genuinely still open, not yet reached by
+                // AttributeImpact" (still eligible to receive a share) and "deliberately finalized without
+                // ever going through AttributeImpact" (a skipped GCHandle — see above), which is not.
+                // m_SkippedGCHandles disambiguates: it's the only surviving record of the latter, since
+                // m_Marker (which would otherwise show FullyDistributedImpact for it) is already disposed
+                // by the time this is called post-build.
+                return !(m_SkippedGCHandles.IsCreated && m_SkippedGCHandles.Contains(selectedSource));
+            }
+            if (selectedCompletion <= candidateCompletion)
+                return false;
+            if (candidateCompletion < m_AssetBundleResetBoundaryCompletionIndex && m_ResetAssetBundleSources.IsCreated
+                && m_ResetAssetBundleSources.Contains(selectedSource))
+                return false;
+            return true;
+        }
+
+        /// <summary>
+        /// True if <paramref name="index"/>'s impact was split across multiple referrers or redirected away from its
+        /// ownership-tree parent, so its Exclusive does not show up undiluted in a single referrer further up.
+        /// </summary>
+        public bool WasExclusiveShared(SourceIndex index)
+            => GetReferrerCount(in index) != ReferrerData.SingleReferrer || TryGetOrphanedSplitRedirect(index, out _);
+
+        /// <summary>Initial capacity for <see cref="m_OrphanedSplitRedirect"/>; redirects are expected to be rare.</summary>
+        const int k_OrphanedSplitRedirectDefaultCount = 16;
+
+        /// <summary>
+        /// Maps an item to the referee that received its impact when its ownership-tree parent
+        /// (<see cref="ShortestRootPathInfo.Parent"/>) did not. The ownership tree is built breadth-first but impact
+        /// bubbles up depth-first, so the parent can already be <see cref="Marker.FullyDistributedImpact"/> when the
+        /// item is distributed. The bytes stay in the same root, so this only affects which row shows them.
+        /// Write only via <see cref="SetOrphanedSplitRedirect"/>.
+        /// </summary>
+        SourceIndexHashMap m_OrphanedSplitRedirect;
+
+        /// <summary>
+        /// One bit per item, flat-indexed via <see cref="SourceIndexToRootAndImpactInfoMapper.SourceIndexToRootAndImpactGroupIndex"/>,
+        /// set exactly for items in <see cref="m_OrphanedSplitRedirect"/>. Lets the per-hop lookup skip the hash map
+        /// for the common non-redirected case.
+        /// </summary>
+        DynamicArray<ulong> m_HasOrphanedSplitRedirect;
+
+        /// <summary>
+        /// Records that <paramref name="actualReferee"/> received <paramref name="node"/>'s impact instead of its
+        /// ownership-tree parent. Keeps <see cref="m_HasOrphanedSplitRedirect"/> in sync with the map.
+        /// </summary>
+        void SetOrphanedSplitRedirect(SourceIndex node, SourceIndex actualReferee)
+        {
+            m_OrphanedSplitRedirect[node] = actualReferee;
+            m_HasOrphanedSplitRedirect.SetBit(SourceIndexToRootAndImpactInfo.SourceIndexToRootAndImpactGroupIndex(node));
+        }
+
+        /// <summary>
+        /// True, with <paramref name="actualReferee"/> set, if <paramref name="node"/>'s impact went to a referee
+        /// other than its ownership-tree parent. See <see cref="m_OrphanedSplitRedirect"/>.
+        /// </summary>
+        public bool TryGetOrphanedSplitRedirect(SourceIndex node, out SourceIndex actualReferee)
+        {
+            actualReferee = default;
+            return m_HasOrphanedSplitRedirect.IsCreated
+                && m_HasOrphanedSplitRedirect.TestBit(SourceIndexToRootAndImpactInfo.SourceIndexToRootAndImpactGroupIndex(node))
+                && m_OrphanedSplitRedirect.TryGetValue(node, out actualReferee);
+        }
+
+        /// <summary>Hops allowed beyond the walked item's own ownership-tree depth, to absorb redirects; also bounds a redirect cycle.</summary>
+        const int k_WalkDepthSlack = 1024 * 5;
+
+        /// <summary>
+        /// The shape of the impact path <see cref="TryGetImpactPathToAncestor"/> walked and how much of the item's
+        /// impact is estimated to survive it. Consumed by <see cref="DiscountedTotalImpact"/>.
+        /// </summary>
+        public struct ImpactPathToAncestor
+        {
+            /// <summary>Product of 1/referrerCount over every dividing hop to <see cref="ReachedAncestor"/>.</summary>
+            public double Fraction;
+
+            /// <summary>How many hops divided the item's impact across multiple referrers.</summary>
+            public long SplitHops;
+
+            /// <summary>
+            /// Whether any hop was redirected away from its ownership-tree parent, so the displayed ownership chain
+            /// is not the path the bytes took.
+            /// </summary>
+            public bool AnyRedirect;
+
+            /// <summary>Which of the candidate ancestors the path actually arrived at.</summary>
+            public SourceIndex ReachedAncestor;
+        }
+
+        /// <summary>
+        /// Per-hop target test for <see cref="TryGetImpactPathToMatch{TMatcher}(SourceIndex, TMatcher, out ImpactPathToAncestor)"/>.
+        /// Implement as a struct to keep the hot path free of boxing.
+        /// </summary>
+        public interface IImpactPathTargetMatcher
+        {
+            bool Matches(SourceIndex node);
+        }
+
+        readonly struct NoExtraTargets : IImpactPathTargetMatcher
+        {
+            public bool Matches(SourceIndex node) => false;
+        }
+
+        /// <summary>
+        /// Walks up from <paramref name="from"/> along the path its impact actually took (ownership-tree parent, or
+        /// the redirect target from <see cref="TryGetOrphanedSplitRedirect"/>) until it reaches any of
+        /// <paramref name="candidateAncestors"/>. A list is needed because a redirect can skip the nearest matching
+        /// ancestor and land on a higher one that is also displayed.
+        /// </summary>
+        public bool TryGetImpactPathToAncestor(SourceIndex from, ref DynamicArray<SourceIndex> candidateAncestors, out ImpactPathToAncestor path)
+        {
+            if (!candidateAncestors.IsCreated || candidateAncestors.Count == 0)
+            {
+                path = new ImpactPathToAncestor { Fraction = 1.0 };
+                return false;
+            }
+            return TryGetImpactPathToMatch(from, ref candidateAncestors, new NoExtraTargets(), out path);
+        }
+
+        /// <summary>
+        /// <see cref="TryGetImpactPathToAncestor"/> that stops at the first node <paramref name="matcher"/> accepts.
+        /// Prefer this when candidacy can be decided per node: a redirect can carry the impact into a displayed
+        /// match that is not a display-tree ancestor, which a precomputed list would miss.
+        /// </summary>
+        public bool TryGetImpactPathToMatch<TMatcher>(SourceIndex from, TMatcher matcher, out ImpactPathToAncestor path)
+            where TMatcher : struct, IImpactPathTargetMatcher
+        {
+            var noList = default(DynamicArray<SourceIndex>);
+            return TryGetImpactPathToMatch(from, ref noList, matcher, out path);
+        }
+
+        bool TryGetImpactPathToMatch<TMatcher>(SourceIndex from, ref DynamicArray<SourceIndex> candidateAncestors, TMatcher matcher, out ImpactPathToAncestor path)
+            where TMatcher : struct, IImpactPathTargetMatcher
+        {
+            path = new ImpactPathToAncestor { Fraction = 1.0 };
+
+            var current = from;
+            var maxHops = SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, from).Depth + k_WalkDepthSlack;
+            for (long i = 0; i < maxHops; i++)
+            {
+                var referrerCount = GetReferrerCount(in current);
+                if (referrerCount > ReferrerData.SingleReferrer)
+                {
+                    path.Fraction *= 1.0 / referrerCount;
+                    path.SplitHops++;
+                }
+
+                if (TryGetOrphanedSplitRedirect(current, out var actualReferee))
+                {
+                    path.AnyRedirect = true;
+                    current = actualReferee;
+                }
+                else
+                {
+                    var parent = SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, current).Parent;
+                    // Roots have stand-in parents (e.g. SourceId.None) that the mappers would throw on.
+                    if (!parent.Valid || !SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(parent.Id))
+                        return false;
+                    current = parent;
+                }
+
+                // Tested after the hop, so the walked item itself is never a target and a target's own outgoing hop is never counted.
+                if (candidateAncestors.IsCreated)
+                {
+                    for (var c = 0; c < candidateAncestors.Count; c++)
+                    {
+                        if (current == candidateAncestors[c])
+                        {
+                            path.ReachedAncestor = current;
+                            return true;
+                        }
+                    }
+                }
+
+                if (matcher.Matches(current))
+                {
+                    path.ReachedAncestor = current;
+                    return true;
+                }
+            }
+            // Redirect cycles should not happen for a graph built with depth first search.
+            Checks.ThrowExceptionGeneric<StackOverflowException>("TryGetImpactPathToMatch exceeded its hop bound without finding the ancestor, investigate how that could happen.");
+            return false;
+        }
+
+        /// <summary>
+        /// Returns what remains of <paramref name="rawTotalImpact"/> once the share already counted by the displayed
+        /// target that <paramref name="path"/> reached is removed:
+        /// <list type="bullet">
+        /// <item><description>No divides or redirects: the target already holds all of it, so nothing remains and
+        /// <paramref name="exclusiveFullyEntailed"/> is true.</description></item>
+        /// <item><description>Only the item's own hop divided: the parent's share is exactly
+        /// <c>Divide(referrerCount)</c> plus <see cref="RemainderBonus"/>.</description></item>
+        /// <item><description>Otherwise: estimated via <see cref="ImpactPathToAncestor.Fraction"/>.</description></item>
+        /// </list>
+        /// </summary>
+        public static NativeRootSize DiscountedTotalImpact(
+            in NativeRootSize rawTotalImpact, long ownReferrerCount, in ImpactPathToAncestor path,
+            out bool exclusiveFullyEntailed)
+        {
+            if (path.SplitHops == 0 && !path.AnyRedirect)
+            {
+                exclusiveFullyEntailed = true;
+                return default;
+            }
+
+            exclusiveFullyEntailed = false;
+            if (path.SplitHops == 1 && ownReferrerCount > ReferrerData.SingleReferrer && !path.AnyRedirect)
+            {
+                var share = rawTotalImpact.Divide((ulong)ownReferrerCount, out var remainder);
+                return rawTotalImpact - (share + RemainderBonus(in remainder));
+            }
+
+            return rawTotalImpact.ScaleByFraction(1.0 - path.Fraction);
+        }
+
+        /// <summary>
+        /// The 0-or-1 byte per channel that the first referee (see <see cref="SwapToFront"/>) gets on an uneven split.
+        /// </summary>
+        public static NativeRootSize RemainderBonus(in NativeRootSize remainder) => new NativeRootSize
+        {
+            NativeSize = new MemorySize(remainder.NativeSize.Committed > 0 ? 1UL : 0, remainder.NativeSize.Resident > 0 ? 1UL : 0),
+            ManagedSize = new MemorySize(remainder.ManagedSize.Committed > 0 ? 1UL : 0, remainder.ManagedSize.Resident > 0 ? 1UL : 0),
+            GfxSize = new MemorySize(remainder.GfxSize.Committed > 0 ? 1UL : 0, remainder.GfxSize.Resident > 0 ? 1UL : 0),
+        };
+
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        static void SwapToFront(ref DynamicArray<SourceIndex> referees, long index)
+        {
+            if (index == 0)
+                return;
+            ref var pos0 = ref referees[0];
+            ref var pos1 = ref referees[index];
+            (pos0, pos1) = (pos1, pos0);
+        }
+
+        /// <summary>
+        /// True when <paramref name="owner"/> references at least one object rooted elsewhere. Since AssetBundles
+        /// are crawled after the static/DontDestroyOnLoad/scene buckets, this distinguishes a Used bundle from an Unused one.
+        /// </summary>
+        public bool HasUnownedReferences(SourceIndex owner)
+            => !SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_UnownedReferencesLookup, owner).IsLeaf;
+
+        public enum ExclusiveOwnershipResult
+        {
+            /// <summary>Referrer data is missing for either side, so nothing can be said about their relationship.</summary>
+            Indeterminate,
+            FirstExclusivelyOwnsSecond,
+            SecondExclusivelyOwnsFirst,
+            /// <summary>
+            /// Neither side is exclusively owned by the other. Either side may still be a root, be exclusively
+            /// owned by some third item, or have received a non-exclusive share of the other's impact
+            /// (see <see cref="TryGetReceivedShareOfImpact"/>).
+            /// </summary>
+            NotExclusive,
+        }
+
+        /// <summary>
+        /// Whether one of <paramref name="first"/>/<paramref name="second"/> received its counterpart's entire
+        /// memory impact: the counterpart had a single referrer that received its impact (<see cref="ReferrerData.IsExclusivelyOwned"/>),
+        /// and that referrer is the one passed in here. Identity is established by the referrer being the counterpart's
+        /// <see cref="ShortestRootPathInfo.Parent"/> and having received its impact (<see cref="DidReceiveShareOfDistributedImpact"/>).
+        /// Both are needed: the impact pass also walks unowned references, so a shortest-path parent can complete
+        /// before its child and then receive none of the child's impact.
+        /// </summary>
+        public ExclusiveOwnershipResult GetExclusiveOwnership(in SourceIndex first, in SourceIndex second)
+        {
+            var firstData = GetReferrerData(in first);
+            var secondData = GetReferrerData(in second);
+            if (firstData.IsNeverRecorded || secondData.IsNeverRecorded)
+                return ExclusiveOwnershipResult.Indeterminate;
+
+            if (IsExclusivelyOwnedBy(in secondData, in second, in first))
+                return ExclusiveOwnershipResult.FirstExclusivelyOwnsSecond;
+
+            if (IsExclusivelyOwnedBy(in firstData, in first, in second))
+                return ExclusiveOwnershipResult.SecondExclusivelyOwnsFirst;
+
+            return ExclusiveOwnershipResult.NotExclusive;
+        }
+
+        bool IsExclusivelyOwnedBy(in ReferrerData ownedData, in SourceIndex owned, in SourceIndex owner) =>
+            ownedData.IsExclusivelyOwned
+            && SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, owned).Parent == owner
+            && DidReceiveShareOfDistributedImpact(in owner, in owned);
+
+        /// <summary>
+        /// When <paramref name="receiver"/> is currently a live referee of <paramref name="source"/>
+        /// (<see cref="DidReceiveShareOfDistributedImpact"/>), returns <paramref name="receiver"/>'s
+        /// pro-rata share of <paramref name="source"/>'s own impact and how many OTHER referees it's
+        /// split with. If <paramref name="source"/> has only a single referrer, that referee gets the
+        /// whole (undivided) amount and <paramref name="otherReferrerCount"/> is 0 — this does not by
+        /// itself establish that <paramref name="receiver"/> is that referrer's chosen counterpart (see
+        /// <see cref="GetExclusiveOwnership"/> for that stronger, identity-checked claim). The share is
+        /// rounded down to a whole per-channel byte count — the first referee to complete gets any
+        /// leftover remainder byte(s) on top, so this can under-report by at most one byte per channel.
+        /// Returns false when there's nothing meaningful to report: <paramref name="source"/> is itself a
+        /// root, was never recorded, or <paramref name="receiver"/> did not actually receive a share of it.
+        /// Callers must ensure <paramref name="receiver"/> references <paramref name="source"/>: being live when
+        /// <paramref name="source"/> completed only makes it eligible for a share, it isn't validated here.
+        /// </summary>
+        public bool TryGetReceivedShareOfImpact(in SourceIndex receiver, in SourceIndex source, out NativeRootSize share, out long otherReferrerCount)
+        {
+            share = default;
+            otherReferrerCount = 0;
+
+            var sourceData = GetReferrerData(in source);
+            if (sourceData.IsNeverRecorded || sourceData.IsRoot)
+                return false;
+            if (!DidReceiveShareOfDistributedImpact(in receiver, in source))
+                return false;
+
+            var totalImpact = SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, source).TotalImpact;
+            share = totalImpact.Divide((ulong)Math.Max(1, sourceData.Count), out _);
+            otherReferrerCount = Math.Max(0, sourceData.Count - 1);
+            return true;
+        }
 
         /// <summary>Initial capacity for the referenced-unrooted-allocations set, sized to typical observed counts (which peak around 2k) to limit reallocation.</summary>
         const int k_ReferencedUnrootedNativeAllocationsDefaultCount = 512;
@@ -745,6 +1362,86 @@ namespace Unity.MemoryProfiler.Editor
 
         CachedProcessingData m_ProcessingData;
 
+        /// <summary>
+        /// Collects CoreCLR's statics storage: the runtime's handle-table arrays holding the value of every
+        /// reference-type static field. Such an array is an <c>object[]</c> on the Pinned Object Heap that
+        /// only GCHandles refer to and that holds at least one object a <see cref="SourceIndex.SourceId.ManagedType"/>
+        /// also refers to. A user-allocated pinned array (.NET 8+ allows reference elements) is ruled out by the
+        /// field or local holding it, unless it is solely GCHandle-held and happens to share a static's value.
+        /// </summary>
+        static NativeHashSet<SourceIndex> CollectStaticsStorageArrays(CachedSnapshot snapshot)
+        {
+            var arrays = new NativeHashSet<SourceIndex>(k_StaticsStorageArraysDefaultCount, Allocator.Persistent);
+            ref readonly var sections = ref snapshot.ManagedHeapSections;
+            var types = snapshot.TypeDescriptions;
+            if (!snapshot.HasBackendManagedGraph || sections.Flags.Count == 0 || types.ITypeObject < 0)
+                return arrays;
+
+            using var pinnedSections = new DynamicArray<long>(0, sections.Flags.Count, Allocator.Temp);
+            for (long section = 0; section < sections.Flags.Count; section++)
+            {
+                if (sections.Flags[section] == HeapChunkType.PinnedObjectHeap)
+                    pinnedSections.Push(section);
+            }
+            if (pinnedSections.Count == 0)
+                return arrays;
+
+            ref readonly var objects = ref snapshot.CrawledData.ManagedObjects;
+            for (long i = 0; i < objects.Count; i++)
+            {
+                ref readonly var obj = ref objects[i];
+                if (obj.ITypeDescription < 0 || !types.HasFlag(obj.ITypeDescription, TypeFlags.kArray)
+                    || types.BaseOrElementTypeIndex[obj.ITypeDescription] != types.ITypeObject
+                    || !IsInAnySection(in sections, in pinnedSections, obj.PtrObject))
+                    continue;
+
+                var array = new SourceIndex(SourceIndex.SourceId.ManagedObject, i);
+                if (IsOnlyGCHandleHeld(snapshot, array) && HoldsAStaticFieldValue(snapshot, array))
+                    arrays.Add(array);
+            }
+            return arrays;
+
+            static bool IsInAnySection(in ManagedMemorySectionEntriesCache sections, in DynamicArray<long> sectionIndices, ulong address)
+            {
+                for (long s = 0; s < sectionIndices.Count; s++)
+                {
+                    var start = sections.StartAddress[sectionIndices[s]];
+                    if (address >= start && address < start + sections.SectionSize[sectionIndices[s]])
+                        return true;
+                }
+                return false;
+            }
+
+            static bool IsOnlyGCHandleHeld(CachedSnapshot snapshot, SourceIndex item)
+            {
+                if (!snapshot.CrawledData.ConnectionsToMappedToSourceIndex.TryGetValue(item, out var referrers))
+                    return false;
+                foreach (var connection in referrers)
+                {
+                    if (snapshot.CrawledData.Connections[connection].IndexFrom.Id != SourceIndex.SourceId.GCHandleIndex)
+                        return false;
+                }
+                return true;
+            }
+
+            static bool HoldsAStaticFieldValue(CachedSnapshot snapshot, SourceIndex array)
+            {
+                if (!snapshot.CrawledData.ConnectionsFromMappedToSourceIndex.TryGetValue(array, out var elements))
+                    return false;
+                foreach (var element in elements)
+                {
+                    if (!snapshot.CrawledData.ConnectionsToMappedToSourceIndex.TryGetValue(snapshot.CrawledData.Connections[element].IndexTo, out var referrers))
+                        continue;
+                    foreach (var connection in referrers)
+                    {
+                        if (snapshot.CrawledData.Connections[connection].IndexFrom.Id == SourceIndex.SourceId.ManagedType)
+                            return true;
+                    }
+                }
+                return false;
+            }
+        }
+
         public RootAndImpactInfo(CachedSnapshot snapshot)
         {
             SourceIndexToRootAndImpactInfo = new SourceIndexToRootAndImpactInfoMapper(snapshot);
@@ -771,9 +1468,30 @@ namespace Unity.MemoryProfiler.Editor
 
             m_PersistentSceneObjectsInDelayedDeletionQueue = new NativeHashSet<SourceIndex>(k_PersistentSceneObjectsInDelayedDeletionQueueDefaultCount, Allocator.Persistent);
 
+            // NativeHashMap needs a positive capacity even when there are no bundles.
+            var assetBundleCount = (int)snapshot.NativeObjects.AssetBundles.Count;
+            m_AssetBundleSavings = new(assetBundleCount > 0 ? assetBundleCount : 1, Allocator.Persistent);
+
             m_ReferencedUnrootedNativeAllocations = new NativeHashSet<SourceIndex>(k_ReferencedUnrootedNativeAllocationsDefaultCount, Allocator.Persistent);
 
             m_BrokenScriptReferenceObjects = new NativeHashSet<SourceIndex>(k_BrokenScriptReferenceObjectsDefaultCount, Allocator.Persistent);
+
+            // Zero-cleared: default(ReferrerData) (Count == NotRecorded, CompletionIndex == NotCompleted) is
+            // already the correct starting value for every item — see m_ReferrerData's type doc.
+            using var offsetsForReferrerData = SourceIndexToRootAndImpactInfo.GetOffsets<ReferrerData>();
+            var referrerDataBacking = new DynamicArray<ReferrerData>(initialCount, initialCount, Allocator.Persistent, true);
+            m_ReferrerData = new NestedDynamicArray<ReferrerData>(offsetsForReferrerData, referrerDataBacking);
+
+            m_ResetAssetBundleSources = new NativeHashSet<SourceIndex>(
+                Math.Max((int)snapshot.NativeObjects.AssetBundles.Count, 1), Allocator.Persistent);
+
+            m_SkippedGCHandles = new NativeHashSet<SourceIndex>(k_SkippedGCHandlesDefaultCount, Allocator.Persistent);
+            m_OrphanedSplitRedirect = new(k_OrphanedSplitRedirectDefaultCount, Allocator.Persistent);
+            m_HasOrphanedSplitRedirect = new DynamicArray<ulong>((initialCount + 63) / 64, (initialCount + 63) / 64, Allocator.Persistent, true);
+
+            m_StaticsStorageArrays = CollectStaticsStorageArrays(snapshot);
+            m_HasStaticsStorageArrays = !m_StaticsStorageArrays.IsEmpty;
+            m_SourcesThatStruckBookkeepingReferees = new NativeHashSet<SourceIndex>(k_SourcesThatStruckBookkeepingRefereesDefaultCount, Allocator.Persistent);
 
             // Owned reference edges. Measured Count/TotalCount across representative snapshots tops out around
             // 0.70, so reserving the full TotalCount guarantees no grow-and-copy (the over-reservation is
@@ -799,6 +1517,22 @@ namespace Unity.MemoryProfiler.Editor
                 m_ReferencedUnrootedNativeAllocations.Dispose();
             if (m_BrokenScriptReferenceObjects.IsCreated)
                 m_BrokenScriptReferenceObjects.Dispose();
+            if (m_ReferrerData.IsCreated)
+                m_ReferrerData.Dispose();
+            if (m_ResetAssetBundleSources.IsCreated)
+                m_ResetAssetBundleSources.Dispose();
+            if (m_SkippedGCHandles.IsCreated)
+                m_SkippedGCHandles.Dispose();
+            if (m_StaticsStorageArrays.IsCreated)
+                m_StaticsStorageArrays.Dispose();
+            if (m_SourcesThatStruckBookkeepingReferees.IsCreated)
+                m_SourcesThatStruckBookkeepingReferees.Dispose();
+            if (m_OrphanedSplitRedirect.IsCreated)
+                m_OrphanedSplitRedirect.Dispose();
+            if (m_HasOrphanedSplitRedirect.IsCreated)
+                m_HasOrphanedSplitRedirect.Dispose();
+            if (m_AssetBundleSavings.IsCreated)
+                m_AssetBundleSavings.Dispose();
             if (m_Marker.IsCreated) // gets disposed after ReadOrProcess is done
                 m_Marker.Dispose();
             m_OwnedChildList.Dispose();
@@ -916,6 +1650,10 @@ namespace Unity.MemoryProfiler.Editor
         static readonly ProfilerMarker k_ProcessUnreferencedPrefabsMarker = new ProfilerMarker(ProcessUnreferencedPrefabsMarkerName);
         public const string ProcessGCHandleRootsMarkerName = "RootAndImpactInfo: Non-Unity-Object Referencing GC Handles";
         static readonly ProfilerMarker k_ProcessGCHandleRootsMarker = new ProfilerMarker(ProcessGCHandleRootsMarkerName);
+        public const string ProcessManagedRootsMarkerName = "RootAndImpactInfo: Backend-Reported Managed Roots";
+        static readonly ProfilerMarker k_ProcessManagedRootsMarker = new ProfilerMarker(ProcessManagedRootsMarkerName);
+        public const string ProcessManagedHeapSectionsMarkerName = "RootAndImpactInfo: Frozen / Non-GC Heap Sections";
+        static readonly ProfilerMarker k_ProcessManagedHeapSectionsMarker = new ProfilerMarker(ProcessManagedHeapSectionsMarkerName);
         public const string ProcessNativeRootAllocationsMarkerName = "RootAndImpactInfo: Processing Native Root Allocations";
         static readonly ProfilerMarker k_ProcessNativeRootAllocationsMarker = new ProfilerMarker(ProcessNativeRootAllocationsMarkerName);
         public const string ValidatingAndFinalizingMarkerName = "RootAndImpactInfo: Validating and Finalizing";
@@ -936,9 +1674,23 @@ namespace Unity.MemoryProfiler.Editor
                 yield break;
             }
 
-            yield return status.IncrementStep("Process Paths From Root: Statically rooted");
+            yield return status.IncrementStep("Process Paths From Root: Frozen / Non-GC Heap Sections");
 
             m_ProcessingData = new CachedProcessingData(Allocator.Persistent);
+            try
+            {
+                // Claimed first, ahead of every other bucket — see CrawlManagedHeapSections' doc comment for why.
+                using var _ = k_ProcessManagedHeapSectionsMarker.Auto();
+                CrawlManagedHeapSections(snapshot, ref m_ProcessingData);
+            }
+            catch
+            {
+                m_ProcessingData.Dispose();
+                throw;
+            }
+
+            yield return status.IncrementStep("Process Paths From Root: Statically rooted");
+
             try
             {
                 using var _ = k_ProcessStaticRootsMarker.Auto();
@@ -1022,6 +1774,19 @@ namespace Unity.MemoryProfiler.Editor
             {
                 using var _ = k_ProcessGCHandleRootsMarker.Auto();
                 CrawlGCHandleRoots(snapshot, ref m_ProcessingData);
+            }
+            catch
+            {
+                m_ProcessingData.Dispose();
+                throw;
+            }
+
+            yield return status.IncrementStep("Process Paths From Root: Backend-Reported Managed Roots");
+
+            try
+            {
+                using var _ = k_ProcessManagedRootsMarker.Auto();
+                CrawlManagedRoots(snapshot, ref m_ProcessingData);
             }
             catch
             {
@@ -1242,6 +2007,8 @@ namespace Unity.MemoryProfiler.Editor
                 // to the asset bundle and any direct links to the contained assets.
                 // If we do mark them as fully distributed, only assets not otherwise referenced will be attributed to the asset bundle.
                 marker.FullyDistributedImpact = k_AssetBundlesOnlyOwnUnreferencedContents;
+                if (k_AssetBundlesOnlyOwnUnreferencedContents)
+                    SetNoReferrerCount(ref marker, in assetBundle);
             }
         }
 
@@ -1260,6 +2027,11 @@ namespace Unity.MemoryProfiler.Editor
             // (if k_AssetBundlesOnlyOwnUnreferencedContents is false, which it currently isn't),
             // UNLESS their root within the AssetBundle was not found in the same root bucket.
 
+            if (k_AssetBundlesOnlyOwnUnreferencedContents)
+                m_AssetBundleResetBoundaryCompletionIndex = m_NextImpactCompletionIndex;
+
+            ref readonly var assetBundles = ref snapshot.NativeObjects.AssetBundles;
+
             foreach (var assetBundle in snapshot.NativeObjects.AssetBundles)
             {
                 if (!k_ShouldRootAssetBundles || !markerNativeObjects[assetBundle.Index].FoundForRoot)
@@ -1274,10 +2046,66 @@ namespace Unity.MemoryProfiler.Editor
                     // content will get attributed to them.
                     marker.FoundForImpact = false;
                     if (k_AssetBundlesOnlyOwnUnreferencedContents)
-                        marker.FullyDistributedImpact = false;
+                    {
+                        ClearReferrerData(ref marker, in assetBundle);
+                    }
                 }
             }
             Crawl(snapshot, ref data, OwnershipBucket.AssetBundles);
+
+            // Only the unused fraction of a partially-used bundle's own size is recoverable, so drop the used fraction from Exclusive.
+            m_TotalAssetBundleRecoverableImpact = default;
+            for (long b = 0; b < assetBundles.Count; b++)
+            {
+                var bundle = assetBundles[b];
+                var recoverable = SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, bundle);
+
+                CountAssetBundleRootEntries(snapshot, bundle, out var usedEntries, out var unusedEntries);
+                var ownSize = AssetBundleOwnSize(snapshot, bundle);
+                var totalEntries = usedEntries + unusedEntries;
+                var usedOwnSize = totalEntries > 0 ? ownSize.ScaleByFraction((ulong)usedEntries, (ulong)totalEntries) : default;
+
+                recoverable.Exclusive -= usedOwnSize;
+
+                m_AssetBundleSavings[bundle] = new AssetBundleSavings(recoverable, (ownSize - usedOwnSize).SumUp(), usedEntries, unusedEntries);
+                m_TotalAssetBundleRecoverableImpact += recoverable;
+            }
+            // A bundle's managed shell depends on ObjectStatus, computed later, so status-aware consumers add it.
+        }
+
+        /// <summary>
+        /// Counts a bundle's content entries: owned references are unused, unowned ones used, matching
+        /// ObjectStatusComputation. The bundle's self-reference and managed shell are skipped.
+        /// </summary>
+        void CountAssetBundleRootEntries(CachedSnapshot snapshot, SourceIndex bundle, out long usedEntries, out long unusedEntries)
+        {
+            usedEntries = 0;
+            unusedEntries = 0;
+            var managedShellIndex = snapshot.NativeObjects.ManagedObjectIndex[bundle.Index];
+            using (var it = new ReferencesIterator(this, bundle, includeUnownedReferences: true))
+            {
+                while (it.MoveNext())
+                {
+                    var referenced = it.Current.Reference;
+                    if (referenced.Equals(bundle))
+                        continue;
+                    if (managedShellIndex >= 0 && referenced.Id == SourceIndex.SourceId.ManagedObject && referenced.Index == managedShellIndex)
+                        continue;
+                    if (it.Current.IsOwned == BurstableBool.TRUE)
+                        unusedEntries++;
+                    else
+                        usedEntries++;
+                }
+            }
+        }
+
+        /// <summary>The bundle's own native+gfx size, computed the same way AttributeImpact adds it.</summary>
+        static NativeRootSize AssetBundleOwnSize(CachedSnapshot snapshot, SourceIndex bundle)
+        {
+            var rootIndex = snapshot.ProcessedNativeRoots.RootIdToMappedIndex(snapshot.NativeObjects.RootReferenceId[bundle.Index]);
+            var ownSize = snapshot.ProcessedNativeRoots.Data[rootIndex].AccumulatedRootSizes;
+            ownSize.ManagedSize = default;
+            return ownSize;
         }
 
         void CrawlNativeObjectRoots(CachedSnapshot snapshot, ref CachedProcessingData data)
@@ -1381,9 +2209,13 @@ namespace Unity.MemoryProfiler.Editor
                     // owner; mark it done without processing. It will never receive impact: AttributeImpact
                     // strikes GCHandles from any referee list that also contains a real (non-GCHandle) owner,
                     // so a co-referencing GCHandle never gets a pro-rata share that would strand here.
+                    // It never goes through AttributeImpact either, so its ReferrerData is deliberately left
+                    // NeverRecorded rather than SetNoReferrerCount'd — it is not a genuine ownership-forest
+                    // root (ReferrerData.IsRoot), just a handle this sweep chose not to process.
                     ref var gcHandleMarker = ref markerGCHandles[i];
                     gcHandleMarker.FoundForImpact = true;
                     gcHandleMarker.FullyDistributedImpact = true;
+                    m_SkippedGCHandles.Add(new SourceIndex(SourceIndex.SourceId.GCHandleIndex, i));
                     continue;
                 }
 
@@ -1434,9 +2266,12 @@ namespace Unity.MemoryProfiler.Editor
                 var managedTarget = new SourceIndex(SourceIndex.SourceId.ManagedObject, snapshot.CrawledData.ResolveManagedObjectIndexForGCHandle(gcHandleIndex.Index));
                 if (markerManagedObjects[managedTarget.Index].FoundForRoot)
                 {
+                    // Same handling (and same reasoning for leaving ReferrerData NeverRecorded rather than
+                    // SetNoReferrerCount'd) as the identical skip in CrawlGCHandleRoots.
                     ref var gcHandleMarker = ref markerGCHandles[gcHandleIndex.Index];
                     gcHandleMarker.FoundForImpact = true;
                     gcHandleMarker.FullyDistributedImpact = true;
+                    m_SkippedGCHandles.Add(gcHandleIndex);
                     continue;
                 }
 
@@ -1478,6 +2313,134 @@ namespace Unity.MemoryProfiler.Editor
                     return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Roots the backend discovers from <see cref="CachedSnapshot.ManagedRoots"/>, split into their own
+        /// <see cref="OwnershipBucket"/> per <see cref="ManagedRootType"/> (Stack / Finalizer / Other) so the
+        /// Roots &amp; Impact tree can show them as distinct groups instead of one undifferentiated bucket.
+        /// Mirrors <see cref="CrawlGCHandleRoots"/>'s seeding shape, keyed by
+        /// <see cref="ManagedData.ResolveManagedObjectIndexForManagedRoot"/> instead.
+        /// </summary>
+        void CrawlManagedRoots(CachedSnapshot snapshot, ref CachedProcessingData data)
+        {
+            // Every bucket below must still be finalized via Crawl even when there's nothing to seed, to keep
+            // every later bucket's finalize-order assert (see OwnershipBucket) in sync.
+            if (snapshot.HasManagedRoots)
+                SeedManagedRootsOfType(snapshot, ref data, ManagedRootType.Stack);
+            Crawl(snapshot, ref data, OwnershipBucket.StackRoots);
+
+            if (snapshot.HasManagedRoots)
+                SeedManagedRootsOfType(snapshot, ref data, ManagedRootType.Finalizer);
+            Crawl(snapshot, ref data, OwnershipBucket.FinalizerRoots);
+
+            if (snapshot.HasManagedRoots)
+            {
+                SeedManagedRootsOfType(snapshot, ref data, ManagedRootType.Other);
+                // Handle-type rows are normally claimed by CrawlGCHandleRoots first (via the separate
+                // GcHandles table), landing here in the "already claimed elsewhere" branch — but every
+                // ManagedRoots row, regardless of type, must still be walked so its marker is set; Validate
+                // asserts on every row unconditionally. On the rare/never-observed case a Handle row's
+                // target isn't already claimed, it seeds here as a fallback rather than being silently
+                // dropped from the ownership forest.
+                SeedManagedRootsOfType(snapshot, ref data, ManagedRootType.Handle);
+            }
+            Crawl(snapshot, ref data, OwnershipBucket.OtherRoots);
+        }
+
+        /// <summary>
+        /// Seeds <paramref name="data"/>'s current ownership bucket from every <see cref="CachedSnapshot.ManagedRoots"/>
+        /// row of the given <paramref name="rootType"/> whose target isn't already claimed, and marks every
+        /// other matching row's target as claimed elsewhere without seeding it. Called once per
+        /// <see cref="ManagedRootType"/> value by <see cref="CrawlManagedRoots"/> (Stack, Finalizer, and Other
+        /// each followed by their own <see cref="Crawl"/> call so those three land in separate buckets; Handle
+        /// is called last, folded into the same Crawl call as Other, since it should never seed anything).
+        /// </summary>
+        void SeedManagedRootsOfType(CachedSnapshot snapshot, ref CachedProcessingData data, ManagedRootType rootType)
+        {
+            ref readonly var markerManagedRoots = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.ManagedRoot);
+            ref readonly var markerManagedObjects = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.ManagedObject);
+
+            ref readonly var rootStepsManagedRoots = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_ShortestPathInfo, SourceIndex.SourceId.ManagedRoot);
+
+            var count = snapshot.ManagedRoots.Count;
+            var crawled = snapshot.CrawledData.Crawled;
+            for (int i = 0; i < count; i++)
+            {
+                if (snapshot.ManagedRoots.RootType[i] != rootType)
+                    continue;
+
+                var managedRootIndex = new SourceIndex(SourceIndex.SourceId.ManagedRoot, i);
+
+                ref var managedRootMarker = ref markerManagedRoots[managedRootIndex.Index];
+                var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(i);
+                if (managedObjectIndex == ManagedData.InvalidObjectIndex)
+                {
+                    // The root's target has no ManagedObjectInfo row (not captured, or not resolvable from this file), so it owns nothing.
+                    managedRootMarker.FoundForImpact = true;
+                    managedRootMarker.FullyDistributedImpact = true;
+                    continue;
+                }
+
+                if (crawled && !markerManagedObjects[managedObjectIndex].FoundForRoot)
+                {
+                    // temporarily mark managed object as found so other roots don't try to own it
+                    markerManagedObjects[managedObjectIndex].FoundForRoot = true;
+
+                    rootStepsManagedRoots[i] = new ShortestRootPathInfo(root: managedRootIndex, parent: default, depth: 0);
+                    data.RootsInCurrentOwnershipBucket.Push(managedRootIndex);
+                    managedRootMarker.FoundForRoot = true;
+                }
+                else
+                {
+                    // The root's target object is already rooted elsewhere (e.g. by a GCHandle also
+                    // targeting it), so this row is NOT a rooting owner; mark it done without processing.
+                    managedRootMarker.FoundForImpact = true;
+                    managedRootMarker.FullyDistributedImpact = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Roots every frozen/NonGC-heap and Pinned-Object-Heap object the crawler discovers with no root of
+        /// its own (see <see cref="ManagedDataCrawler.GatherFrozenHeapObjectData"/>) as a root in its own
+        /// right, one root per object — the same 1:1 shape <see cref="CrawlManagedRoots"/> /
+        /// <see cref="CrawlGCHandleRoots"/> produce, so tree and flattened views need no special handling for
+        /// this bucket. The containing <see cref="CachedSnapshot.ManagedHeapSections"/> row is never an
+        /// ownership node: it has no size of its own and only ever passed impact through.
+        /// Runs first, ahead of every other bucket (see <see cref="ReadOrProcess"/>) so these objects win even
+        /// when some other root (e.g. a static field also happening to reference an interned string) would
+        /// otherwise reach them — the segment-level GC exemption (or, for POH, a transient marshalling pin with
+        /// no enumerable handle) is what actually keeps them alive, regardless of any other reference to them.
+        /// </summary>
+        void CrawlManagedHeapSections(CachedSnapshot snapshot, ref CachedProcessingData data)
+        {
+            // NonGCHeapSections must stay first — see OwnershipBucket. Always finalizes it via Crawl
+            // below, even when there's nothing to seed.
+            if (snapshot.HasBackendManagedGraph && snapshot.CrawledData.Crawled)
+            {
+                ref readonly var markerManagedObjects = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_Marker, SourceIndex.SourceId.ManagedObject);
+                ref readonly var rootStepsManagedObjects = ref SourceIndexToRootAndImpactInfoMapper.GetNestedArray(in m_ShortestPathInfo, SourceIndex.SourceId.ManagedObject);
+
+                ref readonly var frozenHeapObjects = ref snapshot.CrawledData.FrozenHeapManagedObjectIndices;
+                for (long i = 0; i < frozenHeapObjects.Count; i++)
+                {
+                    var managedObjectIndex = frozenHeapObjects[i];
+                    // Defensive: FrozenHeapManagedObjectIndices entries are unique and this bucket seeds
+                    // before any Crawl runs, so this should never trigger.
+                    if (markerManagedObjects[managedObjectIndex].FoundForRoot)
+                        continue;
+
+                    var managedObjectSourceIndex = new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex);
+                    // Marking every frozen-heap object found before crawling means one referencing another
+                    // can't claim it in this bucket's crawl: each is kept alive by the section's GC
+                    // exemption in its own right.
+                    markerManagedObjects[managedObjectIndex].FoundForRoot = true;
+                    rootStepsManagedObjects[managedObjectIndex] = new ShortestRootPathInfo(root: managedObjectSourceIndex, parent: default, depth: 0);
+                    data.RootsInCurrentOwnershipBucket.Push(managedObjectSourceIndex);
+                }
+            }
+            Crawl(snapshot, ref data, OwnershipBucket.NonGCHeapSections);
         }
 
         void CrawlNativeRootAllocations(CachedSnapshot snapshot, ref CachedProcessingData data)
@@ -1633,6 +2596,10 @@ namespace Unity.MemoryProfiler.Editor
 
         internal enum OwnershipBucket
         {
+            // Must stay first: CrawlManagedHeapSections runs before every other bucket (see ReadOrProcess),
+            // and FinalizeRootBucket/TakeOwnershipOfRoots require buckets to finalize in exact enum-declaration
+            // order — this enum's order must always match actual execution order.
+            NonGCHeapSections,
             StaticRoots,
             DontDestroyOnLoadObjects,
             DontDestroyOnLoadObjectsInDeletionQueue,
@@ -1642,6 +2609,9 @@ namespace Unity.MemoryProfiler.Editor
             NativeObjectRoots,
             UnreferencedPrefabs,
             GCHandleRoots,
+            StackRoots,
+            FinalizerRoots,
+            OtherRoots,
             NativeRootAllocations,
             BrokenScriptReferences,
             Count
@@ -1656,12 +2626,17 @@ namespace Unity.MemoryProfiler.Editor
 
         void FinishCrawl(CachedSnapshot snapshot, ref CachedProcessingData data, OwnershipBucket ownershipBucket)
         {
+            // validate that the stacks are empty and therefore wouldn't interfere with the next run, otherwise there is a bug in the algorithm
+            Checks.IsTrue(data.Stack.Count == 0, "Stack should be empty after crawling");
+            Checks.IsTrue(data.AlternativeStack.Count == 0, "Alternative stack  should be empty after crawling");
+
             // and back down the reference tree
             CalculateImpact(snapshot, ref data, ownershipBucket);
 
             // validate that the stacks are empty and therefore wouldn't interfere with the next run, otherwise there is a bug in the algorithm
-            Checks.IsTrue(data.Stack.Count == 0, "Stack should be empty after crawling");
-            Checks.IsTrue(data.AlternativeStack.Count == 0, "Alternative stack  should be empty after crawling");
+            Checks.IsTrue(data.Stack.Count == 0, "Stack should be empty after calculating Impact");
+            Checks.IsTrue(data.AlternativeStack.Count == 0, "Alternative stack  should be empty after calculating Impact");
+
             // But to be sure, clear for next run
             data.Stack.Clear(false);
             data.AlternativeStack.Clear(false);
@@ -2002,12 +2977,33 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     data.Connections.References.Clear();
 
-                    // remove temporarily added "found" marker on the managed object so that this GCHandle can take its ownership
-                    ref var managedObjectMark = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, new SourceIndex(SourceIndex.SourceId.ManagedObject, current.Index));
-                    managedObjectMark.FoundForRoot = false;
+                    // current.Index is a raw GCHandle index, not a ManagedObjectIndex — the two only coincide
+                    // when ObjectIndicesMatchGCHandleOrder holds (the byte-walk path). Resolve explicitly so
+                    // this is also correct on the backend-graph path, where the map can reorder them.
+                    var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForGCHandle(current.Index);
+                    if (managedObjectIndex != ManagedData.InvalidObjectIndex)
+                    {
+                        // remove temporarily added "found" marker on the managed object so that this GCHandle can take its ownership
+                        ref var managedObjectMark = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex));
+                        managedObjectMark.FoundForRoot = false;
 
-                    // GCHandle index maps to the first managed object indices
-                    data.Connections.References.Add(new SourceIndex(SourceIndex.SourceId.ManagedObject, current.Index));
+                        data.Connections.References.Add(new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex));
+                    }
+                }
+                else if (current.Id is SourceIndex.SourceId.ManagedRoot)
+                {
+                    data.Connections.References.Clear();
+
+                    // Same redirection as GCHandleIndex above: a ManagedRoot SourceIndex is a synthetic root
+                    // with no backend connection of its own, so resolve it to the managed object it targets.
+                    var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(current.Index);
+                    if (managedObjectIndex != ManagedData.InvalidObjectIndex)
+                    {
+                        ref var managedObjectMark = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex));
+                        managedObjectMark.FoundForRoot = false;
+
+                        data.Connections.References.Add(new SourceIndex(SourceIndex.SourceId.ManagedObject, managedObjectIndex));
+                    }
                 }
                 else if (current.Id is SourceIndex.SourceId.NativeObject && currentTypeInfo.NativeTypeIndex == snapshot.NativeTypes.AssetBundleIdx)
                 {
@@ -2313,6 +3309,7 @@ namespace Unity.MemoryProfiler.Editor
             ref readonly var currentPathStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, current);
             ref var currentMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, current);
             ref var currentImpact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, current);
+            Checks.IsTrue(!currentMarker.FullyDistributedImpact, "Impact should not yet be fully distributed.");
             NativeRootSize ownSize = default;
             switch (current.Id)
             {
@@ -2349,6 +3346,9 @@ namespace Unity.MemoryProfiler.Editor
                     break;
                 case SourceIndex.SourceId.GCHandleIndex:
                     // This is a floating GCHandle, which has no size of its own.
+                    break;
+                case SourceIndex.SourceId.ManagedRoot:
+                    // A Stack/Finalizer/Other root, same as a GCHandle: no size of its own.
                     break;
                 case SourceIndex.SourceId.Scene:
                     // All memory is held by SceneObjects (maybe safe for the name)
@@ -2407,21 +3407,23 @@ namespace Unity.MemoryProfiler.Editor
             }
             currentImpact.Exclusive += ownSize;
 
+            long parentIndex;
             // referees are collected in UnownedReferences
             data.UnownedReferences.Clear(false);
             switch (current.Id)
             {
                 case SourceIndex.SourceId.None:
                 case SourceIndex.SourceId.SystemMemoryRegion:
-                case SourceIndex.SourceId.ManagedHeapSection:
                 case SourceIndex.SourceId.NativeMemoryRegion:
                 case SourceIndex.SourceId.GfxResource:
                 case SourceIndex.SourceId.NativeType:
                 case SourceIndex.SourceId.MemoryLabel:
                     // Not handled for impact
+                    parentIndex = -1;
                     break;
                 case SourceIndex.SourceId.ManagedType:
                     // This is a root
+                    parentIndex = -1;
                     break;
                 case SourceIndex.SourceId.NativeObject:
                     ref readonly var currentTypeInfo = ref snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[current.Index]];
@@ -2439,6 +3441,7 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             // Only Transforms are parented to a scene
                             Checks.IsTrue(currentTypeInfo.IsTransformType);
+                            Checks.IsTrue(!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, currentPathStep.Parent).FullyDistributedImpact);
                             // attribute all impact up to the rooting scene
                             data.UnownedReferences.Push(currentPathStep.Parent);
                         }
@@ -2446,8 +3449,15 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             // Only Transforms are parented to a prefab
                             Checks.IsTrue(currentTypeInfo.IsTransformType);
-                            // attribute all impact up to the rooting prefab
-                            data.UnownedReferences.Push(currentPathStep.Parent);
+                            if (!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, currentPathStep.Parent).FullyDistributedImpact)
+                            {
+                                // attribute all impact up to the rooting prefab
+                                data.UnownedReferences.Push(currentPathStep.Parent);
+                            }
+                            else
+                            {
+                                MoveImpactAttributionUpTheParentChainAfterTrimming(snapshot, ref data, current, in currentPathStep, in currentPathStep.Parent);
+                            }
                         }
                         else if (currentPathStep.Parent.Id is SourceIndex.SourceId.NativeObject)
                         {
@@ -2455,7 +3465,14 @@ namespace Unity.MemoryProfiler.Editor
                             ref readonly var parentTypeInfo = ref snapshot.TypeDescriptions.UnifiedTypeInfoNative[parentTypeIndex];
                             Checks.IsTrue(parentTypeInfo.IsSceneObjectType || parentTypeIndex == snapshot.NativeTypes.AssetBundleIdx); // Found a SceneObject rooted via something other than a SceneObject!
                             // Native Scene object have clear ownership. Attribute up to its parent
-                            data.UnownedReferences.Push(currentPathStep.Parent);
+                            if (!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, currentPathStep.Parent).FullyDistributedImpact)
+                            {
+                                data.UnownedReferences.Push(currentPathStep.Parent);
+                            }
+                            else
+                            {
+                                MoveImpactAttributionUpTheParentChainAfterTrimming(snapshot, ref data, current, in currentPathStep, in currentPathStep.Parent);
+                            }
                         }
                         else
                         {
@@ -2474,6 +3491,7 @@ namespace Unity.MemoryProfiler.Editor
                             else
                                 throw new InvalidOperationException($"For bucket {ownershipBucket}: Found a {currentPathStep.Parent.Id} as a parent to a Transform ({current} named \"{transformName}\"), which is not supposed to happen!");
                         }
+                        parentIndex = data.UnownedReferences.Count > 0 && data.UnownedReferences[0] == currentPathStep.Parent ? 0 : -1;
                     }
                     else if (currentPathStep.IsRoot)
                     {
@@ -2483,11 +3501,12 @@ namespace Unity.MemoryProfiler.Editor
                         // This means that e.g. any Non-SceneObject DontDestroyOnLoad native object that IS
                         // referenced by anything else than a statically rooted chain, including other objects
                         // in the same bucket will be attributed to the DoNotDestroyOnLoad bucket as a root.
+                        parentIndex = -1;
                     }
                     else
                     {
                         // Other Native Objects attribute to all of their already found references
-                        FindRefereesForImpactAttribution(snapshot, ref data, current);
+                        FindRefereesForImpactAttribution(snapshot, ref data, current, in currentPathStep, out parentIndex);
                     }
                     break;
                 case SourceIndex.SourceId.NativeAllocation:
@@ -2500,25 +3519,31 @@ namespace Unity.MemoryProfiler.Editor
                         // if it is a native object, attribute it to the native object
                         if (rootSourceIndex.Id is SourceIndex.SourceId.NativeObject)
                         {
+                            Checks.IsTrue(!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, rootSourceIndex).FullyDistributedImpact,
+                                "Native Object of an unreferenced Native Allocation was fully processed for impact before the Allocation was.");
                             data.UnownedReferences.Push(rootSourceIndex);
+                            parentIndex = rootSourceIndex == currentPathStep.Parent ? 0 : -1;
                         }
                         else
                         {
                             // Could be attributed to any managed or native object or even a managed type
-                            FindRefereesForImpactAttribution(snapshot, ref data, current);
+                            FindRefereesForImpactAttribution(snapshot, ref data, current, in currentPathStep, out parentIndex);
 
-                            // but if it is a native object or no one references it, attribute it to its root
+                            // but if it is a native root reference or no one references it, attribute it to its root
                             if (data.UnownedReferences.Count == 0)
                             {
+                                Checks.IsTrue(!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, rootSourceIndex).FullyDistributedImpact,
+                                    "Native Root Reference of an unreferenced Native Allocation was fully processed for impact before the native Allocation was.");
                                 // This is an unreferenced native allocation, attribute it to its root
                                 data.UnownedReferences.Push(rootSourceIndex);
+                                parentIndex = rootSourceIndex == currentPathStep.Parent ? 0 : -1;
                             }
                         }
                     }
                     else
                     {
                         // Could be attributed to any managed or native object or even a managed type
-                        FindRefereesForImpactAttribution(snapshot, ref data, current);
+                        FindRefereesForImpactAttribution(snapshot, ref data, current, in currentPathStep, out parentIndex);
 
                         if (data.UnownedReferences.Count == 0)
                         {
@@ -2540,169 +3565,74 @@ namespace Unity.MemoryProfiler.Editor
                     break;
                 case SourceIndex.SourceId.ManagedObject:
                     // Could be attributed to any managed or native object or even a managed type
-                    FindRefereesForImpactAttribution(snapshot, ref data, current);
-                    if (data.UnownedReferences.Count == 0 && currentPathStep.Parent.Valid && currentPathStep.Parent.Id is SourceIndex.SourceId.GCHandleIndex)
+                    FindRefereesForImpactAttribution(snapshot, ref data, current, in currentPathStep, out parentIndex);
+                    if (data.UnownedReferences.Count == 0 && currentPathStep.Parent.Valid
+                        && currentPathStep.Parent.Id is SourceIndex.SourceId.GCHandleIndex or SourceIndex.SourceId.ManagedRoot)
                     {
-                        // This is a managed object that's exclusively held by a GCHandle, attribute it to the GCHandle.
+                        Checks.IsTrue(!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, currentPathStep.Parent).FullyDistributedImpact,
+                            "GCHandle or ManagedRoot of an unreferenced Managed Object was fully processed for impact before the Managed Object was.");
+                        // This is a managed object that's exclusively held by a GCHandle or another
+                        // backend-reported root (Stack/Finalizer/Other) — attribute it there.
                         data.UnownedReferences.Push(currentPathStep.Parent);
                     }
                     break;
                 case SourceIndex.SourceId.NativeRootReference:
                     // This is a root
+                    parentIndex = -1;
                     break;
                 case SourceIndex.SourceId.GCHandleIndex:
                     // GCHandles are a root (if nothing else roots the managed object, but then it would not be found as a leaf referee)
+                    parentIndex = -1;
+                    break;
+                case SourceIndex.SourceId.ManagedRoot:
+                    // Stack/Finalizer/Other roots are a root, same as a GCHandle.
+                    parentIndex = -1;
+                    break;
+                case SourceIndex.SourceId.ManagedHeapSection:
+                    // Never visited: the frozen/NonGC-heap objects on a section are their own roots.
+                    parentIndex = -1;
                     break;
                 case SourceIndex.SourceId.Scene:
                     // Scenes are a root
+                    parentIndex = -1;
                     break;
                 case SourceIndex.SourceId.Prefab:
                     // Could be attributed to any managed or native object or even a managed type
-                    FindRefereesForImpactAttribution(snapshot, ref data, current);
+                    FindRefereesForImpactAttribution(snapshot, ref data, current, in currentPathStep, out parentIndex);
                     break;
                 default:
                     throw new NotImplementedException();
             }
 
-            currentMarker.FullyDistributedImpact = true;
+            // Referrer count, completion index and FullyDistributedImpact marker are recorded together below, by whichever of
+            // SetNoReferrerCount/SetSingleReferrerCount/SetReferrerData applies to this branch — every path
+            // out of the following block calls exactly one of them.
 
             if (data.UnownedReferences.Count > 0)
             {
-                // Strike any would-be referees whose impact has already been fully distributed: adding to
-                // them now would never re-bubble to a summed root and would be silently lost. The
-                // direct-push paths above (scene→parent, native-allocation→root, managed→GCHandle) do not
-                // filter these, unlike FindRefereesForImpactAttribution which already skips them.
-                long liveReferees = 0;
-                long liveGcHandleReferees = 0; // how many survivors are GCHandles (counted in the same pass)
-#if DEBUG_VALIDATION
-                var firstStruckReferee = default(SourceIndex);
-#endif
-                for (long u = 0; u < data.UnownedReferences.Count; u++)
-                {
-                    var candidate = data.UnownedReferences[u];
-                    if (!SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, candidate).FullyDistributedImpact)
-                    {
-                        if (candidate.Id == SourceIndex.SourceId.GCHandleIndex)
-                            liveGcHandleReferees++;
-                        data.UnownedReferences[liveReferees++] = candidate;
-                    }
-#if DEBUG_VALIDATION
-                    else if (!firstStruckReferee.Valid)
-                        firstStruckReferee = candidate;
-#endif
-                }
-                data.UnownedReferences.Resize(liveReferees, false);
-
-                // If the surviving referees mix GCHandle(s) with non-GCHandle referees, strike the GCHandle(s).
-                // A GCHandle that holds an object which is ALSO referenced by a real owner is runtime
-                // bookkeeping, not a memory owner: attributing a pro-rata share to it would dilute the real
-                // owner's ownership and — because such a GCHandle is non-floating and never processed for impact
-                // (see CrawlGCHandleRoots) — that share would strand, never bubbling to a summed root. Removing
-                // the GCHandle lets the impact bubble fully to the real owner(s), and be Exclusive when there is
-                // exactly one. A GCHandle that is the SOLE referee is left intact — it is the legitimate
-                // (floating) root of an object nothing else holds. The GCHandle count is gathered in the strike
-                // loop above, so this extra compaction only runs in the (uncommon) mixed case — a referee list
-                // with no GCHandle (the common case, e.g. a manager with many referrers) skips it entirely.
-                if (liveGcHandleReferees > 0 && liveGcHandleReferees < liveReferees)
-                {
-                    long kept = 0;
-                    for (long u = 0; u < liveReferees; u++)
-                    {
-                        var candidate = data.UnownedReferences[u];
-                        if (candidate.Id != SourceIndex.SourceId.GCHandleIndex)
-                            data.UnownedReferences[kept++] = candidate;
-                    }
-                    data.UnownedReferences.Resize(kept, false);
-                }
-
-                if (data.UnownedReferences.Count == 0)
-                {
-                    // Defensive fallback: every would-be referee was already fully distributed. This can
-                    // only happen to scene/prefab hierarchy items (Transforms/GameObjects/Components),
-                    // which attribute to their BFS shortest-path parent. Because the impact DFS skips
-                    // unowned references into scene objects (see CalculateImpact), such an item is reached
-                    // only via its owned hierarchy and is finalized in post-order, before its parent — so
-                    // this path is not normally taken. It is retained for conservation safety: were a
-                    // referee ever finalized out of order, dropping the impact here would lose bytes from
-                    // the snapshot total. Rather than jumping straight to the DFS root, walk UP the
-                    // path-parent chain to the nearest ancestor that is still ON THE STACK (FoundForImpact
-                    // && !FullyDistributedImpact, so it WILL re-bubble this impact), falling back to the DFS
-                    // root (always on the stack, since current is in its subtree). This preserves the
-                    // hierarchy; it is conservation-neutral (same root) either way. Handled here, inside the
-                    // Count > 0 block, so the else branch below need not treat these now virtually-
-                    // unreferenced items as roots.
-#if DEBUG_VALIDATION
-                    // Only scene/prefab hierarchy items should ever need this redirect, and the redirected
-                    // item must share the EXACT same root as the finalized referee it pointed at. Anything
-                    // else indicates a NEW upstream ordering/attribution bug — alert so it isn't silently
-                    // masked by the redirect.
-                    Checks.IsTrue(
-                        current.Id is SourceIndex.SourceId.NativeObject
-                        && snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[current.Index]].IsSceneObjectType,
-                        $"Unexpected impact redirect for non-scene-object {current} (finalized referee {firstStruckReferee}); only scene/prefab hierarchy items are expected to redirect.");
-                    if (firstStruckReferee.Valid)
-                        Checks.IsTrue(
-                            SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, firstStruckReferee).Root == currentPathStep.Root,
-                            $"Impact redirect: {current} and its finalized referee {firstStruckReferee} do not share the same root.");
-#endif
-                    // Find the nearest ancestor that is still on the stack; default to the DFS root.
-                    var attributeTo = currentPathStep.Root;
-                    var ancestor = currentPathStep.Parent;
-                    while (ancestor.Valid)
-                    {
-                        ref readonly var ancestorMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, ancestor);
-                        if (ancestorMarker.FoundForImpact && !ancestorMarker.FullyDistributedImpact)
-                        {
-                            attributeTo = ancestor;
-                            break;
-                        }
-                        ref readonly var ancestorStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, ancestor);
-                        if (!ancestorStep.Parent.Valid)
-                            break;
-                        ancestor = ancestorStep.Parent;
-                    }
-#if DEBUG_VALIDATION
-                    static void GetTypeAndName(CachedSnapshot snapshot, SourceIndex sourceIndex, out string typeName, out string objectName)
-                    {
-                        objectName = sourceIndex.GetName(snapshot);
-                        typeName = sourceIndex.Id switch {
-                            SourceIndex.SourceId.NativeObject => snapshot.NativeTypes.TypeName[snapshot.NativeObjects.NativeTypeArrayIndex[sourceIndex.Index]],
-                            SourceIndex.SourceId.Scene => "Scene",
-                            SourceIndex.SourceId.Prefab => "Prefab",
-                            SourceIndex.SourceId.GCHandleIndex => "GCHandle",
-                            SourceIndex.SourceId.ManagedType => "ManagedType",
-                            SourceIndex.SourceId.ManagedObject => snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[sourceIndex.Index].ITypeDescription],
-                            _ => sourceIndex.Id.ToString()
-                            };
-                    }
-                    GetTypeAndName(snapshot, current, out var typeName, out var objectName);
-                    GetTypeAndName(snapshot, attributeTo, out var attributeToTypeName, out var attributeToObjectName);
-                    var mainMessage = $"Scene Object Impact reattribution: the {typeName} named \"{objectName}\" Index {current} had no referees and its impact went to -> {attributeToTypeName} named \"{attributeToObjectName}\" Index {attributeTo}";
-                    // add one line per parent in the path for easier debugging of the hierarchy in the log
-                    var pathParent = currentPathStep.Parent;
-                    while (pathParent.Valid)
-                    {
-                        GetTypeAndName(snapshot, pathParent, out var parentTypeName, out var parentObjectName);
-                        mainMessage += $"\n    Parent: {parentTypeName} named \"{parentObjectName}\" Index {pathParent}";
-                        ref readonly var parentStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, pathParent);
-                        pathParent = parentStep.Parent;
-                    }
-                    Debug.Log(mainMessage);
-#endif
-                    ref var attributeToImpact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, attributeTo);
-                    attributeToImpact += currentImpact;
-                }
-                else if (data.UnownedReferences.Count == 1)
+                if (data.UnownedReferences.Count == 1)
                 {
                     var referee = data.UnownedReferences[0];
                     ref var fullyOwningRefereeImpact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Impact, referee);
                     fullyOwningRefereeImpact += currentImpact;
+                    SetSingleReferrerCount(ref currentMarker, in current);
                 }
                 else
                 {
                     // split impact pro rata among all referees, both the formerly exclusive owned and the shared parts
                     var totalImpact = currentImpact.TotalImpact;
-                    var sharedProRata = totalImpact.Divide((ulong)data.UnownedReferences.Count, out var remainder);
+                    var referrerCount = (ulong)data.UnownedReferences.Count;
+                    var sharedProRata = totalImpact.Divide(referrerCount, out var remainder);
+
+                    // Record the true referrer count (and this completion) so a consumer can reconstruct
+                    // exactly how many bytes per channel a specific referee received. Safe to set here:
+                    // current's own Impact entry is frozen from this point on.
+                    SetReferrerData(ref currentMarker, in current, (long)referrerCount);
+
+                    // Remainder bytes go to the first referees, so put the ownership-tree parent first.
+                    if (parentIndex > 0)
+                        SwapToFront(ref data.UnownedReferences, parentIndex);
+
                     // using ulong for easier checks against remainder
                     var i = 0UL;
                     foreach (var reference in data.UnownedReferences)
@@ -2723,17 +3653,24 @@ namespace Unity.MemoryProfiler.Editor
             }
             else
             {
+                // No referee at all: current is a genuine ownership-forest root, self-terminating regardless
+                // of which specific branch below applies.
+                SetNoReferrerCount(ref currentMarker, in current);
+
                 if (current.Id is SourceIndex.SourceId.Scene)
                 {
                     // This was a rooting Scene, register it as fully processed root regardless of
                     // impact as we'd also want to list empty scenes to recreate the loaded scene state.
                     data.Roots.Push(current);
                 }
-                else if (current.Id is SourceIndex.SourceId.GCHandleIndex or SourceIndex.SourceId.ManagedType or SourceIndex.SourceId.NativeRootReference)
+                else if (current.Id is SourceIndex.SourceId.GCHandleIndex or SourceIndex.SourceId.ManagedType
+                    or SourceIndex.SourceId.NativeRootReference or SourceIndex.SourceId.ManagedRoot
+                    || (current.Id is SourceIndex.SourceId.ManagedObject && ownershipBucket is OwnershipBucket.NonGCHeapSections))
                 {
-                    // This was a managed type, a GCHandle rooted object, or a rooting
-                    // non-object-associated Native Root, which is fine to not have any references
-                    // pointed at it.
+                    // This was a managed type, a GCHandle rooted object, a backend-reported ManagedRoot, a
+                    // rooting non-object-associated Native Root, or a frozen/NonGC-heap object rooting itself
+                    // (its section's GC exemption keeps it alive — see CrawlManagedHeapSections), which is
+                    // fine to not have any references pointed at it.
                     // Register it as fully processed root, but only if it has any impact at all.
                     if (currentImpact.TotalImpact.SumUp().Committed > 0)
                         data.Roots.Push(current);
@@ -2775,31 +3712,182 @@ namespace Unity.MemoryProfiler.Editor
                     throw new InvalidOperationException($"{current} is an abandoned Leaf!");
                 }
             }
+            Checks.IsTrue(currentMarker.FullyDistributedImpact, "Impact should be fully distributed by this point.");
+        }
+
+        bool IsBookkeepingReferee(SourceIndex referee)
+            => referee.Id is SourceIndex.SourceId.GCHandleIndex or SourceIndex.SourceId.ManagedRoot || IsStaticsStorageArray(referee);
+
+        /// <summary>Whether <paramref name="item"/> is one of CoreCLR's statics storage arrays (see <see cref="CollectStaticsStorageArrays"/>).</summary>
+        internal bool IsStaticsStorageArray(SourceIndex item)
+            => item.Id == SourceIndex.SourceId.ManagedObject && m_HasStaticsStorageArrays && m_StaticsStorageArrays.Contains(item);
+
+        /// <summary>
+        /// When every referee of <paramref name="current"/> is already <see cref="Marker.FullyDistributedImpact"/>,
+        /// pushes the nearest ancestor still on the impact stack (or the DFS root) as its referee instead. See
+        /// <see cref="m_OrphanedSplitRedirect"/>. <paramref name="firstStruckReferee"/> and
+        /// <paramref name="sceneObjectPath"/> are only used by <c>DEBUG_VALIDATION</c> checks.
+        /// </summary>
+        void MoveImpactAttributionUpTheParentChainAfterTrimming(CachedSnapshot snapshot, ref CachedProcessingData data, SourceIndex current, in ShortestRootPathInfo currentPathStep, in SourceIndex firstStruckReferee, bool sceneObjectPath = true)
+        {
+            if (data.UnownedReferences.Count != 0)
+                return;
+
+#if DEBUG_VALIDATION
+            // The FindRefereesForImpactAttribution fallback can reach here with any type, not just scene objects.
+            if (sceneObjectPath)
+            {
+                Checks.IsTrue(
+                    current.Id is SourceIndex.SourceId.NativeObject
+                    && snapshot.TypeDescriptions.UnifiedTypeInfoNative[snapshot.NativeObjects.NativeTypeArrayIndex[current.Index]].IsSceneObjectType,
+                    $"Unexpected impact redirect for non-scene-object {current}; only scene/prefab hierarchy items are expected to take this path.");
+                // Only on this path is firstStruckReferee current's ownership-tree parent, so must share its root.
+                if (firstStruckReferee.Valid)
+                    Checks.IsTrue(
+                        SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, firstStruckReferee).Root == currentPathStep.Root,
+                        $"Impact redirect: {current} and its finalized referee {firstStruckReferee} do not share the same root.");
+            }
+#endif
+            // The DFS root is always still on the stack, since current is in its subtree.
+            var attributeTo = currentPathStep.Root;
+            var ancestor = currentPathStep.Parent;
+            while (ancestor.Valid)
+            {
+                ref readonly var ancestorMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, ancestor);
+                if (ancestorMarker.FoundForImpact && !ancestorMarker.FullyDistributedImpact)
+                {
+                    attributeTo = ancestor;
+                    break;
+                }
+                ref readonly var ancestorStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, ancestor);
+                if (!ancestorStep.Parent.Valid)
+                    break;
+                ancestor = ancestorStep.Parent;
+            }
+
+            // A DFS root would otherwise become its own referee.
+            if (attributeTo == current)
+                return;
+
+            if (currentPathStep.Parent.Valid)
+                SetOrphanedSplitRedirect(current, attributeTo);
+
+#if DEBUG_VALIDATION
+            static void GetTypeAndName(CachedSnapshot snapshot, SourceIndex sourceIndex, out string typeName, out string objectName)
+            {
+                objectName = sourceIndex.GetName(snapshot);
+                typeName = sourceIndex.Id switch
+                {
+                    SourceIndex.SourceId.NativeObject => snapshot.NativeTypes.TypeName[snapshot.NativeObjects.NativeTypeArrayIndex[sourceIndex.Index]],
+                    SourceIndex.SourceId.Scene => "Scene",
+                    SourceIndex.SourceId.Prefab => "Prefab",
+                    SourceIndex.SourceId.GCHandleIndex => "GCHandle",
+                    SourceIndex.SourceId.ManagedType => "ManagedType",
+                    SourceIndex.SourceId.ManagedObject => snapshot.TypeDescriptions.TypeDescriptionName[snapshot.CrawledData.ManagedObjects[sourceIndex.Index].ITypeDescription],
+                    _ => sourceIndex.Id.ToString()
+                };
+            }
+            GetTypeAndName(snapshot, current, out var typeName, out var objectName);
+            GetTypeAndName(snapshot, attributeTo, out var attributeToTypeName, out var attributeToObjectName);
+            var mainMessage = $"Impact reattribution: the {typeName} named \"{objectName}\" Index {current} had no live referees and its impact went to -> {attributeToTypeName} named \"{attributeToObjectName}\" Index {attributeTo}";
+            // add one line per parent in the path for easier debugging of the hierarchy in the log
+            var pathParent = currentPathStep.Parent;
+            while (pathParent.Valid)
+            {
+                GetTypeAndName(snapshot, pathParent, out var parentTypeName, out var parentObjectName);
+                mainMessage += $"\n    Parent: {parentTypeName} named \"{parentObjectName}\" Index {pathParent}";
+                ref readonly var parentStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, pathParent);
+                pathParent = parentStep.Parent;
+            }
+            Debug.Log(mainMessage);
+#endif
+            data.UnownedReferences.Push(attributeTo);
         }
 
         /// <summary>
-        /// Finds all registered referees to
-        /// <see cref="SourceIndex.SourceId.ManagedObject"/>
-        /// <see cref="SourceIndex.SourceId.NativeObject"/>
-        /// <see cref="SourceIndex.SourceId.Prefab"/>
-        /// that have been found but not yet fully processed for impact attribution
-        /// and stores them in the <see cref="CachedProcessingData.UnownedReferences"/>.
+        /// Collects the referees of <paramref name="referencedItem"/> that have not yet fully distributed their impact
+        /// into <see cref="CachedProcessingData.UnownedReferences"/>. <paramref name="parentIndex"/> is the
+        /// ownership-tree parent's index in that list, or -1 if it is absent.
         /// </summary>
-        /// <param name="snapshot"></param>
-        /// <param name="data"></param>
-        /// <param name="referencedItem"></param>
-        void FindRefereesForImpactAttribution(CachedSnapshot snapshot, ref CachedProcessingData data, SourceIndex referencedItem)
+        void FindRefereesForImpactAttribution(CachedSnapshot snapshot, ref CachedProcessingData data, SourceIndex referencedItem, in ShortestRootPathInfo currentPathStep, out long parentIndex)
         {
             ObjectConnection.GetAllReferencingObjects(snapshot, referencedItem, null, data.Connections.References, ObjectConnection.UnityObjectReferencesSearchMode.Raw, ignoreRepeatedManagedReferences: true);
 
+            parentIndex = -1;
+            var bookkeepingParentIndexInStack = -1L;
+            var parentReceivedNoImpactAndNeedsRedirection = false;
+
             foreach (var reference in data.Connections.References)
             {
+                // A frozen/NonGC-heap object's connection to its containing section records where it lives,
+                // not a reference that owns it — the object itself is the root (see CrawlManagedHeapSections)
+                // and the section is never processed for impact, so anything attributed to it would strand.
+                if (reference.Id is SourceIndex.SourceId.ManagedHeapSection)
+                    continue;
+
+                var isParent = reference == currentPathStep.Parent;
                 ref readonly var referenceMarker = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_Marker, reference);
 
                 if (!referenceMarker.FullyDistributedImpact) // && referenceMarker.FoundForRoot // include this check to keep attribution strictly within the rooting bucket instead of sharing impact into later buckets
                 {
-                    data.UnownedReferences.Push(reference);
+                    if (!IsBookkeepingReferee(reference))
+                    {
+                        data.UnownedReferences.Push(reference);
+                        if (isParent)
+                            parentIndex = data.UnownedReferences.Count - 1;
+                    }
+                    else
+                    {
+                        // Bookkeeping referees only count as owners if no real owner survives.
+                        data.Stack.Push(reference);
+                        if (isParent)
+                            bookkeepingParentIndexInStack = data.Stack.Count - 1;
+                    }
                 }
+                else if (isParent)
+                {
+                    // The actual referee is only known once the referee list is final.
+                    parentReceivedNoImpactAndNeedsRedirection = true;
+                }
+            }
+
+            if (data.Stack.Count > 0)
+            {
+                if (data.UnownedReferences.Count == 0)
+                {
+                    // PushRange preserves order, so the bookkeeping parent's index carries over.
+                    data.UnownedReferences.PushRange(data.Stack);
+                    if (bookkeepingParentIndexInStack >= 0)
+                        parentIndex = bookkeepingParentIndexInStack;
+                }
+                else
+                {
+                    m_SourcesThatStruckBookkeepingReferees.Add(referencedItem);
+                    if (bookkeepingParentIndexInStack >= 0)
+                    {
+                        // A real owner crowded out the bookkeeping parent, so the impact is redirected.
+                        // Without a backend graph, that owner must itself be GCHandle rooted; CoreCLR graphs also allow ManagedRoots and unrooted owners.
+                        if (data.Stack[bookkeepingParentIndexInStack].Id is SourceIndex.SourceId.GCHandleIndex)
+                        {
+                            var ownerRoot = SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in m_ShortestPathInfo, data.UnownedReferences[0]).Root;
+                            Checks.IsTrue(ownerRoot.Id is SourceIndex.SourceId.GCHandleIndex
+                                || (snapshot.HasBackendManagedGraph && ownerRoot.Id is SourceIndex.SourceId.None or SourceIndex.SourceId.ManagedRoot),
+                                "Non GCHandle rooted managed object reached GCHandle rooted object first");
+                        }
+                        SetOrphanedSplitRedirect(referencedItem, data.UnownedReferences[0]);
+                    }
+                }
+                data.Stack.Clear(false);
+            }
+
+            if (data.UnownedReferences.Count == 0 && data.Connections.References.Count > 0)
+            {
+                var firstFoundReference = data.Connections.References.First();
+                MoveImpactAttributionUpTheParentChainAfterTrimming(snapshot, ref data, referencedItem, in currentPathStep, in firstFoundReference, sceneObjectPath: false);
+            }
+            else if (parentReceivedNoImpactAndNeedsRedirection)
+            {
+                SetOrphanedSplitRedirect(referencedItem, data.UnownedReferences[0]);
             }
 
             if (data.Connections.References.Count > CachedProcessingData.ConnectionCache.MaxCapacity)
@@ -2819,36 +3907,55 @@ namespace Unity.MemoryProfiler.Editor
                 for (var markerIdx = 0L; markerIdx < markerCount; markerIdx++)
                 {
                     var marker = section[markerIdx];
+                    // Untouched markers, e.g. the reserved NativeRootReference index 0, need no checks.
+                    if (!marker.FoundForRoot && !marker.FullyDistributedImpact)
+                        continue;
+
+                    var sourceIndex = rootGroupIndex switch
+                    {
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForNativeRootReferences
+                            => new SourceIndex(SourceIndex.SourceId.NativeRootReference, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForScenes
+                            => new SourceIndex(SourceIndex.SourceId.Scene, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForPrefabs
+                            => new SourceIndex(SourceIndex.SourceId.Prefab, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForNativeObjects
+                            => new SourceIndex(SourceIndex.SourceId.NativeObject, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForNativeAllocations
+                            => new SourceIndex(SourceIndex.SourceId.NativeAllocation, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForManagedTypes
+                            => new SourceIndex(SourceIndex.SourceId.ManagedType, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForGCHandles
+                            => new SourceIndex(SourceIndex.SourceId.GCHandleIndex, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects
+                            => new SourceIndex(SourceIndex.SourceId.ManagedObject, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForManagedRoots
+                            => new SourceIndex(SourceIndex.SourceId.ManagedRoot, markerIdx),
+                        SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForManagedHeapSections
+                            => new SourceIndex(SourceIndex.SourceId.ManagedHeapSection, markerIdx),
+                        _ => throw new NotImplementedException(),
+                    };
                     if (marker.FoundForRoot && !marker.FullyDistributedImpact)
                     {
-                        var sourceIndex = rootGroupIndex switch
+                        // An AssetBundle is fine to be a root without any impact attributed to it (it could all be
+                        // used) — but only while it hasn't distributed impact at all. Once it HAS (below), it must
+                        // have paired referrer data like every other item; this exemption must not swallow that.
+                        var isUndistributedAssetBundle = sourceIndex.Id is SourceIndex.SourceId.NativeObject
+                            && snapshot.NativeTypes.AssetBundleIdx == snapshot.NativeObjects.NativeTypeArrayIndex[sourceIndex.Index];
+                        if (!isUndistributedAssetBundle)
                         {
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForNativeRootReferences
-                                => new SourceIndex(SourceIndex.SourceId.NativeRootReference, markerIdx),
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForScenes
-                                => new SourceIndex(SourceIndex.SourceId.Scene, markerIdx),
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForPrefabs
-                                => new SourceIndex(SourceIndex.SourceId.Prefab, markerIdx),
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForNativeObjects
-                                => new SourceIndex(SourceIndex.SourceId.NativeObject, markerIdx),
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForNativeAllocations
-                                => new SourceIndex(SourceIndex.SourceId.NativeAllocation, markerIdx),
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForManagedTypes
-                                => new SourceIndex(SourceIndex.SourceId.ManagedType, markerIdx),
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForGCHandles
-                                => new SourceIndex(SourceIndex.SourceId.GCHandleIndex, markerIdx),
-                            SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects
-                                => new SourceIndex(SourceIndex.SourceId.ManagedObject, markerIdx),
-                            _ => throw new NotImplementedException(),
-                        };
-                        if (sourceIndex.Id is SourceIndex.SourceId.NativeObject)
-                        {
-                            // This could be an AssetBundle, which is fine to be a root without any impact attributed to as it could all be used.
-                            if (snapshot.NativeTypes.AssetBundleIdx == snapshot.NativeObjects.NativeTypeArrayIndex[sourceIndex.Index])
-                                continue;
+                            success = false;
+                            Debug.LogError($"Marker validation failed for {sourceIndex}: Found marker that has not fully distributed impact.");
                         }
+                        continue;
+                    }
+                    // Count and CompletionIndex are always written together (see ReferrerData/SetReferrerData),
+                    // so a single check on either suffices to catch a call site that forgot to record both.
+                    // Items without FoundForRoot had FullyDistributedImpact set by a bypass, not AttributeImpact.
+                    if (marker.FoundForRoot && !GetReferrerData(in sourceIndex).CompletedImpactAttribution)
+                    {
                         success = false;
-                        Debug.LogError($"Marker validation failed for {sourceIndex}: Found marker that has not fully distributed impact.");
+                        Debug.LogError($"Marker validation failed for {sourceIndex}: fully distributed impact but its referrer data was never recorded (AttributeImpact likely forgot to call SetReferrerData/SetSingleReferrerCount/SetNoReferrerCount for it).");
                     }
                 }
             }
@@ -2932,6 +4039,17 @@ namespace Unity.MemoryProfiler.Editor
                 }
 #endif
             }
+        }
+
+        static bool IsFrozenHeapObject(CachedSnapshot snapshot, long managedObjectIndex)
+        {
+            ref readonly var frozenHeapObjects = ref snapshot.CrawledData.FrozenHeapManagedObjectIndices;
+            for (long i = 0; i < frozenHeapObjects.Count; i++)
+            {
+                if (frozenHeapObjects[i] == managedObjectIndex)
+                    return true;
+            }
+            return false;
         }
 
         [Conditional("VALIDATE_ROOT_AND_IMPACT")]
@@ -3179,11 +4297,90 @@ namespace Unity.MemoryProfiler.Editor
                             ref readonly var rootStep = ref rootStepInfoForManagedObjects[i];
                             ref readonly var mark = ref markerInfoForManagedObjects[i];
                             Debug.Assert(rootStep.Valid, "Managed object root information should be valid");
-                            Debug.Assert(!rootStep.IsRoot, "Managed object should not be a root itself");
-                            Debug.Assert(rootStep.Root.Valid && rootStep.Parent.Valid, "Managed object should have a root and a parent");
+                            if (rootStep.IsRoot)
+                            {
+                                // Only a frozen/NonGC-heap object roots itself (see CrawlManagedHeapSections);
+                                // every other managed object is rooted by a GCHandle/ManagedRoot/referrer.
+                                Debug.Assert(IsFrozenHeapObject(snapshot, i),
+                                    $"Managed object {i} is a root itself but is not a frozen/NonGC-heap object");
+                                Debug.Assert(rootStep.Root == new SourceIndex(SourceIndex.SourceId.ManagedObject, i),
+                                    "A frozen/NonGC-heap object should be its own root");
+                            }
+                            else
+                                Debug.Assert(rootStep.Root.Valid && rootStep.Parent.Valid, "Managed object should have a root and a parent");
                             Debug.Assert(mark.FoundForRoot, "Managed object should be marked as found for root");
                             Debug.Assert(mark.FoundForImpact, "Managed object should be marked as found for impact");
                             Debug.Assert(mark.FullyDistributedImpact, "Managed object impact should be fully distributed");
+                        }
+                        break;
+                    case SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForManagedRoots:
+                        if (!snapshot.HasManagedRoots)
+                            break;
+                        ref readonly var rootStepInfoForManagedRoots = ref m_ShortestPathInfo[rootGroupIndex];
+                        ref readonly var markerInfoForManagedRoots = ref m_Marker[rootGroupIndex];
+                        ref readonly var rootStepInfoForManagedRootHeldObjects = ref m_ShortestPathInfo[SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects];
+                        ref readonly var markerInfoForManagedRootHeldObjects = ref m_Marker[SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects];
+
+                        var crawledForManagedRoots = snapshot.CrawledData.Crawled;
+                        for (long i = 0; i < snapshot.ManagedRoots.Count; i++)
+                        {
+                            ref readonly var managedRootStep = ref rootStepInfoForManagedRoots[i];
+                            ref readonly var managedRootMark = ref markerInfoForManagedRoots[i];
+                            if (managedRootMark.FoundForRoot)
+                            {
+                                Debug.Assert(managedRootStep.Valid, "ManagedRoot root information should be valid");
+                                Debug.Assert(managedRootStep.IsRoot, "ManagedRoot should be a root");
+                                Debug.Assert(managedRootMark.FoundForImpact, "ManagedRoot should be marked as found for impact");
+                                Debug.Assert(managedRootMark.FullyDistributedImpact, "ManagedRoot impact should be fully distributed");
+
+                                var managedObjectIndexForValidation = snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(i);
+                                if (managedObjectIndexForValidation == ManagedData.InvalidObjectIndex || !crawledForManagedRoots)
+                                    continue;
+                                ref readonly var manageObjectMark = ref markerInfoForManagedRootHeldObjects[managedObjectIndexForValidation];
+                                ref readonly var manageObjectRootStep = ref rootStepInfoForManagedRootHeldObjects[managedObjectIndexForValidation];
+                                Debug.Assert(manageObjectRootStep.Valid, "Managed object root information should be valid");
+                                Debug.Assert(!manageObjectRootStep.IsRoot, "Managed object should not be a root, the ManagedRoot is the root");
+                                Debug.Assert(manageObjectMark.FoundForRoot, "Managed object should be marked as found for root");
+                                Debug.Assert(manageObjectMark.FoundForImpact, "Managed object should be marked as found for impact");
+                                Debug.Assert(manageObjectMark.FullyDistributedImpact, "Managed object impact should be fully distributed");
+
+                                var managedRootIndex = new SourceIndex(SourceIndex.SourceId.ManagedRoot, i);
+                                Debug.Assert(manageObjectRootStep.Root == managedRootIndex, "Managed object should be rooted to the ManagedRoot");
+                                Debug.Assert(manageObjectRootStep.Parent == managedRootIndex, "Managed object should have the ManagedRoot as its parent");
+                            }
+                            else
+                            {
+                                Debug.Assert(!managedRootStep.Valid, "If the target of the ManagedRoot was found as referenced by something else, the ManagedRoot root information should be valid");
+                                Debug.Assert(!managedRootStep.IsRoot, "If the target of the ManagedRoot was found as referenced by something else, the ManagedRoot should not be a root");
+                                if (!managedRootMark.FoundForImpact)
+                                    Debug.Assert(false, $"If the target of the ManagedRoot was found as referenced by something else, the ManagedRoot should be counted as found for impact (row {i}, {snapshot.ManagedRoots.RootType[i]}|{snapshot.ManagedRoots.RootFlags[i]}, target object {snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(i)}).");
+                                if (!managedRootMark.FullyDistributedImpact)
+                                    Debug.Assert(false, $"If the target of the ManagedRoot was found as referenced by something else, the ManagedRoot should be counted as fully distributed impact (row {i}, {snapshot.ManagedRoots.RootType[i]}|{snapshot.ManagedRoots.RootFlags[i]}, target object {snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(i)}).");
+                            }
+                        }
+                        break;
+                    case SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForManagedHeapSections:
+                        ref readonly var markerInfoForManagedHeapSections = ref m_Marker[rootGroupIndex];
+                        for (long i = 0; i < snapshot.ManagedHeapSections.Count; i++)
+                        {
+                            Debug.Assert(!markerInfoForManagedHeapSections[i].FoundForRoot,
+                                $"ManagedHeapSection {i} was seeded as a root — frozen/NonGC-heap objects root themselves instead");
+                        }
+
+                        if (!snapshot.CrawledData.Crawled)
+                            break;
+                        ref readonly var rootStepInfoForFrozenHeapObjects = ref m_ShortestPathInfo[SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects];
+                        ref readonly var markerInfoForFrozenHeapObjects = ref m_Marker[SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects];
+                        ref readonly var frozenHeapObjectsForValidation = ref snapshot.CrawledData.FrozenHeapManagedObjectIndices;
+                        for (long i = 0; i < frozenHeapObjectsForValidation.Count; i++)
+                        {
+                            var frozenHeapObjectIndex = frozenHeapObjectsForValidation[i];
+                            ref readonly var frozenHeapObjectStep = ref rootStepInfoForFrozenHeapObjects[frozenHeapObjectIndex];
+                            ref readonly var frozenHeapObjectMark = ref markerInfoForFrozenHeapObjects[frozenHeapObjectIndex];
+                            Debug.Assert(frozenHeapObjectStep.Valid, "Frozen/NonGC-heap object root information should be valid");
+                            Debug.Assert(frozenHeapObjectMark.FoundForRoot, "Frozen/NonGC-heap object should be marked as found for root");
+                            Debug.Assert(frozenHeapObjectMark.FoundForImpact, "Frozen/NonGC-heap object should be marked as found for impact");
+                            Debug.Assert(frozenHeapObjectMark.FullyDistributedImpact, "Frozen/NonGC-heap object impact should be fully distributed");
                         }
                         break;
                     default:

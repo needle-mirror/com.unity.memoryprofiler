@@ -34,10 +34,26 @@ namespace Unity.MemoryProfiler.Editor
             public const long UnifiedTypeArrayNativeSection = 1;
             const int k_DefaultFieldProcessingBufferSize = 64;
             public const string UnityObjectTypeName = "UnityEngine.Object";
+            /// <summary>
+            /// The field on UnityEngine.Object that links a managed shell to its native object.
+            /// Current runtimes store the native object's EntityId (8 bytes, resolved via NativeObjects.InstanceId2Index);
+            /// snapshots taken by older runtimes store a raw pointer to the native object (pointer sized,
+            /// resolved via NativeObjects.NativeObjectAddressToEntityId).
+            /// </summary>
+            public const string UnityNativeObjectEntityIdFieldName = "m_EntityId";
             public const string UnityNativeObjectPointerFieldName = "m_CachedPtr";
             public const string NativeCollectionsNamspaceAndTypePrefix = "Unity.Collections.Native";
-            public int IFieldUnityObjectMCachedPtr { get; private set; }
-            public int IFieldUnityObjectMCachedPtrOffset { get; private set; } = -1;
+            public int IFieldUnityObjectNativeLink { get; private set; }
+            public int IFieldUnityObjectNativeLinkOffset { get; private set; } = -1;
+            /// <summary>
+            /// True when IFieldUnityObjectNativeLink is the EntityId field, false when it is the legacy m_CachedPtr pointer.
+            /// </summary>
+            public bool UnityObjectNativeLinkIsEntityId { get; private set; }
+            public string UnityObjectNativeLinkFieldName => UnityObjectNativeLinkIsEntityId ? UnityNativeObjectEntityIdFieldName : UnityNativeObjectPointerFieldName;
+            /// <summary>
+            /// Size in bytes of the native link field in the snapshot's heap.
+            /// </summary>
+            public int UnityObjectNativeLinkFieldSize { get; private set; }
 
             const string k_UnityMonoBehaviourTypeName = "UnityEngine.MonoBehaviour";
             const string k_UnityScriptableObjectTypeName = "UnityEngine.ScriptableObject";
@@ -73,6 +89,12 @@ namespace Unity.MemoryProfiler.Editor
             public int Count;
             public DynamicArray<TypeFlags> Flags = default;
             public DynamicArray<int> BaseOrElementTypeIndex = default;
+
+            /// <summary>
+            /// Backend-reported objects of each type row, including objects of derived types. Not created without a backend object table.
+            /// </summary>
+            public DynamicArray<long> InclusiveInstanceCount = default;
+            DynamicArray<int> m_LiveTypeIndex = default;
 
             // Format v20+: static fields are addressed positionally in StaticFieldSlots (one header
             // group per owned static field), not by FieldDescriptions_Offset - see RecurseCrawlFields'
@@ -138,8 +160,8 @@ namespace Unity.MemoryProfiler.Editor
             /// does not record each slot's byte width — the caller derives it from the field's own resolved
             /// type (pointer size for a reference type, <see cref="Size"/> for a value type), the same way
             /// the native writer sized it. Populated on all three backends for ordinary statics; only
-            /// CoreCLR resolves thread-static slots today (Mono/IL2CPP report a count of 0 for those fields
-            /// — see GAPS.md). Empty on older files. Use <see cref="ParseStaticFieldSlots"/> to decode a
+            /// CoreCLR resolves thread-static slots today (Mono/IL2CPP report a count of 0 for those fields).
+            /// Empty on older files. Use <see cref="GetStaticFieldSlotGroups"/> to decode a
             /// row rather than walking this manually.
             /// </summary>
             public NestedDynamicArray<byte> StaticFieldSlots => m_StaticFieldSlotsReadOp.CompleteReadAndGetNestedResults();
@@ -150,7 +172,7 @@ namespace Unity.MemoryProfiler.Editor
             /// <see cref="StaticFieldSlots"/> blob — the slot count from the group's header, and the byte
             /// offset (within the same blob) where its <see cref="Count"/> fixed-width slots begin. No
             /// bytes are copied; read directly from the blob at <see cref="SlotDataOffset"/>, this
-            /// field's own slot byte size at a time (see <see cref="ParseStaticFieldSlots"/>).
+            /// field's own slot byte size at a time (see <see cref="GetStaticFieldSlotByteSizes"/>).
             /// </summary>
             public readonly struct StaticFieldSlotGroup
             {
@@ -160,23 +182,20 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             /// <summary>
-            /// Decodes one type's <see cref="StaticFieldSlots"/> blob into one <see cref="StaticFieldSlotGroup"/>
-            /// per owned static field, in the same order as <see cref="FieldIndicesOwnedStatic"/> and
-            /// <paramref name="slotByteSizes"/>. A field with a count of 0 (e.g. an unresolved static, or a
-            /// not-yet-supported Mono/IL2CPP thread-static) yields a zero-count group at its position, not a
-            /// skipped one. No bytes are copied — callers read directly from <paramref name="blob"/>.
-            /// On a truncated or corrupt blob (header or payload running past <paramref name="blob"/>'s length),
-            /// logs an error and returns zero-count groups for that field and every field after it instead of
-            /// indexing out of bounds.
+            /// Decodes one type's <see cref="StaticFieldSlots"/> blob into <paramref name="groups"/>, one
+            /// <see cref="StaticFieldSlotGroup"/> per owned static field, in the same order as
+            /// <see cref="FieldIndicesOwnedStatic"/> and <paramref name="slotByteSizes"/>. A field with a count of 0
+            /// (e.g. an unresolved static, or a not-yet-supported Mono/IL2CPP thread-static) yields a zero-count
+            /// group at its position, not a skipped one. No bytes are copied; callers read directly from <paramref name="blob"/>.
+            /// An empty blob yields zero-count groups. On a truncated or corrupt blob (header or payload running past
+            /// <paramref name="blob"/>'s length), logs an error and writes zero-count groups for that field and every
+            /// field after it instead of indexing out of bounds.
             /// </summary>
-            public static StaticFieldSlotGroup[] ParseStaticFieldSlots(DynamicArrayRef<byte> blob, IReadOnlyList<int> slotByteSizes)
+            public static void ParseStaticFieldSlots(DynamicArrayRef<byte> blob, DynamicArrayRef<int> slotByteSizes, DynamicArrayRef<StaticFieldSlotGroup> groups)
             {
-                if (blob.Count == 0)
-                    return Array.Empty<StaticFieldSlotGroup>();
-
-                var groups = new StaticFieldSlotGroup[slotByteSizes.Count];
                 long cursor = 0;
-                for (int fieldOrdinal = 0; fieldOrdinal < slotByteSizes.Count; ++fieldOrdinal)
+                int fieldOrdinal = 0;
+                for (; blob.Count > 0 && fieldOrdinal < slotByteSizes.Count; ++fieldOrdinal)
                 {
                     const int headerSize = 8; // 2-byte count + 6 bytes padding
                     if (cursor + headerSize > blob.Count)
@@ -195,8 +214,76 @@ namespace Unity.MemoryProfiler.Editor
                     groups[fieldOrdinal] = new StaticFieldSlotGroup(count, cursor);
                     cursor += payloadSize;
                 }
-                return groups;
+                for (; fieldOrdinal < slotByteSizes.Count; ++fieldOrdinal)
+                    groups[fieldOrdinal] = default;
             }
+
+            /// <summary>
+            /// The decoded <see cref="StaticFieldSlots"/> row of <paramref name="iType"/>: one group per owned static
+            /// field, in <see cref="FieldIndicesOwnedStatic"/> order. Empty when the type has no slot data, including
+            /// on pre-v20 files.
+            /// </summary>
+            public DynamicArrayRef<StaticFieldSlotGroup> GetStaticFieldSlotGroups(CachedSnapshot snapshot, long iType)
+            {
+                if (!m_StaticFieldSlotGroups.IsCreated)
+                    BuildStaticFieldSlotGroups(snapshot);
+                return m_StaticFieldSlotGroups[iType];
+            }
+
+            /// <summary>
+            /// Byte width of each owned static field's slot (see <see cref="FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize"/>),
+            /// in <see cref="FieldIndicesOwnedStatic"/> order. Empty on pre-v20 files.
+            /// </summary>
+            public DynamicArrayRef<int> GetStaticFieldSlotByteSizes(CachedSnapshot snapshot, long iType)
+            {
+                if (!m_StaticFieldSlotGroups.IsCreated)
+                    BuildStaticFieldSlotGroups(snapshot);
+                return m_StaticFieldSlotByteSizes[iType];
+            }
+
+            unsafe void BuildStaticFieldSlotGroups(CachedSnapshot snapshot)
+            {
+                using var sizeOffsets = new DynamicArray<long>(Count + 1, Allocator.Temp);
+                using var groupOffsets = new DynamicArray<long>(Count + 1, Allocator.Temp);
+                long sizeCount = 0, groupCount = 0;
+                sizeOffsets[0] = groupOffsets[0] = 0;
+                for (long iType = 0; iType < Count; ++iType)
+                {
+                    if (m_HasStaticFieldSlotsAndFlags)
+                    {
+                        var fieldCount = FieldIndicesOwnedStatic[iType].Count;
+                        sizeCount += fieldCount;
+                        if (StaticFieldSlots[iType].Count > 0)
+                            groupCount += fieldCount;
+                    }
+                    sizeOffsets[iType + 1] = sizeCount * sizeof(int);
+                    groupOffsets[iType + 1] = groupCount * sizeof(StaticFieldSlotGroup);
+                }
+
+                var sizes = new DynamicArray<int>(sizeCount, Allocator.Persistent);
+                var groups = new DynamicArray<StaticFieldSlotGroup>(groupCount, Allocator.Persistent);
+                for (long iType = 0; m_HasStaticFieldSlotsAndFlags && iType < Count; ++iType)
+                {
+                    var ownedStaticFields = FieldIndicesOwnedStatic[iType];
+                    var typeSizes = DynamicArrayRef<int>.ConvertExistingDataToDynamicArrayRef(
+                        sizes.GetUnsafeTypedPtr() + sizeOffsets[iType] / sizeof(int), ownedStaticFields.Count);
+                    for (int i = 0; i < ownedStaticFields.Count; ++i)
+                        typeSizes[i] = FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize(snapshot, ownedStaticFields[i]);
+
+                    var typeGroupCount = (groupOffsets[iType + 1] - groupOffsets[iType]) / sizeof(StaticFieldSlotGroup);
+                    if (typeGroupCount == 0)
+                        continue;
+                    var typeGroups = DynamicArrayRef<StaticFieldSlotGroup>.ConvertExistingDataToDynamicArrayRef(
+                        groups.GetUnsafeTypedPtr() + groupOffsets[iType] / sizeof(StaticFieldSlotGroup), typeGroupCount);
+                    ParseStaticFieldSlots(StaticFieldSlots[iType], typeSizes, typeGroups);
+                }
+
+                m_StaticFieldSlotByteSizes = new NestedDynamicArray<int>(sizeOffsets, sizes);
+                m_StaticFieldSlotGroups = new NestedDynamicArray<StaticFieldSlotGroup>(groupOffsets, groups);
+            }
+
+            NestedDynamicArray<StaticFieldSlotGroup> m_StaticFieldSlotGroups;
+            NestedDynamicArray<int> m_StaticFieldSlotByteSizes;
 
             //secondary data, handled inside InitSecondaryItems
             NestedDynamicArray<int> m_FieldIndicesInstance; //includes all bases' instance fields
@@ -277,7 +364,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 #endif
 
-            public TypeDescriptionEntriesCache(ref IFileReader reader, FieldDescriptionEntriesCache fieldDescriptions, NativeTypeEntriesCache nativeTypes, VirtualMachineInformation vmInfo)
+            public TypeDescriptionEntriesCache(ref IFileReader reader, FieldDescriptionEntriesCache fieldDescriptions, NativeTypeEntriesCache nativeTypes, VirtualMachineInformation vmInfo, ManagedObjectsEntriesCache managedObjects)
             {
                 m_HasStaticFieldSlotsAndFlags = reader.FormatVersion >= FormatVersion.StaticFieldAndNonGCHeapVersion;
                 Count = (int)reader.GetEntryCount(EntryType.TypeDescriptions_TypeIndex);
@@ -380,6 +467,9 @@ namespace Unity.MemoryProfiler.Editor
                 {
                     typeNameToIndex[TypeDescriptionName[i]] = i;
                 }
+                if (managedObjects.InstanceCountPerType.IsCreated)
+                    InclusiveInstanceCount = ComputeInclusiveInstanceCounts(managedObjects.InstanceCountPerType, BaseOrElementTypeIndex, Allocator.Persistent);
+                PreferLiveGenerationOfUnityBaseTypes(typeNameToIndex);
 
                 typeNameToIndex.GetOrInitializeValue(UnityObjectTypeName, out ITypeUnityObject, ITypeInvalid);
 #if DEBUG_VALIDATION //This shouldn't really happen
@@ -505,23 +595,15 @@ namespace Unity.MemoryProfiler.Editor
             /// Pre-v20 files never populate <see cref="StaticFieldSlots"/> (its read isn't even
             /// scheduled), so this always returns false there. A non-empty blob alone isn't sufficient:
             /// every owned static field gets an 8-byte header group even when unresolved (count 0), so
-            /// this parses the groups and requires at least one with a non-zero count.
+            /// this requires at least one group with a non-zero count.
             /// </summary>
             public bool HasStaticFieldSlotData(CachedSnapshot snapshot, long iType)
             {
                 if (!m_HasStaticFieldSlotsAndFlags)
                     return false;
 
-                var ownedStaticFields = FieldIndicesOwnedStatic[iType];
-                if (ownedStaticFields.Count == 0)
-                    return false;
-
-                var slotByteSizes = new int[ownedStaticFields.Count];
-                for (int i = 0; i < ownedStaticFields.Count; ++i)
-                    slotByteSizes[i] = FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize(snapshot, ownedStaticFields[i]);
-
-                var groups = ParseStaticFieldSlots(StaticFieldSlots[iType], slotByteSizes);
-                for (int i = 0; i < groups.Length; ++i)
+                var groups = GetStaticFieldSlotGroups(snapshot, iType);
+                for (long i = 0; i < groups.Count; ++i)
                 {
                     if (groups[i].Count > 0)
                         return true;
@@ -532,7 +614,7 @@ namespace Unity.MemoryProfiler.Editor
             /// <summary>
             /// Total resolved static-field byte size owned by a type: <see cref="StaticFieldBytes"/>'s
             /// count on pre-v20 files, or the sum of every owned static field's slot group
-            /// (<see cref="ParseStaticFieldSlots"/>'s <c>Count * slotByteSize</c>) on v20+ files, where
+            /// (<see cref="GetStaticFieldSlotGroups"/>'s <c>Count * slotByteSize</c>) on v20+ files, where
             /// <see cref="StaticFieldBytes"/> is no longer populated.
             /// </summary>
             public long GetStaticFieldOwnByteSize(CachedSnapshot snapshot, long iType)
@@ -540,17 +622,10 @@ namespace Unity.MemoryProfiler.Editor
                 if (!snapshot.HasStaticFieldSlotsAndFlags)
                     return StaticFieldBytes[iType].Count;
 
-                var ownedStaticFields = FieldIndicesOwnedStatic[iType];
-                if (ownedStaticFields.Count == 0)
-                    return 0;
-
-                var slotByteSizes = new int[ownedStaticFields.Count];
-                for (int i = 0; i < ownedStaticFields.Count; ++i)
-                    slotByteSizes[i] = FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize(snapshot, ownedStaticFields[i]);
-
-                var groups = ParseStaticFieldSlots(StaticFieldSlots[iType], slotByteSizes);
+                var groups = GetStaticFieldSlotGroups(snapshot, iType);
+                var slotByteSizes = GetStaticFieldSlotByteSizes(snapshot, iType);
                 long total = 0;
-                for (int i = 0; i < groups.Length; ++i)
+                for (long i = 0; i < groups.Count; ++i)
                     total += (long)groups[i].Count * slotByteSizes[i];
                 return total;
             }
@@ -674,6 +749,153 @@ namespace Unity.MemoryProfiler.Editor
 
                     m_FieldProcessingBuffer.Add(iField);
                 }
+            }
+
+            static readonly string[] k_UnityBaseTypeNamesResolvedByGeneration =
+            {
+                k_UnityMonoBehaviourTypeName, k_UnityScriptableObjectTypeName, k_UnityComponentObjectTypeName,
+                k_UnityGameObjectTypeName, k_UnityTransformTypeName, k_UnityRectTransformTypeName, k_UnityEditorEditorTypeName,
+            };
+
+            /// <summary>
+            /// CoreCLR snapshots can contain type rows left over from earlier domain reloads, so a Unity base type
+            /// such as UnityEngine.Object can appear once per reload. Points the Unity base type names at the
+            /// generation that the live objects of the backend-provided object table derive from.
+            /// </summary>
+            void PreferLiveGenerationOfUnityBaseTypes(Dictionary<string, int> typeNameToIndex)
+            {
+                if (!InclusiveInstanceCount.IsCreated)
+                    return;
+                using var unityObjectRows = new DynamicArray<int>(0, 4, Allocator.Temp);
+                for (int i = 0; i < Count; ++i)
+                {
+                    if (TypeDescriptionName[i] == UnityObjectTypeName)
+                        unityObjectRows.Push(i);
+                }
+                if (unityObjectRows.Count < 2)
+                    return;
+
+                // UnityEngine.Object currently contains no static fields so there is no benefit in providing a valid list for candidateHasResolvedStatics
+                var liveUnityObjectRow = SelectLiveGenerationRow(unityObjectRows, InclusiveInstanceCount, default);
+                typeNameToIndex[UnityObjectTypeName] = liveUnityObjectRow;
+
+                foreach (var name in k_UnityBaseTypeNamesResolvedByGeneration)
+                {
+                    for (int i = 0; i < Count; ++i)
+                    {
+                        if (TypeDescriptionName[i] == name && DerivesFromRow(BaseOrElementTypeIndex, i, liveUnityObjectRow))
+                        {
+                            typeNameToIndex[name] = i;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Returns the row of the live generation of the type at <paramref name="typeIndex"/>, or the row itself when its name is unique.
+            /// CoreCLR keeps the type rows of assembly load contexts that leaked across domain reloads, under the same names as the live ones.
+            /// </summary>
+            public int GetLiveTypeIndex(CachedSnapshot snapshot, int typeIndex)
+            {
+                if (!m_LiveTypeIndex.IsCreated)
+                    m_LiveTypeIndex = BuildLiveTypeIndex(snapshot);
+                return m_LiveTypeIndex[typeIndex];
+            }
+
+            DynamicArray<int> BuildLiveTypeIndex(CachedSnapshot snapshot)
+            {
+                var liveTypeIndex = new DynamicArray<int>(Count, Allocator.Persistent);
+                using var nextRowWithSameName = new DynamicArray<int>(Count, Allocator.Temp);
+                var firstRowByName = new Dictionary<string, int>(Count);
+                for (int i = Count - 1; i >= 0; --i)
+                {
+                    liveTypeIndex[i] = i;
+                    nextRowWithSameName[i] = firstRowByName.TryGetValue(TypeDescriptionName[i], out var next) ? next : -1;
+                    firstRowByName[TypeDescriptionName[i]] = i;
+                }
+
+                using var candidateRows = new DynamicArray<int>(0, 4, Allocator.Temp);
+                using var candidateHasResolvedStatics = new DynamicArray<bool>(0, 4, Allocator.Temp);
+                foreach (var firstRow in firstRowByName.Values)
+                {
+                    if (nextRowWithSameName[firstRow] < 0)
+                        continue;
+                    candidateRows.Clear(false);
+                    candidateHasResolvedStatics.Clear(false);
+                    for (var row = firstRow; row >= 0; row = nextRowWithSameName[row])
+                    {
+                        candidateRows.Push(row);
+                        candidateHasResolvedStatics.Push(HasStaticFieldSlotData(snapshot, row));
+                    }
+                    var liveRow = SelectLiveGenerationRow(candidateRows, InclusiveInstanceCount, candidateHasResolvedStatics);
+                    for (var row = firstRow; row >= 0; row = nextRowWithSameName[row])
+                        liveTypeIndex[row] = liveRow;
+                }
+                return liveTypeIndex;
+            }
+
+            /// <summary>
+            /// Returns the first candidate with resolved static fields, as a leaked generation's statics are never resolved while its
+            /// leaked instances can outnumber the live ones. Otherwise the candidate with the most inclusive instances, or the last one.
+            /// </summary>
+            internal static int SelectLiveGenerationRow(in DynamicArray<int> candidateRows, in DynamicArray<long> inclusiveInstanceCount, in DynamicArray<bool> candidateHasResolvedStatics)
+            {
+                if (candidateHasResolvedStatics.IsCreated)
+                {
+                    for (long i = 0; i < candidateRows.Count; ++i)
+                    {
+                        if (candidateHasResolvedStatics[i])
+                            return candidateRows[i];
+                    }
+                }
+
+                var liveRow = candidateRows[candidateRows.Count - 1];
+                if (!inclusiveInstanceCount.IsCreated)
+                    return liveRow;
+                long mostInstances = 0;
+                for (long i = 0; i < candidateRows.Count; ++i)
+                {
+                    var instances = inclusiveInstanceCount[candidateRows[i]];
+                    if (instances > mostInstances)
+                    {
+                        mostInstances = instances;
+                        liveRow = candidateRows[i];
+                    }
+                }
+                return liveRow;
+            }
+
+            /// <summary>
+            /// Adds each type's instances to the type and every base type, so a type's count includes the instances of derived types.
+            /// </summary>
+            internal static DynamicArray<long> ComputeInclusiveInstanceCounts(in DynamicArray<long> instanceCountPerType, in DynamicArray<int> baseOrElementTypeIndex, Allocator allocator)
+            {
+                var inclusive = new DynamicArray<long>(instanceCountPerType.Count, allocator, memClear: true);
+                for (long type = 0; type < instanceCountPerType.Count; ++type)
+                {
+                    var instances = instanceCountPerType[type];
+                    if (instances == 0)
+                        continue;
+                    var current = (int)type;
+                    for (long hops = 0; current >= 0 && hops < baseOrElementTypeIndex.Count; ++hops)
+                    {
+                        inclusive[current] += instances;
+                        current = baseOrElementTypeIndex[current];
+                    }
+                }
+                return inclusive;
+            }
+
+            static bool DerivesFromRow(DynamicArray<int> baseOrElementTypeIndex, int typeIndex, int baseTypeIndex)
+            {
+                for (long hops = 0; typeIndex >= 0 && hops < baseOrElementTypeIndex.Count; ++hops)
+                {
+                    if (typeIndex == baseTypeIndex)
+                        return true;
+                    typeIndex = baseOrElementTypeIndex[typeIndex];
+                }
+                return false;
             }
 
             bool FieldMatchesOptions(int fieldIndex, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions options)
@@ -874,31 +1096,46 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 var fieldIndices = FieldIndices[ITypeUnityObject];
                 long fieldIndicesIndex = -1;
+                UnityObjectNativeLinkIsEntityId = false;
                 for (long i = 0; i < fieldIndices.Count; i++)
                 {
-                    if (fieldDescriptions.FieldDescriptionName[fieldIndices[i]] == UnityNativeObjectPointerFieldName)
+                    var fieldName = fieldDescriptions.FieldDescriptionName[fieldIndices[i]];
+                    // Editor snapshots taken before 7000.0.0a6 also have an m_EntityId, but it may be 4 bytes wide and stays set on destroyed shells, so m_CachedPtr wins whenever it exists.
+                    if (fieldName == UnityNativeObjectPointerFieldName)
                     {
+                        // Prefer m_CachedPtr when a runtime has both fields: the crawler already links shells
+                        // through it as a pointer field, so also linking through m_EntityId would link them twice.
                         fieldIndicesIndex = i;
+                        UnityObjectNativeLinkIsEntityId = false;
                         break;
+                    }
+                    if (fieldName == UnityNativeObjectEntityIdFieldName && fieldIndicesIndex < 0)
+                    {
+                        // But do use m_EntityId as fallback for versions that no longer have the m_CachedPtr field.
+                        // Those versions are also guaranteed to use 8B sized EntityIds, so they can be converted as ulongs without needing extra checks.
+                        fieldIndicesIndex = i;
+                        UnityObjectNativeLinkIsEntityId = true;
                     }
                 }
 
-                IFieldUnityObjectMCachedPtr = fieldIndicesIndex >= 0 ? FieldIndices[ITypeUnityObject][fieldIndicesIndex] : -1;
+                IFieldUnityObjectNativeLink = fieldIndicesIndex >= 0 ? FieldIndices[ITypeUnityObject][fieldIndicesIndex] : -1;
 
-                IFieldUnityObjectMCachedPtrOffset = -1;
+                IFieldUnityObjectNativeLinkOffset = -1;
+                UnityObjectNativeLinkFieldSize = 0;
 
-                if (IFieldUnityObjectMCachedPtr >= 0)
+                if (IFieldUnityObjectNativeLink >= 0)
                 {
-                    IFieldUnityObjectMCachedPtrOffset = fieldDescriptions.Offset[IFieldUnityObjectMCachedPtr];
+                    IFieldUnityObjectNativeLinkOffset = fieldDescriptions.Offset[IFieldUnityObjectNativeLink];
+                    UnityObjectNativeLinkFieldSize = UnityObjectNativeLinkIsEntityId ? sizeof(ulong) : (int)vmInfo.PointerSize;
                 }
 #if UNMANAGED_NATIVE_HASHMAP_AVAILABLE
                 PureCSharpTypeIndices.TrimExcess();
 #endif
 
 #if DEBUG_VALIDATION
-                if (IFieldUnityObjectMCachedPtrOffset < 0)
+                if (IFieldUnityObjectNativeLinkOffset < 0)
                 {
-                    Debug.LogWarning("Could not find unity object instance id field or m_CachedPtr");
+                    Debug.LogWarning("Could not find the UnityEngine.Object field linking managed shells to native objects (m_EntityId or m_CachedPtr)");
                     return;
                 }
 #endif
@@ -1053,6 +1290,8 @@ namespace Unity.MemoryProfiler.Editor
                 Count = 0;
                 Flags.Dispose();
                 BaseOrElementTypeIndex.Dispose();
+                InclusiveInstanceCount.Dispose();
+                m_LiveTypeIndex.Dispose();
                 Size.Dispose();
                 TypeInfoAddress.Dispose();
                 TypeDescriptionName = null;
@@ -1081,6 +1320,10 @@ namespace Unity.MemoryProfiler.Editor
                     StaticFieldSlots.Dispose();
                     m_StaticFieldSlotsReadOp = default;
                 }
+                if (m_StaticFieldSlotGroups.IsCreated)
+                    m_StaticFieldSlotGroups.Dispose();
+                if (m_StaticFieldSlotByteSizes.IsCreated)
+                    m_StaticFieldSlotByteSizes.Dispose();
 
                 if (m_FieldIndicesInstance.IsCreated)
                     m_FieldIndicesInstance.Dispose();

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Unity.Collections;
+using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling.Memory;
 using UnityEngine;
@@ -75,6 +77,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.NativeObjectRoots] = TextContent.RootsAndImpactBucketNativeObjectRoots;
             k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.UnreferencedPrefabs] = TextContent.RootsAndImpactBucketUnreferencedPrefabs;
             k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.GCHandleRoots] = TextContent.RootsAndImpactBucketGCHandleRoots;
+            k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.StackRoots] = TextContent.RootsAndImpactBucketStackRoots;
+            k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.FinalizerRoots] = TextContent.RootsAndImpactBucketFinalizerRoots;
+            k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.OtherRoots] = TextContent.RootsAndImpactBucketOtherRoots;
+            k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.NonGCHeapSections] = TextContent.RootsAndImpactBucketNonGCHeapSections;
             k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.NativeRootAllocations] = TextContent.RootsAndImpactBucketNativeRootAllocations;
             k_BucketDisplayNames[(int)RootAndImpactInfo.OwnershipBucket.BrokenScriptReferences] = TextContent.RootsAndImpactBucketBrokenScriptReferences;
 
@@ -88,6 +94,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.NativeObjectRoots] = (int)IAnalysisViewSelectable.Category.NativeObjectRoots;
             k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.UnreferencedPrefabs] = (int)IAnalysisViewSelectable.Category.UnreferencedPrefabs;
             k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.GCHandleRoots] = (int)IAnalysisViewSelectable.Category.GCHandleRoots;
+            k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.StackRoots] = (int)IAnalysisViewSelectable.Category.StackRoots;
+            k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.FinalizerRoots] = (int)IAnalysisViewSelectable.Category.FinalizerRoots;
+            k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.OtherRoots] = (int)IAnalysisViewSelectable.Category.OtherRoots;
+            k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.NonGCHeapSections] = (int)IAnalysisViewSelectable.Category.NonGCHeapSections;
             k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.NativeRootAllocations] = (int)IAnalysisViewSelectable.Category.NativeRootAllocations;
             k_BucketCategories[(int)RootAndImpactInfo.OwnershipBucket.BrokenScriptReferences] = (int)IAnalysisViewSelectable.Category.BrokenScriptReferences;
         }
@@ -111,6 +121,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         public RootsAndImpactModel Build(CachedSnapshot snapshot, in BuildArgs args)
         {
             m_ItemId = (int)IAnalysisViewSelectable.Category.FirstDynamicId;
+
+            // Null when unfiltered. Method-local, not a field: a superseded build on this reused builder can still be running.
+            var filteredImpactByItemId = args.SearchFilter != null
+                ? new Dictionary<int, RootsAndImpactModel.FilteredImpact>()
+                : null;
 
             // SourceIndex values are snapshot-relative, so the parsed-type-name cache is only valid for
             // the snapshot it was populated from. Reset it whenever the loaded snapshot changes (the
@@ -178,6 +193,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 var totalImpact = new NativeRootSize();
+                var totalExclusiveImpact = new MemorySize();
+                // Own size never covers a row's subtree, so unlike the impact totals it accumulates at every depth.
+                var totalOwnSize = new MemorySize();
+                var totalSharedInTotal = new MemorySize();
+                var totalSharedProRata = new MemorySize();
 
                 // A search whose text matches a bucket's own header name (e.g. "Scenes", "Asset Bundles",
                 // "Virtual Machine Memory") should reveal that whole bucket — the leaf objects inside it don't
@@ -187,10 +207,21 @@ namespace Unity.MemoryProfiler.Editor.UI
                     args.HideRegionDataItems, args.CancellationToken);
                 bool vmBucketNameMatches = args.SearchFilter != null
                     && args.SearchFilter.MatchesTextName(TextContent.RootsAndImpactBucketVirtualMachineMemory);
+                // A search matching the "Managed Roots" parent name should reveal every sub-group nested under
+                // it (GC Handle/Static/Stack/Finalizer/Other Roots, Frozen/Non-GC Heap), the same way matching
+                // the Virtual Machine Memory name reveals its own re-homed children above.
+                bool managedRootsBucketNameMatches = args.SearchFilter != null
+                    && args.SearchFilter.MatchesTextName(TextContent.RootsAndImpactBucketManagedRoots);
 
                 // Collected while iterating NativeRootAllocations — emitted as its own bucket after the loop.
                 var vmChildren = new List<TreeViewItemData<RootsAndImpactModel.ItemData>>();
                 var vmRootIndex = snapshot.NativeRootReferences.VMRootReferenceIndex;
+
+                // Sub-groups nested under one "Managed Roots" parent header — collected here instead of being
+                // added to rootNodes directly. Frozen/Non-GC Heap is a heap-section classification rather than a
+                // root mechanism, but users think "why is this object alive" and it belongs in the same place as
+                // an answer to that question.
+                var managedRootsChildren = new List<TreeViewItemData<RootsAndImpactModel.ItemData>>();
 
                 for (int b = 0; b < (int)RootAndImpactInfo.OwnershipBucket.Count; b++)
                 {
@@ -199,14 +230,23 @@ namespace Unity.MemoryProfiler.Editor.UI
                         continue;
 
                     var bucket = (RootAndImpactInfo.OwnershipBucket)b;
-                    bool bucketNameMatches = args.SearchFilter != null
-                        && args.SearchFilter.MatchesTextName(BucketDisplayName(bucket));
+                    bool bucketNameMatches = (args.SearchFilter != null
+                        && args.SearchFilter.MatchesTextName(BucketDisplayName(bucket)))
+                        || (managedRootsBucketNameMatches && IsManagedRootsSubGroup(bucket));
+                    // See ResolveSingleOwnedReference for why Stack/Finalizer/Other Roots build straight on
+                    // their target instead of adding a wrapper node for the root itself.
+                    bool resolveToTarget = bucket is RootAndImpactInfo.OwnershipBucket.StackRoots
+                        or RootAndImpactInfo.OwnershipBucket.FinalizerRoots
+                        or RootAndImpactInfo.OwnershipBucket.OtherRoots;
                     var bucketChildren = new List<TreeViewItemData<RootsAndImpactModel.ItemData>>();
                     for (long r = 0; r < bucketRoots.Count; r++)
                     {
                         args.CancellationToken.ThrowIfCancellationRequested();
 
                         var rootSource = bucketRoots[r];
+                        var buildSource = resolveToTarget
+                            ? ResolveSingleOwnedReference(rootAndImpactInfo, rootSource)
+                            : rootSource;
                         bool isVmRoot = bucket == RootAndImpactInfo.OwnershipBucket.NativeRootAllocations
                             && vmRootIndex.Valid && rootSource == vmRootIndex;
                         // The VM root is re-homed into the Virtual Machine Memory bucket below, so it follows
@@ -219,8 +259,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                             var bucketId = isVmRoot ? CompactFlatRow.BucketIdVirtualMachine : (byte)b;
                             try
                             {
-                                BuildFlatSubTreeToStore(snapshot, rootAndImpactInfo, rootSource,
-                                    store, ref totalImpact, 0, bucketId, args.CancellationToken);
+                                BuildFlatSubTreeToStore(snapshot, rootAndImpactInfo, buildSource,
+                                    store, ref totalImpact, ref totalExclusiveImpact, ref totalOwnSize,
+                                    ref totalSharedInTotal, ref totalSharedProRata, 0, bucketId, args.CancellationToken);
                             }
                             catch (OutOfMemoryException)
                             {
@@ -232,8 +273,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         {
                             // Tree mode: build with filter applied (or without when the bucket name matched).
                             var rootNode = revealWholeBucket
-                                ? BuildSubTree(snapshot, rootAndImpactInfo, rootSource, rowSource, in argsNoFilter)
-                                : BuildSubTree(snapshot, rootAndImpactInfo, rootSource, rowSource, in args);
+                                ? BuildSubTree(snapshot, rootAndImpactInfo, buildSource, rowSource, ref totalOwnSize, in argsNoFilter, filteredImpactByItemId)
+                                : BuildSubTree(snapshot, rootAndImpactInfo, buildSource, rowSource, ref totalOwnSize, in args, filteredImpactByItemId);
                             if (rootNode.HasValue)
                             {
                                 if (isVmRoot)
@@ -246,7 +287,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                     // Group static roots by namespace hierarchy with single-child collapsing
                     if (!args.FlattenHierarchy && bucket == RootAndImpactInfo.OwnershipBucket.StaticRoots && bucketChildren.Count > 0)
-                        bucketChildren = GroupByNamespace(rowSource, bucketChildren);
+                        bucketChildren = GroupByNamespace(filteredImpactByItemId, rowSource, bucketChildren);
+
+                    // Group frozen/Non-GC heap objects by managed type: which types occupy the frozen heap is
+                    // what a user triages by, and there can be very many of these rows.
+                    if (!args.FlattenHierarchy && bucket == RootAndImpactInfo.OwnershipBucket.NonGCHeapSections && bucketChildren.Count > 0)
+                        bucketChildren = GroupManagedObjectsByType(filteredImpactByItemId, snapshot, rowSource, bucketChildren);
 
                     if (!args.FlattenHierarchy && bucketChildren.Count > 0)
                     {
@@ -256,9 +302,27 @@ namespace Unity.MemoryProfiler.Editor.UI
                         var bucketItemId = bucketCategory >= 0 ? bucketCategory : m_ItemId++;
                         var bucketHeader = SumChildrenIntoGroupHeader(rowSource, bucketItemId,
                             BucketDisplayName(bucket), bucketChildren);
-                        rootNodes.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(bucketItemId, bucketHeader, bucketChildren));
-                        totalImpact += bucketHeader.TotalImpact;
+                        var bucketNode = new TreeViewItemData<RootsAndImpactModel.ItemData>(bucketItemId, bucketHeader, bucketChildren);
+                        if (IsManagedRootsSubGroup(bucket))
+                            managedRootsChildren.Add(bucketNode);
+                        else
+                            rootNodes.Add(bucketNode);
+                        // The table total uses the discounted value so it agrees with the visible rows.
+                        if (filteredImpactByItemId != null)
+                            RecordFilteredForGroup(filteredImpactByItemId, bucketItemId, bucketChildren);
+                        totalImpact += DisplayedTotalImpact(filteredImpactByItemId, bucketItemId, bucketHeader.TotalImpact);
+                        totalExclusiveImpact += DisplayedExclusiveImpact(filteredImpactByItemId, bucketItemId, bucketHeader.ExclusiveImpactSum);
+                        totalSharedInTotal += DisplayedSharedInTotal(filteredImpactByItemId, bucketItemId, bucketHeader.SharedInTotalSum);
+                        totalSharedProRata += DisplayedSharedProRata(filteredImpactByItemId, bucketItemId, bucketHeader.SharedProRataSum);
                     }
+                }
+
+                if (!args.FlattenHierarchy && managedRootsChildren.Count > 0)
+                {
+                    var managedRootsItemId = (int)IAnalysisViewSelectable.Category.ManagedRoots;
+                    var managedRootsHeader = SumChildrenIntoGroupHeader(rowSource, managedRootsItemId,
+                        TextContent.RootsAndImpactBucketManagedRoots, managedRootsChildren);
+                    rootNodes.Add(MakeGroupNode(filteredImpactByItemId, managedRootsItemId, managedRootsHeader, managedRootsChildren));
                 }
 
                 // One pass over EntriesMemoryMap to collect:
@@ -343,8 +407,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                             heapSize, heapSize, heapSize.SumUp(), default, default, ObjectStatus.VirtualMachine,
                             ObjectStatusWarningInfo.FromStatus(ObjectStatus.VirtualMachine), childCount: 0,
                             bucketId: CompactFlatRow.BucketIdVirtualMachine, isRegionData: true);
+                        totalOwnSize += heapData.OwnSizeSum;
                         if (args.FlattenHierarchy)
+                        {
                             totalImpact += heapSize;
+                            totalExclusiveImpact += heapData.ExclusiveImpactSum;
+                            totalSharedInTotal += heapData.SharedInTotalSum;
+                            totalSharedProRata += heapData.SharedProRataSum;
+                        }
                         else
                             vmChildren.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(heapItemId, heapData));
                     }
@@ -362,7 +432,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                     var vmBucketHeader = SumChildrenIntoGroupHeader(rowSource, vmBucketItemId,
                         TextContent.RootsAndImpactBucketVirtualMachineMemory, vmChildren, default);
                     rootNodes.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(vmBucketItemId, vmBucketHeader, vmChildren));
-                    totalImpact += vmBucketHeader.TotalImpact;
+                    if (filteredImpactByItemId != null)
+                        RecordFilteredForGroup(filteredImpactByItemId, vmBucketItemId, vmChildren);
+                    totalImpact += DisplayedTotalImpact(filteredImpactByItemId, vmBucketItemId, vmBucketHeader.TotalImpact);
+                    totalExclusiveImpact += DisplayedExclusiveImpact(filteredImpactByItemId, vmBucketItemId, vmBucketHeader.ExclusiveImpactSum);
+                    totalSharedInTotal += DisplayedSharedInTotal(filteredImpactByItemId, vmBucketItemId, vmBucketHeader.SharedInTotalSum);
+                    totalSharedProRata += DisplayedSharedProRata(filteredImpactByItemId, vmBucketItemId, vmBucketHeader.SharedProRataSum);
                 }
 
                 // Unrooted Native Subsystem Allocations — native allocations Unity reported that are
@@ -395,6 +470,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                         if (!args.FlattenHierarchy)
                             rootNodes.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(unrootedId, unrootedData));
                         totalImpact += unrootedSize;
+                        totalExclusiveImpact += unrootedData.ExclusiveImpactSum;
+                        totalOwnSize += unrootedData.OwnSizeSum;
+                        totalSharedInTotal += unrootedData.SharedInTotalSum;
+                        totalSharedProRata += unrootedData.SharedProRataSum;
                     }
                 }
 
@@ -472,12 +551,22 @@ namespace Unity.MemoryProfiler.Editor.UI
                         // Tree mode: isGroupHeader=true satisfies AllLeafNodes (no valid source).
                         // Flat mode: isGroupHeader=false so Flattened_ProducesNoGroupHeaders passes
                         //            and StatusCell treats the node as a leaf (shows status name).
-                        var itemData = AppendRow(itemId, source, name, regionSize, regionSize, regionSize.SumUp(), default, default,
+                        // A header's own size is its children's, which the rows below already show and the total adds up.
+                        var hasChildren = !args.FlattenHierarchy && children?.Count > 0;
+                        var ownSize = hasChildren ? default : regionSize;
+                        var itemData = AppendRow(itemId, source, name, ownSize, regionSize, regionSize.SumUp(), default, default,
                             status, ObjectStatusWarningInfo.FromStatus(status), children?.Count ?? 0,
                             bucketId: CompactFlatRow.BucketIdNone, isRegionData: true, isGroupHeader: !args.FlattenHierarchy);
                         if (!args.FlattenHierarchy)
                             rootNodes.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(itemId, itemData, children));
                         totalImpact += regionSize;
+                        totalExclusiveImpact += itemData.ExclusiveImpactSum;
+                        totalOwnSize += itemData.OwnSizeSum;
+                        if (hasChildren)
+                            foreach (var child in children)
+                                totalOwnSize += child.data.OwnSizeSum;
+                        totalSharedInTotal += itemData.SharedInTotalSum;
+                        totalSharedProRata += itemData.SharedProRataSum;
                     }
 
                     AddRegionNode(TextContent.RootsAndImpactBucketReservedNative,
@@ -535,12 +624,27 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // baseline, and the initial ApplyFlatFilter narrows the first page and the size-bar total down to
                     // whatever is active right now.
                     var flatModel = new RootsAndImpactModel(rowSource, m_FlattenedPageSize,
-                        totalImpact, snapshot.ProcessedNativeRoots.TotalMemoryInSnapshot);
+                        totalImpact, snapshot.ProcessedNativeRoots.TotalMemoryInSnapshot, totalExclusiveImpact,
+                        totalOwnSize, totalSharedInTotal, totalSharedProRata);
                     flatModel.ApplyFlatFilter(args.SearchFilter, args.HideExclusiveOnlyItems, args.HideRegionDataItems);
                     return flatModel;
                 }
 
-                return new RootsAndImpactModel(rootNodes, rowSource, totalImpact, snapshot.ProcessedNativeRoots.TotalMemoryInSnapshot);
+                // For the AssetBundle savings deep-link this sum of filtered top-level impacts equals the widget's
+                // TotalAssetBundleRecoverable, and shrinks with the visible rows under further filtering.
+                var modelTotalImpact = totalImpact;
+                if (!args.FlattenHierarchy
+                    && args.OriginalStatusMask == RootsAndImpactSummaryModelBuilder.UnloadableAssetBundleStatusMask
+                    && snapshot.RootAndImpactInfo.SuccessfullyBuilt
+                    && filteredImpactByItemId != null)
+                {
+                    var filteredTotal = default(NativeRootSize);
+                    foreach (var node in rootNodes)
+                        filteredTotal += filteredImpactByItemId.TryGetValue(node.id, out var filtered) ? filtered.TotalImpact : node.data.TotalImpact;
+                    modelTotalImpact = filteredTotal;
+                }
+
+                return new RootsAndImpactModel(rootNodes, rowSource, modelTotalImpact, snapshot.ProcessedNativeRoots.TotalMemoryInSnapshot, totalExclusiveImpact, totalOwnSize, totalSharedInTotal, totalSharedProRata, filteredImpactByItemId);
             }
             catch
             {
@@ -556,6 +660,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var tree = new List<TreeViewItemData<RootsAndImpactModel.ItemData>>();
             var totalImpact = new NativeRootSize();
+            var totalExclusiveImpact = new MemorySize();
+            var totalOwnSize = new MemorySize();
+            var totalSharedInTotal = new MemorySize();
+            var totalSharedProRata = new MemorySize();
             var stack = new Stack<TreeViewItemData<RootsAndImpactModel.ItemData>>();
             foreach (var id in treeNodeIdFilter)
             {
@@ -574,13 +682,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     tree.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(treeNode.id, treeNode.data));
                     totalImpact += treeNode.data.TotalImpact;
+                    totalExclusiveImpact += treeNode.data.ExclusiveImpactSum;
+                    totalOwnSize += treeNode.data.OwnSizeSum;
+                    totalSharedInTotal += treeNode.data.SharedInTotalSum;
+                    totalSharedProRata += treeNode.data.SharedProRataSum;
                 }
             }
 
             // The tree's ItemData values are redirects into baseModel's row source; retain a reference so it
             // outlives baseModel if the table view controller disposes baseModel before this derived model.
             baseModel.RowSource?.Retain();
-            return new RootsAndImpactModel(tree, baseModel.RowSource, totalImpact, baseModel.TotalSnapshotMemorySize);
+            return new RootsAndImpactModel(tree, baseModel.RowSource, totalImpact, baseModel.TotalSnapshotMemorySize, totalExclusiveImpact, totalOwnSize, totalSharedInTotal, totalSharedProRata);
         }
 
         static ObjectStatusWarningInfo AggregateWarningInfo(List<TreeViewItemData<RootsAndImpactModel.ItemData>> items)
@@ -591,13 +703,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             return result;
         }
 
-        // When both a text search and an explicit status button filter are active, a node is a
-        // "direct match" only if it satisfies BOTH independently (AND). Otherwise OR semantics apply.
-        // PassesFlat(name) and PassesFlat(status) each check their respective component alone.
-        static bool NodePassesAllFilters(in BuildArgs args, string n, ObjectStatus s) =>
+        /// <summary>
+        /// When both a text search and an explicit status button filter are active, a node is a
+        /// "direct match" only if it satisfies BOTH independently (AND). Otherwise OR semantics apply.
+        /// PassesFlat(name) and PassesFlat(status) each check their respective component alone.
+        /// </summary>
+        static bool NodePassesAllFilters(in BuildArgs args, string nodeName, ObjectStatus status) =>
             args.HasCombinedTextAndStatusFilter
-                ? args.SearchFilter.PassesFlat(n) && args.SearchFilter.PassesFlat(s)
-                : args.SearchFilter.PassesFlat(n, s);
+                ? args.SearchFilter.PassesFlat(nodeName) && args.SearchFilter.PassesFlat(status)
+                : args.SearchFilter.PassesFlat(nodeName, status);
 
         /// <summary>
         /// Same as the two-argument overload, but also matches on the item's own type name(s)
@@ -684,12 +798,57 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Status-only filter matcher for the flat-mode discount walk; accepts exactly the nodes flat mode emits as
+        /// rows, mirroring <see cref="NodePassesFilterIncludingSynthesizedStatuses"/>.
+        /// </summary>
+        readonly struct StatusFilterTargetMatcher : RootAndImpactInfo.IImpactPathTargetMatcher
+        {
+            readonly CachedSnapshot m_Snapshot;
+            readonly BuildArgs m_Args;
+            readonly bool m_FilterMatchesGraphicsOwners;
+
+            public StatusFilterTargetMatcher(CachedSnapshot snapshot, in BuildArgs args)
+            {
+                m_Snapshot = snapshot;
+                m_Args = args;
+                m_FilterMatchesGraphicsOwners = args.SearchFilter.PassesFlat(ObjectStatus.GraphicsBuffers);
+            }
+
+            public bool Matches(SourceIndex node) =>
+                NodePassesFilterIncludingSynthesizedStatuses(in m_Args, null, default,
+                    m_Snapshot.ObjectStatusComputation.GetStatus(node),
+                    ownsGraphics: m_FilterMatchesGraphicsOwners && ComputeOwnSize(m_Snapshot, node).GfxSize.Committed > 0,
+                    isPrefab: node.Id == SourceIndex.SourceId.Prefab);
+        }
+
+        /// <summary>
+        /// Matches nodes in one status set, independent of the build's filter. The all-savings deep-link discounts
+        /// a row only against its own category, since the widget dedups each category alone.
+        /// </summary>
+        readonly struct StatusMaskTargetMatcher : RootAndImpactInfo.IImpactPathTargetMatcher
+        {
+            readonly CachedSnapshot m_Snapshot;
+            readonly ulong m_StatusMask;
+
+            public StatusMaskTargetMatcher(CachedSnapshot snapshot, ulong statusMask)
+            {
+                m_Snapshot = snapshot;
+                m_StatusMask = statusMask;
+            }
+
+            public bool Matches(SourceIndex node) =>
+                (m_StatusMask & (1ul << (int)m_Snapshot.ObjectStatusComputation.GetStatus(node))) != 0;
+        }
+
         TreeViewItemData<RootsAndImpactModel.ItemData>? BuildSubTree(
             CachedSnapshot snapshot,
             RootAndImpactInfo rootAndImpactInfo,
             SourceIndex source,
             RootsAndImpactRowSource rowSource,
-            in BuildArgs args)
+            ref MemorySize totalOwnSize,
+            in BuildArgs args,
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId)
         {
             // Iterative traversal to avoid stack overflow on arbitrarily deep trees. Each node's row is reserved
             // in the store at first visit, in pre-order, and each TreeViewItemData only carries a redirect to it.
@@ -708,6 +867,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             var store = rowSource.Store;
             var workStack = new Stack<(SourceIndex Source, string Name, ObjectStatus Status, int ChildrenToPop, bool InsideMatchingSubtree, long RowIndex, TypeNamesForFiltering TypeNamesForFilter)>();
             var resultStack = new Stack<TreeViewItemData<RootsAndImpactModel.ItemData>?>();
+            // Filtered contributions of children whose impact skipped their parent, keyed by the ancestor that received it.
+            Dictionary<SourceIndex, RootsAndImpactModel.FilteredImpact> redirectedFilteredImpact = null;
 
             // Reused per first-visit below to avoid a per-node List<SourceIndex> allocation (millions of
             // nodes on large snapshots). Its contents are fully consumed (pushed onto the work stack) within
@@ -881,9 +1042,43 @@ namespace Unity.MemoryProfiler.Editor.UI
                     store.ElementAt(rowIndex) = new CompactFlatRow(treeId, src, ownSize, impact.TotalImpact, exclusiveSum,
                         sharedProRataSum, impact.SharedInTotal.SumUp(), status, warnInfo, children.Count,
                         specialNameId: -1, depth: 0, CompactFlatRow.BucketIdNone, isRegionData: false,
-                        isGroupHeader: false, isFilterMatchAncestor: isFilterMatchAncestor);
+                        isGroupHeader: false, isFilterMatchAncestor: isFilterMatchAncestor,
+                        referrerCount: rootAndImpactInfo.GetReferrerCount(src),
+                        parentExcludedFromSplit: rootAndImpactInfo.TryGetOrphanedSplitRedirect(src, out _));
 
                     var itemData = new RootsAndImpactModel.ItemData(rowSource, rowIndex);
+                    totalOwnSize += itemData.OwnSizeSum;
+                    if (filteredImpactByItemId != null && isFilterMatchAncestor && !insideMatchingSubtree)
+                    {
+                        var filtered = default(RootsAndImpactModel.FilteredImpact);
+                        for (int i = 0; i < children.Count; i++)
+                        {
+                            filtered += ChildFilteredImpact(filteredImpactByItemId, children[i]);
+                            if (children[i].data.ParentExcludedFromSplit
+                                && rootAndImpactInfo.TryGetOrphanedSplitRedirect(children[i].data.Source, out var redirectTarget))
+                            {
+                                redirectedFilteredImpact ??= new Dictionary<SourceIndex, RootsAndImpactModel.FilteredImpact>();
+                                redirectedFilteredImpact.TryGetValue(redirectTarget, out var pending);
+                                redirectedFilteredImpact[redirectTarget] = pending + UnsplitFilteredImpact(filteredImpactByItemId, children[i]);
+                            }
+                        }
+                        if (redirectedFilteredImpact != null && redirectedFilteredImpact.Remove(src, out var redirectedHere))
+                            filtered += redirectedHere;
+
+                        // Pro-rate the bundle's own cost by visible children over total root entries, as AssetBundleSavings does.
+                        if (src.Id == SourceIndex.SourceId.NativeObject
+                            && args.OriginalStatusMask.HasValue && ((args.OriginalStatusMask.Value & RootsAndImpactSummaryModelBuilder.UnloadableAssetBundleStatusMask) != 0)
+                            && rootAndImpactInfo.TryGetAssetBundleSavings(src, out var savings))
+                        {
+                            var totalEntries = savings.UsedRootEntries + savings.UnusedRootEntries;
+                            if (totalEntries > 0)
+                            {
+                                var ownShare = ownSize.ScaleByFraction((ulong)children.Count, (ulong)totalEntries);
+                                filtered += new RootsAndImpactModel.FilteredImpact(ownShare, ownShare.SumUp(), default, default);
+                            }
+                        }
+                        filteredImpactByItemId[treeId] = filtered;
+                    }
                     resultStack.Push(new TreeViewItemData<RootsAndImpactModel.ItemData>(treeId, itemData, children.Count > 0 ? children : null));
                 }
             }
@@ -891,12 +1086,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             return resultStack.Count > 0 ? resultStack.Pop() : null;
         }
 
+        // Small because it is allocated once per top-level root; DynamicArray grows on demand.
+        const long k_DefaultStackSizeForFlatNodesCollection = 16;
+
         void BuildFlatSubTreeToStore(
             CachedSnapshot snapshot,
             RootAndImpactInfo rootAndImpactInfo,
             SourceIndex source,
             FlattenedRowStore<CompactFlatRow> store,
             ref NativeRootSize totalImpact,
+            ref MemorySize totalExclusiveImpact,
+            ref MemorySize totalOwnSize,
+            ref MemorySize totalSharedInTotal,
+            ref MemorySize totalSharedProRata,
             ushort depth,
             byte bucketId,
             CancellationToken cancellationToken)
@@ -910,87 +1112,103 @@ namespace Unity.MemoryProfiler.Editor.UI
             // the impact data are patched into the reserved slot at finalize.
             var workStack = new Stack<(SourceIndex Source, ObjectStatus Status, int ChildrenToPop, ushort Depth, long RowIndex)>();
             // Accumulates each node's aggregated WarnInfo in post-order; parent pops childrenToPop entries.
-            var warnStack = new Stack<ObjectStatusWarningInfo>();
+            var warnStack = new DynamicArray<ObjectStatusWarningInfo>(0, k_DefaultStackSizeForFlatNodesCollection, Allocator.Persistent);
             // Reused per first-visit to avoid a per-node List allocation. See BuildSubTree for rationale.
             var childSources = new List<SourceIndex>();
 
-            workStack.Push((source, snapshot.ObjectStatusComputation.GetStatus(source), -1, depth, -1));
-
-            // See BuildSubTree: sampled so a single huge root can still be abandoned promptly.
-            var visitCount = 0;
-
-            while (workStack.Count > 0)
+            try
             {
-                if ((++visitCount & k_CancellationCheckMask) == 0)
-                    cancellationToken.ThrowIfCancellationRequested();
+                workStack.Push((source, snapshot.ObjectStatusComputation.GetStatus(source), -1, depth, -1));
 
-                var (src, status, childrenToPop, nodeDepth, rowIndex) = workStack.Pop();
+                // See BuildSubTree: sampled so a single huge root can still be abandoned promptly.
+                var visitCount = 0;
 
-                if (childrenToPop < 0)
+                while (workStack.Count > 0)
                 {
-                    // First visit: enumerate children (same gate as BuildSubTree).
-                    childSources.Clear();
-                    var supported = SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(src.Id);
-                    if (supported)
+                    if ((++visitCount & k_CancellationCheckMask) == 0)
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                    var (src, status, childrenToPop, nodeDepth, rowIndex) = workStack.Pop();
+
+                    if (childrenToPop < 0)
                     {
-                        using (var iter = new ReferencesIterator(rootAndImpactInfo, src, includeUnownedReferences: false))
+                        // First visit: enumerate children (same gate as BuildSubTree).
+                        childSources.Clear();
+                        var supported = SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(src.Id);
+                        if (supported)
                         {
-                            while (iter.MoveNext())
-                                childSources.Add(iter.Current.Reference);
+                            using (var iter = new ReferencesIterator(rootAndImpactInfo, src, includeUnownedReferences: false))
+                            {
+                                while (iter.MoveNext())
+                                    childSources.Add(iter.Current.Reference);
+                            }
+                        }
+
+                        // Reserve the row now so its position in the store reflects pre-order visitation; the
+                        // placeholder's WarnInfo is overwritten once descendants have been visited, below.
+                        var reservedRowIndex = -1L;
+                        if (supported)
+                        {
+                            var placeholderRow = new CompactFlatRow(m_ItemId++, src, default, default, default, default, default,
+                                status, default, childSources.Count, specialNameId: -1, nodeDepth, bucketId, isRegionData: false);
+                            reservedRowIndex = store.Add(in placeholderRow);
+                        }
+
+                        workStack.Push((src, status, childSources.Count, nodeDepth, reservedRowIndex));
+                        // Saturate rather than wrap: a wrapped depth would make a deep node look like a subtree root
+                        // to AccumulateFilteredTotal and get its already-subsumed impact added to the total again.
+                        var childDepth = nodeDepth < ushort.MaxValue ? (ushort)(nodeDepth + 1) : ushort.MaxValue;
+                        for (int i = childSources.Count - 1; i >= 0; i--)
+                        {
+                            var childSrc = childSources[i];
+                            workStack.Push((childSrc, snapshot.ObjectStatusComputation.GetStatus(childSrc), -1, childDepth, -1));
                         }
                     }
-
-                    // Reserve the row now so its position in the store reflects pre-order visitation; the
-                    // placeholder's WarnInfo is overwritten once descendants have been visited, below.
-                    var reservedRowIndex = -1L;
-                    if (supported)
+                    else
                     {
-                        var placeholderRow = new CompactFlatRow(m_ItemId++, src, default, default, default, default, default,
-                            status, default, childSources.Count, specialNameId: -1, nodeDepth, bucketId, isRegionData: false);
-                        reservedRowIndex = store.Add(in placeholderRow);
-                    }
+                        // Finalize: aggregate child WarnInfos and patch the reserved row with the real data.
+                        // Virtual/structural nodes (SourceId.None) have no impact data and reserved no row; push a
+                        // default sentinel so the parent's warnStack pop count stays balanced.
+                        if (!SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(src.Id))
+                        {
+                            // childrenToPop == 0 for unsupported sources (first-visit never enumerates their children).
+                            warnStack.Push(default);
+                            continue;
+                        }
 
-                    workStack.Push((src, status, childSources.Count, nodeDepth, reservedRowIndex));
-                    // Saturate rather than wrap: a wrapped depth would make a deep node look like a subtree root
-                    // to AccumulateFilteredTotal and get its already-subsumed impact added to the total again.
-                    var childDepth = nodeDepth < ushort.MaxValue ? (ushort)(nodeDepth + 1) : ushort.MaxValue;
-                    for (int i = childSources.Count - 1; i >= 0; i--)
-                    {
-                        var childSrc = childSources[i];
-                        workStack.Push((childSrc, snapshot.ObjectStatusComputation.GetStatus(childSrc), -1, childDepth, -1));
+                        ref readonly var impact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in rootAndImpactInfo.Impact, src);
+                        var ownSize = ComputeOwnSize(snapshot, src);
+
+                        var warnInfo = ObjectStatusWarningInfo.FromStatus(status);
+                        for (int i = 0; i < childrenToPop; i++)
+                            warnInfo |= warnStack.Pop();
+                        warnStack.Push(warnInfo);
+
+                        var treeId = store.ElementAt(rowIndex).TreeId;
+                        store.ElementAt(rowIndex) = new CompactFlatRow(treeId, src, ownSize, impact.TotalImpact,
+                            impact.Exclusive.SumUp(), impact.SharedProRata.SumUp(), impact.SharedInTotal.SumUp(),
+                            status, warnInfo, childrenToPop, specialNameId: -1, nodeDepth, bucketId, isRegionData: false,
+                            referrerCount: rootAndImpactInfo.GetReferrerCount(src),
+                            parentExcludedFromSplit: rootAndImpactInfo.TryGetOrphanedSplitRedirect(src, out _));
+
+                        totalOwnSize += ownSize.SumUp();
+                        // Accumulated once, at the outermost finalize of this subtree (TotalImpact is transitive:
+                        // it already covers every descendant's bytes, so summing it per node would multiply the
+                        // total roughly by tree depth).
+                        if (nodeDepth == depth)
+                        {
+                            totalImpact += impact.TotalImpact;
+                            totalExclusiveImpact += impact.Exclusive.SumUp();
+                            totalSharedInTotal += impact.SharedInTotal.SumUp();
+                            totalSharedProRata += impact.SharedProRata.SumUp();
+                        }
                     }
                 }
-                else
-                {
-                    // Finalize: aggregate child WarnInfos and patch the reserved row with the real data.
-                    // Virtual/structural nodes (SourceId.None) have no impact data and reserved no row; push a
-                    // default sentinel so the parent's warnStack pop count stays balanced.
-                    if (!SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(src.Id))
-                    {
-                        // childrenToPop == 0 for unsupported sources (first-visit never enumerates their children).
-                        warnStack.Push(default);
-                        continue;
-                    }
-
-                    ref readonly var impact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in rootAndImpactInfo.Impact, src);
-                    var ownSize = ComputeOwnSize(snapshot, src);
-
-                    var warnInfo = ObjectStatusWarningInfo.FromStatus(status);
-                    for (int i = 0; i < childrenToPop; i++)
-                        warnInfo |= warnStack.Pop();
-                    warnStack.Push(warnInfo);
-
-                    var treeId = store.ElementAt(rowIndex).TreeId;
-                    store.ElementAt(rowIndex) = new CompactFlatRow(treeId, src, ownSize, impact.TotalImpact,
-                        impact.Exclusive.SumUp(), impact.SharedProRata.SumUp(), impact.SharedInTotal.SumUp(),
-                        status, warnInfo, childrenToPop, specialNameId: -1, nodeDepth, bucketId, isRegionData: false);
-
-                    // Accumulated once, at the outermost finalize of this subtree (TotalImpact is transitive:
-                    // it already covers every descendant's bytes, so summing it per node would multiply the
-                    // total roughly by tree depth).
-                    if (nodeDepth == depth)
-                        totalImpact += impact.TotalImpact;
-                }
+            }
+            finally
+            {
+                if (warnStack.IsCreated)
+                    warnStack.Dispose();
             }
         }
 
@@ -1026,10 +1244,29 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case SourceIndex.SourceId.Scene:
                 case SourceIndex.SourceId.Prefab:
                 case SourceIndex.SourceId.GCHandleIndex:
+                case SourceIndex.SourceId.ManagedRoot:
+                case SourceIndex.SourceId.ManagedHeapSection:
                 default:
                     return default;
             }
         }
+
+        /// <summary>
+        /// Whether <paramref name="bucket"/>'s header nests under the "Managed Roots" parent group instead of
+        /// being a top-level node — the answers to "why is this object alive": GCHandle/Static/Stack/Finalizer/
+        /// Other roots, plus Frozen/Non-GC Heap (a heap-section classification, not a root mechanism, but shown
+        /// alongside the others for the same reason a user would look at them together).
+        /// </summary>
+        internal static bool IsManagedRootsSubGroup(RootAndImpactInfo.OwnershipBucket bucket) => bucket switch
+        {
+            RootAndImpactInfo.OwnershipBucket.GCHandleRoots => true,
+            RootAndImpactInfo.OwnershipBucket.StaticRoots => true,
+            RootAndImpactInfo.OwnershipBucket.StackRoots => true,
+            RootAndImpactInfo.OwnershipBucket.FinalizerRoots => true,
+            RootAndImpactInfo.OwnershipBucket.OtherRoots => true,
+            RootAndImpactInfo.OwnershipBucket.NonGCHeapSections => true,
+            _ => false,
+        };
 
         static string BucketDisplayName(RootAndImpactInfo.OwnershipBucket bucket)
         {
@@ -1069,6 +1306,69 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         /// <summary>
+        /// Resolves a 1:1 root (Stack/Finalizer/Other Root) to the single object it owns, via one
+        /// <see cref="ReferencesIterator"/> step — Stack/Finalizer/Other Roots have no status or identity of
+        /// their own to show once their target reports its own Held status directly, so the tree/flat build
+        /// skips straight to the target instead of adding a wrapper node for the root. Falls back to
+        /// <paramref name="rootSource"/> itself if the root has no owned reference (only theoretically
+        /// reachable: seeding already drops any root whose target never resolved before it reaches the tree
+        /// build).
+        /// </summary>
+        static SourceIndex ResolveSingleOwnedReference(RootAndImpactInfo rootAndImpactInfo, SourceIndex rootSource)
+        {
+            using var iter = new ReferencesIterator(rootAndImpactInfo, rootSource, includeUnownedReferences: false);
+            return iter.MoveNext() ? iter.Current.Reference : rootSource;
+        }
+
+        /// <summary>
+        /// Regroups already-built per-root ManagedObject nodes under one synthetic header per managed type,
+        /// the same post-hoc treatment <see cref="GroupByNamespace"/> gives Static Roots. Nodes whose source
+        /// isn't a ManagedObject, or whose type failed to resolve during crawling, are passed through ungrouped.
+        /// </summary>
+        List<TreeViewItemData<RootsAndImpactModel.ItemData>> GroupManagedObjectsByType(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId,
+            CachedSnapshot snapshot,
+            RootsAndImpactRowSource rowSource,
+            List<TreeViewItemData<RootsAndImpactModel.ItemData>> objectNodes)
+        {
+            var objectsByType = new Dictionary<SourceIndex, List<TreeViewItemData<RootsAndImpactModel.ItemData>>>();
+            var result = new List<TreeViewItemData<RootsAndImpactModel.ItemData>>();
+
+            foreach (var node in objectNodes)
+            {
+                var source = node.data.Source;
+                if (source.Id != SourceIndex.SourceId.ManagedObject)
+                {
+                    result.Add(node);
+                    continue;
+                }
+
+                var typeIndex = snapshot.CrawledData.ManagedObjects[source.Index].ITypeDescription;
+                if (typeIndex is TypeDescriptionEntriesCache.ITypeInvalid)
+                {
+                    result.Add(node);
+                    continue;
+                }
+                var typeSource = new SourceIndex(SourceIndex.SourceId.ManagedType, typeIndex);
+                if (!objectsByType.TryGetValue(typeSource, out var typeObjects))
+                {
+                    typeObjects = new List<TreeViewItemData<RootsAndImpactModel.ItemData>>();
+                    objectsByType[typeSource] = typeObjects;
+                }
+                typeObjects.Add(node);
+            }
+
+            foreach (var kvp in objectsByType)
+            {
+                var typeGroupItemId = m_ItemId++;
+                var typeGroupHeader = SumChildrenIntoGroupHeader(rowSource, typeGroupItemId,
+                    kvp.Key.GetName(snapshot), kvp.Value, kvp.Key);
+                result.Add(MakeGroupNode(filteredImpactByItemId, typeGroupItemId, typeGroupHeader, kvp.Value));
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Groups type nodes by their namespace hierarchy with single-child collapsing.
         /// E.g., if types are in NamespaceA.Sub.TypeA, NamespaceA.Sub.TypeB, NamespaceA.TypeC,
         /// produces: NamespaceA { Sub { TypeA, TypeB }, TypeC }.
@@ -1083,6 +1383,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// contains T1 type leaves, each of which nests T2's namespace trie, and so on.
         /// </summary>
         List<TreeViewItemData<RootsAndImpactModel.ItemData>> GroupByNamespace(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId,
             RootsAndImpactRowSource rowSource,
             List<TreeViewItemData<RootsAndImpactModel.ItemData>> typeNodes)
         {
@@ -1122,10 +1423,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
             }
 
-            return BuildNamespaceTreeFromTrie(rowSource, root, string.Empty);
+            return BuildNamespaceTreeFromTrie(filteredImpactByItemId, rowSource, root, string.Empty);
         }
 
         List<TreeViewItemData<RootsAndImpactModel.ItemData>> BuildNamespaceTreeFromTrie(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId,
             RootsAndImpactRowSource rowSource,
             NamespaceTrieNode trieNode, string prefix)
         {
@@ -1150,7 +1452,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     child = nextChild;
                 }
 
-                var groupChildren = BuildNamespaceTreeFromTrie(rowSource, child, string.Empty);
+                var groupChildren = BuildNamespaceTreeFromTrie(filteredImpactByItemId, rowSource, child, string.Empty);
 
                 if (groupChildren.Count == 0)
                     continue;
@@ -1162,7 +1464,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 var groupItemId = m_ItemId++;
                 var groupHeader = SumChildrenIntoGroupHeader(rowSource, groupItemId, segmentName, groupChildren);
-                result.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(groupItemId, groupHeader, groupChildren));
+                result.Add(MakeGroupNode(filteredImpactByItemId, groupItemId, groupHeader, groupChildren));
             }
 
             // Non-generic types at this namespace level
@@ -1177,7 +1479,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var genericBase = kvp.Key;
                 var instances = kvp.Value;
 
-                var typeArgChildren = BuildTypeArgGroupTree(rowSource, instances, 0);
+                var typeArgChildren = BuildTypeArgGroupTree(filteredImpactByItemId, rowSource, instances, 0);
                 if (typeArgChildren.Count == 0) continue;
 
                 // If the type-arg tree resolves to a single group header, merge its label into the
@@ -1206,7 +1508,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 var genericGroupItemId = m_ItemId++;
                 var genericGroupHeader = SumChildrenIntoGroupHeader(rowSource, genericGroupItemId, effectiveBase, typeArgChildren);
-                result.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(genericGroupItemId, genericGroupHeader, typeArgChildren));
+                result.Add(MakeGroupNode(filteredImpactByItemId, genericGroupItemId, genericGroupHeader, typeArgChildren));
             }
 
             return result;
@@ -1218,6 +1520,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// then recurses for the next type argument.
         /// </summary>
         List<TreeViewItemData<RootsAndImpactModel.ItemData>> BuildTypeArgGroupTree(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId,
             RootsAndImpactRowSource rowSource,
             List<(List<string> TypeArgs, TreeViewItemData<RootsAndImpactModel.ItemData> Node)> instances,
             int typeArgIndex)
@@ -1258,10 +1561,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 list.Add(inst);
             }
 
-            return BuildFromTypeArgTrie(rowSource, root, argLabel, typeArgIndex, totalArgs);
+            return BuildFromTypeArgTrie(filteredImpactByItemId, rowSource, root, argLabel, typeArgIndex, totalArgs);
         }
 
         List<TreeViewItemData<RootsAndImpactModel.ItemData>> BuildFromTypeArgTrie(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId,
             RootsAndImpactRowSource rowSource,
             TypeArgTrieNode trie, string argLabel, int typeArgIndex, int totalArgs)
         {
@@ -1289,14 +1593,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                     child = nextChild;
                 }
 
-                var groupChildren = BuildFromTypeArgTrie(rowSource, child, argLabel, typeArgIndex, totalArgs);
+                var groupChildren = BuildFromTypeArgTrie(filteredImpactByItemId, rowSource, child, argLabel, typeArgIndex, totalArgs);
                 if (groupChildren.Count == 1)
                     result.Add(groupChildren[0]);  // single child — inline without namespace group wrapper
                 else if (groupChildren.Count > 1)
                 {
                     var headerItemId = m_ItemId++;
                     var header = SumChildrenIntoGroupHeader(rowSource, headerItemId, argLabel + ": " + segmentName, groupChildren);
-                    result.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(headerItemId, header, groupChildren));
+                    result.Add(MakeGroupNode(filteredImpactByItemId, headerItemId, header, groupChildren));
                 }
             }
 
@@ -1311,14 +1615,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                     // More type arguments — recurse for the next one.
                     // Only wrap in a "Tn: ShortName" group if the next level produces ≥2 children;
                     // otherwise inline the single child (the type arg level adds no structure).
-                    var subChildren = BuildTypeArgGroupTree(rowSource, leafInstances, typeArgIndex + 1);
+                    var subChildren = BuildTypeArgGroupTree(filteredImpactByItemId, rowSource, leafInstances, typeArgIndex + 1);
                     if (subChildren.Count == 1)
                         result.Add(subChildren[0]);  // single sub-result — skip type leaf wrapper
                     else if (subChildren.Count > 1)
                     {
                         var headerItemId = m_ItemId++;
                         var header = SumChildrenIntoGroupHeader(rowSource, headerItemId, argLabel + ": " + shortName, subChildren);
-                        result.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(headerItemId, header, subChildren));
+                        result.Add(MakeGroupNode(filteredImpactByItemId, headerItemId, header, subChildren));
                     }
                 }
                 else
@@ -1337,7 +1641,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                             children.Add(inst.Node);
                         var headerItemId = m_ItemId++;
                         var header = SumChildrenIntoGroupHeader(rowSource, headerItemId, argLabel + ": " + shortName, children);
-                        result.Add(new TreeViewItemData<RootsAndImpactModel.ItemData>(headerItemId, header, children));
+                        result.Add(MakeGroupNode(filteredImpactByItemId, headerItemId, header, children));
                     }
                 }
             }
@@ -1485,6 +1789,113 @@ namespace Unity.MemoryProfiler.Editor.UI
             return new ParsedTypeName(namespaceSegments, genericBase, typeArgs);
         }
 
+        /// <summary>
+        /// A top-level row's contribution to the model's total exclusive size: its stored filtered value if it has
+        /// one (see <see cref="RecordFilteredForGroup"/>), otherwise its own exclusive impact.
+        /// </summary>
+        static MemorySize DisplayedExclusiveImpact(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, int id, MemorySize ownExclusiveImpact)
+        {
+            return filteredImpactByItemId != null && filteredImpactByItemId.TryGetValue(id, out var filtered)
+                ? filtered.ExclusiveImpactSum
+                : ownExclusiveImpact;
+        }
+
+        /// <summary>
+        /// Like <see cref="DisplayedExclusiveImpact"/>, for <see cref="RootsAndImpactModel.TotalImpactSize"/>.
+        /// </summary>
+        static NativeRootSize DisplayedTotalImpact(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, int id, NativeRootSize ownTotalImpact)
+        {
+            return filteredImpactByItemId != null && filteredImpactByItemId.TryGetValue(id, out var filtered)
+                ? filtered.TotalImpact
+                : ownTotalImpact;
+        }
+
+        /// <summary>
+        /// <see cref="DisplayedExclusiveImpact"/> for the shared pro-rata column, so its model total is accumulated
+        /// from the same displayed values the rows show.
+        /// </summary>
+        static MemorySize DisplayedSharedProRata(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, int id, MemorySize ownSharedProRata)
+        {
+            return filteredImpactByItemId != null && filteredImpactByItemId.TryGetValue(id, out var filtered)
+                ? filtered.SharedProRataSum
+                : ownSharedProRata;
+        }
+
+        /// <summary>
+        /// <see cref="DisplayedExclusiveImpact"/> for the shared-in-total column, so its model total is accumulated
+        /// from the same displayed values the rows show.
+        /// </summary>
+        static MemorySize DisplayedSharedInTotal(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, int id, MemorySize ownSharedInTotal)
+        {
+            return filteredImpactByItemId != null && filteredImpactByItemId.TryGetValue(id, out var filtered)
+                ? filtered.SharedInTotalSum
+                : ownSharedInTotal;
+        }
+
+        /// <summary>
+        /// The filtered impact a child contributes to its ownership-tree parent: <see cref="UnsplitFilteredImpact"/>
+        /// with the single-hop discount for that edge applied (see <see cref="RootAndImpactInfo.DiscountedTotalImpact"/>),
+        /// so a split or redirected child does not count in full at every ancestor.
+        /// </summary>
+        static RootsAndImpactModel.FilteredImpact ChildFilteredImpact(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, TreeViewItemData<RootsAndImpactModel.ItemData> child)
+        {
+            var d = child.data;
+            if (d.ParentExcludedFromSplit)
+                return default;
+
+            var contribution = UnsplitFilteredImpact(filteredImpactByItemId, child);
+
+            if (d.ReferrerCount > RootAndImpactInfo.ReferrerData.SingleReferrer)
+            {
+                var share = contribution.TotalImpact.Divide((ulong)d.ReferrerCount, out var remainder);
+                var arrivingTotal = share + RootAndImpactInfo.RemainderBonus(in remainder);
+                // A divide lands in SharedProRata at the referee, never as Exclusive.
+                return new RootsAndImpactModel.FilteredImpact(arrivingTotal, default, arrivingTotal.SumUp(), contribution.TotalImpact.SumUp());
+            }
+
+            return contribution;
+        }
+
+        /// <summary>The child's stored filtered impact if it has one, otherwise its own precalculated impact.</summary>
+        static RootsAndImpactModel.FilteredImpact UnsplitFilteredImpact(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, TreeViewItemData<RootsAndImpactModel.ItemData> child)
+        {
+            if (filteredImpactByItemId != null && filteredImpactByItemId.TryGetValue(child.id, out var stored))
+                return stored;
+            var d = child.data;
+            return new RootsAndImpactModel.FilteredImpact(d.TotalImpact, d.ExclusiveImpactSum, d.SharedProRataSum, d.SharedInTotalSum);
+        }
+
+        /// <summary>
+        /// Sums the children's filtered contributions and records the result under the group's id. Only call while filtering.
+        /// A group header is not its children's ownership parent, so no edge discount applies.
+        /// </summary>
+        static RootsAndImpactModel.FilteredImpact RecordFilteredForGroup(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, int id, List<TreeViewItemData<RootsAndImpactModel.ItemData>> children)
+        {
+            var filtered = default(RootsAndImpactModel.FilteredImpact);
+            for (int i = 0; i < children.Count; i++)
+                filtered += UnsplitFilteredImpact(filteredImpactByItemId, children[i]);
+            filteredImpactByItemId[id] = filtered;
+            return filtered;
+        }
+
+        /// <summary>
+        /// Creates a group-header tree node and, while filtering, records its filtered impact.
+        /// </summary>
+        static TreeViewItemData<RootsAndImpactModel.ItemData> MakeGroupNode(
+            Dictionary<int, RootsAndImpactModel.FilteredImpact> filteredImpactByItemId, int id, RootsAndImpactModel.ItemData header, List<TreeViewItemData<RootsAndImpactModel.ItemData>> children)
+        {
+            if (filteredImpactByItemId != null)
+                RecordFilteredForGroup(filteredImpactByItemId, id, children);
+            return new TreeViewItemData<RootsAndImpactModel.ItemData>(id, header, children);
+        }
+
         static RootsAndImpactModel.ItemData SumChildrenIntoGroupHeader(
             RootsAndImpactRowSource rowSource,
             int treeId,
@@ -1537,6 +1948,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// until this build stops reading the snapshot — doesn't have to wait out a whole traversal.
             /// </summary>
             public readonly CancellationToken CancellationToken;
+            /// <summary>
+            /// The requested exclusive status mask, captured before the ctor converts it to an inclusive mask for
+            /// non-flat mode. Identifies savings deep-links such as the AssetBundle one.
+            /// </summary>
+            public readonly ulong? OriginalStatusMask;
 
             public BuildArgs(
                 CompoundSearchFilter searchStringFilter = null,
@@ -1550,6 +1966,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     && searchStringFilter?.ExclusiveStatusMask != null
                     && searchStringFilter?.SearchStringFilter != null;
                 HasTextFilter = searchStringFilter?.SearchStringFilter != null;
+                OriginalStatusMask = searchStringFilter?.ExclusiveStatusMask;
 
                 if (!flattenHierarchy && searchStringFilter?.ExclusiveStatusMask != null)
                 {

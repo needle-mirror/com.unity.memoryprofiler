@@ -376,7 +376,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (ManagedObjectData.IsValid)
             {
                 ManagedRefCount = managedObjectInfo.RefCount;
-                // Discount the Managed Reference to the Native Object, that is established via m_CachedPtr
+                // Discount the Native Object -> Managed Shell connection (ManagedConnection.MakeUnityEngineObjectConnection)
                 if (NativeObjectData.IsValid && ManagedRefCount >= 1)
                     --ManagedRefCount;
                 ManagedSize = managedObjectInfo.Size;

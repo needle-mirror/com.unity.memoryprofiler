@@ -1,4 +1,4 @@
-/* 
+/*
  * TableViewBase.uss
  * Shared base styles for all table view components in the Memory Profiler.
  * This stylesheet should be imported by specific table view USS files.
@@ -58,7 +58,7 @@
 
 .table-view-base__tree-view .unity-tree-view__item-content
 {
-	justify-content: center;
+    justify-content: center;
 }
 
 /* ========================================
@@ -84,14 +84,14 @@
 /* ========================================
    Search and Filtering Styles
    ======================================== */
-   
+
 .table-view__search-and-filter-group
 {
     flex-direction: row;
     flex-grow: 1;
     flex-shrink: 1;
     flex-wrap: wrap;
-	min-width: 60px;
+    min-width: 60px;
 }
 
 .table-view__filter-group
@@ -213,14 +213,17 @@
 
 .unity-base-popup-field__input
 {
-	max-height: 20px;
+    max-height: 20px;
 }
 
 .unity-multi-column-header__column__title
 {
-	-unity-text-align: middle-left;
-	flex-grow: 1;
-	text-overflow: ellipsis;
+    -unity-text-align: middle-left;
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Page-flipping control (PaginationControl) for flattened, paginated table views. Class names are view-neutral
@@ -279,4 +282,57 @@
     min-width: 22px;
     -unity-text-align: middle-center;
     opacity: 0.7;
+}
+
+/* Ping row highlight: a brief solid flash (this class), then a fade back to transparent via
+   .memory-profiler-row-highlight-fade — see TableRevealHelper.TryHighlightTreeViewItem. The fade
+   class carries its own transition so swapping classes still animates the background-color change. */
+.memory-profiler-row-highlight
+{
+    background-color: rgba(255, 204, 0, 0.6);
+}
+
+.memory-profiler-row-highlight-fade
+{
+    background-color: rgba(255, 204, 0, 0);
+    transition-property: background-color;
+    transition-duration: 0.7s;
+}
+
+/* ========================================
+   Footer Toolbar
+   ======================================== */
+
+.table-view-base__footer-toolbar
+{
+    border-top-width: 1px;
+    height: 32px;
+    padding-right: 12px;
+    overflow: hidden;
+}
+
+.table-view-base__footer-toolbar Toggle
+{
+    padding-left: 12px;
+}
+
+.table-view-base__footer-toolbar Toggle .unity-toggle__text
+{
+    padding-left: 4px;
+}
+
+/* Footer toggles split into options that rebuild the table and display-only options, separated by a line. */
+.table-view-base__footer-toolbar__group
+{
+    flex-direction: row;
+    flex-shrink: 0;
+}
+
+.table-view-base__footer-toolbar__rebuild-options
+{
+    margin-top: 6px;
+    margin-bottom: 6px;
+    padding-right: 12px;
+    border-right-width: 1px;
+    border-color: var(--unity-colors-toolbar-border);
 }

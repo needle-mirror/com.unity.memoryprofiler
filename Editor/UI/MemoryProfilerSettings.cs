@@ -15,6 +15,7 @@ namespace Unity.MemoryProfiler.Editor
     {
         // Opt-out Dialog keys:
         public const string HeapWarningWindowOptOutKey = "Unity.MemoryProfiler.HeapWarningPopup";
+        public const string PingSelectFilterRelaxationOptOutKey = "Unity.MemoryProfiler.PingSelectFilterRelaxationPopup";
 
         const string k_LastImportPathPrefKey = "Unity.MemoryProfiler.Editor.MemoryProfilerLastImportPath";
         const string k_SnapshotPathEditorPerf = "Unity.MemoryProfiler.Editor.MemorySnapshotStoragePath";
@@ -26,6 +27,8 @@ namespace Unity.MemoryProfiler.Editor
         const string k_DefaultCopyOptionKey = "Unity.MemoryProfiler.Editor.DefaultCopySelectedItemTitleOption";
         const string k_ShowReservedMemoryBreakdown = "Unity.MemoryProfiler.Editor.ShowReservedMemoryBreakdown";
         const string k_ShowMemoryMapView = "Unity.MemoryProfiler.Editor.ShowMemoryMapView";
+        const string k_SortReferencesWithDifferentRootLast = "Unity.MemoryProfiler.Editor.SortReferencesWithDifferentRootLast";
+        const string k_ShowTotalImpactInPotentialSavings = "Unity.MemoryProfiler.Editor.ShowTotalImpactInPotentialSavings";
         const string k_ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocationsKey = "Unity.MemoryProfiler.Editor.ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations";
         const string k_SnapshotCaptureFlagsKey = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureFlags.v2"; // upgraded to v2 because the default changed
         const string k_SnapshotCaptureCaptureWithScreenshot = "Unity.MemoryProfiler.Editor.MemoryProfilerSnapshotCaptureWithScreenshot";
@@ -36,7 +39,9 @@ namespace Unity.MemoryProfiler.Editor
         const string k_AllocationRootsToSplitKey = "Unity.MemoryProfiler.Editor.AllTrackedMemoryModelBuilder.AllocationRootsToSplit";
 
         public static event Action TruncateStateChanged;
+        public static event Action SortReferencesWithDifferentRootLastChanged;
         public static event Action SnapshotStoragePathChanged;
+        public static event Action ShowTotalImpactInPotentialSavingsChanged;
 
         /// <summary>
         /// There are some things that only make sense for those with access to Unity's source code, like internal Engineers, Unity QA and customers with source code access.
@@ -311,6 +316,40 @@ namespace Unity.MemoryProfiler.Editor
                 if (value == ShowMemoryMapView)
                     return;
                 EditorPrefs.SetBool(k_ShowMemoryMapView, value);
+            }
+        }
+
+        public static bool SortReferencesWithDifferentRootLast
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_SortReferencesWithDifferentRootLast, false);
+            }
+            set
+            {
+                if (value == SortReferencesWithDifferentRootLast)
+                    return;
+                EditorPrefs.SetBool(k_SortReferencesWithDifferentRootLast, value);
+                SortReferencesWithDifferentRootLastChanged?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Show both exclusive and total impact in the Potential Savings widget, with the legend reporting the
+        /// total. When off, it shows exclusive impact only and total impact is in the tooltips.
+        /// </summary>
+        public static bool ShowTotalImpactInPotentialSavings
+        {
+            get
+            {
+                return EditorPrefs.GetBool(k_ShowTotalImpactInPotentialSavings, false);
+            }
+            set
+            {
+                if (value == ShowTotalImpactInPotentialSavings)
+                    return;
+                EditorPrefs.SetBool(k_ShowTotalImpactInPotentialSavings, value);
+                ShowTotalImpactInPotentialSavingsChanged?.Invoke();
             }
         }
 

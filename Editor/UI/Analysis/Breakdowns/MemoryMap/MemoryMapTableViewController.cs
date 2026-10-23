@@ -32,7 +32,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
-    class MemoryMapTableViewController : SingleSnapshotTreeViewController<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>
+    class MemoryMapTableViewController : SingleSnapshotTreeViewController<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData>, IFilterRelaxationTarget
     {
         const string k_UxmlAssetGuid = "bc16108acf3b6484aa65bf05d6048e8f";
 
@@ -58,6 +58,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         readonly TableFilterManager<MemoryMapBreakdownModel, MemoryMapBreakdownModel.ItemData> m_FilterManager;
         readonly ModelBuildOrchestrator<MemoryMapBreakdownModel, MemoryMapBreakdownModelBuilder.BuildArgs> m_BuildOrchestrator;
         TreeViewColumnManager<MemoryMapBreakdownModel.ItemData> m_ColumnManager;
+        protected override IColumnSumRefresher ColumnManager => m_ColumnManager;
         SizeCellRenderer m_SizeCellRenderer;
 
         // View.
@@ -204,21 +205,23 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_SizeCellRenderer.CreateMemorySizeBinding<MemoryMapBreakdownModel.ItemData>(
                     item => item.TotalSize),
                 makeCell: MakeCellForSizeColumn,
-                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
+                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident,
+                sumProvider: () => m_Model?.TotalMemorySize.Committed ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ResidentSize,
                 TextContent.ResidentSizeTableColumnHeader,
                 k_DefaultColumnWidth,
                 BindCellForResidentSizeColumn(),
-                visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
+                visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted,
+                sumProvider: () => m_Model?.TotalMemorySize.Resident ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Type,
                 TextContent.TypeTableColumnHeader,
                 k_WideColumnWidth,
                 BindCellForTypeColumn(),
-                makeCell: () => new ObjectOrTypeLabel(),
+                makeCell: () => MakeLabelWithSelectInTableMenu(),
                 destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose());
 
             m_ColumnManager.ConfigureColumn(
@@ -226,7 +229,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 TextContent.NameTableColumnHeader,
                 0,
                 BindCellForNameColumn(),
-                makeCell: () => new ObjectOrTypeLabel() { HideTypeInfoForObjects = true },
+                makeCell: () => MakeLabelWithSelectInTableMenu(hideTypeInfoForObjects: true),
                 destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose());
         }
 
@@ -301,7 +304,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
                     case CachedSnapshot.SourceIndex.SourceId.NativeObject:
-                        if (!label.TrySetLabelDataFromSourceIndex(m_Snapshot, itemData.Source, null))
+                        if (!label.TrySetLabelDataFromSourceIndex(m_Snapshot, itemData.Source, null, splitUnifiedObjectIntoHalves: true))
                         {
                             // Category/group node with no typed source — show name as plain text.
                             label.SetLabelData(m_Snapshot, labelText, string.Empty, dataType: ObjectOrTypeLabel.DataType.PureCSharpType, showDataTypeIcon: true);
@@ -314,6 +317,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
                     case CachedSnapshot.SourceIndex.SourceId.GfxResource:
                     case CachedSnapshot.SourceIndex.SourceId.GCHandleIndex:
+                    case CachedSnapshot.SourceIndex.SourceId.ManagedRoot:
                     case CachedSnapshot.SourceIndex.SourceId.Scene:
                     case CachedSnapshot.SourceIndex.SourceId.Prefab:
                     case CachedSnapshot.SourceIndex.SourceId.MemoryLabel:
@@ -331,10 +335,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                         ObjectOrTypeLabel.DataType dataType = itemData.Source.Id switch
                         {
                             CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection => ObjectOrTypeLabel.DataType.PureCSharpType,
-                            CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion => DetermineTypeOfSystemRegion(rowIndex),
-                            _ => ObjectOrTypeLabel.DataType.NativeUnityType
+                            _ => DataTypeOfContent(itemData.ContentKinds)
                         };
                         label.SetLabelData(m_Snapshot, labelText, null, dataType: dataType, showDataTypeIcon: true);
+                        label.SetRowSource(m_Snapshot, itemData.Source);
                         break;
                     default:
                         throw new NotImplementedException($"Unexpected source {itemData.Source.Id} for Type column.");
@@ -342,42 +346,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             };
         }
 
-        ObjectOrTypeLabel.DataType DetermineTypeOfSystemRegion(int rowIndex)
+        internal static ObjectOrTypeLabel.DataType DataTypeOfContent(MemoryMapBreakdownModel.ContentKinds contentKinds)
         {
-            var children = m_TreeView.GetChildrenIdsForIndex(rowIndex);
-            var includesManaged = false;
-            var includesNative = false;
-            foreach (var childId in children)
-            {
-                var itemData = m_TreeView.GetItemDataForId<MemoryMapBreakdownModel.ItemData>(childId);
-                switch (itemData.Source.Id)
-                {
-                    case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
-                    case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
-                    case CachedSnapshot.SourceIndex.SourceId.ManagedType:
-                        includesManaged = true;
-                        break;
-                    case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
-                    case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
-                    case CachedSnapshot.SourceIndex.SourceId.NativeObject:
-                    case CachedSnapshot.SourceIndex.SourceId.NativeType:
-                    case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
-                    case CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion:
-                        includesNative = true;
-                        break;
-                    case CachedSnapshot.SourceIndex.SourceId.None:
-                    case CachedSnapshot.SourceIndex.SourceId.GfxResource:
-                    case CachedSnapshot.SourceIndex.SourceId.GCHandleIndex:
-                    case CachedSnapshot.SourceIndex.SourceId.MemoryLabel:
-                    case CachedSnapshot.SourceIndex.SourceId.Scene:
-                    case CachedSnapshot.SourceIndex.SourceId.Prefab:
-                    default:
-                        break;
-                }
-
-                if (includesManaged && includesNative)
-                    return ObjectOrTypeLabel.DataType.UnifiedUnityType;
-            }
+            var includesManaged = (contentKinds & MemoryMapBreakdownModel.ContentKinds.Managed) != 0;
+            var includesNative = (contentKinds & MemoryMapBreakdownModel.ContentKinds.Native) != 0;
+            if (includesManaged && includesNative)
+                return ObjectOrTypeLabel.DataType.UnifiedUnityType;
             return includesManaged ? ObjectOrTypeLabel.DataType.PureCSharpType : ObjectOrTypeLabel.DataType.NativeUnityType;
         }
 
@@ -387,10 +361,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var itemData = m_TreeView.GetItemDataForIndex<MemoryMapBreakdownModel.ItemData>(rowIndex);
                 var label = element.Q<ObjectOrTypeLabel>();
-                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(m_Snapshot, itemData.Source, itemData.Name, out var displayName))
+                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(m_Snapshot, itemData.Source, itemData.Name, out var displayName, splitUnifiedObjectIntoHalves: true))
                 {
                     // Category/group node with no typed source — show name as plain text.
-                    label.SetLabelData(m_Snapshot, itemData.Source.Id is CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection ? null : displayName, string.Empty);
+                    label.SetLabelData(m_Snapshot, displayName, string.Empty);
+                    label.SetRowSource(m_Snapshot, itemData.Source);
                 }
             };
         }
@@ -400,11 +375,63 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_Responder?.MemoryMapTableViewControllerSelectedItem(itemId, this, itemData);
         }
 
+        public override BreakdownTableId TableId => BreakdownTableId.MemoryMap;
+
+        /// <summary>Whether <paramref name="id"/> is one this table can ever show, independent of any filter.</summary>
+        internal static bool CanEverContainSourceId(CachedSnapshot.SourceIndex.SourceId id)
+        {
+            switch (id)
+            {
+                case CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion:
+                case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
+                case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        public override bool CanEverContain(CachedSnapshot.SourceIndex source) => CanEverContainSourceId(source.Id);
+
+        /// <summary>
+        /// Diagnoses this table's one filter dimension (text search against the item's own name) — the Memory
+        /// Map has no status filter at all (see the constructor), so status mask never blocks anything here.
+        /// </summary>
+        public override ItemVisibility GetVisibility(CachedSnapshot.SourceIndex source, CachedSnapshot owner = null)
+        {
+            if (!CanEverContain(source))
+                return new ItemVisibility(ItemVisibility.State.NotRepresentable);
+
+            var filter = m_FilterManager.CompoundSearchFilter;
+            if (filter?.SearchStringFilter != null && !filter.MatchesTextName(source.GetName(m_Snapshot)))
+                return new ItemVisibility(ItemVisibility.State.HiddenByFilters, TableFilterKind.TextSearch);
+
+            return new ItemVisibility(ItemVisibility.State.Visible);
+        }
+
+        protected override bool TryRevealRow(CachedSnapshot.SourceIndex source, bool frame, bool select, CachedSnapshot owner)
+            => TryRevealTreeRow(data => data.Source == source, frame, select);
+
+        /// <summary>Only the text-search dimension applies here — the Memory Map has no status filter.</summary>
+        public void ApplyFilterRelaxation(TableFilterKind filtersToRelax)
+        {
+            TableRevealHelper.RelaxStatusAndTextFilters(filtersToRelax, statusFilterButton: null, SearchField, m_FilterManager);
+            FireAndForgetBuildModelAsync();
+        }
+
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
 
             SearchFilterChanged -= OnSearchFilterChanged;
+            if (disposing)
+            {
+                m_FilterManager.Dispose();
+                m_BuildOrchestrator.Dispose();
+            }
         }
     }
 }

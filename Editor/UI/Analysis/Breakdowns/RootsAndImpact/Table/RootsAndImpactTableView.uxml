@@ -30,9 +30,14 @@
             </engine:MultiColumnTreeView>
             <Unity.MemoryProfiler.Editor.UI:PaginationControl name="roots-and-impact-table-view__pager" class="roots-and-impact-table-view__pager"/>
             <editor:Toolbar name="roots-and-impact-table-view__toolbar">
-                <engine:Toggle name="roots-and-impact-table-view__toolbar__flatten-toggle"/>
-                <engine:Toggle name="roots-and-impact-table-view__toolbar__exclusive-toggle"/>
-                <engine:Toggle name="roots-and-impact-table-view__toolbar__region-data-toggle"/>
+                <engine:VisualElement class="table-view-base__footer-toolbar__group table-view-base__footer-toolbar__rebuild-options">
+                    <engine:Toggle name="roots-and-impact-table-view__toolbar__flatten-toggle"/>
+                    <engine:Toggle name="roots-and-impact-table-view__toolbar__exclusive-toggle"/>
+                    <engine:Toggle name="roots-and-impact-table-view__toolbar__region-data-toggle"/>
+                </engine:VisualElement>
+                <engine:VisualElement class="table-view-base__footer-toolbar__group table-view-base__footer-toolbar__display-options">
+                    <engine:Toggle name="roots-and-impact-table-view__toolbar__scale-bars-toggle"/>
+                </engine:VisualElement>
             </editor:Toolbar>
             <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="roots-and-impact-table-view__loading-overlay"/>
         </engine:VisualElement>

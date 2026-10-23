@@ -16,12 +16,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     class TableFilterManagerBase : IExclusiveStatusFilterManager
     {
         public ulong? ExclusiveStatusMask { get; set; }
-    }
 
-    class TableFilterManager<TModel, TItemData> : TableFilterManagerBase
-        where TModel : TreeModel<TItemData>
-        where TItemData : IPrivateComparableItemData
-    {
         public CompoundSearchFilter CompoundSearchFilter
         {
             get
@@ -47,6 +42,12 @@ namespace Unity.MemoryProfiler.Editor.UI
                 return ScopedEnumFilter<ObjectStatus>.Create(searchStringMatchingStatuses, ObjectStatus.None);
             }
         }
+    }
+
+    class TableFilterManager<TModel, TItemData> : TableFilterManagerBase, IDisposable
+        where TModel : TreeModel<TItemData>
+        where TItemData : IPrivateComparableItemData
+    {
         public ITextFilter NameFilter { get; set; }
         public IEnumerable<ITextFilter> PathFilters { get; set; }
         /// <summary>
@@ -75,6 +76,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             BaseModelForTreeNodeIdFiltering = default;
             TypeNameFilter = null;
         }
+
+        public void Dispose() => ClearFilters();
 
         public async Task ApplyFiltersAsync(
             Func<Task> rebuildCallback,

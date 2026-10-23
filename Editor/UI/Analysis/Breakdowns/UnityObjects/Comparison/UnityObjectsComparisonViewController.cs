@@ -17,6 +17,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // Child Controllers.
         UnityObjectsTableViewController m_BaseTableViewController;
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal UnityObjectsTableViewController BaseTableViewControllerForTesting => m_BaseTableViewController;
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal UnityObjectsTableViewController ComparedTableViewControllerForTesting => m_ComparedTableViewController;
         UnityObjectsTableViewController m_ComparedTableViewController;
 
         public UnityObjectsComparisonViewController(CachedSnapshot snapshotA, CachedSnapshot snapshotB, string description, ISelectionDetails selectionDetails)
@@ -26,6 +32,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SelectionDetails = selectionDetails;
         }
 
+        public override BreakdownTableId TableId => BreakdownTableId.UnityObjectsComparison;
+        public override ITableItemLocator BaseTable => m_BaseTableViewController;
+        public override ITableItemLocator ComparedTable => m_ComparedTableViewController;
+        public override bool CanEverContain(CachedSnapshot.SourceIndex source) => UnityObjectsTableViewController.CanEverContainSourceId(source.Id);
+
         protected override bool ShowFlattenToggle => true;
         protected override bool ShowExtraDataToggle => true;
         protected override ulong UnavailableStatusesForTable => ObjectStatusExtensions.UnityObjectsTableUnavailableStatuses;
@@ -33,11 +44,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override Func<VisualElement> MakeDescriptionCell()
         {
-            return () =>
-            {
-                var label = new ObjectOrTypeLabel() { HideTypeInfoForObjects = true };
-                return label;
-            };
+            return () => MakeLabelWithSelectInTableMenu(hideTypeInfoForObjects: true);
         }
 
         protected override Action<VisualElement> DestroyDescriptionCell()
@@ -129,6 +136,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 disambiguateUnityObjects: sameSession,
                 responder: this)
             {
+                TabController = TabController,
                 FlattenHierarchy = true
             };
             // SetColumnsVisibilityAsync and SetFiltersAsync are synchronous before the view is loaded — they only store state. Assert completion.
@@ -143,6 +151,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 disambiguateUnityObjects: sameSession,
                 responder: this)
             {
+                TabController = TabController,
                 FlattenHierarchy = true
             };
             m_ComparedTableViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted).AssertCompleted();
@@ -196,12 +205,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             var sourceInB = itemData.SourceIndex.InB;
             if (sourceInA.Id != CachedSnapshot.SourceIndex.SourceId.None)
             {
-                var view = BreakdownDetailsViewControllerFactory.Create(SnapshotA, itemId, itemData.Name, itemData.ChildCount, sourceInA);
+                var view = BreakdownDetailsViewControllerFactory.Create(SnapshotA, itemId, itemData.Name, itemData.ChildCount, sourceInA, BreakdownTableId.UnityObjectsComparison, this, TabController);
                 m_SelectionDetails.SetSelection(view);
             }
             else if (sourceInB.Id != CachedSnapshot.SourceIndex.SourceId.None)
             {
-                var view = BreakdownDetailsViewControllerFactory.Create(SnapshotB, itemId, itemData.Name, itemData.ChildCount, sourceInB);
+                var view = BreakdownDetailsViewControllerFactory.Create(SnapshotB, itemId, itemData.Name, itemData.ChildCount, sourceInB, BreakdownTableId.UnityObjectsComparison, this, TabController);
                 m_SelectionDetails.SetSelection(view);
             }
             else
@@ -252,7 +261,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 selectFirstItem = !m_WaitingForFilteringToBeAppliedToBaseView;
                 m_WaitingForFilteringToBeAppliedToCompareView = false;
             }
-            if (selectFirstItem)
+            if (selectFirstItem && !TrySelectPendingSubTableItem())
             {
                 if (!m_BaseTableViewController.SelectFirstItem())
                     m_ComparedTableViewController.SelectFirstItem();
@@ -272,7 +281,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Make new selection
             var snapshot = isBaseView ? SnapshotA : SnapshotB;
-            var view = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source);
+            var view = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source, BreakdownTableId.UnityObjectsComparison, viewController, TabController);
             m_SelectionDetails.SetSelection(view);
         }
 

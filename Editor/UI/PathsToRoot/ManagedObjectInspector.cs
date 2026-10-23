@@ -18,6 +18,7 @@ using GUI = UnityEngine.GUI;
 using Debug = UnityEngine.Debug;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Containers;
+using Unity.MemoryProfiler.Editor.Extensions;
 
 #if !ENTITY_ID_CHANGED_SIZE
 // the official EntityId lives in the UnityEngine namespace, which might be be added as a using via the IDE,
@@ -395,6 +396,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (!MemoryProfilerSettings.FeatureFlags.ManagedCrawlerConsidersPointersToGCHandleHeldManagedObjects)
                 return false;
 
+            // CoreCLR pointer and function-pointer fields have no managed type.
+            if (fieldByIndex.managedTypeIndex < 0)
+                return false;
+
             if (!cs.TypeDescriptions.CouldThisFieldBeReadAsAnAddress(fieldByIndex.managedTypeIndex, cs))
                 return false;
 
@@ -489,7 +494,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                             {
                                 m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(fieldItem, ObjectData.FromManagedObjectInfo(cs, moi)));
 #if DEBUG_VALIDATION
-                                Debug.LogError("Managed Object Inspector found a possible Managed Object that the crawler missed!");
+                                Debug.LogWarning("Managed Object Inspector found a possible Managed Object that the crawler missed!");
 #endif
                             }
                             else
@@ -619,6 +624,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         static ulong GetIdentifyingPointer(ObjectData obj, CachedSnapshot cs)
         {
+            // Fields without a managed type (CoreCLR pointer and function-pointer fields) have no object pointer.
+            if (obj.dataType == ObjectDataType.Unknown)
+                return 0;
             var address = obj.GetObjectPointer(cs);
             if (obj.dataType == ObjectDataType.Type)
             {
@@ -671,6 +679,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return 0;
 
                 item.ArrayInfo = item.ObjectData.GetArrayInfo(snapshot);
+                // Arrays without captured heap bytes have no readable elements.
+                if (item.ArrayInfo == null)
+                    return 0;
                 item.IndexToContinueAt = 0;
             }
 
@@ -700,27 +711,43 @@ namespace Unity.MemoryProfiler.Editor.UI
         void ProcessSpecialFieldsAndQueueChildElements(ObjectData field, int actualFielTypeIndex, CachedSnapshot cs, ref ManagedObjectInspectorItem fieldEntry)
         {
             // for array elements, field.IsField() is false
-            if (field.IsField() && field.fieldIndex == cs.TypeDescriptions.IFieldUnityObjectMCachedPtr
-                // The field index alone doesn't make this field the m_CachedPtr field, the parent also needs inherit from UnityEngine.Object.
+            if (field.IsField() && field.fieldIndex == cs.TypeDescriptions.IFieldUnityObjectNativeLink
+                // The field index alone doesn't make this the native link field (m_EntityId, or m_CachedPtr in older snapshots), the parent also needs inherit from UnityEngine.Object.
                 && cs.TypeDescriptions.UnifiedTypeInfoManaged[field.Parent.Obj.managedTypeIndex].IsUnityObjectType)
             {
-                // Refresh heap bytes if needed before reading pointer
+                // Refresh heap bytes if needed before reading the field
                 // Pass no address as the address should only be deduced from the section index and offset in managedObjectData
                 // See ObjectData.GetReferencedPointer for further details of why not to use the hostManagedObjectPtr.
                 if (cs.TryGetHeapBytesWithFastPath(field.managedObjectData, 0, out var refreshedBytes, out var onDemandRefScope))
                 {
                     using (onDemandRefScope)
                     {
-                        if (refreshedBytes.TryReadPointer(out var nativeObjectPointer) == BytesAndOffset.PtrReadError.Success)
+                        long nativeObjectIndex = -1;
+                        bool linkIsSet = false;
+                        if (cs.TypeDescriptions.UnityObjectNativeLinkIsEntityId)
                         {
-                            if (nativeObjectPointer == 0)
+                            if (refreshedBytes.CouldFitAllocation(sizeof(ulong)))
                             {
-                                fieldEntry = new ManagedObjectInspectorItem(m_InspectorID, fieldEntry.DisplayName, fieldEntry.ManagedTypeIndex, fieldEntry.TypeName, $"{fieldEntry.Value} {TextContent.LeakedManagedShellHint}", fieldEntry.IsStatic, GetIdentifyingPointer(field, cs), fieldEntry.Size);
+                                var entityId = EntityId.FromULong(refreshedBytes.ReadUInt64());
+                                linkIsSet = entityId != EntityId.None;
+                                if (linkIsSet)
+                                    cs.NativeObjects.InstanceId2Index.GetOrInitializeValue(entityId, out nativeObjectIndex, -1);
                             }
-                            else
-                            {
-                                EnqueueNativeObject(fieldEntry, nativeObjectPointer, cs);
-                            }
+                        }
+                        else if (refreshedBytes.TryReadPointer(out var nativeObjectPointer) == BytesAndOffset.PtrReadError.Success)
+                        {
+                            linkIsSet = nativeObjectPointer != 0;
+                            if (linkIsSet && cs.NativeObjects.NativeObjectAddressToEntityId.TryGetValue(nativeObjectPointer, out var entityId) && entityId != EntityId.None)
+                                cs.NativeObjects.InstanceId2Index.GetOrInitializeValue(entityId, out nativeObjectIndex, -1);
+                        }
+
+                        if (!linkIsSet)
+                        {
+                            fieldEntry = new ManagedObjectInspectorItem(m_InspectorID, fieldEntry.DisplayName, fieldEntry.ManagedTypeIndex, fieldEntry.TypeName, $"{fieldEntry.Value} {TextContent.LeakedManagedShellHint}", fieldEntry.IsStatic, GetIdentifyingPointer(field, cs), fieldEntry.Size);
+                        }
+                        else if (nativeObjectIndex >= 0)
+                        {
+                            EnqueueNativeObject(fieldEntry, nativeObjectIndex, cs);
                         }
                     }
                 }
@@ -738,7 +765,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             //        FindNativeAllocationOrRegion(cs, pointerToMBufferData, fieldRootEntry, fieldRootEntry.Value, "m_Buffer", isNativeSlice? "Byte*" : "void*");
             //    }
             //}
-            else if (field.dataType == ObjectDataType.Value &&
+            // Value fields are only expanded when their heap bytes are available.
+            else if (field.dataType == ObjectDataType.Value && field.managedObjectData.IsValid &&
                     cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Count == 1 &&
                     GetFirstInstanceFieldIfValueType(cs, field, fieldEntry.ManagedTypeIndex, out var childField))
             {
@@ -752,7 +780,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 fieldEntry.Value = FormatFieldValueWithContentTypeNotMatchingFieldType(fieldInfo.Value, fieldInfo.TypeName);
                 fieldEntry.children.Clear();
             }
-            else if ((field.dataType == ObjectDataType.Value &&
+            else if ((field.dataType == ObjectDataType.Value && field.managedObjectData.IsValid &&
                     cs.TypeDescriptions.FieldIndicesInstance[fieldEntry.ManagedTypeIndex].Count >= 1) ||
                 field.dataType == ObjectDataType.Array || field.dataType == ObjectDataType.ReferenceArray ||
                 field.dataType == ObjectDataType.Object || field.dataType == ObjectDataType.ReferenceObject)
@@ -811,12 +839,18 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             if (address == 0)
                 return;
-            if (!cs.NativeObjects.NativeObjectAddressToEntityId.ContainsKey(address)) return;
-            var entityId = cs.NativeObjects.NativeObjectAddressToEntityId[address];
-            if (entityId == EntityId.None)
+            if (!cs.NativeObjects.NativeObjectAddressToEntityId.TryGetValue(address, out var entityId) || entityId == EntityId.None)
                 return;
-            var index = cs.NativeObjects.InstanceId2Index[entityId];
-            var nativeObjectData = ObjectData.FromNativeObjectIndex(cs, index);
+            if (!cs.NativeObjects.InstanceId2Index.TryGetValue(entityId, out var index))
+                return;
+            EnqueueNativeObject(root, index, cs);
+        }
+
+        void EnqueueNativeObject(ManagedObjectInspectorItem root, long nativeObjectIndex, CachedSnapshot cs)
+        {
+            if (nativeObjectIndex < 0)
+                return;
+            var nativeObjectData = ObjectData.FromNativeObjectIndex(cs, nativeObjectIndex);
             if (!nativeObjectData.IsValid)
                 return;
             m_ReferencesPendingProcessing.Enqueue(new ReferencePendingProcessing(root, nativeObjectData));

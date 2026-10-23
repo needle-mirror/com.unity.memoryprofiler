@@ -30,9 +30,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_Builder.ClearIdToIndexCache();
         }
+
+        internal bool HasIdToIndexCache => m_Builder.HasIdToIndexCache;
     }
 
-    class AllTrackedMemoryTableViewController : SingleSnapshotTreeViewController<AllTrackedMemoryModel, AllTrackedMemoryModel.ItemData>, IAnalysisViewSelectable
+    class AllTrackedMemoryTableViewController : SingleSnapshotTreeViewController<AllTrackedMemoryModel, AllTrackedMemoryModel.ItemData>, IAnalysisViewSelectable, IFilterRelaxationTarget
     {
         const string k_UxmlAssetGuid = "e7ac30fe2b076984e978d41347c5f0e0";
 
@@ -46,6 +48,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_TreeViewColumn__ResidentSize = "all-tracked-memory-table-view__tree-view__column__resident-size";
         const string k_UxmlIdentifier_TreeViewColumn__Status = "all-tracked-memory-table-view__tree-view__column__status";
         const string k_UxmlIdentifier_LoadingOverlay = "all-tracked-memory-table-view__loading-overlay";
+        const string k_UxmlIdentifier_ScaleBarsToggle = "all-tracked-memory-table-view__toolbar__scale-bars-toggle";
+        const string k_SessionStateKey_ScaleBarsToParent = "com.unity.memoryprofiler.AllTrackedMemoryTableViewController.scaleBarsToParent";
         const string k_UxmlIdentifier_ErrorLabel = "all-tracked-memory-table-view__error-label";
 
         // Model.
@@ -60,7 +64,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         // Composed components
         readonly TableFilterManager<AllTrackedMemoryModel, AllTrackedMemoryModel.ItemData> m_FilterManager;
         readonly ModelBuildOrchestrator<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs> m_BuildOrchestrator;
+        readonly AllTrackedMemoryModelBuilderAdapter m_BuilderAdapter = new AllTrackedMemoryModelBuilderAdapter();
+
+        internal bool HoldsTreeNodeIdFilterState => m_FilterManager.BaseModelForTreeNodeIdFiltering != null || m_BuilderAdapter.HasIdToIndexCache;
         TreeViewColumnManager<AllTrackedMemoryModel.ItemData> m_ColumnManager;
+        protected override IColumnSumRefresher ColumnManager => m_ColumnManager;
         SizeCellRenderer m_SizeCellRenderer;
 
         // View.
@@ -79,6 +87,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_Snapshot = snapshot;
             m_SearchField = searchField;
+            m_StatusFilterButton = statusFilterButton;
             m_CompareMode = compareMode;
             m_DisambiguateUnityObjects = disambiguateUnityObjects;
             m_Responder = responder;
@@ -90,7 +99,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             statusFilterButton?.SetUp(m_FilterManager, () => { if (IsViewLoaded) FireAndForgetBuildModelAsync(); }, ObjectStatusExtensions.AllOfMemoryTableUnavailableStatuses);
             m_BuildOrchestrator = new ModelBuildOrchestrator<AllTrackedMemoryModel, AllTrackedMemoryModelBuilder.BuildArgs>(
                 snapshot,
-                new AllTrackedMemoryModelBuilderAdapter(),
+                m_BuilderAdapter,
                 typeof(AllTrackedMemoryModel).ToString());
 
             SearchFilterChanged += OnSearchFilterChanged;
@@ -113,6 +122,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public IEnumerable<ITextFilter> ItemPathFilter => m_FilterManager.PathFilters;
 
         ToolbarSearchField m_SearchField = null;
+        StatusFilterButton m_StatusFilterButton = null;
         protected override ToolbarSearchField SearchField => m_SearchField;
 
         void OnSearchFilterChanged(IScopedFilter<string> searchFilter)
@@ -211,6 +221,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             SearchFilterChanged -= OnSearchFilterChanged;
             base.Dispose(disposing);
+
+            if (disposing)
+            {
+                m_FilterManager.Dispose();
+                m_BuildOrchestrator.Dispose();
+            }
         }
 
         void GatherReferencesInView(VisualElement view)
@@ -222,6 +238,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Initialize components that depend on m_TreeView
             m_ColumnManager = new TreeViewColumnManager<AllTrackedMemoryModel.ItemData>(m_TreeView);
             m_SizeCellRenderer = new SizeCellRenderer(m_TreeView, () => TableMode, TextContent.NotAvailable, k_UssClass_Cell_Unreliable);
+            m_SizeCellRenderer.SetUpScaleBarsToParentToggle(view.Q<Toggle>(k_UxmlIdentifier_ScaleBarsToggle), k_SessionStateKey_ScaleBarsToParent);
         }
 
         bool CanShowResidentMemory()
@@ -238,7 +255,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 TextContent.DescriptionTableColumnHeader,
                 0,
                 BindCellForDescriptionColumn(),
-                makeCell: () => new ObjectOrTypeLabel() { HideTypeInfoForObjects = true },
+                makeCell: () => MakeLabelWithSelectInTableMenu(hideTypeInfoForObjects: true),
                 destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose());
 
             m_ColumnManager.ConfigureColumn(
@@ -250,7 +267,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                     item => item.Unreliable,
                     TextContent.GraphicsResidentMemoryUnreliableTooltip,
                     useResident: false),
-                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident);
+                visible: TableMode != AllTrackedMemoryTableMode.OnlyResident,
+                sumProvider: () => m_Model?.TotalMemorySize.Committed ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__SizeBar,
@@ -273,7 +291,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                     item => item.Unreliable,
                     TextContent.GraphicsResidentMemoryUnreliableTooltip,
                     useResident: true),
-                visible: CanShowResidentMemory() && TableMode != AllTrackedMemoryTableMode.OnlyCommitted);
+                visible: CanShowResidentMemory() && TableMode != AllTrackedMemoryTableMode.OnlyCommitted,
+                sumProvider: () => m_Model?.TotalMemorySize.Resident ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Status,
@@ -346,7 +365,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var label = element.Q<ObjectOrTypeLabel>();
                 var itemData = m_TreeView.GetItemDataForIndex<AllTrackedMemoryModel.ItemData>(rowIndex);
 
-                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(m_Snapshot, itemData.Source, itemData.Name, out var displayName))
+                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(m_Snapshot, itemData.Source, itemData.Name, out var displayName, splitUnifiedObjectIntoHalves: true))
                 {
                     label.SetLabelData(m_Snapshot, displayName, string.Empty);
                 }
@@ -382,6 +401,56 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void OnTreeItemSelected(int itemId, AllTrackedMemoryModel.ItemData itemData)
         {
             m_Responder?.SelectedItem(itemId, this, itemData);
+        }
+
+        public override BreakdownTableId TableId => BreakdownTableId.AllTrackedMemory;
+
+        /// <summary>Whether <paramref name="id"/> is one this table can ever show, independent of any filter.</summary>
+        internal static bool CanEverContainSourceId(CachedSnapshot.SourceIndex.SourceId id)
+        {
+            switch (id)
+            {
+                case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
+                case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
+                case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                case CachedSnapshot.SourceIndex.SourceId.NativeType:
+                case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedType:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                case CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion:
+                case CachedSnapshot.SourceIndex.SourceId.GfxResource:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        public override bool CanEverContain(CachedSnapshot.SourceIndex source) => CanEverContainSourceId(source.Id);
+
+        /// <summary>
+        /// Diagnoses the filter dimensions this table shares with every other table (status mask, text search
+        /// against the item's own name); mirrors <see cref="RootsAndImpactTableViewController.ComputeVisibility"/>'s shape.
+        /// </summary>
+        public override ItemVisibility GetVisibility(CachedSnapshot.SourceIndex source, CachedSnapshot owner = null)
+        {
+            if (!CanEverContain(source))
+                return new ItemVisibility(ItemVisibility.State.NotRepresentable);
+
+            return ItemVisibility.FromBlockingFilters(TableRevealHelper.GetBlockingStatusAndOwnNameFilters(m_Snapshot, source, m_FilterManager.CompoundSearchFilter));
+        }
+
+        protected override bool HasRow(CachedSnapshot.SourceIndex source)
+            => m_Model.RootNodes.TryFindItemPath(data => data.Source == source, out _, out _);
+
+        protected override bool TryRevealRow(CachedSnapshot.SourceIndex source, bool frame, bool select, CachedSnapshot owner)
+            => TryRevealTreeRow(data => data.Source == source, frame, select);
+
+        /// <summary>See <see cref="RootsAndImpactTableViewController.ApplyFilterRelaxation"/> — same shared dimensions, no table-specific ones here.</summary>
+        public void ApplyFilterRelaxation(TableFilterKind filtersToRelax)
+        {
+            TableRevealHelper.RelaxStatusAndTextFilters(filtersToRelax, m_StatusFilterButton, m_SearchField, m_FilterManager);
+            FireAndForgetBuildModelAsync();
         }
 
         public interface IResponder

@@ -16,8 +16,8 @@ using ConnectionsHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCom
 using InvalidObjectsHashMap = Unity.MemoryProfiler.Editor.Containers.CollectionsCompatibility.NativeHashMap<long, Unity.MemoryProfiler.Editor.ManagedObjectInfo>;
 #else
 using AddressToManagedIndexHashMap = Unity.Collections.NativeHashMap<ulong, long>;
-using ConnectionsHashMap  = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.Collections.LowLevel.Unsafe.UnsafeList<int>>;
-using InvalidObjectsHashMap  = Unity.Collections.NativeHashMap<long, Unity.MemoryProfiler.Editor.ManagedObjectInfo>;
+using ConnectionsHashMap = Unity.Collections.NativeHashMap<Unity.MemoryProfiler.Editor.CachedSnapshot.SourceIndex, Unity.Collections.LowLevel.Unsafe.UnsafeList<int>>;
+using InvalidObjectsHashMap = Unity.Collections.NativeHashMap<long, Unity.MemoryProfiler.Editor.ManagedObjectInfo>;
 #endif
 
 namespace Unity.MemoryProfiler.Editor
@@ -89,6 +89,57 @@ namespace Unity.MemoryProfiler.Editor
         /// </summary>
         public bool IsGCHandleTarget(long managedObjectIndex, long uniqueGCHandleCount) =>
             ObjectIndicesMatchGCHandleOrder ? managedObjectIndex < uniqueGCHandleCount : ManagedObjectIndicesThatAreGCHandleTargets.Contains(managedObjectIndex);
+
+        /// <summary>
+        /// Row index into <see cref="CachedSnapshot.ManagedRootsEntriesCache"/> -> the
+        /// <see cref="ManagedObjectInfo.ManagedObjectIndex"/> it targets, or <see cref="InvalidObjectIndex"/> if
+        /// that target has no <see cref="ManagedObjectInfo"/> row. Populated by the crawler's
+        /// <see cref="CachedSnapshot.HasManagedRoots"/> seeding pass, mirroring
+        /// <see cref="GCHandleIndexToManagedObjectIndex"/>'s shape.
+        /// </summary>
+        DynamicArray<long> m_ManagedRootIndexToManagedObjectIndex;
+        public ref DynamicArray<long> ManagedRootIndexToManagedObjectIndex => ref m_ManagedRootIndexToManagedObjectIndex;
+
+        /// <summary>
+        /// The <see cref="ManagedObjectInfo.ManagedObjectIndex"/> that <see cref="CachedSnapshot.ManagedRoots"/>
+        /// row <paramref name="managedRootIndex"/> targets, or <see cref="InvalidObjectIndex"/> if that target
+        /// wasn't found in this capture.
+        /// </summary>
+        public long ResolveManagedObjectIndexForManagedRoot(long managedRootIndex) =>
+            managedRootIndex >= 0 && managedRootIndex < m_ManagedRootIndexToManagedObjectIndex.Count
+                ? m_ManagedRootIndexToManagedObjectIndex[managedRootIndex]
+                : InvalidObjectIndex;
+
+        /// <summary>
+        /// Every <see cref="ManagedObjectInfo.ManagedObjectIndex"/> the crawler's
+        /// <see cref="ManagedDataCrawler.GatherFrozenHeapObjectData"/> pass discovered on a frozen/NonGC or
+        /// Pinned-Object-Heap section, in discovery order. Each of these is seeded as a root of its own by
+        /// <see cref="RootAndImpactInfo"/>'s NonGCHeapSections bucket; the containing section is only their
+        /// discovery context, never an ownership node.
+        /// </summary>
+        DynamicArray<long> m_FrozenHeapManagedObjectIndices;
+        public ref DynamicArray<long> FrozenHeapManagedObjectIndices => ref m_FrozenHeapManagedObjectIndices;
+
+        /// <summary>
+        /// Row index into <see cref="CachedSnapshot.ManagedHeapSectionEntriesCache"/> -> the first
+        /// unclaimed-backend-object <see cref="ManagedObjectInfo.ManagedObjectIndex"/> the crawler's
+        /// <see cref="ManagedDataCrawler.GatherFrozenHeapObjectData"/> pass found on that section, or
+        /// <see cref="InvalidObjectIndex"/> if the section holds no such object. Answers "does this section
+        /// hold frozen/pinned objects at all", which distinguishes it from an empty section reported as
+        /// Reserved memory; <see cref="FrozenHeapManagedObjectIndices"/> holds the full population.
+        /// </summary>
+        DynamicArray<long> m_ManagedHeapSectionIndexToManagedObjectIndex;
+        public ref DynamicArray<long> ManagedHeapSectionIndexToManagedObjectIndex => ref m_ManagedHeapSectionIndexToManagedObjectIndex;
+
+        /// <summary>
+        /// The first <see cref="ManagedObjectInfo.ManagedObjectIndex"/> found on <see cref="CachedSnapshot.ManagedHeapSections"/>
+        /// row <paramref name="managedHeapSectionIndex"/>, or <see cref="InvalidObjectIndex"/> if that section
+        /// holds no frozen/pinned object.
+        /// </summary>
+        public long ResolveManagedObjectIndexForManagedHeapSection(long managedHeapSectionIndex) =>
+            managedHeapSectionIndex >= 0 && managedHeapSectionIndex < m_ManagedHeapSectionIndexToManagedObjectIndex.Count
+                ? m_ManagedHeapSectionIndexToManagedObjectIndex[managedHeapSectionIndex]
+                : InvalidObjectIndex;
 
 #if DEBUG_VALIDATION
         // This Dictionary block is here to make the investigations for PROF-2420 easier.
@@ -219,6 +270,9 @@ namespace Unity.MemoryProfiler.Editor
             ManagedObjects.Dispose();
             MangedObjectIndexByAddress.Dispose();
             GCHandleIndexToManagedObjectIndex.Dispose();
+            ManagedRootIndexToManagedObjectIndex.Dispose();
+            ManagedHeapSectionIndexToManagedObjectIndex.Dispose();
+            FrozenHeapManagedObjectIndices.Dispose();
             ConnectionsToMappedToSourceIndex.DisposeListsAndHashmap();
             ConnectionsFromMappedToSourceIndex.DisposeListsAndHashmap();
             IndicesOfManagedObjectsHeldByRequiredByNativeCodeAttribute.Dispose();

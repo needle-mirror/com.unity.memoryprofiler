@@ -30,7 +30,7 @@ namespace Unity.MemoryProfiler.Editor
             /// </summary>
             public readonly BitArray PageStates;
             /// <summary>
-            /// How big each page in this snapshot is in bytes. 
+            /// How big each page in this snapshot is in bytes.
             /// </summary>
             public readonly uint PageSize;
 
@@ -72,24 +72,76 @@ namespace Unity.MemoryProfiler.Editor
                     PageSize = tempPageSize;
                 }
 
+                MergeStitchedAndContainedResidentPages(
+                    RegionStartPageIndex, RegionEndPageIndex, RegionAddress, PageStates, PageSize,
+                    systemMemoryRegionEntries.RegionStitched, systemMemoryRegionEntries.RegionMergedByContainment,
+                    systemMemoryRegionEntries.RegionTrimmedForOverlap);
+            }
+
+            /// <summary>
+            /// Applies the region merges done by <see cref="SystemMemoryRegionEntriesCache"/> to the per-region page windows:
+            /// <list type="bullet">
+            /// <item><paramref name="stitched"/>: the windows are contiguous, so the kept region's end page index is extended.</item>
+            /// <item><paramref name="containedAway"/>: both regions have their own window over the same addresses. If the folded-away region is the
+            /// later (fresher) reading, its bits are copied over the kept region's window.</item>
+            /// <item><paramref name="trimmedForOverlap"/>: the trimmed region's end page index shrinks by the trimmed byte count.</item>
+            /// </list>
+            /// </summary>
+            internal static void MergeStitchedAndContainedResidentPages(
+                DynamicArray<int> startPageIndex,
+                DynamicArray<int> endPageIndex,
+                DynamicArray<ulong> regionAddress,
+                BitArray pageStates,
+                uint pageSize,
+                DynamicArray<SystemMemoryRegionEntriesCache.StitchedRegion> stitched,
+                DynamicArray<SystemMemoryRegionEntriesCache.ContainedRegion> containedAway,
+                DynamicArray<SystemMemoryRegionEntriesCache.TrimmedRegion> trimmedForOverlap)
+            {
                 // revert over the stitched regions to ensure that the last merged region of a group of contiguous regions
                 // is the one setting the end page index for all the merged regions.
-                for (var i = systemMemoryRegionEntries.RegionStitched.Count - 1; i >= 0; i--)
+                for (var i = stitched.Count - 1; i >= 0; i--)
                 {
-                    var stitchedRegion = systemMemoryRegionEntries.RegionStitched[i];
+                    var stitchedRegion = stitched[i];
 
-                    // For merged regions, Item1 is the index that was extended, and Item2 is the index of the region that was merged into the previous one.
                     // If the end page index of the first region is greater than the end page index of the second region,
                     // a following stitched region must have updated the end page index of the first region already.
-                    if (RegionEndPageIndex[stitchedRegion.Item1] < RegionEndPageIndex[stitchedRegion.Item2])
+                    if (endPageIndex[stitchedRegion.ExtendedIndex] < endPageIndex[stitchedRegion.MergedIndex])
                     {
-                        RegionEndPageIndex[stitchedRegion.Item1] = RegionEndPageIndex[stitchedRegion.Item2];
+                        endPageIndex[stitchedRegion.ExtendedIndex] = endPageIndex[stitchedRegion.MergedIndex];
                     }
                     // Merged regions are not added to the Memory Entries Map and will never be queried directly, but might iterated over to calculate totals
                     // so we need to set these to 0 (or -1) to avoid confusion and potential bugs.
-                    RegionEndPageIndex[stitchedRegion.Item2] = -1; // Set to -1 to avoid the inclusive end page index checking in CalculateResidentMemory to be accidentally used with a merged region.
-                    RegionStartPageIndex[stitchedRegion.Item2] = 0;
-                    RegionAddress[stitchedRegion.Item2] = 0;
+                    endPageIndex[stitchedRegion.MergedIndex] = -1; // Set to -1 to avoid the inclusive end page index checking in CalculateResidentMemory to be accidentally used with a merged region.
+                    startPageIndex[stitchedRegion.MergedIndex] = 0;
+                    regionAddress[stitchedRegion.MergedIndex] = 0;
+                }
+
+                // Forward (capture) order, so the freshest of several duplicates folded into one region is copied last and wins.
+                for (long i = 0; i < containedAway.Count; i++)
+                {
+                    var keptIndex = containedAway[i].KeptIndex;
+                    var mergedAwayIndex = containedAway[i].MergedAwayIndex;
+                    var laterIndex = Math.Max(keptIndex, mergedAwayIndex);
+
+                    if (laterIndex != keptIndex)
+                    {
+                        var pageOffset = containedAway[i].AddressDelta / pageSize;
+                        var mergedAwayPageCount = endPageIndex[mergedAwayIndex] - startPageIndex[mergedAwayIndex];
+                        for (var p = 0; p <= mergedAwayPageCount; p++)
+                        {
+                            pageStates[(int)(startPageIndex[keptIndex] + pageOffset + p)] = pageStates[startPageIndex[mergedAwayIndex] + p];
+                        }
+                    }
+
+                    endPageIndex[mergedAwayIndex] = -1;
+                    startPageIndex[mergedAwayIndex] = 0;
+                    regionAddress[mergedAwayIndex] = 0;
+                }
+
+                for (var i = trimmedForOverlap.Count - 1; i >= 0; i--)
+                {
+                    var removedPageCount = trimmedForOverlap[i].RemovedByteCount / pageSize;
+                    endPageIndex[trimmedForOverlap[i].TrimmedIndex] -= (int)removedPageCount;
                 }
             }
 

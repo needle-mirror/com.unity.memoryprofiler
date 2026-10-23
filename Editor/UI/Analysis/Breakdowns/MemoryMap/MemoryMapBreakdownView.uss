@@ -1,4 +1,4 @@
-/* 
+/*
  * MemoryMapBreakdownView.uss
  * Styles specific to the Memory Map breakdown table view.
  * Imports common table view styles from TableViewBase.uss

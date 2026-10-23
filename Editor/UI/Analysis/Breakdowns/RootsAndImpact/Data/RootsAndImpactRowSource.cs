@@ -69,6 +69,25 @@ namespace Unity.MemoryProfiler.Editor.UI
             => row.SpecialNameId >= 0 ? m_SpecialNames[row.SpecialNameId] : row.Source.GetName(m_Snapshot);
 
         /// <summary>
+        /// Linear scan for the store index of the row whose <see cref="CompactFlatRow.Source"/> matches
+        /// <paramref name="source"/>. The store holds every structurally-present row regardless of the active
+        /// filter, so this finds a match whenever the object is part of the ownership forest at all.
+        /// </summary>
+        public bool TryFindStoreIndex(CachedSnapshot.SourceIndex source, out long index)
+        {
+            for (long i = 0; i < m_Store.Count; i++)
+            {
+                if (m_Store[i].Source == source)
+                {
+                    index = i;
+                    return true;
+                }
+            }
+            index = -1;
+            return false;
+        }
+
+        /// <summary>
         /// Resolves the same type-name candidates <see cref="RootsAndImpactModelBuilder.GetTypeNamesForFiltering"/>
         /// gives tree mode's per-node filter check, so flat mode can match a text search against an ownership
         /// row's type as well as its display name. Synthetic/region rows have no meaningful Source, so this
@@ -76,6 +95,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         public RootsAndImpactModelBuilder.TypeNamesForFiltering GetTypeNamesForFiltering(in CompactFlatRow row)
             => row.SpecialNameId >= 0 ? default : RootsAndImpactModelBuilder.GetTypeNamesForFiltering(m_Snapshot, row.Source);
+
+        /// <summary>
+        /// The shared AssetBundle-category total that <see cref="RootsAndImpactModel.ApplyFlatFilter"/> substitutes
+        /// for the AssetBundle rows' own sum.
+        /// </summary>
+        public void ComputeAssetBundleSavingsCategory(out NativeRootSize total, out MemorySize exclusive)
+            => RootsAndImpactSummaryModelBuilder.ComputeAssetBundleSavingsCategory(m_Snapshot, out total, out exclusive);
 
         /// <summary>
         /// Resolves and caches a row's display name by store index, for repeated lookups such as a name sort

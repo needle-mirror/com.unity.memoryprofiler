@@ -28,16 +28,16 @@
 
 .status-filter-dropdown__select-all > unity-toggle__label
 {
-	flex-grow: 1;
-	flex-shrink: 0;
-	min-width: auto;
-	margin-left: 2px;
+    flex-grow: 1;
+    flex-shrink: 0;
+    min-width: auto;
+    margin-left: 2px;
 }
 
 .status-filter-dropdown__select-all > unity-toggle__label
 {
-	flex-grow: 0;
-	flex-shrink: 0;
+    flex-grow: 0;
+    flex-shrink: 0;
 }
 
 /* ── Separator between "Select all" and the group list ───────────────────── */

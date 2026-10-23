@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Unity.MemoryProfiler.Editor.UIContentData;
+using UnityEditor;
 using UnityEngine;
+using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 #if IMGUI_TREEVIEW_API_CHANGED
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
@@ -13,6 +16,7 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 {
     internal sealed class PathsToRootDetailTreeViewItem : TreeViewItem
     {
+        static readonly GUIContent s_DashContent = new GUIContent("—");
         public int CircularRefId { get; private set; } = -1;
         public ObjectData Data { get; }
         public string TypeName { get; }
@@ -37,6 +41,25 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public bool HasCircularReference;
         bool needsIcon = true;
 
+        // Resolved lazily by EnsureImpactInfo (on first CellGUI access, not at row-build time) because
+        // RawReferences/ReferencesTo rows are built on a background thread where touching RootAndImpactInfo
+        // races the snapshot-unload abort, and because only a handful of built rows are ever drawn.
+        // Deliberately NOT copied by the copy constructor below: clones re-resolve lazily against whatever
+        // selection is current when they are next drawn, rather than carrying a stale resolution forward.
+        public bool ImpactInfoResolved;
+        public int SortOriginalOrder = -1;
+        public long RelativeDepth;
+        public bool HasPathInfo;
+        public bool HasDifferentRootThanSelection;
+        public long ReferrerCount;
+        public bool SelectionReceivedShare;
+        public ulong TotalImpactBytes;
+        public ulong ShareOfImpactBytes;
+        public GUIContent DepthCellContent;
+        public GUIContent ReferrerCountCellContent;
+        public GUIContent ShareOfImpactCellContent;
+        public GUIContent TotalImpactCellContent;
+
         public PathsToRootDetailTreeViewItem(bool Allocation = false)
         {
             depth = -1;
@@ -48,6 +71,16 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
                 displayName = PathsToRootDetailView.Styles.NoInspectableObjectSelected;
                 needsIcon = false;
             }
+        }
+
+        /// <summary>
+        /// Internal for testing purposes.
+        /// </summary>
+        internal PathsToRootDetailTreeViewItem(string displayName, string typeName, string truncatedTypeName) : this()
+        {
+            this.displayName = displayName;
+            TypeName = typeName;
+            TruncatedTypeName = truncatedTypeName;
         }
 
         public PathsToRootDetailTreeViewItem(PathsToRootDetailTreeViewItem other)
@@ -314,6 +347,183 @@ namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
         public bool HasFlags()
         {
             return ObjectFlags != null;
+        }
+
+        /// <summary>
+        /// Resolves and caches this row's Depth/Referrers/Share of Impact/Total Impact cell content for
+        /// <paramref name="selection"/>. Idempotent per row per selection (see <see cref="ImpactInfoResolved"/>);
+        /// the view must not call this until it is about to draw the row. <paramref name="selectionTargets"/> and
+        /// <paramref name="otherPartTargets"/> are the items each half of the selection references directly.
+        /// </summary>
+        public void EnsureImpactInfo(CachedSnapshot snapshot, SourceIndex selection, SourceIndex otherPartOfSelection,
+            HashSet<SourceIndex> selectionTargets, HashSet<SourceIndex> otherPartTargets)
+        {
+            if (ImpactInfoResolved)
+                return;
+            ImpactInfoResolved = true;
+
+            var row = Data.displayObject.GetSourceLink(snapshot);
+            var rowSupported = snapshot.RootAndImpactInfo.SuccessfullyBuilt
+                && row.Valid && SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(row.Id);
+
+            if (!rowSupported)
+            {
+                DepthCellContent = new GUIContent("?");
+                ReferrerCountCellContent = s_DashContent;
+                ShareOfImpactCellContent = s_DashContent;
+                TotalImpactCellContent = s_DashContent;
+                return;
+            }
+
+            ref readonly var rowStep = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in snapshot.RootAndImpactInfo.ShortestPathInfo, row);
+            if (!rowStep.Valid)
+            {
+                DepthCellContent = new GUIContent("?");
+            }
+            else
+            {
+                ref readonly var selectionStep = ref GetPathStepIfSupported(snapshot, in selection);
+                ref readonly var otherStep = ref GetPathStepIfSupported(snapshot, in otherPartOfSelection);
+                HasPathInfo = TryComputeRelativeDepth(in selectionStep, in otherStep, in rowStep, out RelativeDepth, out HasDifferentRootThanSelection);
+
+                var depthTooltip = HasPathInfo ? TextContent.PathsToRootRelativeDepthTooltip : TextContent.PathsToRootRelativeDepthAbsoluteTooltip;
+                if (HasDifferentRootThanSelection)
+                    depthTooltip += TextContent.PathsToRootDifferentRootTooltipAddendum;
+                DepthCellContent = new GUIContent(FormatDepth(RelativeDepth, HasPathInfo, HasDifferentRootThanSelection), depthTooltip);
+            }
+
+            ref readonly var impact = ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in snapshot.RootAndImpactInfo.Impact, row);
+            var totalSize = impact.TotalImpact.SumUp();
+            TotalImpactBytes = totalSize.Committed;
+            TotalImpactCellContent = new GUIContent(EditorUtility.FormatBytes((long)totalSize.Committed), MakeByteSizeTooltip(totalSize));
+
+            var referrerData = snapshot.RootAndImpactInfo.GetReferrerData(in row);
+            if (referrerData.IsNeverRecorded)
+            {
+                ReferrerCountCellContent = s_DashContent;
+                ShareOfImpactCellContent = s_DashContent;
+                return;
+            }
+
+            // A root has no referee to divide across (ReferrerData.NoReferrer == -1); display that as 0.
+            ReferrerCount = referrerData.IsRoot ? 0 : referrerData.Count;
+            ReferrerCountCellContent = new GUIContent(ReferrerCount.ToString(), string.Format(TextContent.PathsToRootReferrerCountTooltipFormat, ReferrerCount));
+
+            // TryGetReceivedShareOfImpact only checks completion order, so each half must also reference row itself.
+            var info = snapshot.RootAndImpactInfo;
+            var receivedShare = default(NativeRootSize);
+            if (selection.Valid && selectionTargets.Contains(row)
+                && info.TryGetReceivedShareOfImpact(in selection, in row, out var selectionShare, out _))
+            {
+                receivedShare = selectionShare;
+                SelectionReceivedShare = true;
+            }
+            if (otherPartOfSelection.Valid && otherPartTargets.Contains(row)
+                && info.TryGetReceivedShareOfImpact(in otherPartOfSelection, in row, out var otherPartShare, out _)
+                && TryGetPortionPassedOn(info, in otherPartOfSelection, in selection, selectionTargets, in otherPartShare, out var passedOn))
+            {
+                receivedShare += passedOn;
+                SelectionReceivedShare = true;
+            }
+            if (!SelectionReceivedShare)
+            {
+                ShareOfImpactCellContent = new GUIContent("—", TextContent.PathsToRootShareOfImpactNotReceivedTooltip);
+                return;
+            }
+
+            var shareSize = receivedShare.SumUp();
+            ShareOfImpactBytes = shareSize.Committed;
+            // This is an even pro-rata split of row's impact across its referrers; AttributeImpact actually
+            // hands the leftover byte(s) per channel to one specific referrer, which isn't identifiable from
+            // the data available here, so the figure is an approximation - marked with "≈" rather than
+            // shown as exact.
+            ShareOfImpactCellContent = new GUIContent("≈ " + EditorUtility.FormatBytes((long)shareSize.Committed),
+                MakeByteSizeTooltip(shareSize) + TextContent.PathsToRootShareOfImpactApproximateTooltipAddendum);
+        }
+
+        /// <summary>
+        /// How much of <paramref name="amount"/>, received by <paramref name="from"/>, then reached <paramref name="to"/>:
+        /// all of it if <paramref name="to"/> exclusively owns <paramref name="from"/>, an even share if <paramref name="to"/>
+        /// is one of several referrers that received <paramref name="from"/>'s impact, otherwise none.
+        /// Internal for testing purposes.
+        /// </summary>
+        internal static bool TryGetPortionPassedOn(RootAndImpactInfo info, in SourceIndex from, in SourceIndex to, HashSet<SourceIndex> toTargets,
+            in NativeRootSize amount, out NativeRootSize portion)
+        {
+            portion = default;
+            if (!to.Valid)
+                return false;
+            switch (info.GetExclusiveOwnership(in to, in from))
+            {
+                case RootAndImpactInfo.ExclusiveOwnershipResult.FirstExclusivelyOwnsSecond:
+                    portion = amount;
+                    return true;
+                case RootAndImpactInfo.ExclusiveOwnershipResult.SecondExclusivelyOwnsFirst:
+                    return false;
+            }
+            if (!toTargets.Contains(from) || !info.TryGetReceivedShareOfImpact(in to, in from, out _, out var otherReferrerCount))
+                return false;
+            portion = amount.Divide((ulong)(otherReferrerCount + 1), out _);
+            return true;
+        }
+
+        /// <summary>
+        /// Formats a Depth cell: "↑ n" closer to the root than the selection, "↓ n" further away, "0" at the same
+        /// depth, or the plain absolute depth without path info; bracketed when the row has a different root.
+        /// </summary>
+        internal static string FormatDepth(long depth, bool isRelative, bool differentRoot)
+        {
+            string text;
+            if (!isRelative || depth == 0)
+                text = depth.ToString();
+            else if (depth < 0)
+                text = "↑ " + (-depth);
+            else
+                text = "↓ " + depth;
+            return differentRoot ? $"({text})" : text;
+        }
+
+        static string MakeByteSizeTooltip(MemorySize size)
+            => string.Format(TextContent.PathsToRootByteSizeTooltipFormat, size.Committed.ToString("N0"), EditorUtility.FormatBytes((long)size.Resident));
+
+        static readonly ShortestRootPathInfo s_InvalidPathStep = default;
+
+        static ref readonly ShortestRootPathInfo GetPathStepIfSupported(CachedSnapshot snapshot, in SourceIndex index)
+        {
+            if (!index.Valid || !SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(index.Id))
+                return ref s_InvalidPathStep;
+            return ref SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in snapshot.RootAndImpactInfo.ShortestPathInfo, index);
+        }
+
+        /// <summary>
+        /// <paramref name="relativeDepth"/> = <paramref name="row"/>'s depth minus the reference's (<paramref name="selection"/>
+        /// if valid, else <paramref name="otherPartOfSelection"/>) — negative is closer to the root, positive is a
+        /// referenced child, 0 is a same-depth cross-branch reference. Returns false (and reports the absolute
+        /// depth instead) only when neither reference part is valid, since there is then nothing to compare against.
+        /// <paramref name="differentRoot"/> compares against BOTH reference parts (a native object and its managed
+        /// shell can have different roots), so it is only true when <paramref name="row"/>'s root matches neither.
+        /// </summary>
+        internal static bool TryComputeRelativeDepth(
+            in ShortestRootPathInfo selection, in ShortestRootPathInfo otherPartOfSelection,
+            in ShortestRootPathInfo row, out long relativeDepth, out bool differentRoot)
+        {
+            if (!selection.Valid && !otherPartOfSelection.Valid)
+            {
+                relativeDepth = row.Depth;
+                differentRoot = false;
+                return false;
+            }
+
+            var reference = selection.Valid ? selection : otherPartOfSelection;
+            relativeDepth = row.Depth - reference.Depth;
+
+            differentRoot = true;
+            if (selection.Valid && row.Root == selection.Root)
+                differentRoot = false;
+            if (otherPartOfSelection.Valid && row.Root == otherPartOfSelection.Root)
+                differentRoot = false;
+
+            return true;
         }
 
 

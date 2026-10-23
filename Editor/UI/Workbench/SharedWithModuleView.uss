@@ -25,6 +25,27 @@
     background-color: #D6D6D6;
 }
 
+/*
+ * De-emphasis tint - covers the whole committed bar and is painted over by the resident bar, so only
+ * the committed remainder ends up tinted. Opt-in per bar via MemoryBarElement.DeEmphasizeNonResidentPortion,
+ * for bars whose category colors have no separate darkened committed variant.
+ */
+.memory-bar-element__de-emphasis-tint
+{
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: none;
+}
+
+.memory-bar-element__tinted-remainder.memory-bar-element__resident-bar-visible .memory-bar-element__de-emphasis-tint
+{
+    display: flex;
+    background-color: rgba(90, 90, 90, 0.6);
+}
+
 .memory-bar
 {
     margin-top: 3px;

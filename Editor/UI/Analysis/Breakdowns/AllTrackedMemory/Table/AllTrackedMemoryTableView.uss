@@ -1,4 +1,4 @@
-/* 
+/*
  * AllTrackedMemoryTableView.uss
  * Styles specific to the All Tracked Memory table view.
  * Imports common table view styles from TableViewBase.uss

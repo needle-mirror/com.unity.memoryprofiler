@@ -39,6 +39,7 @@ The roots are stored in root buckets, in the following priority order:
 
 | Root bucket | Description |
 | --- | --- |
+| Frozen / Non-GC Heap | Managed objects with no root at all, such as interned strings or frozen `RuntimeType` instances living on a frozen / Non-GC heap segment, or an object briefly pinned for a native call with no tracked handle. They're exempt from normal garbage collection because of where they live, not because something references them, which makes them the longest-lived bucket. |
 | Static Roots | Memory reached from managed static fields. Statics live for the lifetime of the loaded domain and are only released when your code clears the reference, which makes them the strongest roots and a common source of leaks. Entries are grouped by namespace and type. |
 | Don't Destroy on Load | Assets marked `DontDestroyOnLoad` (via `Object.DontDestroyOnLoad()` or their `HideFlags`). They survive scene unloads and the asset garbage collection (`Resources.UnloadUnusedAssets()`) and are only released when something destroys them explicitly. GameObjects and Components marked `DontDestroyOnLoad` are moved into the dedicated scene instead, so they don't appear here. |
 | Don't Destroy on Load (Deletion Queue) | `DontDestroyOnLoad` objects already queued for delayed destruction; usually rare and timing-dependent to catch in a snapshot. |
@@ -48,8 +49,13 @@ The roots are stored in root buckets, in the following priority order:
 | Native Object Roots | Native Unity objects that act as roots in their own right: native subsystem managers, unused or leaked assets awaiting the next asset garbage collection, or objects a subsystem holds directly rather than through a managed reference, scene, or bundle. |
 | Unreferenced Prefabs | Prefab assets nothing references, which the next asset garbage collection will unload. |
 | GC Handle Roots | Managed objects pinned by a `GCHandle` that isn't tied to a Unity object, such as handles from native plugins, interop, or managed code. |
+| Stack Roots | Managed objects kept alive by a local variable or method argument on a thread's stack. They stay rooted for as long as that stack frame is active. |
+| Finalizer Roots | Managed objects kept alive by an entry in the finalizer queue, until their Finalize/destructor method has run. |
+| Other Roots | Managed objects kept alive by a backend-reported managed root of an unattributed kind, such as a static field without per-field attribution. |
 | Native Root Allocations | Native allocations a subsystem registers as roots directly, rather than through a Unity object. |
 | Broken Script References | Native `MonoBehaviour` or `ScriptableObject` instances whose backing script is missing, so nothing references them and no root keeps them alive; each one is effectively a leak. |
+
+Stack Roots, Finalizer Roots, Other Roots, and Frozen / Non-GC Heap are only present in snapshots captured with the CoreCLR scripting backend, and are grouped together under a "Managed Roots" header in the table.
 
 The following buckets that have no root are listed after the rooted buckets so the table still reconciles with the snapshot total:
 

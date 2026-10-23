@@ -144,6 +144,41 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <summary>Refills <see cref="TreeModel{T}.RootNodes"/> with the rows of <paramref name="page"/>.</summary>
         public void MaterializePage(int page) => m_Paged?.MaterializePage(page);
 
+        /// <summary>
+        /// Linear scan for the store index of the row whose <see cref="ComparisonCompactRow.Source"/> matches
+        /// <paramref name="source"/> on either side, or that lists the Base/Compared model item
+        /// <paramref name="baseIdInA"/>/<paramref name="baseIdInB"/> (-1 for none) among its merged items.
+        /// False for the hierarchical (non-paged) model, which has no store to scan.
+        /// </summary>
+        public bool TryFindStoreIndex(CachedSnapshot.SourceIndex source, bool onlyInA, bool onlyInB, int baseIdInA, int baseIdInB, out long index)
+        {
+            index = -1;
+            if (m_RowSource == null)
+                return false;
+
+            var store = m_RowSource.Store;
+            for (long i = 0; i < store.Count; i++)
+            {
+                var row = store[i];
+                if ((!onlyInB && row.Source.InA == source) || (!onlyInA && row.Source.InB == source)
+                    || TableRevealHelper.ListsBaseItem(m_RowSource.GetIdsA(row.IdsAId), baseIdInA)
+                    || TableRevealHelper.ListsBaseItem(m_RowSource.GetIdsB(row.IdsBId), baseIdInB))
+                {
+                    index = i;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public bool TryGetPageForRow(long storeIndex, out int page)
+        {
+            page = 0;
+            return m_Paged != null && m_Paged.TryGetPageForRow(storeIndex, out page);
+        }
+
+        public int GetTreeIdForStoreIndex(long storeIndex) => m_RowSource.Store[storeIndex].TreeId;
+
         public void Dispose()
         {
             m_Paged?.Dispose();
@@ -169,7 +204,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public TBaseModel ComparedModel { get; }
 
         // The data associated with each item in the tree.
-        public readonly struct ComparisonData : INamedTreeItemData
+        public readonly struct ComparisonData : INamedTreeItemData, IHasSourceIndex
         {
             public ComparisonData(
                 string name,
@@ -279,6 +314,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // The snapshot-level source handles from each snapshot for this comparison row.
             public ComparisonSourceIndex SourceIndex { get; }
+
+            /// <summary>Prefers the compared (B) snapshot's handle, falling back to the base (A) one, so a single-source-index reveal can match either side.</summary>
+            CachedSnapshot.SourceIndex IHasSourceIndex.Source => SourceIndex.InB.Valid ? SourceIndex.InB : SourceIndex.InA;
         }
 
         // There is currently no need for tree node id based filtering beyond filtering Base and Compared tables based on the tree node ids selected in the comparison view

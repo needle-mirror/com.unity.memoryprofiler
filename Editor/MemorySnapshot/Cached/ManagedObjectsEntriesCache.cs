@@ -28,6 +28,12 @@ namespace Unity.MemoryProfiler.Editor
             /// </summary>
             public DynamicArray<long> TypeIndex = default;
 
+            /// <summary>
+            /// Number of objects of exactly each <see cref="CachedSnapshot.TypeDescriptions"/> row, not counting derived types.
+            /// Not created when the table is empty.
+            /// </summary>
+            public DynamicArray<long> InstanceCountPerType = default;
+
             public ManagedObjectsEntriesCache(ref IFileReader reader)
             {
                 Count = reader.GetEntryCount(EntryType.ManagedObjects_Target);
@@ -37,6 +43,15 @@ namespace Unity.MemoryProfiler.Editor
 
                 Target = reader.Read(EntryType.ManagedObjects_Target, 0, Count, Allocator.Persistent).Result.Reinterpret<ulong>();
                 TypeIndex = PackedIndexReader.Read(ref reader, EntryType.ManagedObjects_TypeIndex, Count, Allocator.Persistent);
+
+                var typeCount = reader.GetEntryCount(EntryType.TypeDescriptions_TypeIndex);
+                InstanceCountPerType = new DynamicArray<long>(typeCount, Allocator.Persistent, memClear: true);
+                for (long i = 0; i < Count; ++i)
+                {
+                    var typeIndex = TypeIndex[i];
+                    if (typeIndex >= 0 && typeIndex < typeCount)
+                        ++InstanceCountPerType[typeIndex];
+                }
             }
 
             public void Dispose()
@@ -44,6 +59,7 @@ namespace Unity.MemoryProfiler.Editor
                 Count = 0;
                 Target.Dispose();
                 TypeIndex.Dispose();
+                InstanceCountPerType.Dispose();
             }
         }
     }

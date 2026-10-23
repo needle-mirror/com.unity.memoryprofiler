@@ -44,13 +44,17 @@ namespace Unity.MemoryProfiler.Editor.UI
         DetailsViewController m_DetailsViewController;
         ViewController m_AnalysisViewController;
 
+        readonly CrossModeRevealProvider m_CrossModeReveal;
+
         // Testing facility
         internal ViewController AnalysisViewController => m_AnalysisViewController;
+        internal DetailsViewController DetailsViewController => m_DetailsViewController;
 
         public MemoryProfilerViewController(PlayerConnectionService playerConnectionService, SnapshotDataService snapshotDataService)
         {
             m_PlayerConnectionService = playerConnectionService;
             m_SnapshotDataService = snapshotDataService;
+            m_CrossModeReveal = new CrossModeRevealProvider(snapshotDataService);
             m_ScreenshotsManager = new ScreenshotsManager();
         }
 
@@ -152,7 +156,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var baseSnapshot = m_SnapshotDataService.Base;
                 var comparedSnapshot = m_SnapshotDataService.CompareMode ? m_SnapshotDataService.Compared : null;
-                m_AnalysisViewController = new AnalysisTabBarController(m_DetailsViewController, baseSnapshot, comparedSnapshot);
+                m_AnalysisViewController = new AnalysisTabBarController(m_DetailsViewController, baseSnapshot, comparedSnapshot, m_CrossModeReveal);
 
                 viewKeyForAnalytics = TextContent.SummaryViewName;
                 if (comparedSnapshot != null)
@@ -172,6 +176,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             AddChild(m_AnalysisViewController);
             m_AnalysisViewContainer.Add(m_AnalysisViewController.View);
+
+            if (m_AnalysisViewController is AnalysisTabBarController loadedTabBarController)
+                m_CrossModeReveal.RevealPending(loadedTabBarController);
         }
 
         void CompareViewChanged()

@@ -580,7 +580,19 @@ namespace Unity.MemoryProfiler.Editor
                 return false;
 
             ScreenshotsManager.SnapshotImported(sourceFilePath, targetFilePath);
-            File.Copy(sourceFilePath, targetFilePath);
+
+            // A background folder sync must never see the partially-copied file under its final .snap name.
+            var tempFilePath = targetFilePath + ".importing";
+            try
+            {
+                File.Copy(sourceFilePath, tempFilePath, true);
+                File.Move(tempFilePath, targetFilePath);
+            }
+            finally
+            {
+                if (File.Exists(tempFilePath))
+                    File.Delete(tempFilePath);
+            }
 
             return true;
         }

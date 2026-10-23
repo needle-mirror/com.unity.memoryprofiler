@@ -198,14 +198,18 @@ namespace Unity.MemoryProfiler.Editor
                             case SourceIndex.SourceId.ManagedType:
                             case SourceIndex.SourceId.NativeObject:
                             case SourceIndex.SourceId.GCHandleIndex:
+                            case SourceIndex.SourceId.ManagedRoot:
+                            case SourceIndex.SourceId.ManagedHeapSection:
                                 // Currently intentional possible connections:
-                                // Managed Object / Managed Type / Native Object / GCHandleIndex -> Managed Object
+                                // Managed Object / Managed Type / Native Object / GCHandleIndex / ManagedRoot -> Managed Object
+                                // ManagedHeapSection -> Managed Object is a frozen/NonGC-heap object's own
+                                // "connection" to its containing section once crawled — expected, not a real reference.
                                 break;
                             default:
                                 throw new NotImplementedException();
                         }
                         //if (c.IndexFrom.Id == SourceIndex.SourceId.NativeObject)
-                        //    // Native Unity Engine Object to Managed Object connection based on m_CachedPtr.
+                        //    // Native Unity Engine Object to Managed Object connection based on the shell's native link field (m_EntityId / legacy m_CachedPtr).
                         //    // these get at added in the loop at the end of the calling GetAllReferencingObjects function.
                         //    // Tried using a hash set to prevent duplicates but the lookup during add locks up the window
                         //    // if there are more than about 50k references
@@ -228,9 +232,9 @@ namespace Unity.MemoryProfiler.Editor
                         throw new NotImplementedException();
                 }
 #endif
-                if (c.FieldFrom.Equals(snapshot.TypeDescriptions.IFieldUnityObjectMCachedPtr))
+                if (c.FieldFrom.Equals(snapshot.TypeDescriptions.IFieldUnityObjectNativeLink))
                 {
-                    // Ignore connections from m_CachedPtr on the managed shell to the native object, if the shell is already in the list of found UnityObjectIndices
+                    // Ignore connections from the native link field on the managed shell to the native object (only crawled as a pointer in snapshots of runtimes that still had m_CachedPtr), if the shell is already in the list of found UnityObjectIndices
                     if (foundUnityObjectIndices.Contains(c.IndexFrom) && c.IndexFrom.Id == SourceIndex.SourceId.ManagedObject && c.IndexTo.Id == SourceIndex.SourceId.NativeObject)
                         continue;
                 }
@@ -340,7 +344,7 @@ namespace Unity.MemoryProfiler.Editor
                                 foundUnityObjectIndices.Add(c.IndexTo);
                                 break;
                             case SourceIndex.SourceId.NativeObject:
-                                // Native Unity Engine Object to Managed Object connection based on m_CachedPtr.
+                                // Native Unity Engine Object to Managed Object connection based on the shell's native link field (m_EntityId / legacy m_CachedPtr).
                                 // These type of connections go both ways but are only stored once and in Native -> Managed direction in CachedSnapshot.Connections.From -> To
                                 // but bidirectionally in ManagedConnection.
 
@@ -353,11 +357,21 @@ namespace Unity.MemoryProfiler.Editor
                                 }
                                 break;
                             case SourceIndex.SourceId.GCHandleIndex:
-                                // GCHandles just hold a plain reference to the object, no field info present
-                                referencedObjects?.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
+                            case SourceIndex.SourceId.ManagedRoot:
+                            case SourceIndex.SourceId.ManagedHeapSection:
+                                // GCHandles, ManagedRoots, and ManagedHeapSection (frozen/NonGC-heap objects'
+                                // root) just hold a plain reference to the object, no field info present.
+                                // ManagedHeapSection can root many objects this way (unlike the other two,
+                                // which are 1:1 and resolved directly by BuildPathFromRootInfo without ever
+                                // reaching this generic walk) — foundUnityObjectIndices must be updated here
+                                // too, since that's what actually drives which objects get visited.
+                                if (foundUnityObjectIndices.Add(c.IndexTo))
+                                {
+                                    referencedObjects?.Add(ObjectData.FromSourceLink(snapshot, c.IndexTo));
+                                }
                                 break;
                             default:
-                                // Not just not implemented but also technically dubious if something else where to have a connection to a Managed Object
+                                // No other SourceId kind should ever be the origin of a connection to a Managed Object.
                                 throw new NotImplementedException();
                         }
                         break;
@@ -369,12 +383,12 @@ namespace Unity.MemoryProfiler.Editor
                             case SourceIndex.SourceId.ManagedType:
                             case SourceIndex.SourceId.ManagedObject:
 
-                                // Native Unity Engine Object to Managed Object connection based on m_CachedPtr.
+                                // Native Unity Engine Object to Managed Object connection based on the shell's native link field (m_EntityId / legacy m_CachedPtr).
                                 // These type of connections go both ways but are only stored once and in Native -> Managed direction in CachedSnapshot.Connections.From -> To
                                 // but bidirectionally in ManagedConnection.
 
-                                // If this is a Managed -> Native Object reference that came about from crawling the m_CachedPtr field and points of the managed shell that we want to ignore, irgnore it.
-                                if (c.IndexTo.Id == SourceIndex.SourceId.NativeObject && c.FieldFrom == snapshot.TypeDescriptions.IFieldUnityObjectMCachedPtr
+                                // If this is a Managed -> Native Object reference that came about from crawling a legacy m_CachedPtr field and points of the managed shell that we want to ignore, irgnore it.
+                                if (c.IndexTo.Id == SourceIndex.SourceId.NativeObject && c.FieldFrom == snapshot.TypeDescriptions.IFieldUnityObjectNativeLink
                                     && c.IndexFrom == managedShellToIgnoreAllDefaultUnityNativeManagedConnectionsFor)
                                     break;
 

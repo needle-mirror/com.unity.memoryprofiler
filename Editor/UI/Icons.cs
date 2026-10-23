@@ -16,7 +16,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         internal static readonly GUIContent FlagIcon = EditorGUIUtility.IconContent("console.infoicon");
         internal static readonly GUIContent NoIconContent = null; // no icon is cleaner // new GUIContent(Icons.NoIcon, "no icon for type");
-        internal static readonly GUIContent CSScriptIconContent = EditorGUIUtility.IconContent("cs Script Icon", "");
+        internal static readonly GUIContent CSScriptIconContent = EditorGUIUtility.IconContent("cs Script Icon");
         /// <summary>
         /// Built-in editor icon for the structural Prefab entries that (currently) only the Roots &amp; Impact
         /// table surfaces.
@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         internal static readonly GUIContent SceneIconContent = EditorGUIUtility.IconContent("SceneAsset Icon");
 
-        internal static Dictionary<string, GUIContent> iconContent = new Dictionary<string, GUIContent>();
+        internal static Dictionary<string, GUIContent> IconContent = new Dictionary<string, GUIContent>();
 
         public static GUIContent GetIcon(ObjectData data, string typeName, CachedSnapshot cs)
         {
@@ -40,7 +40,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 return Icons.NoIconContent;
             }
-            if (Icons.iconContent.TryGetValue(typeName, out var content))
+            if (Icons.IconContent.TryGetValue(typeName, out var content))
             {
                 return content;
             }
@@ -51,10 +51,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 n = n.Replace("UnityEditor.", "");
 
                 var tex = IconUtility.LoadBuiltInIconWithName(n + " Icon");
+                var lastDot = n.LastIndexOf('.');
+                var isEngineNamespaced = typeName.StartsWith("UnityEngine.") || typeName.StartsWith("UnityEditor.");
+                if (tex == null && lastDot >= 0 && isEngineNamespaced)
+                    tex = IconUtility.LoadBuiltInIconWithName(n.Substring(lastDot + 1) + " Icon");
                 if (tex != null)
                 {
-                    Icons.iconContent.Add(typeName, new GUIContent((Texture)tex));
-                    return Icons.iconContent[typeName];
+                    Icons.IconContent.Add(typeName, new GUIContent((Texture)tex));
+                    return Icons.IconContent[typeName];
                 }
 
                 if (n == "MonoBehaviour")

@@ -403,6 +403,32 @@
     -unity-font-style: italic;
 }
 
+/* Optional trailing "Inspect" column holding the per-row deep-link icon button. */
+.memory-summary__legend__inspect-column
+{
+    flex: 0 0 auto;
+}
+.memory-summary__legend__inspect-cell
+{
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+.memory-summary__legend__inspect-button
+{
+    margin-left: 2px;
+    margin-right: 2px;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 0;
+    padding-bottom: 0;
+    min-width: 18px;
+    height: 16px;
+    -unity-text-align: middle-center;
+}
+
 #memory-summary__legend__size-column
 {
     flex: 0 0 auto;

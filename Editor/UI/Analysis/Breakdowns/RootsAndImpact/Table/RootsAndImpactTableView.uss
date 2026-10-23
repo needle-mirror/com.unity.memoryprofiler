@@ -46,3 +46,30 @@
 {
     display: none;
 }
+
+/* Dual size cell: the filter-relevant value (primary, normally styled) followed by the row's own
+   precalculated value (secondary), struck through via rich text and dimmed here. The primary never
+   shrinks, so squishing the column truncates the secondary first, keeping the filter-relevant value. */
+.dual-size-cell
+{
+    flex-direction: row;
+    align-items: center;
+    flex-grow: 1;
+    overflow: hidden;
+    padding-left: 6px;
+    padding-right: 1px;
+}
+
+.dual-size-cell__primary
+{
+    flex-shrink: 0;
+}
+
+.dual-size-cell__secondary
+{
+    flex-shrink: 1;
+    margin-left: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: rgba(136, 136, 136, 1);
+}

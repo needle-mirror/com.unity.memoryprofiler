@@ -7,6 +7,8 @@ namespace Unity.MemoryProfiler.Editor.UI
     {
         MemoryMapTableViewController m_TableViewController;
 
+        public override BreakdownTableId TableId => BreakdownTableId.MemoryMap;
+
         public MemoryMapBreakdownViewController(CachedSnapshot snapshot, string description, ISelectionDetails selectionDetails)
             : base(snapshot, description, selectionDetails)
         {
@@ -17,7 +19,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             base.ViewLoaded();
 
             // Initialize Memory Map table as a child view controller.
-            m_TableViewController = new MemoryMapTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this);
+            m_TableViewController = new MemoryMapTableViewController(Snapshot, SearchField, StatusFilterButton, responder: this) { TabController = TabController };
             AddChild(m_TableViewController);
 
             AddAndBuildChildTableView(m_TableViewController);
@@ -48,7 +50,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             MemoryMapTableViewController viewController,
             MemoryMapBreakdownModel.ItemData itemData)
         {
-            ViewController detailsView = BreakdownDetailsViewControllerFactory.Create(Snapshot, itemId, itemData.Name, 0, itemData.Source);
+            ViewController detailsView = BreakdownDetailsViewControllerFactory.Create(Snapshot, itemId, itemData.Name, 0, itemData.Source, BreakdownTableId.MemoryMap, this, TabController);
             SelectionDetails.SetSelection(detailsView);
         }
 

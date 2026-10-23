@@ -11,6 +11,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlAssetGuid = "63f1db43e50fc4f4288f3d1b1c3d9078";
         const string k_UssClass_Dark = "summary-view__dark";
         const string k_UssClass_Light = "summary-view__light";
+        const string k_NormalizedTogglePrefKey = "com.unity.memoryprofiler:MemoryUsageSummary.Normalized";
 
         // State
         readonly ISelectionDetails m_SelectionDetails;
@@ -30,8 +31,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         VisualElement m_CommittedMemoryBreakdown;
         VisualElement m_ManagedMemoryBreakdown;
         VisualElement m_UnityObjectsBreakdown;
+        VisualElement m_RootsAndImpactBreakdown;
 
         List<IMemorySummaryViewController> m_WidgetControllers;
+        GenericMemorySummaryViewController m_RootsAndImpactController;
 
         public SummaryViewController(ISelectionDetails selectionDetails, IAnalysisViewSelectable itemSelection, CachedSnapshot baseSnapshot, CachedSnapshot comparedSnapshot)
         {
@@ -76,6 +79,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_CommittedMemoryBreakdown = View.Q("memory-usage-summary__content__total");
             m_ManagedMemoryBreakdown = View.Q("memory-usage-summary__content__managed");
             m_UnityObjectsBreakdown = View.Q("memory-usage-summary__content__unity-objects");
+            m_RootsAndImpactBreakdown = View.Q("memory-usage-summary__content__roots-and-impact");
 
             m_NormalizedToggleHeader = View.Q<VisualElement>("memory-usage-summary__header__right");
             m_NormalizedToggle = View.Q<Toggle>("memory-usage-summary-section__normalized-toggle");
@@ -97,7 +101,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // "Normalize" checkbox for compare mode
             bool compareMode = m_ComparedSnapshot != null;
             UIElementsHelper.SetVisibility(m_NormalizedToggleHeader, compareMode && isSupportedSnapshots);
-            bool normalizedSetting = EditorPrefs.GetBool("com.unity.memoryprofiler:MemoryUsageSummary.Normalized", false);
+            bool normalizedSetting = EditorPrefs.GetBool(k_NormalizedTogglePrefKey, false);
             m_NormalizedToggle.value = normalizedSetting;
             m_NormalizedToggle.RegisterValueChangedCallback(ToggleNormalized);
 
@@ -155,9 +159,43 @@ namespace Unity.MemoryProfiler.Editor.UI
                 },
                 Normalized = normalizedSetting
             };
-            managedMemoryController.OnRowSelected += (model, row) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.UnityObjectsClickCount);
-            managedMemoryController.OnRowHovered += (model, row, state) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.UnityObjectsHoverCount);
+            unityObjectController.OnRowSelected += (model, row) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.UnityObjectsClickCount);
+            unityObjectController.OnRowHovered += (model, row, state) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.UnityObjectsHoverCount);
             AddController(m_UnityObjectsBreakdown, isSupportedSnapshots && HasNativeObjectsInformation(), unityObjectController);
+
+            // Roots & Impact has no comparison view, so compare mode gets no Inspect or row navigation.
+            var rootsAndImpactCompareMode = m_ComparedSnapshot != null;
+            var rootsAndImpactController = new GenericMemorySummaryViewController(new RootsAndImpactSummaryModelBuilder(m_BaseSnapshot, m_ComparedSnapshot), true,
+                new MemorySummaryDataOverrides(MemorySummaryValueClassification.TotalAndExclusiveImpact))
+            {
+                InspectAction = rootsAndImpactCompareMode ? null : () =>
+                {
+                    MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectRootsAndImpactClickCount);
+                    TabController.TryOpenRootsAndImpactWithStatusMask(RootsAndImpactSummaryModelBuilder.AllSavingsStatusMask, flatten: true);
+                },
+                Normalized = normalizedSetting,
+                // Impact categories have no darkened committed color of their own.
+                DeEmphasizeNonResidentPortion = true,
+            };
+            ApplyPotentialSavingsDisplayMode(rootsAndImpactController);
+            if (!rootsAndImpactCompareMode)
+                rootsAndImpactController.OnRowDoubleClick += (model, row) =>
+                {
+                    var r = model.Rows[row];
+                    if (r.StatusMask != 0)
+                        TabController.TryOpenRootsAndImpactWithStatusMask(r.StatusMask, r.DeepLinkFlatten);
+                };
+            // The Legend shows its Inspect column whenever a provider is set.
+            rootsAndImpactController.RowActionProvider = rootsAndImpactCompareMode ? null : new PotentialSavingsRowActionProvider(TabController);
+            rootsAndImpactController.OnRowSelected += (model, row) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.RootsAndImpactClickCount);
+            rootsAndImpactController.OnRowHovered += (model, row, state) => MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.RootsAndImpactHoverCount);
+            var showRootsAndImpact = isSupportedSnapshots && HasNativeObjectsInformation() && HasRootsAndImpactInformation();
+            AddController(m_RootsAndImpactBreakdown, showRootsAndImpact, rootsAndImpactController);
+            if (showRootsAndImpact)
+            {
+                m_RootsAndImpactController = rootsAndImpactController;
+                MemoryProfilerSettings.ShowTotalImpactInPotentialSavingsChanged += OnShowTotalImpactInPotentialSavingsChanged;
+            }
 
             View.RegisterCallback<PointerDownEvent>((e) =>
             {
@@ -186,7 +224,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void ToggleNormalized(ChangeEvent<bool> evt)
         {
-            EditorPrefs.SetBool("com.unity.memoryprofiler:MemoryUsageSummary.Normalized", evt.newValue);
+            EditorPrefs.SetBool(k_NormalizedTogglePrefKey, evt.newValue);
             SetNormalized(evt.newValue);
         }
 
@@ -194,6 +232,24 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             foreach (var controller in m_WidgetControllers)
                 controller.Normalized = normalized;
+        }
+
+        void OnShowTotalImpactInPotentialSavingsChanged()
+        {
+            if (m_RootsAndImpactController != null)
+                ApplyPotentialSavingsDisplayMode(m_RootsAndImpactController);
+        }
+
+        /// <summary>
+        /// Shows either exclusive impact only, with total impact and a preference hint in the tooltips, or both
+        /// amounts, with a header matching the deep-linked table's.
+        /// </summary>
+        static void ApplyPotentialSavingsDisplayMode(GenericMemorySummaryViewController controller)
+        {
+            var showTotal = MemoryProfilerSettings.ShowTotalImpactInPotentialSavings;
+            controller.ShowResidentSizeOnly = !showTotal;
+            controller.TotalLabelFormat = showTotal ? TextContent.PotentialSavingsTotalAndExclusiveFormat : TextContent.PotentialSavingsExclusiveTotalFormat;
+            controller.TooltipHint = showTotal ? null : TextContent.PotentialSavingsShowTotalImpactHint;
         }
 
         bool IsSupportedSnapshotFormat()
@@ -251,6 +307,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             return true;
         }
 
+
+        bool HasRootsAndImpactInformation()
+        {
+            if (m_BaseSnapshot.RootAndImpactInfo is not { SuccessfullyBuilt: true })
+                return false;
+
+            return m_ComparedSnapshot == null || m_ComparedSnapshot.RootAndImpactInfo is { SuccessfullyBuilt: true };
+        }
+
         void OnShowDetailsForSelection(IMemorySummaryViewController controller, MemorySummaryModel model, int rowId)
         {
             // Set new selection details
@@ -288,6 +353,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
+            if (m_RootsAndImpactController != null)
+            {
+                MemoryProfilerSettings.ShowTotalImpactInPotentialSavingsChanged -= OnShowTotalImpactInPotentialSavingsChanged;
+                m_RootsAndImpactController = null;
+            }
             if (m_WidgetControllers != null)
             {
                 foreach (var controller in m_WidgetControllers)
@@ -295,6 +365,37 @@ namespace Unity.MemoryProfiler.Editor.UI
                     controller?.Dispose();
                 }
                 m_WidgetControllers = null;
+            }
+        }
+
+        /// <summary>
+        /// Deep-links a Potential Savings row into the Roots &amp; Impact view, filtered to the row's savings statuses.
+        /// </summary>
+        sealed class PotentialSavingsRowActionProvider : MemorySummaryRowActionProvider
+        {
+            readonly AnalysisTabBarController m_TabController;
+
+            public PotentialSavingsRowActionProvider(AnalysisTabBarController tabController)
+            {
+                m_TabController = tabController;
+            }
+
+            public override string Label => TextContent.RootsAndImpactInspectInViewButton;
+
+            public override string Tooltip => TextContent.RootsAndImpactInspectInViewButtonTooltip;
+
+            public override bool HasAction(in MemorySummaryModel.Row row) => row.StatusMask != 0;
+
+            public override Action GetAction(MemorySummaryModel.Row row)
+            {
+                if (!HasAction(in row))
+                    return null;
+
+                return () =>
+                {
+                    MemoryProfilerAnalytics.AddSummaryViewInteraction(MemoryProfilerAnalytics.SummaryViewInteraction.InspectRootsAndImpactClickCount);
+                    m_TabController.TryOpenRootsAndImpactWithStatusMask(row.StatusMask, row.DeepLinkFlatten);
+                };
             }
         }
     }

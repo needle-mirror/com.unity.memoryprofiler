@@ -60,7 +60,18 @@ namespace Unity.MemoryProfiler.Editor
             /// <summary>Raw backend handle value per root (e.g. the GCHandle for handle roots); 0 otherwise.</summary>
             public DynamicArray<ulong> Data = default;
 
-            public ManagedRootsEntriesCache(ref IFileReader reader)
+            /// <summary>
+            /// The root's target object address, or 0 when it can't be resolved from this file (e.g. a
+            /// CoreCLR root whose target wasn't captured in <see cref="ManagedObjectsEntriesCache"/>).
+            /// Derived, not a raw file column: on CoreCLR it's <see cref="ManagedObjectsEntriesCache.Target"/>
+            /// looked up via <see cref="ManagedObjectIndex"/> (resolved rows only); on Mono / IL2CPP it's
+            /// <see cref="Data"/> directly, since their Handle-root callback reports the real target address
+            /// there instead of an opaque handle value. A 0 here means this row can't seed crawl discovery,
+            /// not that something went wrong.
+            /// </summary>
+            public DynamicArray<ulong> Target = default;
+
+            public ManagedRootsEntriesCache(ref IFileReader reader, ManagedObjectsEntriesCache managedObjects)
             {
                 Count = reader.GetEntryCount(EntryType.ManagedRoots_RootTypeAndFlags);
 
@@ -79,6 +90,18 @@ namespace Unity.MemoryProfiler.Editor
                     RootType[i] = (ManagedRootType)(ushort)(raw & 0xFFFF);
                     RootFlags[i] = (ManagedRootFlags)(ushort)(raw >> 16);
                 }
+
+                Target = new DynamicArray<ulong>(Count, Allocator.Persistent);
+                for (long i = 0; i < Count; i++)
+                {
+                    var objectIndex = ManagedObjectIndex[i];
+                    if (objectIndex != PackedIndexReader.InvalidIndex && managedObjects != null && objectIndex < managedObjects.Count)
+                        Target[i] = managedObjects.Target[objectIndex];
+                    else if (RootType[i] == ManagedRootType.Handle)
+                        Target[i] = Data[i];
+                    else
+                        Target[i] = 0;
+                }
             }
 
             public void Dispose()
@@ -88,6 +111,7 @@ namespace Unity.MemoryProfiler.Editor
                 RootType.Dispose();
                 RootFlags.Dispose();
                 Data.Dispose();
+                Target.Dispose();
             }
         }
     }

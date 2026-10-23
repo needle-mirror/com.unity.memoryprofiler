@@ -78,7 +78,7 @@ Use the checkboxes at the bottom of the window to change how the data is display
 
 # All Of Memory tab
 
-The **All Of Memory** tab displays a breakdown of all the memory in the selected snapshot. 
+The **All Of Memory** tab displays a breakdown of all the memory in the selected snapshot.
 
 The memory usage displayed in this tab contains large sections of memory allocated from the following places:
 

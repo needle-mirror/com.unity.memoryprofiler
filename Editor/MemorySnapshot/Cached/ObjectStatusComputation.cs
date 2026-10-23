@@ -81,8 +81,11 @@ namespace Unity.MemoryProfiler.Editor
                 // Graphics resources not associated with a native object — pure Graphics driver buffers.
                 case SourceIndex.SourceId.GfxResource:
                     return ObjectStatus.GraphicsBuffers;
-                // Leaf items in the "Reserved" group: managed or native memory regions not associated with any object or allocation.
+                // Leaf items in the "Reserved" group: native memory regions not associated with any object or allocation.
                 case SourceIndex.SourceId.NativeMemoryRegion:
+                    return ObjectStatus.Reserved;
+                // A ManagedHeapSection only ever reaches a table as a region-data row: frozen/pinned objects
+                // root themselves (see CrawlManagedHeapSections), so a section is never an ownership node.
                 case SourceIndex.SourceId.ManagedHeapSection:
                     return ObjectStatus.Reserved;
                 // Leaf items in the "Untracked" group: system memory regions not accounted for elsewhere.
@@ -359,6 +362,37 @@ namespace Unity.MemoryProfiler.Editor
             var pureManagedGCHandleHeld = snapshot.CrawledData.IndicesOfPureManagedObjectsHeldByNonNativeObjectRelatedGCHandle;
             var potentialUnityObjectGCHandleHeld = snapshot.CrawledData.IndicesOfManagedPotentialUnityObjectsHeldByNonNativeObjectRelatedGCHandle;
 
+            // Managed-object-index -> ManagedRootType for backend-reported Stack/Finalizer/Other roots (CoreCLR only).
+            // Built fresh here rather than during crawling: by this point every object's ITypeDescription is
+            // fully resolved regardless of which crawl pipeline ran (byte-crawl or backend-graph-without-bytes),
+            // so classifying "is this a plain managed object, not a Unity Object" can reuse the same
+            // isUnityObjectType check the loop below already computes, instead of duplicating it during crawling
+            // where types aren't resolved yet.
+            using var stackRootTargets = new NativeHashSet<long>(16, Allocator.Temp);
+            using var finalizerRootTargets = new NativeHashSet<long>(16, Allocator.Temp);
+            using var otherRootTargets = new NativeHashSet<long>(16, Allocator.Temp);
+            ref readonly var heapSectionFlags = ref snapshot.ManagedHeapSections.Flags;
+
+            if (snapshot.HasManagedRoots)
+            {
+                for (long r = 0; r < snapshot.ManagedRoots.Count; r++)
+                {
+                    var rootType = snapshot.ManagedRoots.RootType[r];
+                    if (rootType != ManagedRootType.Stack && rootType != ManagedRootType.Finalizer && rootType != ManagedRootType.Other)
+                        continue;
+                    var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(r);
+                    if (managedObjectIndex == ManagedData.InvalidObjectIndex)
+                        continue;
+                    var targets = rootType switch
+                    {
+                        ManagedRootType.Stack => stackRootTargets,
+                        ManagedRootType.Finalizer => finalizerRootTargets,
+                        _ => otherRootTargets,
+                    };
+                    targets.Add(managedObjectIndex);
+                }
+            }
+
             for (long i = 0; i < count; i++)
             {
                 var managedObject = managedObjects[i];
@@ -385,11 +419,25 @@ namespace Unity.MemoryProfiler.Editor
                 }
                 else
                 {
-                    // Pure managed object
-                    if (requiredByNativeCode.Contains(i))
+                    var heapSectionIndex = managedObject.data.HeapSectionIndex;
+                    var isFrozenHeapObject = heapSectionIndex >= 0 && heapSectionIndex < heapSectionFlags.Count
+                        && (heapSectionFlags[heapSectionIndex] == HeapChunkType.NonGC || heapSectionFlags[heapSectionIndex] == HeapChunkType.PinnedObjectHeap);
+
+                    // Pure managed object. Frozen/Non-GC/pinned heap placement takes priority over every other
+                    // reason to be alive: it's a physical fact about the object's own memory, true regardless of
+                    // which other reason also happens to keep it alive.
+                    if (isFrozenHeapObject)
+                        m_ManagedObjectStatuses[i] = ObjectStatus.FrozenHeapEntry;
+                    else if (requiredByNativeCode.Contains(i))
                         m_ManagedObjectStatuses[i] = ObjectStatus.UsedByNativeCode;
                     else if (pureManagedGCHandleHeld.Contains(i))
                         m_ManagedObjectStatuses[i] = ObjectStatus.GCHandleHeld;
+                    else if (stackRootTargets.Contains(i))
+                        m_ManagedObjectStatuses[i] = ObjectStatus.StackHeld;
+                    else if (finalizerRootTargets.Contains(i))
+                        m_ManagedObjectStatuses[i] = ObjectStatus.FinalizerHeld;
+                    else if (otherRootTargets.Contains(i))
+                        m_ManagedObjectStatuses[i] = ObjectStatus.OtherHeld;
                     else if (managedObject.RefCount > 0)
                         m_ManagedObjectStatuses[i] = ObjectStatus.ManagedObjectReferenced;
                     else

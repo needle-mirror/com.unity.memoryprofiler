@@ -50,7 +50,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             ObjectStatus.UsedByNativeCode,
             ObjectStatus.VirtualMachine,
             ObjectStatus.Unrooted,
-            ObjectStatus.ReferencedUnrooted);
+            ObjectStatus.ReferencedUnrooted,
+            ObjectStatus.FrozenHeapEntry,
+            ObjectStatus.StackHeld,
+            ObjectStatus.FinalizerHeld,
+            ObjectStatus.OtherHeld);
 
         /// <summary>
         /// Bitmask (bit N = ObjectStatus N) of statuses that will never appear in the All Of Memory table.
@@ -69,12 +73,37 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static readonly ulong RootsAndImpactTableUnavailableStatuses = 0;
 
         /// <summary>
-        /// The status-filtered table views paired with the statuses each can never contain. Used to tell
-        /// the user, for a status disabled in one view's filter dropdown, which other view(s) DO surface
-        /// it (a view contains a status when its unavailable-status mask lacks that status' bit).
-        /// Populated in the static constructor, after the masks above are initialized.
+        /// Bitmask (bit N = ObjectStatus N) of statuses that can block <paramref name="table"/> from ever
+        /// showing an item. The Memory Map table has no status filter at all, so nothing is ever excluded on
+        /// that basis there.
         /// </summary>
-        static readonly (string ViewName, ulong UnavailableStatuses)[] k_StatusFilteredTableViews;
+        // CS8524 (the *unnamed* enum value isn't covered) is suppressed: every defined value is handled below, and
+        // a runtime value is always a defined enum member. We deliberately keep no discard arm so that adding a new
+        // named section type still trips CS8509 (a -warnaserror+ build error) — suppressing CS8524 keeps that gate while
+        // not forcing a catch-all that would defeat it.
+#pragma warning disable CS8524
+        public static ulong GetUnavailableStatuses(this BreakdownTableId table)
+        {
+            return table switch
+            {
+                BreakdownTableId.UnityObjects or BreakdownTableId.UnityObjectsComparison => UnityObjectsTableUnavailableStatuses,
+                BreakdownTableId.RootsAndImpact => RootsAndImpactTableUnavailableStatuses,
+                BreakdownTableId.AllTrackedMemory or BreakdownTableId.AllTrackedMemoryComparison => AllOfMemoryTableUnavailableStatuses,
+                BreakdownTableId.MemoryMap => 0,
+            };
+        }
+#pragma warning restore CS8524
+
+        /// <summary>
+        /// The single snapshot tables with a status filter. Used to tell the user, for a status disabled in one
+        /// view's filter dropdown, which other view(s) DO surface it.
+        /// </summary>
+        static readonly BreakdownTableId[] k_StatusFilteredTables =
+        {
+            BreakdownTableId.RootsAndImpact,
+            BreakdownTableId.UnityObjects,
+            BreakdownTableId.AllTrackedMemory,
+        };
 
         /// <summary>Bitmask with a bit set for every <see cref="ObjectStatus"/> value that passes <see cref="IsWarningStatus"/>.</summary>
         public static ulong WarningStatusesBitmask { get; private set; }
@@ -221,6 +250,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             AddToMaskGroup(allManagedStatusesGroupIndex, ObjectStatus.ManagedTypeRoot);
             AddToMaskGroup(allManagedStatusesGroupIndex, ObjectStatus.GCHandleEntry);
             AddToMaskGroup(allManagedStatusesGroupIndex, ObjectStatus.UnknownLiveness);
+            AddToMaskGroup(allManagedStatusesGroupIndex, ObjectStatus.FrozenHeapEntry);
+            AddToMaskGroup(allManagedStatusesGroupIndex, ObjectStatus.StackHeld);
+            AddToMaskGroup(allManagedStatusesGroupIndex, ObjectStatus.FinalizerHeld);
+            AddToMaskGroup(allManagedStatusesGroupIndex, ObjectStatus.OtherHeld);
 
             // "Other Statuses"
             var allOtherStatusesGroupIndex = SetMaskName(ObjectStatus.Untracked, TextContent.ObjectStatusAllOtherStatuses);
@@ -251,6 +284,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetDisplayName(ObjectStatus.DynamicAssetReferenced, TextContent.ObjectStatusDynamicAssetReferenced);                                    // "Dynamic Asset"
             SetDisplayName(ObjectStatus.DynamicAssetDontUnload, TextContent.ObjectStatusDynamicAssetDontUnload, TextContent.ObjectStatusDynamicAssetDontUnloadTooltip); // "Dynamic Asset (DDoL)"
             SetDisplayName(ObjectStatus.ExecutablesAndMapped, TextContent.ObjectStatusExecutablesAndMapped);                                        // "Executables & Mapped"
+            SetDisplayName(ObjectStatus.FinalizerHeld, TextContent.ObjectStatusFinalizerHeld);                                                      // "Finalizer Held"
+            SetDisplayName(ObjectStatus.FrozenHeapEntry, TextContent.ObjectStatusFrozenHeapEntry, TextContent.ObjectStatusFrozenHeapEntryTooltip);  // "Frozen / Non-GC Heap Object"
             SetDisplayName(ObjectStatus.GCHandleEntry, TextContent.ObjectStatusGCHandleEntry, TextContent.ObjectStatusGCHandleEntryTooltip);        // "GCHandle"
             SetDisplayName(ObjectStatus.GCHandleHeld, TextContent.ObjectStatusGCHandleHeld);                                                        // "GCHandle Held"
             SetDisplayName(ObjectStatus.GraphicsBuffers, TextContent.ObjectStatusGraphicsBuffers, TextContent.ObjectStatusGraphicsBuffersTooltip);  // "Graphics Buffer"
@@ -261,6 +296,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetDisplayName(ObjectStatus.ManagedTypeRoot, TextContent.ObjectStatusManagedTypeRoot, TextContent.ObjectStatusManagedTypeRootTooltip);  // "Managed Type"
             SetDisplayName(ObjectStatus.Manager, TextContent.ObjectStatusManager);                                                                  // "Manager"
             SetDisplayName(ObjectStatus.NativeRootAllocation, TextContent.ObjectStatusNativeRootAllocation);                                        // "Native Allocation"
+            SetDisplayName(ObjectStatus.OtherHeld, TextContent.ObjectStatusOtherHeld, TextContent.RootsAndImpactOtherRootsDescription);              // "Uncategorized Managed Root"
             SetDisplayName(ObjectStatus.PrefabRoot, TextContent.ObjectStatusPrefabRoot, TextContent.ObjectStatusPrefabRootTooltip);                 // "Prefab"
             SetDisplayName(ObjectStatus.InDelayedDeletionQueue, TextContent.ObjectStatusInDelayedDeletionQueue, TextContent.ObjectStatusInDelayedDeletionQueueTooltip); // "Queued for Deletion"
             SetDisplayName(ObjectStatus.ManagedObjectReferenced, TextContent.ObjectStatusManagedObjectReferenced);                                  // "Referenced Managed Object"
@@ -268,6 +304,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetDisplayName(ObjectStatus.SceneRoot, TextContent.ObjectStatusSceneRoot, TextContent.ObjectStatusSceneRootTooltip);                    // "Scene"
             SetDisplayName(ObjectStatus.SceneObject, TextContent.ObjectStatusSceneObject);                                                          // "Scene Object"
             SetDisplayName(ObjectStatus.SceneObjectDontUnload, TextContent.ObjectStatusSceneObjectDontUnload, TextContent.ObjectStatusSceneObjectDontUnloadTooltip); // "Scene Object (DDoL)"
+            SetDisplayName(ObjectStatus.StackHeld, TextContent.ObjectStatusStackHeld);                                                              // "Stack Held"
             SetDisplayName(ObjectStatus.UnknownLiveness, TextContent.ObjectStatusUnknownLiveness);                                                  // "Unknown Liveness"
             SetDisplayName(ObjectStatus.Unrooted, TextContent.ObjectStatusUnrooted, TextContent.ObjectStatusUnrootedTooltip);                       // "Unrooted"
             SetDisplayName(ObjectStatus.ReferencedUnrooted, TextContent.ObjectStatusReferencedUnrooted, TextContent.ObjectStatusReferencedUnrootedTooltip); // "Unrooted (Referenced)"
@@ -281,16 +318,6 @@ namespace Unity.MemoryProfiler.Editor.UI
             SetDisplayName(ObjectStatus.VirtualMachine, TextContent.ObjectStatusVirtualMachine);                                                    // "Virtual Machine"
 
             AllStatuses = k_StatusMaskValues[allStatusesIndex];
-
-            // Registry of the status-filtered table views and the statuses each cannot show. Built here
-            // (not as a field initializer) so the *TableUnavailableStatuses masks above are guaranteed
-            // assigned. Roots & Impact (mask 0) surfaces every status, so the list is never empty.
-            k_StatusFilteredTableViews = new (string, ulong)[]
-            {
-                (TextContent.RootsAndImpactViewName, RootsAndImpactTableUnavailableStatuses),
-                (TextContent.UnityObjectsViewName, UnityObjectsTableUnavailableStatuses),
-                (TextContent.AllOfMemoryViewName, AllOfMemoryTableUnavailableStatuses),
-            };
 
             ulong warningMask = 0;
             for (int i = 1; i < k_DisplayNames.Length; i++)
@@ -418,11 +445,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         public static string GetStatusUnavailableTooltip(ulong statusBit)
         {
             List<string> views = null;
-            foreach (var view in k_StatusFilteredTableViews)
+            foreach (var table in k_StatusFilteredTables)
             {
                 // The current (calling) view excludes this status, so it is naturally omitted here.
-                if ((view.UnavailableStatuses & statusBit) == 0)
-                    (views ??= new List<string>()).Add(view.ViewName);
+                if ((table.GetUnavailableStatuses() & statusBit) == 0)
+                    (views ??= new List<string>()).Add(table.GetDisplayName());
             }
 
             if (views == null || views.Count == 0)

@@ -26,8 +26,13 @@
             </engine:MultiColumnTreeView>
             <Unity.MemoryProfiler.Editor.UI:PaginationControl name="unity-objects-table-view__pager" class="unity-objects-table-view__pager"/>
             <editor:Toolbar name="unity-objects-table-view__toolbar">
-                <engine:Toggle name="unity-objects-table-view__toolbar__flatten-toggle"/>
-                <engine:Toggle name="unity-objects-table-view__toolbar__duplicates-toggle"/>
+                <engine:VisualElement class="table-view-base__footer-toolbar__group table-view-base__footer-toolbar__rebuild-options">
+                    <engine:Toggle name="unity-objects-table-view__toolbar__flatten-toggle"/>
+                    <engine:Toggle name="unity-objects-table-view__toolbar__duplicates-toggle"/>
+                </engine:VisualElement>
+                <engine:VisualElement class="table-view-base__footer-toolbar__group table-view-base__footer-toolbar__display-options">
+                    <engine:Toggle name="unity-objects-table-view__toolbar__scale-bars-toggle"/>
+                </engine:VisualElement>
             </editor:Toolbar>
             <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="unity-objects-table-view__loading-overlay"/>
         </engine:VisualElement>

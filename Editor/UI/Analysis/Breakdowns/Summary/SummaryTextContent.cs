@@ -1,3 +1,5 @@
+using Unity.MemoryProfiler.Editor.UIContentData;
+
 namespace Unity.MemoryProfiler.Editor.UI
 {
     static class SummaryTextContent
@@ -47,6 +49,11 @@ namespace Unity.MemoryProfiler.Editor.UI
         public const string kUnityObjectsTitle = "Top Unity Objects Categories";
         public const string kUnityObjectsDescription = "Displays which types of Unity Objects use the most memory in the snapshot.";
         public const string kUnityObjectsCategoryOther = "Others";
+
+
+        public static readonly string RootsAndImpactTitle = TextContent.Tr("Potential Savings");
+        public static readonly string RootsAndImpactDescription = TextContent.Tr("Lists clearly-avoidable memory usage by the total Impact it has on memory. Inspect a category in the Roots & Impact view to investigate and act on it. Only exclusive Impact is guaranteed to be releasable.");
+        public static readonly string RootsAndImpactCategoryOther = TextContent.Tr("Others");
 
         /// <summary>
         /// Summary View

@@ -111,12 +111,24 @@ namespace Unity.MemoryProfiler.Editor
         /// prepopulates its object set from <see cref="ManagedObjects"/> instead of discovering objects
         /// byte-by-byte, and, when heap bytes are also absent, builds the reference graph from
         /// <see cref="ManagedReferences"/> instead of walking field bytes. Only valid once
-        /// <see cref="ManagedObjects"/> is constructed. <see cref="ManagedRoots"/> is parsed but not yet
-        /// consumed by the crawler.
+        /// <see cref="ManagedObjects"/> is constructed. See <see cref="HasManagedRoots"/> for the
+        /// related, broader roots-table availability check.
         /// </summary>
         public bool HasBackendManagedGraph
         {
             get { return m_SnapshotVersion >= FormatVersion.ManagedConnectionsVersion && ManagedObjects != null && ManagedObjects.Count > 0; }
+        }
+
+        /// <summary>
+        /// True when the file carries a non-empty <see cref="ManagedRoots"/> table (format v19+). Populated
+        /// by every backend, unlike <see cref="HasBackendManagedGraph"/> (which additionally requires the
+        /// full <see cref="ManagedObjects"/> graph, populated by CoreCLR only) — a v19+ Mono / IL2CPP file
+        /// has roots but no full object graph, so this can be true while <see cref="HasBackendManagedGraph"/>
+        /// is false. False on pre-v19 files, where no <c>ManagedRoots_*</c> file section exists at all.
+        /// </summary>
+        public bool HasManagedRoots
+        {
+            get { return m_SnapshotVersion >= FormatVersion.ManagedConnectionsVersion && ManagedRoots != null && ManagedRoots.Count > 0; }
         }
 
         /// <summary>
@@ -130,6 +142,11 @@ namespace Unity.MemoryProfiler.Editor
         {
             get { return m_SnapshotVersion >= FormatVersion.StaticFieldAndNonGCHeapVersion; }
         }
+
+        /// <summary>
+        /// True when the capture's scripting backend is CoreCLR, where an object header holds its type pointer directly.
+        /// </summary>
+        public bool IsCoreClr { get; private set; }
 
         bool m_HasPrefabRootInfo;
         public bool HasPrefabRootInfo => m_HasPrefabRootInfo;
@@ -162,7 +179,7 @@ namespace Unity.MemoryProfiler.Editor
         public ManagedObjectsEntriesCache ManagedObjects;
         /// <summary>Object→object edges from the backend-provided graph (format v19+). Empty on Mono / IL2CPP and on older files; populated by CoreCLR. See <see cref="HasBackendManagedGraph"/>.</summary>
         public ManagedReferencesEntriesCache ManagedReferences;
-        /// <summary>Roots from the backend-provided graph (format v19+). Empty on Mono / IL2CPP and on older files; populated by CoreCLR. See <see cref="HasBackendManagedGraph"/>.</summary>
+        /// <summary>Roots from the backend-provided graph (format v19+). Populated by every backend — CoreCLR reports Handle/Stack/Finalizer/Other roots, Mono / IL2CPP report Handle roots only. Empty on pre-v19 files. See <see cref="HasManagedRoots"/>.</summary>
         public ManagedRootsEntriesCache ManagedRoots;
 
         public SortedNativeMemoryRegionEntriesCache SortedNativeRegionsEntries;
@@ -210,7 +227,9 @@ namespace Unity.MemoryProfiler.Editor
 
                 MetaData = new MetaData(reader);
 
-                m_VirtualMachineInformation = new VirtualMachineInformation(vmInfoRaw, MetaData.TargetInfo?.ScriptingBackend);
+                var scriptingBackend = MetaData.TargetInfo?.ScriptingBackend;
+                m_VirtualMachineInformation = new VirtualMachineInformation(vmInfoRaw, scriptingBackend);
+                IsCoreClr = scriptingBackend == ProfileTargetInfo.CoreCLRScriptingImplementation;
             }
             if (loadFully)
                 Load();
@@ -242,7 +261,11 @@ namespace Unity.MemoryProfiler.Editor
                 NativeTypes = new NativeTypeEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeTypesCache);
 
-                TypeDescriptions = new TypeDescriptionEntriesCache(ref reader, FieldDescriptions, NativeTypes, m_VirtualMachineInformation);
+                // Backend-provided managed object table (format v19+). Empty on Mono / IL2CPP and older files.
+                // Its per-type instance counts let TypeDescriptions tell live type generations from stale ones.
+                ManagedObjects = new ManagedObjectsEntriesCache(ref reader);
+
+                TypeDescriptions = new TypeDescriptionEntriesCache(ref reader, FieldDescriptions, NativeTypes, m_VirtualMachineInformation, ManagedObjects);
 #if MEMORY_PROFILER_METRICS
                 // Sync async reads to get accurate timing for this cache
                 TypeDescriptions.CompleteAsyncReadOperations();
@@ -302,14 +325,14 @@ namespace Unity.MemoryProfiler.Editor
                 GcHandles = new GCHandleEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.GcHandlesCache);
 
-                Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.Count);
+                // RawCount, not Count: the pre-format-10 unified-index split below needs the file's
+                // original GCHandles row count, unaffected by GCHandleEntriesCache's own duplicate removal.
+                Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.RawCount);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ConnectionsCache);
 
-                // Backend-provided managed object graph (format v19+). Empty on Mono / IL2CPP and older files.
-                // Constructed before CrawledData so HasBackendManagedGraph can steer the crawl.
-                ManagedObjects = new ManagedObjectsEntriesCache(ref reader);
+                // Rest of the backend-provided managed object graph.
                 ManagedReferences = new ManagedReferencesEntriesCache(ref reader);
-                ManagedRoots = new ManagedRootsEntriesCache(ref reader);
+                ManagedRoots = new ManagedRootsEntriesCache(ref reader, ManagedObjects);
 
                 SceneRoots = new SceneRootEntriesCache(ref reader);
                 // TODO: Jobifiy GenerateBaseData and sync at end
@@ -322,7 +345,7 @@ namespace Unity.MemoryProfiler.Editor
                 NativeAllocators = new NativeAllocatorEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.NativeAllocatorsCache);
 
-                SystemMemoryRegions = new SystemMemoryRegionEntriesCache(ref reader);
+                SystemMemoryRegions = new SystemMemoryRegionEntriesCache(ref reader, MetaData.TargetInfo?.RuntimePlatform ?? PlatformsHelper.UnknownPlatform, captureHasUdsPoolAndReservationHints: MetaData.UnityVersionEqualOrNewer(6000, 4));
                 SystemMemoryResidentPages = new SystemMemoryResidentPagesEntriesCache(ref reader, SystemMemoryRegions);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.SystemMemoryRegionsCache);
 
@@ -757,6 +780,15 @@ namespace Unity.MemoryProfiler.Editor
                 None,
                 SystemMemoryRegion,
                 NativeMemoryRegion,
+                /// <summary>
+                /// A row in <see cref="ManagedHeapSections"/>. Also doubles as the crawler's reference owner for
+                /// a managed object that has no root of its own — e.g. a frozen/NonGC-heap object (interned
+                /// string, frozen RuntimeType), or a Pinned Object Heap object caught with no reportable root
+                /// (e.g. a P/Invoke marshalling pin live only for the duration of a native call, never backed by
+                /// an enumerable GCHandle), satisfying the ReferenceOwner-must-be-valid invariant. Such an object
+                /// is its own root in the ownership forest (see <see cref="RootAndImpactInfo"/>'s
+                /// NonGCHeapSections bucket); the section records where it lives, not what owns it.
+                /// </summary>
                 ManagedHeapSection,
                 NativeObject,
                 NativeRootReference,
@@ -768,7 +800,10 @@ namespace Unity.MemoryProfiler.Editor
                 GCHandleIndex,
                 MemoryLabel,
                 Scene,
-                Prefab
+                Prefab,
+                /// <summary>A row in <see cref="ManagedRoots"/> (Stack / Finalizer / Other, and Handle as a
+                /// fallback). Distinct from <see cref="GCHandleIndex"/>, which stays keyed into <see cref="GcHandles"/>.</summary>
+                ManagedRoot
             }
 
             public enum SpecialNoneCase : long
@@ -878,6 +913,16 @@ namespace Unity.MemoryProfiler.Editor
                         return $"{snapshot.SceneRoots.Name[Index]}.scene";
                     case SourceId.Prefab:
                         return snapshot.SceneRoots.AllPrefabRootTransformSourceIndices[Index].GetName(snapshot);
+                    case SourceId.ManagedRoot:
+                    {
+                        // Name the root after the object it keeps alive (same as SourceId.ManagedObject's own
+                        // case), since a Stack/Finalizer/Other root has no identity of its own to display —
+                        // unlike a Static Root, whose name IS its ManagedType.
+                        var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(Index);
+                        return managedObjectIndex != ManagedData.InvalidObjectIndex
+                            ? snapshot.CrawledData.ManagedObjects[managedObjectIndex].ProduceManagedObjectName(snapshot)
+                            : $"ManagedRoot index: {Index}";
+                    }
                 }
 
                 Debug.Assert(false, $"Unknown source link type {Id}, please report a bug.");

@@ -20,10 +20,28 @@ namespace Unity.MemoryProfiler.Editor.UI
         public bool Sortable { get; set; } = true;
 
         /// <summary>
-        /// The header element the tooltip was last applied to, cached by <see cref="MultiColumnHeaderBuilder.Bind"/>
-        /// so a later tooltip update can be written directly instead of re-querying the tree view for it.
+        /// Optional total for this column over the filtered dataset, shown after the header title; returns 0 while
+        /// there is no model. A column without a provider shows no total. Ignored when <see cref="PagedSumProvider"/>
+        /// is set.
         /// </summary>
-        public VisualElement TooltipTarget { get; set; }
+        public Func<ulong> SumProvider { get; set; }
+
+        /// <summary>
+        /// Optional total for a paged model whose per-row values exist only for the materialized page. Takes
+        /// priority over <see cref="SumProvider"/>.
+        /// </summary>
+        public Func<PagedColumnSum> PagedSumProvider { get; set; }
+
+        /// <summary>
+        /// Overrides the total's tooltip format (<c>{0}</c> is the exact byte count) for a column whose total is not
+        /// over the topmost rows only.
+        /// </summary>
+        public string SumTooltipFormat { get; set; }
+
+        /// <summary>
+        /// The header this column is bound to, so totals and tooltips update without rebuilding the headers.
+        /// </summary>
+        public ColumnHeaderBinding HeaderBinding { get; set; }
 
         public ColumnDefinition(
             string title,
@@ -35,13 +53,19 @@ namespace Unity.MemoryProfiler.Editor.UI
             Action<VisualElement> destroyCell = null,
             Func<TreeViewItemData<TItemData>, IComparable> sortKeySelector = null,
             bool visible = true,
-            bool sortable = true)
+            bool sortable = true,
+            Func<ulong> sumProvider = null,
+            Func<PagedColumnSum> pagedSumProvider = null,
+            string sumTooltipFormat = null)
         {
             Title = title;
+            SumTooltipFormat = sumTooltipFormat;
             Tooltip = tooltip;
             Icon = icon;
             Width = width;
             BindCell = bindCell;
+            SumProvider = sumProvider;
+            PagedSumProvider = pagedSumProvider;
             if (makeCell != null)
             {
                 // Ensure all cells are properly wrapped in a container with the correct class for styling.
@@ -64,7 +88,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
-    class TreeViewColumnManager<TItemData>
+    class TreeViewColumnManager<TItemData> : IColumnSumRefresher
     {
         readonly MultiColumnTreeView m_TreeView;
         readonly Dictionary<string, ColumnDefinition<TItemData>> m_ColumnDefinitions;
@@ -90,7 +114,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             Func<VisualElement> makeCell = null,
             Action<VisualElement> destroyCell = null,
             bool visible = true,
-            bool sortable = true)
+            bool sortable = true,
+            Func<ulong> sumProvider = null,
+            Func<PagedColumnSum> pagedSumProvider = null,
+            string sumTooltipFormat = null)
         {
             var definition = new ColumnDefinition<TItemData>(
                 columnTitle,
@@ -101,13 +128,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 makeCell,
                 destroyCell,
                 visible: visible,
-                sortable: sortable);
+                sortable: sortable,
+                sumProvider: sumProvider,
+                pagedSumProvider: pagedSumProvider,
+                sumTooltipFormat: sumTooltipFormat);
 
             ConfigureColumn(columnId, definition);
         }
 
         void ApplyColumnConfiguration(string columnId, ColumnDefinition<TItemData> definition)
         {
+
             var column = m_TreeView.columns[columnId];
             column.title = definition.Title;
             column.bindCell = definition.BindCell;
@@ -116,7 +147,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // The default header has picking mode Ignore, so the tooltip on its title label never shows. To get a
             // working tooltip we override makeHeader (otherwise bindHeader isn't called) and rebuild a header with the
             // same structure and class names as the default one so it keeps the default styling.
-            column.makeHeader = MakeHeader;
+            column.makeHeader = ColumnHeaderWithSum.MakeHeader;
             column.bindHeader = (header) => BindHeader(header, definition);
 
             if (definition.Width != 0)
@@ -133,11 +164,32 @@ namespace Unity.MemoryProfiler.Editor.UI
                 column.destroyCell = definition.DestroyCell;
         }
 
-        VisualElement MakeHeader() => MultiColumnHeaderBuilder.MakeHeader(out _, out _);
-
         void BindHeader(VisualElement header, ColumnDefinition<TItemData> definition)
         {
-            definition.TooltipTarget = MultiColumnHeaderBuilder.Bind(header, definition.Title, definition.Tooltip, definition.Icon);
+            definition.HeaderBinding = ColumnHeaderWithSum.BindHeader(
+                header, definition.Title, definition.Tooltip, definition.Icon);
+            RefreshColumnSum(definition);
+        }
+
+        /// <summary>
+        /// Re-evaluates every column total. Call after the model was rebuilt or refiltered.
+        /// </summary>
+        public void InvalidateRowCaches() { }
+
+        public void RefreshColumnSums()
+        {
+            foreach (var definition in m_ColumnDefinitions.Values)
+                RefreshColumnSum(definition);
+        }
+
+        static void RefreshColumnSum(ColumnDefinition<TItemData> definition)
+        {
+            if (definition.PagedSumProvider != null)
+                ColumnHeaderWithSum.SetPagedByteSizeSum(definition.HeaderBinding, definition.PagedSumProvider());
+            else if (definition.SumProvider != null)
+                ColumnHeaderWithSum.SetByteSizeSum(definition.HeaderBinding, definition.SumProvider(), definition.SumTooltipFormat);
+            else
+                definition.HeaderBinding?.SetSum(null, null);
         }
 
         public void SetColumnVisibility(string columnId, bool visible)
@@ -167,8 +219,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Update the already-rendered header directly using the reference cached by BindHeader — a column's
             // bindHeader delegate also captures 'definition' by reference, so the next header re-bind picks up the
             // new value regardless.
-            if (definition.TooltipTarget != null)
-                definition.TooltipTarget.tooltip = definition.Tooltip ?? definition.Title;
+            definition.HeaderBinding?.SetTooltip(definition.Tooltip);
         }
 
         public void ApplyTableMode(

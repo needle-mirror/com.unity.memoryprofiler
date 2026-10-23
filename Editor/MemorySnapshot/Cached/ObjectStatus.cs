@@ -30,7 +30,7 @@ namespace Unity.MemoryProfiler.Editor
 
         /// <summary>
         /// A leaked managed shell that is held alive specifically by a GCHandle
-        /// (including potential Unity Object types detected via m_CachedPtr).
+        /// (including potential Unity Object types detected via the UnityEngine.Object native link field).
         /// </summary>
         LeakedShellHeldByGCHandle,
 
@@ -252,5 +252,30 @@ namespace Unity.MemoryProfiler.Editor
         /// Not a real object — used only for tree grouping.
         /// </summary>
         BucketGroup,
+
+        /// <summary>
+        /// A managed object living on a frozen/Non-GC or Pinned-Object-Heap
+        /// <see cref="CachedSnapshot.ManagedHeapSections"/> row, kept alive by that section's GC exemption
+        /// rather than by any root of its own. See <see cref="RootAndImpactInfo.OwnershipBucket.NonGCHeapSections"/>.
+        /// </summary>
+        FrozenHeapEntry,
+
+        /// <summary>
+        /// A pure managed object held alive by a backend-reported Stack root (not a Unity Object type). See
+        /// <see cref="CachedSnapshot.ManagedRootType.Stack"/>.
+        /// </summary>
+        StackHeld,
+
+        /// <summary>
+        /// A pure managed object held alive by a backend-reported Finalizer root (not a Unity Object type). See
+        /// <see cref="CachedSnapshot.ManagedRootType.Finalizer"/>.
+        /// </summary>
+        FinalizerHeld,
+
+        /// <summary>
+        /// A pure managed object held alive by a backend-reported uncategorized root (not a Unity Object
+        /// type). See <see cref="CachedSnapshot.ManagedRootType.Other"/>.
+        /// </summary>
+        OtherHeld,
     }
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 
@@ -44,7 +43,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 CalculateTotals(m_ComparedSnapshot, ref totalCompared, typeToSizeMap, (size, val) => { return new RowSize(val.BaseSize, val.ComparedSize + size); });
 
             // Sort
-            var list = typeToSizeMap.ToList();
+            var list = new List<KeyValuePair<string, RowSize>>(typeToSizeMap);
             list.Sort((l, r) =>
             {
                 var totalL = l.Value.BaseSize + l.Value.ComparedSize;

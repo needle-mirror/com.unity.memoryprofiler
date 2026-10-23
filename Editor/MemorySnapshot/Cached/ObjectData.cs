@@ -379,18 +379,12 @@ namespace Unity.MemoryProfiler.Editor
 
                             if (snapshot.HasStaticFieldSlotsAndFlags)
                             {
-                                // Format v20+: FieldDescriptions.Offset is hardcoded to 0 for every GC-static
-                                // field (there's no instance layout to offset into) - summing it across
-                                // preceding fields, as the pre-v20 branch below does, collapses every
-                                // struct-valued static field on the type to the same pseudo-address. Use the
-                                // field's own resolved slot offset instead, which is unique per owned static
-                                // field (see TypeDescriptionEntriesCache.ParseStaticFieldSlots).
+                                // Static fields use their resolved slot offset (TypeDescriptionEntriesCache.GetStaticFieldSlotGroups), unique per field;
+                                // FieldDescriptions.Offset is meaningless for statics.
                                 var fieldOrdinal = FindOwningStaticFieldTypeAndOrdinal(snapshot, Parent.Obj.managedTypeIndex, fieldIdx, out var iOwningType);
                                 if (iOwningType >= 0)
                                 {
-                                    var ownedStaticFields = snapshot.TypeDescriptions.FieldIndicesOwnedStatic[iOwningType];
-                                    var slotByteSizes = ComputeOwnedStaticSlotByteSizes(snapshot, ownedStaticFields);
-                                    var slotGroups = TypeDescriptionEntriesCache.ParseStaticFieldSlots(snapshot.TypeDescriptions.StaticFieldSlots[iOwningType], slotByteSizes);
+                                    var slotGroups = snapshot.TypeDescriptions.GetStaticFieldSlotGroups(snapshot, iOwningType);
                                     offset = snapshot.TypeDescriptions.TypeInfoAddress[iOwningType];
                                     offset += (ulong)snapshot.TypeDescriptions.Size[iOwningType];
                                     offset += (ulong)slotGroups[fieldOrdinal].SlotDataOffset;
@@ -428,6 +422,11 @@ namespace Unity.MemoryProfiler.Editor
                         return snapshot.TypeDescriptions.TypeInfoAddress[m_data.managed.iType];
                     if (logError)
                         Debug.LogError("Requesting an object pointer on an invalid data type");
+                    return 0;
+                case ObjectDataType.Unknown:
+                    // A CoreCLR PTR/FNPTR field has no TypeDescriptions row (TypeIndex -1), so its
+                    // field ObjectData is Unknown by design (see TypeToSubDataType) rather than a
+                    // real error condition — no pointer to identify it by, unlike every other case here.
                     return 0;
                 default:
                     if (logError)
@@ -731,7 +730,10 @@ namespace Unity.MemoryProfiler.Editor
             ObjectData o = new ObjectData();
             o.Parent = new ObjectDataParent(obj, iField, -1, expandToTarget);
             o.SetManagedType(snapshot, fieldType);
-            o.m_dataType = TypeToSubDataType(snapshot, fieldType);
+            // CoreCLR array-shaped fields name the ELEMENT type in TypeIndex, but the field itself is always an array reference.
+            var isArrayShapedField = snapshot.HasBackendManagedGraph
+                && FieldDescriptionEntriesCache.IsArrayShapedElementType(snapshot.FieldDescriptions.ElementType[iField], snapshot.HasBackendManagedGraph);
+            o.m_dataType = isArrayShapedField ? ObjectDataType.ReferenceArray : TypeToSubDataType(snapshot, fieldType);
 
             if (isStatic)
             {
@@ -742,8 +744,6 @@ namespace Unity.MemoryProfiler.Editor
                     Debug.LogError("Field requested is not owned by the type not any of its bases");
                     return Invalid;
                 }
-                var ownedStaticFields = snapshot.TypeDescriptions.FieldIndicesOwnedStatic[iOwningType];
-
                 o.m_data.managed.objectPtr = 0;
                 if (snapshot.HasStaticFieldSlotsAndFlags)
                 {
@@ -755,9 +755,8 @@ namespace Unity.MemoryProfiler.Editor
                     // ObjectData, so it surfaces the first resolved slot rather than every thread's
                     // value - same simplification the Inspector already makes for any single-valued
                     // field display.
-                    var slotByteSizes = ComputeOwnedStaticSlotByteSizes(snapshot, ownedStaticFields);
                     var blob = snapshot.TypeDescriptions.StaticFieldSlots[iOwningType];
-                    var slotGroups = TypeDescriptionEntriesCache.ParseStaticFieldSlots(blob, slotByteSizes);
+                    var slotGroups = snapshot.TypeDescriptions.GetStaticFieldSlotGroups(snapshot, iOwningType);
                     var group = slotGroups[fieldIndex];
                     if (group.Count == 0)
                     {
@@ -780,7 +779,12 @@ namespace Unity.MemoryProfiler.Editor
             else
             {
                 o.m_data.managed.objectPtr = objectPtr;
-                o.managedObjectData = obj.managedObjectData.Add((ulong)fieldOffset);
+                // obj's own bytes are absent for a backend-graph-only object with no byte-crawl entry
+                // (see SnapshotData.md's "Degraded surface with no heap bytes") - no bytes to point at,
+                // same as an unresolved static field above, rather than an error condition to throw on.
+                o.managedObjectData = obj.managedObjectData.IsValid
+                    ? obj.managedObjectData.Add((ulong)fieldOffset)
+                    : default;
             }
 
             if (fieldResidesOnNestedValueTypeField)
@@ -845,18 +849,6 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
             return o;
-        }
-
-        // Byte width of each owned static field's slot in TypeDescriptions_StaticFieldSlots, in the
-        // same order as ownedStaticFields - pointer-size for a reference-typed field, the field's own
-        // TypeDescriptions_Size for a value-typed field (statics aren't boxed just because they're
-        // static, so the slot holds the value's bytes inline).
-        internal static int[] ComputeOwnedStaticSlotByteSizes(CachedSnapshot snapshot, DynamicArrayRef<int> ownedStaticFields)
-        {
-            var sizes = new int[ownedStaticFields.Count];
-            for (int i = 0; i < ownedStaticFields.Count; ++i)
-                sizes[i] = FieldDescriptionEntriesCache.GetStaticFieldSlotByteSize(snapshot, ownedStaticFields[i]);
-            return sizes;
         }
 
         // A static field can be inherited: walk from requestingTypeIndex up through its bases to find
@@ -1313,6 +1305,10 @@ namespace Unity.MemoryProfiler.Editor
                     return FromNativeAllocationIndex(snapshot, (int)source.Index);
                 case SourceIndex.SourceId.GCHandleIndex:
                     return FromGCHandleIndex(snapshot, (int)source.Index);
+                case SourceIndex.SourceId.ManagedRoot:
+                    return FromManagedRootIndex(snapshot, source.Index);
+                case SourceIndex.SourceId.ManagedHeapSection:
+                    return FromManagedHeapSection(snapshot, source.Index);
                 case SourceIndex.SourceId.Scene:
                     return FromSceneIndex(snapshot, (int)source.Index);
                 case SourceIndex.SourceId.Prefab:
@@ -1403,6 +1399,26 @@ namespace Unity.MemoryProfiler.Editor
             o.m_dataType = ObjectDataType.GCHandle;
             o.m_data.native.index = index;
             return o;
+        }
+
+        public static ObjectData FromManagedRootIndex(CachedSnapshot snapshot, long index)
+        {
+            if (index < 0 || index >= snapshot.ManagedRoots.Count)
+                return ObjectData.Invalid;
+            var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForManagedRoot(index);
+            if (managedObjectIndex == ManagedData.InvalidObjectIndex)
+                return ObjectData.Invalid;
+            return FromManagedObjectIndex(snapshot, managedObjectIndex);
+        }
+
+        public static ObjectData FromManagedHeapSection(CachedSnapshot snapshot, long index)
+        {
+            if (index < 0 || index >= snapshot.ManagedHeapSections.Count)
+                return ObjectData.Invalid;
+            var managedObjectIndex = snapshot.CrawledData.ResolveManagedObjectIndexForManagedHeapSection(index);
+            if (managedObjectIndex == ManagedData.InvalidObjectIndex)
+                return ObjectData.Invalid;
+            return FromManagedObjectIndex(snapshot, managedObjectIndex);
         }
 
         public static ObjectData FromManagedObjectInfo(CachedSnapshot snapshot, ManagedObjectInfo moi)

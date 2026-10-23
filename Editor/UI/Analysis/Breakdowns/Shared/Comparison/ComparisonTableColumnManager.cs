@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
 
@@ -9,7 +10,7 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// Manages column configuration for comparison tables.
     /// Provides common comparison-specific column types (delta columns, count/size in A/B, etc.)
     /// </summary>
-    class ComparisonTableColumnManager<TItemData>
+    class ComparisonTableColumnManager<TItemData> : IColumnSumRefresher
     {
         class ColumnHeaderInfo
         {
@@ -17,13 +18,42 @@ namespace Unity.MemoryProfiler.Editor.UI
             public string Tooltip;
 
             /// <summary>
-            /// The header element the tooltip was last applied to, cached by <see cref="MultiColumnHeaderBuilder.Bind"/>
-            /// so a later tooltip update can be written directly instead of re-querying the tree view for it.
+            /// Optional signed total for this column, shown after the header title. Null for a column without a total.
             /// </summary>
-            public VisualElement TooltipTarget;
+            public Func<long> SumProvider;
+
+            /// <summary>
+            /// The header this column is bound to, so totals and tooltips update without rebuilding the headers.
+            /// </summary>
+            public ColumnHeaderBinding HeaderBinding;
         }
 
         readonly MultiColumnTreeView m_TreeView;
+
+        /// <summary>
+        /// Whether size delta bars scale within their parent row instead of to the table's largest delta.
+        /// A parent's net delta can be smaller than a child's, so the scale comes from the siblings (see
+        /// <see cref="GetSiblingDeltaScale"/>). Rows without a parent always scale to the table's largest delta.
+        /// </summary>
+        public bool ScaleBarsToParent { get; set; }
+
+        /// <summary>
+        /// Wires a footer toggle to <see cref="ScaleBarsToParent"/>. Toggling only rebinds the visible rows.
+        /// </summary>
+        public void SetUpScaleBarsToParentToggle(Toggle toggle, string sessionStateKey)
+        {
+            ScaleBarsToParent = ScaleBarsToParentOption.SetUp(toggle, sessionStateKey, value =>
+            {
+                ScaleBarsToParent = value;
+                m_TreeView.RefreshItems();
+            }, TextContent.ScaleBarsToParentComparisonToggleTooltip);
+        }
+
+        /// <summary>
+        /// Per parent id: the parent's delta at the time of computing, and its children's bar scale.
+        /// </summary>
+        readonly Dictionary<int, (long ParentDelta, long Scale)> m_SiblingDeltaScaleCache = new Dictionary<int, (long, long)>();
+
         readonly Dictionary<string, ColumnHeaderInfo> m_ColumnHeaders = new Dictionary<string, ColumnHeaderInfo>();
 
         public ComparisonTableColumnManager(MultiColumnTreeView treeView)
@@ -45,12 +75,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Update the already-rendered header directly using the reference cached by BindHeader — the column's
             // bindHeader delegate also captures 'headerInfo' by reference, so the next header re-bind picks up the
             // new value regardless.
-            if (headerInfo.TooltipTarget != null)
-                headerInfo.TooltipTarget.tooltip = headerInfo.Tooltip ?? headerInfo.Title;
+            headerInfo.HeaderBinding?.SetTooltip(headerInfo.Tooltip);
         }
 
         /// <summary>
-        /// Configure a generic column with custom binding and cell factory.
+        /// Configure a generic column with custom binding and cell factory. <paramref name="sumProvider"/> optionally
+        /// supplies the column's signed total, shown in the header.
         /// </summary>
         public void ConfigureColumn(
             string columnId,
@@ -60,19 +90,20 @@ namespace Unity.MemoryProfiler.Editor.UI
             Func<VisualElement> makeCell = null,
             Action<VisualElement> destroyCell = null,
             bool visible = true,
-            string headerTooltip = null)
+            string headerTooltip = null,
+            Func<long> sumProvider = null)
         {
             var column = m_TreeView.columns[columnId];
             column.title = title;
             column.bindCell = bindCell;
             column.visible = visible;
 
-            var headerInfo = new ColumnHeaderInfo { Title = title, Tooltip = headerTooltip };
+            var headerInfo = new ColumnHeaderInfo { Title = title, Tooltip = headerTooltip, SumProvider = sumProvider };
             m_ColumnHeaders[columnId] = headerInfo;
             // The default header has picking mode Ignore, so the tooltip on its title label never shows. To get a
             // working tooltip we override makeHeader (otherwise bindHeader isn't called) and rebuild a header with
             // the same structure and class names as the default one so it keeps the default styling.
-            column.makeHeader = MakeHeader;
+            column.makeHeader = ColumnHeaderWithSum.MakeHeader;
             column.bindHeader = header => BindHeader(header, headerInfo);
 
             if (width != 0)
@@ -89,11 +120,37 @@ namespace Unity.MemoryProfiler.Editor.UI
                 column.destroyCell = destroyCell;
         }
 
-        VisualElement MakeHeader() => MultiColumnHeaderBuilder.MakeHeader(out _, out _);
-
         void BindHeader(VisualElement header, ColumnHeaderInfo headerInfo)
         {
-            headerInfo.TooltipTarget = MultiColumnHeaderBuilder.Bind(header, headerInfo.Title, headerInfo.Tooltip, icon: null);
+            headerInfo.HeaderBinding = ColumnHeaderWithSum.BindHeader(
+                header, headerInfo.Title, headerInfo.Tooltip, icon: null);
+            RefreshColumnSum(headerInfo);
+        }
+
+        /// <summary>
+        /// Re-evaluates every column total. Call after the model was rebuilt or refiltered.
+        /// </summary>
+        public void InvalidateRowCaches() => m_SiblingDeltaScaleCache.Clear();
+
+        public void RefreshColumnSums()
+        {
+            foreach (var headerInfo in m_ColumnHeaders.Values)
+                RefreshColumnSum(headerInfo);
+        }
+
+        static void RefreshColumnSum(ColumnHeaderInfo headerInfo)
+        {
+            if (headerInfo.SumProvider == null)
+            {
+                headerInfo.HeaderBinding?.SetSum(null, null);
+                return;
+            }
+
+            var sum = headerInfo.SumProvider();
+            var formatted = FormatBytes(sum);
+            headerInfo.HeaderBinding?.SetSum(
+                string.Format(TextContent.TableColumnHeaderSumFormat, formatted),
+                string.Format(TextContent.TableColumnHeaderSumTooltipFormat, formatted, $"{sum:N0}"));
         }
 
         /// <summary>
@@ -138,14 +195,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             string columnId,
             string title,
             Func<TItemData, long> getSizeDelta,
-            int width = 120)
+            int width = 120,
+            Func<long> sumProvider = null)
         {
             ConfigureColumn(
                 columnId,
                 title,
                 width,
                 BindCellForSizeDelta(getSizeDelta),
-                MakeSizeDeltaCell);
+                MakeSizeDeltaCell,
+                sumProvider: sumProvider);
         }
 
         /// <summary>
@@ -155,13 +214,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             string columnId,
             string title,
             Func<TItemData, long> getSize,
-            int width = 120)
+            int width = 120,
+            Func<long> sumProvider = null)
         {
             ConfigureColumn(
                 columnId,
                 title,
                 width,
-                BindCellForSize(getSize));
+                BindCellForSize(getSize),
+                sumProvider: sumProvider);
         }
 
         /// <summary>
@@ -204,12 +265,48 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (sizeDelta != 0)
                 {
                     var largestDelta = getLargestAbsoluteSizeDelta();
+                    if (ScaleBarsToParent)
+                    {
+                        var parentId = m_TreeView.GetParentIdForIndex(rowIndex);
+                        if (parentId >= 0)
+                        {
+                            var siblingScale = GetSiblingDeltaScale(parentId, getSizeDelta);
+                            if (siblingScale != 0)
+                                largestDelta = siblingScale;
+                        }
+                    }
                     if (largestDelta != 0)
                         proportionalSizeDelta = (float)sizeDelta / largestDelta;
                 }
                 cell.SetDeltaScalar(proportionalSizeDelta);
                 cell.tooltip = FormatBytes(sizeDelta);
             };
+        }
+
+        /// <summary>
+        /// The larger of the summed positive and summed absolute negative deltas of <paramref name="parentId"/>'s
+        /// children, so no child's bar exceeds full width and increases and decreases share one scale.
+        /// </summary>
+        long GetSiblingDeltaScale(int parentId, Func<TItemData, long> getSizeDelta)
+        {
+            var parentDelta = getSizeDelta(m_TreeView.GetItemDataForId<TItemData>(parentId));
+            if (m_SiblingDeltaScaleCache.TryGetValue(parentId, out var cached) && cached.ParentDelta == parentDelta)
+                return cached.Scale;
+
+            long positiveSum = 0;
+            long negativeSum = 0;
+            foreach (var childId in m_TreeView.viewController.GetChildrenIds(parentId))
+            {
+                var childDelta = getSizeDelta(m_TreeView.GetItemDataForId<TItemData>(childId));
+                if (childDelta > 0)
+                    positiveSum += childDelta;
+                else
+                    negativeSum -= childDelta;
+            }
+
+            var scale = Math.Max(positiveSum, negativeSum);
+            m_SiblingDeltaScaleCache[parentId] = (parentDelta, scale);
+            return scale;
         }
 
         Action<VisualElement, int> BindCellForSizeDelta(Func<TItemData, long> getSizeDelta)

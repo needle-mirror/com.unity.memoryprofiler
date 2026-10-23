@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.UIElements;
@@ -30,7 +31,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
-    class RootsAndImpactTableViewController : SingleSnapshotTreeViewController<RootsAndImpactModel, RootsAndImpactModel.ItemData>
+    class RootsAndImpactTableViewController : SingleSnapshotTreeViewController<RootsAndImpactModel, RootsAndImpactModel.ItemData>, IFilterRelaxationTarget
     {
         protected override bool SwitchingTableModeRequiresRebuild { get; } = false;
 
@@ -55,6 +56,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UxmlIdentifier_FlattenToggle = "roots-and-impact-table-view__toolbar__flatten-toggle";
         const string k_UxmlIdentifier_ExclusiveToggle = "roots-and-impact-table-view__toolbar__exclusive-toggle";
         const string k_UxmlIdentifier_RegionDataToggle = "roots-and-impact-table-view__toolbar__region-data-toggle";
+        const string k_UxmlIdentifier_ScaleBarsToggle = "roots-and-impact-table-view__toolbar__scale-bars-toggle";
         const string k_UxmlIdentifier_LoadingOverlay = "roots-and-impact-table-view__loading-overlay";
         const string k_UxmlIdentifier_ErrorLabel = "roots-and-impact-table-view__error-label";
         const string k_UxmlIdentifier_Pager = "roots-and-impact-table-view__pager";
@@ -62,7 +64,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_UssClass_FilterMatchAncestor = "roots-and-impact-table-view__filter-match-ancestor";
 
         const string k_SessionStateKey_FlattenHierarchy = "com.unity.memoryprofiler.RootsAndImpactTableViewController.flattenHierarchy";
-        const string k_SessionStateKey_HideExclusiveOnly = "com.unity.memoryprofiler.RootsAndImpactTableViewController.hideExclusiveOnly";
+        /// <summary> Internal for testing purposes </summary>
+        internal const string k_SessionStateKey_HideExclusiveOnly = "com.unity.memoryprofiler.RootsAndImpactTableViewController.hideExclusiveOnly";
+        const string k_SessionStateKey_ScaleBarsToParent = "com.unity.memoryprofiler.RootsAndImpactTableViewController.scaleBarsToParent";
         const string k_SessionStateKey_HideRegions = "com.unity.memoryprofiler.RootsAndImpactTableViewController.hideRegions";
 
         /// <summary>
@@ -97,6 +101,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         bool m_HideExclusiveOnly;
         bool m_HideRegions;
         bool m_CompareMode;
+        /// <summary>Deep-link preset stashed when <see cref="ApplyStatusMaskPreset"/> is called before <see cref="ViewLoaded"/>.</summary>
+        StatusMaskPreset? m_PendingStatusMaskPreset;
 
         public override bool ExcludeAllFilterApplied => false;
 
@@ -105,6 +111,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         StatusFilterButton m_StatusFilterButton;
         readonly ModelBuildOrchestrator<RootsAndImpactModel, RootsAndImpactModelBuilder.BuildArgs> m_BuildOrchestrator;
         TreeViewColumnManager<RootsAndImpactModel.ItemData> m_ColumnManager;
+        protected override IColumnSumRefresher ColumnManager => m_ColumnManager;
         SizeCellRenderer m_SizeCellRenderer;
 
         // View
@@ -141,18 +148,16 @@ namespace Unity.MemoryProfiler.Editor.UI
             SortComparisons = new()
             {
                 { k_UxmlIdentifier_TreeViewColumn__Description, (x, y) => string.Compare(x.data.Name, y.data.Name, StringComparison.OrdinalIgnoreCase) },
-                { k_UxmlIdentifier_TreeViewColumn__TotalImpact, (x, y) => x.data.TotalImpactSum.Committed.CompareTo(y.data.TotalImpactSum.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__TotalImpactResident, (x, y) => x.data.TotalImpactSum.Resident.CompareTo(y.data.TotalImpactSum.Resident) },
-                { k_UxmlIdentifier_TreeViewColumn__TotalImpactBar, (x, y) => TableMode != AllTrackedMemoryTableMode.OnlyResident
-                    ? x.data.TotalImpactSum.Committed.CompareTo(y.data.TotalImpactSum.Committed)
-                    : x.data.TotalImpactSum.Resident.CompareTo(y.data.TotalImpactSum.Resident) },
+                { k_UxmlIdentifier_TreeViewColumn__TotalImpact, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.TotalImpactSum, d => d.TotalImpactSum) },
+                { k_UxmlIdentifier_TreeViewColumn__TotalImpactResident, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.TotalImpactSum, d => d.TotalImpactSum, byResident: true) },
+                { k_UxmlIdentifier_TreeViewColumn__TotalImpactBar, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.TotalImpactSum, d => d.TotalImpactSum, byResident: TableMode == AllTrackedMemoryTableMode.OnlyResident) },
                 { k_UxmlIdentifier_TreeViewColumn__OwnSize, (x, y) => x.data.OwnSizeSum.Committed.CompareTo(y.data.OwnSizeSum.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__ExclusiveImpact, (x, y) => x.data.ExclusiveImpactSum.Committed.CompareTo(y.data.ExclusiveImpactSum.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__SharedProRata, (x, y) => x.data.SharedProRataSum.Committed.CompareTo(y.data.SharedProRataSum.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__SharedInTotal, (x, y) => x.data.SharedInTotalSum.Committed.CompareTo(y.data.SharedInTotalSum.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__NativeImpact, (x, y) => x.data.TotalImpact.NativeSize.Committed.CompareTo(y.data.TotalImpact.NativeSize.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__ManagedImpact, (x, y) => x.data.TotalImpact.ManagedSize.Committed.CompareTo(y.data.TotalImpact.ManagedSize.Committed) },
-                { k_UxmlIdentifier_TreeViewColumn__GfxImpact, (x, y) => x.data.TotalImpact.GfxSize.Committed.CompareTo(y.data.TotalImpact.GfxSize.Committed) },
+                { k_UxmlIdentifier_TreeViewColumn__ExclusiveImpact, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.ExclusiveImpactSum, d => d.ExclusiveImpactSum) },
+                { k_UxmlIdentifier_TreeViewColumn__SharedProRata, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.SharedProRataSum, d => d.SharedProRataSum) },
+                { k_UxmlIdentifier_TreeViewColumn__SharedInTotal, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.SharedInTotalSum, d => d.SharedInTotalSum) },
+                { k_UxmlIdentifier_TreeViewColumn__NativeImpact, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.TotalImpact.NativeSize, d => d.TotalImpact.NativeSize) },
+                { k_UxmlIdentifier_TreeViewColumn__ManagedImpact, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.TotalImpact.ManagedSize, d => d.TotalImpact.ManagedSize) },
+                { k_UxmlIdentifier_TreeViewColumn__GfxImpact, (lhs, rhs) => CompareByDisplayedSize(lhs, rhs, f => f.TotalImpact.GfxSize, d => d.TotalImpact.GfxSize) },
                 { k_UxmlIdentifier_TreeViewColumn__Status, (x, y) => x.data.WarnInfo.GetStatusSortKey().CompareTo(y.data.WarnInfo.GetStatusSortKey()) },
             };
 
@@ -235,6 +240,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_TreeView.horizontalScrollingEnabled = true;
             m_TreeView.schedule.Execute(ResizeTreeViewColumnsToFit).ExecuteLater(0);
+
+            if (m_PendingStatusMaskPreset.HasValue)
+            {
+                var preset = m_PendingStatusMaskPreset.Value;
+                m_PendingStatusMaskPreset = null;
+                // State only: the initial TriggerBuild (from AddAndBuildChildTableView) does the one build.
+                ApplyStatusMaskPresetNow(preset.ExclusiveStatusMask, preset.Flatten, rebuild: false);
+            }
         }
 
         void ResizeTreeViewColumnsToFit()
@@ -260,6 +273,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_ColumnManager = new TreeViewColumnManager<RootsAndImpactModel.ItemData>(m_TreeView);
             m_SizeCellRenderer = new SizeCellRenderer(m_TreeView, () => TableMode);
+            m_SizeCellRenderer.SetUpScaleBarsToParentToggle(view.Q<Toggle>(k_UxmlIdentifier_ScaleBarsToggle), k_SessionStateKey_ScaleBarsToParent);
 
             m_PagerBinding = new FlatPagerBinding<RootsAndImpactFlatRowComparer.Column>(
                 m_Pager,
@@ -271,7 +285,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 TextContent.RootsAndImpactNameColumnHeaderTooltip,
                 RootsAndImpactFlatRowComparer.k_MaxColumns,
                 () => m_Model,
-                () => { m_TreeView.SetRootItems(m_Model.RootNodes); m_TreeView.RefreshItems(); });
+                RefreshTreeViewRoots);
 
             m_FlattenHierarchy = SessionState.GetBool(k_SessionStateKey_FlattenHierarchy, false);
             m_FlattenToggle.SetValueWithoutNotify(m_FlattenHierarchy);
@@ -290,7 +304,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 TextContent.RootsAndImpactNameColumnHeader,
                 0,
                 BindCellForDescriptionColumn(),
-                makeCell: () => new ObjectOrTypeLabel(),
+                makeCell: () => MakeLabelWithSelectInTableMenu(),
                 destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose(),
                 headerTooltip: TextContent.RootsAndImpactNameColumnHeaderTooltip);
 
@@ -298,28 +312,37 @@ namespace Unity.MemoryProfiler.Editor.UI
                 k_UxmlIdentifier_TreeViewColumn__TotalImpact,
                 TextContent.RootsAndImpactTotalImpactAllocatedColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
                     item => item.TotalImpactSum,
+                    FilteredImpactSelector(f => f.TotalImpactSum),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat,
                     useResident: false),
                 visible: TableMode != AllTrackedMemoryTableMode.OnlyResident,
-                headerTooltip: TextContent.RootsAndImpactTotalImpactColumnHeaderTooltip);
+                headerTooltip: TextContent.RootsAndImpactTotalImpactColumnHeaderTooltip,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => m_Model?.TotalImpactSize.SumUp().Committed ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__TotalImpactResident,
                 TextContent.RootsAndImpactTotalImpactResidentColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
                     item => item.TotalImpactSum,
+                    FilteredImpactSelector(f => f.TotalImpactSum),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat,
                     useResident: true),
                 visible: m_Snapshot.HasSystemMemoryResidentPages && TableMode != AllTrackedMemoryTableMode.OnlyCommitted,
-                headerTooltip: TextContent.RootsAndImpactTotalImpactColumnHeaderTooltip);
+                headerTooltip: TextContent.RootsAndImpactTotalImpactColumnHeaderTooltip,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => m_Model?.TotalImpactSize.SumUp().Resident ?? 0);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__TotalImpactBar,
                 TextContent.PercentImpactTableColumnHeader,
                 180,
-                m_SizeCellRenderer.CreateMemoryBarBinding<RootsAndImpactModel.ItemData>(
+                m_SizeCellRenderer.CreateDualMemoryBarBinding<RootsAndImpactModel.ItemData>(
                     item => item.TotalImpactSum,
+                    FilteredImpactSelector(f => f.TotalImpactSum),
                     () =>
                     {
                         var total = m_Model.TotalImpactSize.SumUp();
@@ -335,56 +358,82 @@ namespace Unity.MemoryProfiler.Editor.UI
                 120,
                 m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
                     item => item.OwnSizeSum),
-                headerTooltip: TextContent.RootsAndImpactOwnSizeColumnHeaderTooltip);
+                headerTooltip: TextContent.RootsAndImpactOwnSizeColumnHeaderTooltip,
+                sumProvider: () => ModelImpactTotal(model => model.TotalOwnSize),
+                sumTooltipFormat: TextContent.TableColumnHeaderSumAllRowsTooltipFormat);
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ExclusiveImpact,
                 TextContent.RootsAndImpactExclusiveImpactColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
-                    item => item.ExclusiveImpactSum),
-                headerTooltip: TextContent.RootsAndImpactExclusiveImpactColumnHeaderTooltip);
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                    item => item.ExclusiveImpactSum,
+                    FilteredImpactSelector(f => f.ExclusiveImpactSum),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat),
+                headerTooltip: TextContent.RootsAndImpactExclusiveImpactColumnHeaderTooltip,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => ModelImpactTotal(model => model.TotalImpactExclusiveSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__SharedProRata,
                 TextContent.RootsAndImpactSharedProRataColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
-                    item => item.SharedProRataSum),
-                headerTooltip: TextContent.RootsAndImpactSharedProRataColumnHeaderTooltip);
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                    item => item.SharedProRataSum,
+                    FilteredImpactSelector(f => f.SharedProRataSum),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat),
+                headerTooltip: TextContent.RootsAndImpactSharedProRataColumnHeaderTooltip,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => ModelImpactTotal(model => model.TotalImpactSharedProRataSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__SharedInTotal,
                 TextContent.RootsAndImpactSharedInTotalColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
-                    item => item.SharedInTotalSum),
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                    item => item.SharedInTotalSum,
+                    FilteredImpactSelector(f => f.SharedInTotalSum),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat),
                 visible: false,
-                headerTooltip: TextContent.RootsAndImpactSharedInTotalColumnHeaderTooltip);
+                headerTooltip: TextContent.RootsAndImpactSharedInTotalColumnHeaderTooltip,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => ModelImpactTotal(model => model.TotalSharedInTotalSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__NativeImpact,
                 TextContent.RootsAndImpactNativeImpactColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
-                    item => item.TotalImpact.NativeSize),
-                visible: false);
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                    item => item.TotalImpact.NativeSize,
+                    FilteredImpactSelector(f => f.TotalImpact.NativeSize),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat),
+                visible: false,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => ModelImpactTotal(model => model.TotalImpactSize.NativeSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__ManagedImpact,
                 TextContent.RootsAndImpactManagedImpactColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
-                    item => item.TotalImpact.ManagedSize),
-                visible: false);
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                    item => item.TotalImpact.ManagedSize,
+                    FilteredImpactSelector(f => f.TotalImpact.ManagedSize),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat),
+                visible: false,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => ModelImpactTotal(model => model.TotalImpactSize.ManagedSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__GfxImpact,
                 TextContent.RootsAndImpactGfxImpactColumnHeader,
                 120,
-                m_SizeCellRenderer.CreateMemorySizeBinding<RootsAndImpactModel.ItemData>(
-                    item => item.TotalImpact.GfxSize),
-                visible: false);
+                m_SizeCellRenderer.CreateDualMemorySizeBinding<RootsAndImpactModel.ItemData>(
+                    item => item.TotalImpact.GfxSize,
+                    FilteredImpactSelector(f => f.TotalImpact.GfxSize),
+                    TextContent.RootsAndImpactFilteredImpactCellTooltipFormat),
+                visible: false,
+                makeCell: () => new DualSizeCell(),
+                sumProvider: () => ModelImpactTotal(model => model.TotalImpactSize.GfxSize));
 
             m_ColumnManager.ConfigureColumn(
                 k_UxmlIdentifier_TreeViewColumn__Status,
@@ -392,6 +441,53 @@ namespace Unity.MemoryProfiler.Editor.UI
                 k_StatusColumnBaseWidth,
                 makeCell: () => new StatusCell(),
                 bindCell: BindCellForStatusColumn());
+        }
+
+        // Null when the row has no filtered impact, so the cell renders its own value alone.
+        Func<int, MemorySize?> FilteredImpactSelector(Func<RootsAndImpactModel.FilteredImpact, MemorySize> field)
+        {
+            return itemId => m_Model != null && m_Model.TryGetFilteredImpact(itemId, out var filtered)
+                ? (MemorySize?)field(filtered)
+                : null;
+        }
+
+        /// <summary>
+        /// The column total for an impact column, in the table mode's committed or resident channel. Taken from the
+        /// model's accumulated totals rather than summing rows, since shared impact would be counted once per referrer.
+        /// </summary>
+        ulong ModelImpactTotal(Func<RootsAndImpactModel, MemorySize> totalSelector)
+        {
+            if (m_Model == null)
+                return 0;
+
+            var total = totalSelector(m_Model);
+            return TableMode == AllTrackedMemoryTableMode.OnlyResident ? total.Resident : total.Committed;
+        }
+
+        /// <summary>
+        /// Compares two rows by the size their cells display, using the filtered value when a row has one
+        /// (see <see cref="FilteredImpactSelector"/>).
+        /// </summary>
+        int CompareByDisplayedSize(
+            in TreeViewItemData<RootsAndImpactModel.ItemData> lhs,
+            in TreeViewItemData<RootsAndImpactModel.ItemData> rhs,
+            Func<RootsAndImpactModel.FilteredImpact, MemorySize> filteredField,
+            Func<RootsAndImpactModel.ItemData, MemorySize> rawField,
+            bool byResident = false)
+        {
+            var lhsSize = DisplayedSize(in lhs);
+            var rhsSize = DisplayedSize(in rhs);
+            return byResident
+                ? lhsSize.Resident.CompareTo(rhsSize.Resident)
+                : lhsSize.Committed.CompareTo(rhsSize.Committed);
+
+            MemorySize DisplayedSize(in TreeViewItemData<RootsAndImpactModel.ItemData> item)
+            {
+                var model = m_ModelBeingSorted.Value ?? m_Model;
+                return model != null && model.TryGetFilteredImpact(item.id, out var filtered)
+                    ? filteredField(filtered)
+                    : rawField(item.data);
+            }
         }
 
         RootsAndImpactModelBuilder.BuildArgs GetModelBuilderArgs(CancellationToken cancellationToken)
@@ -445,6 +541,31 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         /// <summary>
+        /// The model being sorted, since a new model is sorted in the background before m_Model is updated to it.
+        /// AsyncLocal because a superseded sort can still be running when the next one starts.
+        /// </summary>
+        readonly AsyncLocal<RootsAndImpactModel> m_ModelBeingSorted = new();
+
+        /// <summary>
+        /// Publishes the sorted model to <see cref="m_ModelBeingSorted"/> for the duration of a tree-mode sort pass.
+        /// </summary>
+        Func<Task<RootsAndImpactModel>, RootsAndImpactModel> WithModelBeingSorted(Func<Task<RootsAndImpactModel>, RootsAndImpactModel> baseSorter)
+        {
+            return t =>
+            {
+                m_ModelBeingSorted.Value = t.Result;
+                try
+                {
+                    return baseSorter(t);
+                }
+                finally
+                {
+                    m_ModelBeingSorted.Value = null;
+                }
+            };
+        }
+
+        /// <summary>
         /// Sorting the flattened, paged model can't go through TreeModel.Sort (which only sees the current
         /// page). Re-order the native store by the active column(s) instead, then re-materialize the first page.
         /// The table header allows mixing the name (Description) column with size/status columns (up to
@@ -455,7 +576,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         protected override Func<System.Threading.Tasks.Task<RootsAndImpactModel>, RootsAndImpactModel> GetModelSorterTask(CancellationToken cancellationToken)
         {
             if (!m_FlattenHierarchy)
-                return base.GetModelSorterTask(cancellationToken);
+                return WithModelBeingSorted(base.GetModelSorterTask(cancellationToken));
 
             // A filter change in flat mode rides this (justSort) path: capture whether to re-select the store
             // for the active filter, and the filter itself, on the main thread before the continuation runs.
@@ -508,7 +629,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (string.IsNullOrEmpty(displayText))
                     displayText = CachedSnapshot.InvalidItemName;
 
-                if (!label.TrySetLabelDataFromSourceIndex(m_Snapshot, itemData.Source, displayText))
+                if (!label.TrySetLabelDataFromSourceIndex(m_Snapshot, itemData.Source, displayText, splitUnifiedObjectIntoHalves: true))
                     label.SetLabelData(m_Snapshot, displayText, string.Empty);
 
                 // In flat mode every row is a leaf — suppress the "(N)" child-count indicator.
@@ -543,10 +664,78 @@ namespace Unity.MemoryProfiler.Editor.UI
             FlattenHierarchy = evt.newValue;
         }
 
+        /// <summary>
+        /// Test-only seam: counts calls to <see cref="ApplyStatusMaskPresetNow"/>, so tests can tell an applied
+        /// preset from one skipped because the table was already in the target state.
+        /// </summary>
+        internal int StatusMaskPresetAppliedCount { get; private set; }
+
+        /// <summary>The exclusive status mask currently applied to the filter manager.</summary>
+        internal ulong? ExclusiveStatusMask => m_FilterManager.ExclusiveStatusMask;
+
+        /// <summary>
+        /// Deep-link entry point: presets the exclusive status filter mask and flatten state, then rebuilds.
+        /// Before the view has loaded, the preset is stashed and applied in <see cref="ViewLoaded"/>.
+        /// </summary>
+        public void ApplyStatusMaskPreset(ulong exclusiveStatusMask, bool flatten)
+        {
+            // A build fired here would race the initial build, and the two corrupt the shared model-builder scratch.
+            if (!IsViewLoaded)
+            {
+                m_PendingStatusMaskPreset = new StatusMaskPreset(exclusiveStatusMask, flatten);
+                return;
+            }
+            // Already in the target state (e.g. the same widget row inspected twice): skip the expensive rebuild.
+            if (m_FlattenHierarchy == flatten && !m_HideExclusiveOnly
+                && m_FilterManager.ExclusiveStatusMask == exclusiveStatusMask
+                && m_FilterManager.SearchFilter == null)
+                return;
+            ApplyStatusMaskPresetNow(exclusiveStatusMask, flatten, rebuild: true);
+        }
+
+        void ApplyStatusMaskPresetNow(ulong exclusiveStatusMask, bool flatten, bool rebuild)
+        {
+            StatusMaskPresetAppliedCount++;
+
+            // Backing field, not the property, so no extra build fires.
+            m_FlattenHierarchy = flatten;
+            m_FlattenToggle?.SetValueWithoutNotify(flatten);
+
+            // Savings categories can include exclusive-only leaves, which this toggle would hide.
+            SetHideExclusiveOnly(false);
+
+            if (m_StatusFilterButton != null)
+                // The button owns the filter manager's mask and its own toggle and label.
+                m_StatusFilterButton.SetMask(exclusiveStatusMask);
+            else
+                m_FilterManager.ExclusiveStatusMask = exclusiveStatusMask;
+
+            // The controller is reused across tab visits, so a stale text search would narrow the deep-linked total.
+            TableRevealHelper.RelaxStatusAndTextFilters(TableFilterKind.TextSearch, m_StatusFilterButton, m_SearchField, m_FilterManager);
+
+            if (rebuild)
+                FireAndForgetBuildModelAsync(false);
+        }
+
+        /// <summary>Sets the filter, its toggle and its remembered session value, without rebuilding.</summary>
+        void SetHideExclusiveOnly(bool hide)
+        {
+            m_HideExclusiveOnly = hide;
+            SessionState.SetBool(k_SessionStateKey_HideExclusiveOnly, hide);
+            m_ExclusiveToggle?.SetValueWithoutNotify(hide);
+        }
+
+        /// <summary>Sets the filter, its toggle and its remembered session value, without rebuilding.</summary>
+        void SetHideRegions(bool hide)
+        {
+            m_HideRegions = hide;
+            SessionState.SetBool(k_SessionStateKey_HideRegions, hide);
+            m_RegionDataToggle?.SetValueWithoutNotify(hide);
+        }
+
         void OnHideExclusiveToggleValueChanged(ChangeEvent<bool> evt)
         {
-            m_HideExclusiveOnly = evt.newValue;
-            SessionState.SetBool(k_SessionStateKey_HideExclusiveOnly, m_HideExclusiveOnly);
+            SetHideExclusiveOnly(evt.newValue);
             // The flat store is a superset that includes exclusive-only rows, so this is a cheap re-selection.
             if (IsViewLoaded && !TryRefilterFlatInPlace())
                 FireAndForgetBuildModelAsync(false);
@@ -554,8 +743,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         void OnRegionDataToggleValueChanged(ChangeEvent<bool> evt)
         {
-            m_HideRegions = evt.newValue;
-            SessionState.SetBool(k_SessionStateKey_HideRegions, m_HideRegions);
+            SetHideRegions(evt.newValue);
             // The flat store is a superset that includes region rows, so this is a cheap re-selection.
             if (IsViewLoaded && !TryRefilterFlatInPlace())
                 FireAndForgetBuildModelAsync(false);
@@ -570,6 +758,149 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             void RootsAndImpactTableViewControllerSelectedItem(int itemId, RootsAndImpactTableViewController viewController, RootsAndImpactModel.ItemData itemData);
             void RootsAndImpactTableViewControllerReloaded(RootsAndImpactTableViewController viewController, bool success);
+        }
+
+        public override BreakdownTableId TableId => BreakdownTableId.RootsAndImpact;
+
+        /// <summary>Whether <paramref name="id"/> is one this table can ever show, independent of any filter.</summary>
+        internal static bool CanEverContainSourceId(CachedSnapshot.SourceIndex.SourceId id)
+        {
+            switch (id)
+            {
+                case CachedSnapshot.SourceIndex.SourceId.Prefab:
+                case CachedSnapshot.SourceIndex.SourceId.Scene:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedType:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
+                case CachedSnapshot.SourceIndex.SourceId.NativeObject:
+                case CachedSnapshot.SourceIndex.SourceId.NativeRootReference:
+                case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
+                case CachedSnapshot.SourceIndex.SourceId.GCHandleIndex:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
+                case CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        public override bool CanEverContain(CachedSnapshot.SourceIndex source) => CanEverContainSourceId(source.Id);
+
+        /// <summary>
+        /// Unreferenced unrooted native allocations are only represented through an aggregate here, never as individual
+        /// rows. Referenced ones get rows under whatever references them.
+        /// </summary>
+        static bool IsUnreferencedUnrootedNativeAllocation(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source)
+        {
+            if (source.Id != CachedSnapshot.SourceIndex.SourceId.NativeAllocation)
+                return false;
+            var rootReference = snapshot.NativeAllocations.RootReferenceId[source.Index];
+            var unrooted = rootReference <= CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootId
+                || !snapshot.NativeRootReferences.IdToIndex.TryGetValue(rootReference, out var rootIndex)
+                || rootIndex == CachedSnapshot.NativeRootReferenceEntriesCache.InvalidRootIndex;
+            return unrooted && !snapshot.RootAndImpactInfo.IsReferencedUnrootedAllocation(source);
+        }
+
+        static bool IsRegionDataSourceId(CachedSnapshot.SourceIndex.SourceId id)
+        {
+            switch (id)
+            {
+                case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
+                case CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Diagnoses each filter dimension against <see cref="RootAndImpactInfo"/>/<see cref="ObjectStatusComputation"/>
+        /// for this one item, mirroring <see cref="RootsAndImpactModel.BuildRowFilterPredicate"/>'s ordering. Mode
+        /// independent by construction: unlike the row store (an already-filtered superset in tree mode), it
+        /// never needs the item to be present anywhere to explain why it isn't.
+        /// </summary>
+        public override ItemVisibility GetVisibility(CachedSnapshot.SourceIndex source, CachedSnapshot owner = null)
+            => ComputeVisibility(m_Snapshot, source, m_HideRegions, m_HideExclusiveOnly, m_FilterManager.CompoundSearchFilter);
+
+        /// <summary>
+        /// Pure diagnosis logic behind <see cref="GetVisibility"/>, extracted so it can be exercised without a
+        /// live <see cref="RootsAndImpactTableViewController"/> (which needs a loaded UI to hold the filter state
+        /// this takes as parameters instead).
+        /// </summary>
+        internal static ItemVisibility ComputeVisibility(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source,
+            bool hideRegions, bool hideExclusiveOnly, CompoundSearchFilter filter)
+        {
+            if (!CanEverContainSourceId(source.Id))
+                return new ItemVisibility(ItemVisibility.State.NotRepresentable);
+
+            if (IsUnreferencedUnrootedNativeAllocation(snapshot, source))
+                return new ItemVisibility(ItemVisibility.State.NotRepresentable);
+
+            var blocking = TableFilterKind.None;
+
+            var isRegionData = IsRegionDataSourceId(source.Id);
+            if (hideRegions && isRegionData)
+                blocking |= TableFilterKind.HideRegionData;
+
+            if (!isRegionData && hideExclusiveOnly && SourceIndexToRootAndImpactInfoMapper.IsSourceIdSupported(source.Id))
+            {
+                var impact = SourceIndexToRootAndImpactInfoMapper.GetNestedElement(in snapshot.RootAndImpactInfo.Impact, source);
+                var exclusiveImpactSum = impact.Exclusive.SumUp();
+                var sharedProRataSum = impact.SharedProRata.SumUp();
+                if (sharedProRataSum.Committed == 0 && exclusiveImpactSum.Committed > 0)
+                    blocking |= TableFilterKind.HideExclusiveOnly;
+            }
+
+            if (filter != null)
+            {
+                if (TableRevealHelper.IsBlockedByStatusMask(snapshot, source, filter))
+                    blocking |= TableFilterKind.StatusMask;
+
+                if (filter.SearchStringFilter != null)
+                {
+                    var typeNames = RootsAndImpactModelBuilder.GetTypeNamesForFiltering(snapshot, source);
+                    var status = snapshot.ObjectStatusComputation.GetStatus(source);
+                    var matchesText = filter.PassesTextOrStatusSearch(source.GetName(snapshot), status)
+                        || (typeNames.Native != null && filter.PassesTextOrStatusSearch(typeNames.Native, status))
+                        || (typeNames.Managed != null && filter.PassesTextOrStatusSearch(typeNames.Managed, status))
+                        || (typeNames.ManagedBase != null && filter.PassesTextOrStatusSearch(typeNames.ManagedBase, status));
+                    if (!matchesText)
+                        blocking |= TableFilterKind.TextSearch;
+                }
+            }
+
+            return ItemVisibility.FromBlockingFilters(blocking);
+        }
+
+        protected override bool TryRevealRow(CachedSnapshot.SourceIndex source, bool frame, bool select, CachedSnapshot owner)
+        {
+            if (m_Model.RowSource == null || !m_Model.RowSource.TryFindStoreIndex(source, out var storeIndex))
+                return false;
+
+            if (!m_Model.IsPaged)
+                return TryRevealTreeRow(data => data.IsValid && data.Source == source, frame, select);
+
+            return m_PagerBinding.TryShowRow(storeIndex, out var treeId) && RevealTreeItem(treeId, frame, select);
+        }
+
+        /// <summary>
+        /// Relaxes any combination of this table's filter dimensions and triggers exactly one rebuild — the
+        /// single atomic entry point a filter-relaxation dialog (e.g. from a Ping/Select onto a hidden item)
+        /// calls into, rather than toggling each dimension through its own UI callback and rebuilding once per
+        /// dimension.
+        /// </summary>
+        public void ApplyFilterRelaxation(TableFilterKind filtersToRelax)
+        {
+            TableRevealHelper.RelaxStatusAndTextFilters(filtersToRelax, m_StatusFilterButton, m_SearchField, m_FilterManager);
+
+            if ((filtersToRelax & TableFilterKind.HideExclusiveOnly) != 0)
+                SetHideExclusiveOnly(false);
+
+            if ((filtersToRelax & TableFilterKind.HideRegionData) != 0)
+                SetHideRegions(false);
+
+            FireAndForgetBuildModelAsync(false);
         }
 
         protected override void Dispose(bool disposing)
@@ -588,6 +919,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Releases this controller's reference to the row source, freeing the native store unless a
                 // derived id-filtered model still holds one.
                 DisposableModelSwap.ReplaceIfChanged(ref m_OwnedModel, null);
+                m_FilterManager.Dispose();
+                m_BuildOrchestrator.Dispose();
             }
         }
     }

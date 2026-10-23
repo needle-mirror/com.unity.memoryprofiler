@@ -125,7 +125,7 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
         NativeObjects_GCHandle,
         // StaticFieldAndNonGCHeapVersion = 20
         // Adds resolved GC-static field slots (CoreCLR; ordinary statics on all backends), a
-        // consolidated per-field attribute-flags word, and consolidated heap-section chunk-type/VM flags.
+        // consolidated 32-bit per-field attribute-flags value, and consolidated heap-section chunk-type/VM flags.
         TypeDescriptions_StaticFieldSlots,
         FieldDescriptions_Flags,
         ManagedHeapSections_Flags,

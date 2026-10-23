@@ -464,6 +464,9 @@ namespace Unity.MemoryProfiler.Editor
             InspectAllocatedMemoryClickCount,
             InspectManagedMemoryClickCount,
             InspectUnityObjectsClickCount,
+            InspectRootsAndImpactClickCount,
+            RootsAndImpactClickCount,
+            RootsAndImpactHoverCount,
         }
 
         // Adding new items is fine but ideally no renaming of these or the analytics backend would need loose version over version consistency

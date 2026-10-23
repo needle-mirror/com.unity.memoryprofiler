@@ -1,6 +1,6 @@
-# What's new in version 1.2.0-pre.1
+# What's new in version 1.2.0 (including 1.2.0-pre.1 & 1.2.0-pre.2)
 
-Summary of changes in Memory Profiler version 1.2.0-pre.1.
+Summary of changes in Memory Profiler version 1.2.0.
 
 ### Added
 - Added the **Roots & Impact** view to the Memory Profiler window which breaks down the memory usage of a snapshot by what roots it to memory. Roots are grouped by the root static fields type. This view also shows the memory impact of each entry, which is the memory it owns and the amount of memory it keeps alive with other roots.
@@ -20,5 +20,8 @@ Summary of changes in Memory Profiler version 1.2.0-pre.1.
 - Fixed issues with the comparison mode of the **All Of Memory**, **Unity Objects**, and **Memory Map** tables and when handling contiguous system regions or Native Objects.
 - Fixed an issue where multi-dimensional (rank 2 or higher) managed arrays on captures from 64-bit IL2CPP players crawled as length 0, which under-reported the array's size.
 - Fixed an issue where table searching ran a search task for each character. Search now starts when you select return or deselect the search field.
+
+### Removed
+- Deprecated the Unity.MemoryProfiler.Editor.MemoryProfilerModule.ProfilerMemoryView enum, which didn't have any use as part of the public API anyways.
 
 For a full list of changes and updates in this version, see the [Memory Profiler Changelog](xref:changelog).

@@ -24,5 +24,11 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         /// <summary>Re-orders the flattened rows alphabetically by name, then shows page 0.</summary>
         void SortFlatByName(bool descending, bool materialize = true);
+
+        /// <summary>The page holding store row <paramref name="storeIndex"/> in the current filter+sort order; false when the model isn't paged or its filter excludes the row.</summary>
+        bool TryGetPageForRow(long storeIndex, out int page);
+
+        /// <summary>The flattened row's tree-view id, for selecting it once its page is materialized.</summary>
+        int GetTreeIdForStoreIndex(long storeIndex);
     }
 }

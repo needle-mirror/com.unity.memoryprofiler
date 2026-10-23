@@ -16,6 +16,7 @@ namespace Unity.MemoryProfiler.Editor
         public const RuntimePlatform OSXServer = (RuntimePlatform)45 /*RuntimePlatform.OSXServer*/;
         public const RuntimePlatform EmbeddedLinuxArm64 = (RuntimePlatform)39 /*RuntimePlatform.EmbeddedLinuxArm64*/;
         public const RuntimePlatform EmbeddedLinuxX64 = (RuntimePlatform)41 /*RuntimePlatform.EmbeddedLinuxX64*/;
+        public const RuntimePlatform UnknownPlatform = (RuntimePlatform)~0;
 
         static readonly RuntimePlatform[] k_PlatformsHideResidentMemory =
             new RuntimePlatform[] { RuntimePlatform.PS4, RuntimePlatform.PS5, RuntimePlatform.Switch,

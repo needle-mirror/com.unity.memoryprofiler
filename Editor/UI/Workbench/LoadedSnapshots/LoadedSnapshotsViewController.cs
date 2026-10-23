@@ -67,6 +67,8 @@ namespace Unity.MemoryProfiler.Editor
 
         void RefreshView()
         {
+            m_Ribbon.CurrentOption = m_SnapshotDataService.CompareMode ? 1 : 0;
+
             // Reset state
             m_BaseSnapshotController = null;
             m_BaseSnapshotContainer.Clear();

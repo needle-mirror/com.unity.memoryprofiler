@@ -13,7 +13,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         void ClearIdToIndexCache();
     }
 
-    class ModelBuildOrchestrator<TModel, TBuildArgs>
+    class ModelBuildOrchestrator<TModel, TBuildArgs> : IDisposable
         where TModel : class
     {
         readonly CachedSnapshot m_Snapshot;
@@ -34,6 +34,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             m_Builder.ClearIdToIndexCache();
         }
+
+        public void Dispose() => ClearIdToIndexCache();
 
         public Func<TModel> CreateBuildTask(
             TBuildArgs args,

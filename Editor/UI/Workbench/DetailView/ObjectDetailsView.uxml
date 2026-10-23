@@ -8,7 +8,10 @@
     <engine:VisualElement name="memory-profiler-object-details">
         <Style src="ObjectDetailsView.uss" />
 
-        <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="reference-item-details__unity-item-title"/>
+        <engine:VisualElement name="reference-item-details__title-row">
+            <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="reference-item-details__unity-item-title"/>
+            <engine:Button name="reference-item-details__refocus-button" />
+        </engine:VisualElement>
 
         <engine:TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="300" name="details-panel__splitter" orientation="Vertical">
             <engine:VisualElement name="reference-trees" class="details-panel__section">
@@ -26,6 +29,7 @@
                 <engine:Foldout name="details-panel__section-header__selection-details" text="Selection Details" class="details-panel__section-header">
                     <engine:Label name="selected-item-details__item-title" />
                     <Unity.MemoryProfiler.Editor.UI.ObjectOrTypeLabel name="selected-item-details__unity-item-title" />
+                    <engine:Label name="selected-item-details__unity-item-subtitle" />
 
                     <engine:VisualElement name="selected-item-details__find-buttons" class="selected-item-details__area selected-item-details__find-buttons">
                         <engine:VisualElement name="selected-item-details__find-buttons__select-in-editor__holder" class="selected-item-details__find-buttons">
@@ -43,6 +47,12 @@
                                 </engine:VisualElement>
                             </engine:Button>
                         </engine:Button>
+                        <engine:VisualElement name="selected-item-details__find-buttons__find-in-other-table__holder" class="selected-item-details__find-buttons">
+                            <engine:Button display-tooltip-when-elided="true" name="selected-item-details__find-buttons__find-in-other-table" class="selected-item-details__find-buttons__dropdown-button">
+                                <engine:Label name="selected-item-details__find-buttons__find-in-other-table__label" class="selected-item-details__find-buttons__dropdown-button-label" />
+                                <engine:VisualElement class="unity-base-popup-field__arrow" />
+                            </engine:Button>
+                        </engine:VisualElement>
                     </engine:VisualElement>
 
                     <engine:ScrollView name="selected-item-details__selection-details__scroll-area">

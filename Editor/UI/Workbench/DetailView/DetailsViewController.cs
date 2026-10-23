@@ -15,6 +15,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         bool m_Collapsed;
         ViewController m_SelectedController;
 
+        /// <summary>Internal for testing purposes.</summary>
+        internal ViewController SelectedController => m_SelectedController;
+
         // View
         VisualElement m_Container;
         Label m_NoDetailsLabel;

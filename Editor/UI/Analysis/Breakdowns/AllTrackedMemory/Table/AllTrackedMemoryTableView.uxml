@@ -21,6 +21,11 @@
                     <engine:SortColumnDescription column-name="all-tracked-memory-table-view__tree-view__column__size" direction="descending"/>
                 </engine:SortColumnDescriptions>
             </engine:MultiColumnTreeView>
+            <editor:Toolbar name="all-tracked-memory-table-view__toolbar" class="table-view-base__footer-toolbar">
+                <engine:VisualElement class="table-view-base__footer-toolbar__group table-view-base__footer-toolbar__display-options">
+                    <engine:Toggle name="all-tracked-memory-table-view__toolbar__scale-bars-toggle"/>
+                </engine:VisualElement>
+            </editor:Toolbar>
             <Unity.MemoryProfiler.Editor.UI:ActivityIndicatorOverlay name="all-tracked-memory-table-view__loading-overlay"/>
         </engine:VisualElement>
         <engine:Label name="all-tracked-memory-table-view__error-label" class="table-view-base__error-label"/>

@@ -104,6 +104,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 && (m_StatusFilterBaseFlat?.Passes(status) ?? m_SearchStringFilterFlat == null);
         }
 
+        /// <summary>
+        /// The search-text half of <see cref="PassesFlat(string, ObjectStatus)"/>: whether <paramref name="text"/> matches the
+        /// search string or <paramref name="status"/> matches the statuses it names, ignoring the exclusive status mask.
+        /// </summary>
+        [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
+        public bool PassesTextOrStatusSearch(string text, ObjectStatus status)
+        {
+            return (m_SearchStringFilterFlat == null && m_StatusFilterBaseFlat == null)
+                || (m_SearchStringFilterFlat?.Passes(text) ?? false) || (m_StatusFilterBaseFlat?.Passes(status) ?? false);
+        }
+
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
         public bool PassesFlat(string text, ObjectStatus status)
         {

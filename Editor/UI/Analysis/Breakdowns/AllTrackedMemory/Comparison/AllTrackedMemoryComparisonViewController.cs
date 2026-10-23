@@ -13,6 +13,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         AllTrackedMemoryTableViewController.IResponder, IAnalysisViewSelectable, IViewControllerWithVisibilityEvents
     {
         protected override ulong UnavailableStatusesForTable => ObjectStatusExtensions.AllOfMemoryTableUnavailableStatuses;
+        public override BreakdownTableId TableId => BreakdownTableId.AllTrackedMemoryComparison;
+        public override ITableItemLocator BaseTable => m_BaseViewController;
+        public override ITableItemLocator ComparedTable => m_ComparedViewController;
+        public override bool CanEverContain(CachedSnapshot.SourceIndex source) => AllTrackedMemoryTableViewController.CanEverContainSourceId(source.Id);
         readonly ISelectionDetails m_SelectionDetails;
 
         // View
@@ -23,6 +27,12 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         // Children.
         AllTrackedMemoryTableViewController m_BaseViewController;
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal AllTrackedMemoryTableViewController BaseTableViewControllerForTesting => m_BaseViewController;
+
+        /// <summary>Internal for testing purposes.</summary>
+        internal AllTrackedMemoryTableViewController ComparedTableViewControllerForTesting => m_ComparedViewController;
         AllTrackedMemoryTableViewController m_ComparedViewController;
 
         public AllTrackedMemoryComparisonViewController(CachedSnapshot snapshotA, CachedSnapshot snapshotB, string description, ISelectionDetails selectionDetails)
@@ -56,11 +66,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         protected override Func<VisualElement> MakeDescriptionCell()
         {
-            return () =>
-            {
-                var label = new ObjectOrTypeLabel() { HideTypeInfoForObjects = true };
-                return label;
-            };
+            return () => MakeLabelWithSelectInTableMenu(hideTypeInfoForObjects: true);
         }
 
         protected override Action<VisualElement, int> BindCellForDescriptionColumn()
@@ -73,14 +79,75 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var sourceInA = itemData.SourceIndex.InA;
                 var sourceInB = itemData.SourceIndex.InB;
 
-                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(SnapshotA, sourceInA, itemData.Name, out var displayName) &&
-                    !label.TrySetLabelDataFromSourceIndex(SnapshotB, sourceInB, displayName))
+                if (!label.TrySetLabelDataFromSourceIndexForTableEntry(SnapshotA, sourceInA, itemData.Name, out var displayName, splitUnifiedObjectIntoHalves: true) &&
+                    !label.TrySetLabelDataFromSourceIndex(SnapshotB, sourceInB, displayName, splitUnifiedObjectIntoHalves: true))
                 {
                     // Category/group node with no typed source — show name as plain text.
                     label.SetLabelData(SnapshotA, displayName, string.Empty);
+                    return;
                 }
+
+                ReconcileUnifiedShapeAcrossSnapshots(label, sourceInA, sourceInB);
             };
         }
+
+        /// <summary>
+        /// Rows are matched by name across A and B; outside of a same-session comparison that match is not
+        /// guaranteed to be the same object instance, so no further reconciliation is attempted there.
+        /// In a same-session comparison, <see cref="InitializeChildViewControllers"/> enables
+        /// <c>disambiguateUnityObjects</c> on both child tables, and
+        /// <see cref="ComparisonViewController{TBaseModel, TBaseModelBuilderArgs, TBaseModelItemData, TModelSpecificData}.GetModelBuilderTask(System.Threading.CancellationToken)"/>
+        /// passes true for the sameSessionComparison arg to
+        /// <see cref="ComparisonViewController{TBaseModel, TBaseModelBuilderArgs, TBaseModelItemData, TModelSpecificData}.GetBaseModelBuilderArgs(CompoundSearchFilter, bool)"/>
+        /// so that a Managed/Native Unity Object row's name embeds its native InstanceId (<see cref="NativeObjectTools.ProduceNativeObjectNameAndId"/>).
+        /// Therefore matching such a row by name IS matching it by instance, and that instance can gain or lose its
+        /// Managed Shell between A and B. The label above was only ever classified from whichever snapshot won
+        /// the "prefer A, else B" resolution, so such a change could silently revert the icon to the plain
+        /// (non-Unified) variant. Fold in the other snapshot's shape so the half/Unified icon still shows
+        /// whenever the object was a Full Unity Object in either snapshot.
+        /// </summary>
+        void ReconcileUnifiedShapeAcrossSnapshots(ObjectOrTypeLabel label, CachedSnapshot.SourceIndex sourceInA, CachedSnapshot.SourceIndex sourceInB)
+        {
+            if (!m_SameSessionDiff || !IsManagedOrNativeObjectRow(sourceInA.Id) || !IsManagedOrNativeObjectRow(sourceInB.Id))
+                return;
+
+            var infoA = new UnifiedUnityObjectInfo(SnapshotA, ObjectData.FromSourceLink(SnapshotA, sourceInA));
+            var infoB = new UnifiedUnityObjectInfo(SnapshotB, ObjectData.FromSourceLink(SnapshotB, sourceInB));
+            if (!infoA.Type.IsUnityObjectType || !infoB.Type.IsUnityObjectType)
+                return;
+
+            var leakInA = infoA.IsLeakedDynamicAsset || infoA.IsLeakedShell;
+            var leakInB = infoB.IsLeakedDynamicAsset || infoB.IsLeakedShell;
+
+            // Prefer displaying an icon showing a leak status over one that is not
+            // THEN prefer showing a unified icon when no leak is present.
+            if (leakInA == leakInB)
+            {
+                // The leak Status didn't change
+                if (infoA.IsFullUnityObject || !infoB.IsFullUnityObject)
+                    // The icon is already for a full Unity Object or isn't a
+                    // full Unity Object in B either, nothing to change
+                    return;
+            }
+            else
+            {
+                // prefer the leak status that is already used, or use the one from B
+                if (leakInA)
+                    return;
+            }
+
+            var dataTypeB = ObjectOrTypeLabel.GetDataTypeFromStatus(SnapshotB, in infoB, sourceInB);
+            label.Type = ObjectOrTypeLabel.ToHalfVariant(
+                dataTypeB is ObjectOrTypeLabel.DataType.LeakedDynamicAsset ? dataTypeB : ObjectOrTypeLabel.DataType.UnifiedUnityObject,
+                sourceInA.Id);
+        }
+
+        /// <summary>
+        /// Cheap pre-filter only: true for any managed or native object, regardless of whether its type
+        /// derives from UnityEngine.Object. Callers must still check Type.IsUnityObjectType.
+        /// </summary>
+        static bool IsManagedOrNativeObjectRow(CachedSnapshot.SourceIndex.SourceId id) =>
+            id is CachedSnapshot.SourceIndex.SourceId.ManagedObject or CachedSnapshot.SourceIndex.SourceId.NativeObject;
 
         protected override Action<VisualElement> DestroyDescriptionCell()
         {
@@ -101,7 +168,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SnapshotA,
                 compareMode: true,
                 disambiguateUnityObjects: sameSession,
-                responder: this);
+                responder: this)
+            { TabController = TabController };
             // SetColumnsVisibilityAsync and SetFiltersAsync are synchronous before the view is loaded — they only store state. Assert completion.
             m_BaseViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted).AssertCompleted();
             m_BaseViewController.SetFiltersAsync(m_Model?.BaseModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter).AssertCompleted();
@@ -112,7 +180,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 SnapshotB,
                 compareMode: true,
                 disambiguateUnityObjects: sameSession,
-                responder: this);
+                responder: this)
+            { TabController = TabController };
             m_ComparedViewController.SetColumnsVisibilityAsync(AllTrackedMemoryTableMode.OnlyCommitted).AssertCompleted();
             m_ComparedViewController.SetFiltersAsync(m_Model?.ComparedModel, treeNodeIdFilter: TreeViewControllerHelper.ShowNoItemsAtAllFilter).AssertCompleted();
             AddEmptyChildTableView(m_ComparedViewController, ComparedViewContainer);
@@ -184,13 +253,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             var sourceInB = itemData.SourceIndex.InB;
             ViewController detailsView;
             if (sourceInA.Id != CachedSnapshot.SourceIndex.SourceId.None)
-                detailsView = BreakdownDetailsViewControllerFactory.Create(SnapshotA, itemId, itemData.Name, itemData.ChildCount, sourceInA);
+                detailsView = BreakdownDetailsViewControllerFactory.Create(SnapshotA, itemId, itemData.Name, itemData.ChildCount, sourceInA, BreakdownTableId.AllTrackedMemoryComparison, this, TabController);
             else if (sourceInB.Id != CachedSnapshot.SourceIndex.SourceId.None)
-                detailsView = BreakdownDetailsViewControllerFactory.Create(SnapshotB, itemId, itemData.Name, itemData.ChildCount, sourceInB);
+                detailsView = BreakdownDetailsViewControllerFactory.Create(SnapshotB, itemId, itemData.Name, itemData.ChildCount, sourceInB, BreakdownTableId.AllTrackedMemoryComparison, this, TabController);
             else
             {
                 var snapshot = itemData.CountInA > 0 ? SnapshotA : SnapshotB;
-                detailsView = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, 0, new CachedSnapshot.SourceIndex());
+                detailsView = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, 0, new CachedSnapshot.SourceIndex(), BreakdownTableId.AllTrackedMemoryComparison, this, TabController);
             }
             m_SelectionDetails.SetSelection(detailsView);
         }
@@ -232,7 +301,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 selectFirstItem = !m_WaitingForFilteringToBeAppliedToBaseView;
                 m_WaitingForFilteringToBeAppliedToCompareView = false;
             }
-            if (selectFirstItem)
+            if (selectFirstItem && !TrySelectPendingSubTableItem())
             {
                 if (!m_BaseViewController.SelectFirstItem())
                     m_ComparedViewController.SelectFirstItem();
@@ -247,7 +316,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var isBaseView = viewController == m_BaseViewController;
             var snapshot = isBaseView ? SnapshotA : SnapshotB;
 
-            ViewController detailsView = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source);
+            ViewController detailsView = BreakdownDetailsViewControllerFactory.Create(snapshot, itemId, itemData.Name, itemData.ChildCount, itemData.Source, BreakdownTableId.AllTrackedMemoryComparison, viewController, TabController);
             m_SelectionDetails.SetSelection(detailsView);
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.UI.TreeModelHelpers;
 
@@ -129,7 +130,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Only after processing children can we determine if this node should be included:
                 // - If we have matching children, include this parent node to show the hierarchy
                 // - If no filter is active, include all nodes
-                // - If this is a leaf node (no children possible), check if the node's scope itself matches 
+                // - If this is a leaf node (no children possible), check if the node's scope itself matches
                 bool isLeafNode = parentHeadReserved || item.ChildrenCount == 0;
                 bool hasMatchingChildren = children != null && children.Count > 0;
                 bool nodeMatchesFilter = filterArgs.SearchFilter?.CurrentScopePasses ?? true;
@@ -149,12 +150,62 @@ namespace Unity.MemoryProfiler.Editor.UI
                         item.Address,
                         new MemorySize(size, residentSize),
                         itemType,
-                        item.Source);
+                        item.Source,
+                        GetContentKinds(OwnContentKinds(snapshot, item.Source), children));
                     output.Add(new TreeViewItemData<MemoryMapBreakdownModel.ItemData>(m_ItemId++, treeNode, children));
                 }
             });
 
             _output = output;
+        }
+
+        static MemoryMapBreakdownModel.ContentKinds OwnContentKinds(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source)
+            => OwnContentKinds(source.Id, source.Id == CachedSnapshot.SourceIndex.SourceId.NativeAllocation
+                && CachedSnapshot.NativeAllocationEntriesCache.IsVMHeapAllocation(snapshot, source.Index));
+
+        /// <summary>
+        /// The kind of memory an item of <paramref name="sourceId"/> itself represents, before its children are taken into account.
+        /// Kept exhaustive without a discard arm so that a new <see cref="CachedSnapshot.SourceIndex.SourceId"/> fails to compile (CS8509).
+        /// </summary>
+        // CS8524 (the *unnamed* enum value isn't covered) is suppressed: every defined value is handled below, and
+        // a runtime value is always a defined enum member. We deliberately keep no discard arm so that adding a new
+        // named section type still trips CS8509 (a -warnaserror+ build error) — suppressing CS8524 keeps that gate while
+        // not forcing a catch-all that would defeat it.
+#pragma warning disable CS8524
+        internal static MemoryMapBreakdownModel.ContentKinds OwnContentKinds(CachedSnapshot.SourceIndex.SourceId sourceId, bool isVMHeapAllocation) => sourceId switch
+        {
+            CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection => MemoryMapBreakdownModel.ContentKinds.Managed,
+            CachedSnapshot.SourceIndex.SourceId.ManagedObject => MemoryMapBreakdownModel.ContentKinds.Managed,
+            CachedSnapshot.SourceIndex.SourceId.ManagedType => MemoryMapBreakdownModel.ContentKinds.Managed,
+            CachedSnapshot.SourceIndex.SourceId.ManagedRoot => MemoryMapBreakdownModel.ContentKinds.Managed,
+            CachedSnapshot.SourceIndex.SourceId.NativeAllocation => isVMHeapAllocation ? MemoryMapBreakdownModel.ContentKinds.Managed : MemoryMapBreakdownModel.ContentKinds.Native,
+            CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion => MemoryMapBreakdownModel.ContentKinds.Native,
+            CachedSnapshot.SourceIndex.SourceId.NativeObject => MemoryMapBreakdownModel.ContentKinds.Native,
+            CachedSnapshot.SourceIndex.SourceId.NativeType => MemoryMapBreakdownModel.ContentKinds.Native,
+            CachedSnapshot.SourceIndex.SourceId.NativeRootReference => MemoryMapBreakdownModel.ContentKinds.Native,
+            CachedSnapshot.SourceIndex.SourceId.GfxResource => MemoryMapBreakdownModel.ContentKinds.Native,
+            CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion => MemoryMapBreakdownModel.ContentKinds.None,
+            CachedSnapshot.SourceIndex.SourceId.None => MemoryMapBreakdownModel.ContentKinds.None,
+            CachedSnapshot.SourceIndex.SourceId.GCHandleIndex => MemoryMapBreakdownModel.ContentKinds.None,
+            CachedSnapshot.SourceIndex.SourceId.MemoryLabel => MemoryMapBreakdownModel.ContentKinds.None,
+            CachedSnapshot.SourceIndex.SourceId.Scene => MemoryMapBreakdownModel.ContentKinds.None,
+            CachedSnapshot.SourceIndex.SourceId.Prefab => MemoryMapBreakdownModel.ContentKinds.None,
+        };
+#pragma warning restore CS8524
+
+        internal static MemoryMapBreakdownModel.ContentKinds GetContentKinds(MemoryMapBreakdownModel.ContentKinds kinds, List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>> children)
+        {
+            if (children == null)
+                return kinds;
+
+            foreach (var child in children)
+            {
+                kinds |= child.data.ContentKinds;
+                // A nested system region is memory not claimed by any Unity allocation, which the parent shows as native.
+                if (child.data.Source.Id == CachedSnapshot.SourceIndex.SourceId.SystemMemoryRegion)
+                    kinds |= MemoryMapBreakdownModel.ContentKinds.Native;
+            }
+            return kinds;
         }
 
         MemorySize GetTotalMemorySize(CachedSnapshot snapshot)
@@ -185,10 +236,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case CachedSnapshot.SourceIndex.SourceId.NativeMemoryRegion:
                     // See comment in ConvertToTreeViewRecursive about "fake" reserved children
                     if (reservedMemSpan)
-                        return "Reserved";
-                    return "Unity Allocator";
+                        return TextContent.MemoryMapTypeReserved;
+                    return TextContent.MemoryMapTypeUnityAllocator;
                 case CachedSnapshot.SourceIndex.SourceId.NativeAllocation:
-                    return "Native Allocation";
+                    return TextContent.MemoryMapTypeNativeAllocation;
                 case CachedSnapshot.SourceIndex.SourceId.NativeObject:
                     var typeIndex = snapshot.NativeObjects.NativeTypeArrayIndex[item.Source.Index];
                     return snapshot.NativeTypes.TypeName[typeIndex];
@@ -197,17 +248,17 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
                     // See comment in ConvertToTreeViewRecursive about "fake" reserved children
                     if (reservedMemSpan)
-                        return "Reserved";
-                    return "Managed Heap";
+                        return TextContent.MemoryMapTypeReserved;
+                    return TextContent.MemoryMapTypeManagedHeap;
                 case CachedSnapshot.SourceIndex.SourceId.ManagedObject:
                     ref readonly var managedObjects = ref snapshot.CrawledData.ManagedObjects;
                     var managedTypeIndex = managedObjects[item.Source.Index].ITypeDescription;
                     if (managedTypeIndex < 0)
-                        return "Managed Object";
+                        return TextContent.MemoryMapTypeManagedObject;
                     return snapshot.TypeDescriptions.TypeDescriptionName[managedTypeIndex];
 
                 case CachedSnapshot.SourceIndex.SourceId.GfxResource:
-                    return "Graphics Object";
+                    return TextContent.MemoryMapTypeGraphicsObject;
 
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -224,13 +275,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             switch (pointType)
             {
                 case CachedSnapshot.EntriesMemoryMapCache.PointType.Device:
-                    return "Device";
+                    return TextContent.MemoryMapTypeDevice;
                 case CachedSnapshot.EntriesMemoryMapCache.PointType.Mapped:
-                    return "Executables & Mapped";
+                    return TextContent.MemoryMapTypeExecutablesAndMapped;
                 case CachedSnapshot.EntriesMemoryMapCache.PointType.Shared:
-                    return "Shared";
+                    return TextContent.MemoryMapTypeShared;
                 case CachedSnapshot.EntriesMemoryMapCache.PointType.AndroidRuntime:
-                    return "Android Runtime";
+                    return TextContent.MemoryMapTypeAndroidRuntime;
             }
 
             // Try to guess type from children. It could be:
@@ -265,11 +316,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 });
 
                 if (hasUnityObjects)
-                    return mixed ? "Mixed" : "Unity";
+                    return mixed ? TextContent.MemoryMapTypeMixed : TextContent.MemoryMapTypeUnity;
             }
 
             // System region with no known usage hints
-            return "Untracked";
+            return TextContent.MemoryMapTypeUntracked;
         }
 
         internal readonly struct BuildArgs

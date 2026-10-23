@@ -10,12 +10,24 @@ using UnityEngine.UIElements;
 namespace Unity.MemoryProfiler.Editor.UI
 {
     // Abstract base view controller for memory breakdown views, such as 'Unity Objects' and 'All Of Memory'.
-    abstract class BreakdownViewController : ViewController
+    abstract class BreakdownViewController : ViewController, ITableItemLocator, IFilterRelaxationTarget
     {
-        protected virtual string AllocatedMemoryInTableFormatString => "Allocated Memory Impact In Table: {0}";
-        protected virtual string AllocatedMemoryInSnapshotFormatString => "Total Memory In Snapshot: {0}";
-        protected virtual string ResidentMemoryInTableFormatString => "Resident Memory Impact In Table: {0}";
-        protected virtual string ResidentMemoryInSnapshotFormatString => "Resident Memory In Snapshot: {0}";
+        protected virtual string AllocatedMemoryInTableFormatString => TextContent.AllocatedMemoryInTableFormat;
+        protected virtual string AllocatedMemoryInSnapshotFormatString => TextContent.TotalMemoryInSnapshotFormat;
+        protected virtual string ResidentMemoryInTableFormatString => TextContent.ResidentMemoryInTableFormat;
+        protected virtual string ResidentMemoryInSnapshotFormatString => TextContent.TotalResidentMemoryInSnapshotFormat;
+
+        /// <summary>
+        /// Builds the "Allocated Memory Impact In Table" size text from <see cref="AllocatedMemoryInTableFormatString"/>.
+        /// </summary>
+        protected virtual string FormatAllocatedMemoryInTableText(string totalMemorySizeText) =>
+            string.Format(AllocatedMemoryInTableFormatString, totalMemorySizeText);
+
+        /// <summary>
+        /// Builds the "Resident Memory Impact In Table" size text from <see cref="ResidentMemoryInTableFormatString"/>.
+        /// </summary>
+        protected virtual string FormatResidentMemoryInTableText(string totalMemorySizeText) =>
+            string.Format(ResidentMemoryInTableFormatString, totalMemorySizeText);
 
         const string k_UxmlAssetGuid = "01be1ca7b1544f246b5302f05d9e8c5e";
         const string k_UssClass_Dark = "breakdown-view__dark";
@@ -41,6 +53,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         DetailedSizeBar m_TableSizeBar;
         AllTrackedMemoryTableMode m_TableMode;
 
+        ITableItemLocator m_TableLocator;
+
         public BreakdownViewController(CachedSnapshot snapshot, string description, ISelectionDetails selectionDetails)
         {
             Snapshot = snapshot;
@@ -49,6 +63,9 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             m_TableMode = AllTrackedMemoryTableMode.OnlyCommitted;
         }
+
+        /// <summary>Set by <see cref="AnalysisTabBarController"/> at construction, for cross-table reveal (Ping/Select's "Select In..." dropdown).</summary>
+        public AnalysisTabBarController TabController { protected get; init; }
 
         public AllTrackedMemoryTableMode TableColumnsMode
         {
@@ -99,8 +116,18 @@ namespace Unity.MemoryProfiler.Editor.UI
         {
             AddChild(tableViewController);
             TableContainer.Add(tableViewController.View);
+            m_TableLocator = tableViewController;
             tableViewController.TriggerBuild();
         }
+
+        public abstract BreakdownTableId TableId { get; }
+        public bool CanEverContain(CachedSnapshot.SourceIndex source) => m_TableLocator.CanEverContain(source);
+        public ItemVisibility GetVisibility(CachedSnapshot.SourceIndex source, CachedSnapshot owner = null) => m_TableLocator.GetVisibility(source, owner);
+        public bool TryRevealAndSelect(CachedSnapshot.SourceIndex source, bool frame, CachedSnapshot owner = null) => m_TableLocator.TryRevealAndSelect(source, frame, owner);
+        public bool TryReveal(CachedSnapshot.SourceIndex source, bool frame, CachedSnapshot owner = null) => m_TableLocator.TryReveal(source, frame, owner);
+        public bool HasSettledRows => m_TableLocator.HasSettledRows;
+        public void RevealAfterRebuild(CachedSnapshot.SourceIndex source, bool frame, bool select, CachedSnapshot owner = null) => m_TableLocator.RevealAfterRebuild(source, frame, select, owner);
+        public void ApplyFilterRelaxation(TableFilterKind filtersToRelax) => (m_TableLocator as IFilterRelaxationTarget)?.ApplyFilterRelaxation(filtersToRelax);
 
         protected override VisualElement LoadView()
         {
@@ -151,9 +178,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 memoryInTable = totalMemorySize.Committed;
                 var totalMemorySizeText = EditorUtility.FormatBytes((long)memoryInTable);
                 var totalSnapshotMemorySizeText = EditorUtility.FormatBytes((long)total);
-                sizeText = string.Format(TextContent.AllocatedMemoryInTableFormat, totalMemorySizeText);
+                sizeText = FormatAllocatedMemoryInTableText(totalMemorySizeText);
                 sizeTooltip = $"{memoryInTable:N0} B";
-                totalSizeText = string.Format(TextContent.TotalMemoryInSnapshotFormat, totalSnapshotMemorySizeText);
+                totalSizeText = string.Format(AllocatedMemoryInSnapshotFormatString, totalSnapshotMemorySizeText);
                 totalSizeTooltip = $"{total:N0} B";
             }
             else
@@ -163,9 +190,9 @@ namespace Unity.MemoryProfiler.Editor.UI
                 memoryInTable = totalMemorySize.Resident;
                 var totalMemorySizeText = EditorUtility.FormatBytes((long)memoryInTable);
                 var totalSnapshotMemorySizeText = EditorUtility.FormatBytes((long)total);
-                sizeText = string.Format(TextContent.ResidentMemoryInTableFormat, totalMemorySizeText);
+                sizeText = FormatResidentMemoryInTableText(totalMemorySizeText);
                 sizeTooltip = $"{memoryInTable:N0} B";
-                totalSizeText = string.Format(TextContent.TotalResidentMemoryInSnapshotFormat, totalSnapshotMemorySizeText);
+                totalSizeText = string.Format(ResidentMemoryInSnapshotFormatString, totalSnapshotMemorySizeText);
                 totalSizeTooltip = $"{total:N0} B";
             }
 

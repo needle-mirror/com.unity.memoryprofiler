@@ -58,6 +58,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             idToIndex = null;
         }
 
+        /// <summary>
+        /// Sums <paramref name="selector"/> across the top-level rows only, since a row's size covers its subtree.
+        /// Only valid where top-level rows partition their memory; where bytes are shared between them (e.g.
+        /// flattened Roots &amp; Impact), use the model's accumulated total instead.
+        /// </summary>
+        public static ulong SumOverTopLevelRows<TTreeItemData>(
+            this List<TreeViewItemData<TTreeItemData>> rootNodes,
+            Func<TTreeItemData, ulong> selector)
+        {
+            var sum = 0ul;
+            for (int i = 0; i < rootNodes.Count; i++)
+                sum += selector(rootNodes[i].data);
+            return sum;
+        }
+
         public static TreeViewItemData<TTreeItemData> GetItemById<TTreeItemData>(
             this List<TreeViewItemData<TTreeItemData>> RootNodes,
             ref Dictionary<int, IndexableTreeViewListAndIndex<TTreeItemData>> idToIndex,
@@ -93,6 +108,59 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             else
                 return default;
+        }
+
+        /// <summary>
+        /// Depth-first search for the tree item matching <paramref name="predicate"/>. Returns its id and, via
+        /// <paramref name="ancestorIds"/>, the ids of every ancestor from root to immediate parent (in that
+        /// order) so a caller can expand them before selecting/scrolling to the match. Linear in the number of
+        /// visited nodes — an accepted cost for a manual reveal click, not a hot path.
+        /// </summary>
+        public static bool TryFindItemPath<TTreeItemData>(
+            this List<TreeViewItemData<TTreeItemData>> rootNodes,
+            Func<TTreeItemData, bool> predicate,
+            out int itemId,
+            out List<int> ancestorIds)
+        {
+            var ancestors = new List<int>();
+            foreach (var root in rootNodes)
+            {
+                if (TryFindItemPathRecursive(root, predicate, ancestors, out itemId))
+                {
+                    ancestorIds = ancestors;
+                    return true;
+                }
+            }
+            itemId = -1;
+            ancestorIds = null;
+            return false;
+        }
+
+        static bool TryFindItemPathRecursive<TTreeItemData>(
+            TreeViewItemData<TTreeItemData> node,
+            Func<TTreeItemData, bool> predicate,
+            List<int> ancestorIds,
+            out int itemId)
+        {
+            if (predicate(node.data))
+            {
+                itemId = node.id;
+                return true;
+            }
+
+            if (node.hasChildren)
+            {
+                ancestorIds.Add(node.id);
+                foreach (var child in node.children)
+                {
+                    if (TryFindItemPathRecursive(child, predicate, ancestorIds, out itemId))
+                        return true;
+                }
+                ancestorIds.RemoveAt(ancestorIds.Count - 1);
+            }
+
+            itemId = -1;
+            return false;
         }
     }
 

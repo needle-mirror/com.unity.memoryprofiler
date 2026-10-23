@@ -31,7 +31,7 @@ namespace Unity.MemoryProfiler
         public static DefaultMetadataCollect DefaultCollector = null;
 #if LIFECYCLE_APIS_AVAILABLE
         [AutoStaticsCleanup] // AutoStaticsCleanup can handle IDisposable objects.
-#endif        
+#endif
         public static long CollectorCount = 0;
 #if LIFECYCLE_APIS_AVAILABLE
         [AutoStaticsCleanup] // AutoStaticsCleanup can handle IDisposable objects.

@@ -26,7 +26,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_NativeObjectsGroupName = "Native Objects";
         const string k_NativeSubsystemsGroupName = "Unity Subsystems";
 
-        const string k_ManagedGroupName = "Managed";
+        /// <summary>Internal for testing purposes.</summary>
+        internal const string ManagedGroupName = "Managed";
         const string k_ManagedObjectsGroupName = "Managed Objects";
         const string k_ManagedVMGroupName = "Virtual Machine";
 
@@ -51,6 +52,8 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         Dictionary<int, IndexableTreeViewListAndIndex<AllTrackedMemoryModel.ItemData>> m_IdToIndex;
+
+        internal bool HasIdToIndexCache => m_IdToIndex != null;
 
         public void ClearIdToIndexCache()
         {
@@ -690,13 +693,14 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
 
                 var groupSource = new SourceIndex(SourceIndex.SourceId.ManagedType, managedTypeIndex);
+                var managedSource = new SourceIndex(SourceIndex.SourceId.ManagedObject, managedIndex);
 
                 // Grab precomputed status before search filter so it can be searched
-                var managedStatus = snapshot.ObjectStatusComputation.GetStatus(nativeSource);
+                var managedStatus = snapshot.ObjectStatusComputation.GetStatus(managedSource);
 
                 if (args.SearchFilter != null)
                 {
-                    using var outerGroupScope = args.SearchFilter.OpenScope(k_ManagedGroupName);
+                    using var outerGroupScope = args.SearchFilter.OpenScope(ManagedGroupName);
                     using var innerGroupScope = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
                     // optimization, don't generate managed type name if the scope already passes
                     if (!innerGroupScope.ScopePasses)
@@ -715,7 +719,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     new AllTrackedMemoryModel.ItemData(
                         id ?? name,
                         size.ManagedSize,
-                        nativeSource,
+                        managedSource,
                         status: managedStatus)
                 );
 
@@ -760,7 +764,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             if (args.SearchFilter != null)
             {
-                using var outerGroupScope = args.SearchFilter.OpenScope(k_ManagedGroupName);
+                using var outerGroupScope = args.SearchFilter.OpenScope(ManagedGroupName);
                 using var innerGroupScope = args.SearchFilter.OpenScope(k_ManagedObjectsGroupName);
                 // optimization, don't generate managed type name if the scope already passes
                 if (!innerGroupScope.ScopePasses)
@@ -1019,7 +1023,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 treeItems.Add(managedObjectsRoot);
 
             // SearchFilter doesn't have to be applied to the managed objects, as their Tree is already fully build by the context builder and filtered right there
-            using var mainGroupScope = args.SearchFilter?.OpenScope(k_ManagedGroupName);
+            using var mainGroupScope = args.SearchFilter?.OpenScope(ManagedGroupName);
             // Add the VirtualMachine memory usage.
             if (PassesStatusFilter(args, k_ManagedVMGroupName, ObjectStatus.VirtualMachine))
             {
@@ -1052,7 +1056,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 tree = new TreeViewItemData<AllTrackedMemoryModel.ItemData>(
                     (int)IAnalysisViewSelectable.Category.Managed,
                     new AllTrackedMemoryModel.ItemData(
-                        k_ManagedGroupName,
+                        ManagedGroupName,
                         totals,
                         new SourceIndex(),
                         childCount: treeItems.Count)

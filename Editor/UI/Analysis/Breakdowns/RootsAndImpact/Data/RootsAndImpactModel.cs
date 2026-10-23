@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Unity.Collections;
+using Unity.MemoryProfiler.Editor.Containers;
 using UnityEngine.UIElements;
 
 namespace Unity.MemoryProfiler.Editor.UI
@@ -24,10 +26,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         readonly FlattenedRowStore<CompactFlatRow> m_Store;
         /// <summary>
-        /// The total over the whole (unfiltered) store; the baseline TotalImpactSize restored when no filter
-        /// is active. A filter recomputes TotalImpactSize over the matching subset via the depth-stack below.
+        /// The totals over the whole (unfiltered) store, restored when no filter is active. A filter recomputes
+        /// them over the matching subset via the depth-stack below.
         /// </summary>
         readonly NativeRootSize m_UnfilteredTotalImpact;
+        readonly MemorySize m_UnfilteredTotalImpactExclusive;
+        readonly MemorySize m_UnfilteredTotalOwnSize;
+        readonly MemorySize m_UnfilteredTotalSharedInTotal;
+        readonly MemorySize m_UnfilteredTotalSharedProRata;
         /// <summary>
         /// Reusable scratch for the filtered-total recompute: a stack of the depths of currently-kept ancestor
         /// rows along the DFS path. See ApplyFlatFilter / AccumulateFilteredTotal.
@@ -35,9 +41,34 @@ namespace Unity.MemoryProfiler.Editor.UI
         readonly List<ushort> m_KeptAncestorDepthStack = new List<ushort>();
         /// <summary>Running total accumulated during a filtered-total recompute pass.</summary>
         NativeRootSize m_FilteredTotalAccumulator;
+        MemorySize m_FilteredExclusiveAccumulator;
+        MemorySize m_FilteredSharedProRataAccumulator;
+        MemorySize m_FilteredOwnSizeAccumulator;
+        MemorySize m_FilteredSharedInTotalAccumulator;
+        /// <summary>
+        /// True while the filter is the "all potential savings" deep-link with no text search, where the AssetBundle
+        /// rows' contribution is replaced by the shared bundle-level accounting. A field because
+        /// AccumulateFilteredTotal runs as a bound delegate and cannot take extra parameters.
+        /// </summary>
+        bool m_ApplyAssetBundleAllSavingsSubstitution;
+        /// <summary>
+        /// Sum of the topmost-kept AssetBundle-category rows' TotalImpact and ExclusiveImpactSum while
+        /// <see cref="m_ApplyAssetBundleAllSavingsSubstitution"/> is set, which ApplyFlatFilter swaps for the shared category value.
+        /// </summary>
+        NativeRootSize m_FilteredAssetBundleCategoryTotal;
+        /// <summary>Exclusive counterpart of <see cref="m_FilteredAssetBundleCategoryTotal"/>.</summary>
+        MemorySize m_FilteredAssetBundleCategoryExclusive;
+        /// <summary>Shared pro-rata counterpart of <see cref="m_FilteredAssetBundleCategoryTotal"/>.</summary>
+        MemorySize m_FilteredAssetBundleCategorySharedProRata;
         bool[] m_BucketRevealMask;
+        /// <summary>
+        /// Ascending store indices of the exclusive-only rows that Hide Exclusive-Only still keeps because a
+        /// descendant survives it. Built on first use; see EnsureExclusiveOnlyRowsWithSurvivingDescendants.
+        /// </summary>
+        DynamicArray<long> m_ExclusiveOnlyRowsWithSurvivingDescendants;
         /// <summary>Guards every method below that mutates the flattened view's shared state.</summary>
         readonly object m_FlatMutationLock = new object();
+        readonly Dictionary<int, FilteredImpact> m_FilteredImpactByItemId;
 
         /// <summary>
         /// Hierarchical / id-filtered / empty model: rows are held directly in <paramref name="treeRootNodes"/>,
@@ -50,12 +81,44 @@ namespace Unity.MemoryProfiler.Editor.UI
             List<TreeViewItemData<ItemData>> treeRootNodes,
             RootsAndImpactRowSource rowSource,
             NativeRootSize totalImpactSize,
-            MemorySize totalSnapshotMemorySize)
+            MemorySize totalSnapshotMemorySize,
+            MemorySize totalImpactExclusiveSize = default,
+            MemorySize totalOwnSize = default,
+            MemorySize totalSharedInTotalSize = default,
+            MemorySize totalSharedProRataSize = default,
+            Dictionary<int, FilteredImpact> filteredImpactByItemId = null)
             : base(treeRootNodes)
         {
             TotalImpactSize = totalImpactSize;
             TotalSnapshotMemorySize = totalSnapshotMemorySize;
+            TotalImpactExclusiveSize = totalImpactExclusiveSize;
+            TotalOwnSize = totalOwnSize;
+            TotalSharedInTotalSize = totalSharedInTotalSize;
             m_RowSource = rowSource;
+            m_FilteredImpactByItemId = filteredImpactByItemId;
+            TotalImpactSharedProRataSize = totalSharedProRataSize;
+        }
+
+        static ulong SaturatingSubtract(ulong total, ulong part) => total > part ? total - part : 0;
+
+        internal static MemorySize SharedProRataOf(NativeRootSize totalImpactSize, MemorySize totalImpactExclusiveSize)
+        {
+            var totalImpactSum = totalImpactSize.SumUp();
+            return new MemorySize(
+                SaturatingSubtract(totalImpactSum.Committed, totalImpactExclusiveSize.Committed),
+                SaturatingSubtract(totalImpactSum.Resident, totalImpactExclusiveSize.Resident));
+        }
+
+        /// <summary>
+        /// Gets the filter-relevant impact of a de-emphasized filter-match-ancestor or group-header row. Returns
+        /// <c>false</c> for matching rows and unfiltered builds, which render their own values.
+        /// </summary>
+        public bool TryGetFilteredImpact(int itemId, out FilteredImpact filteredImpact)
+        {
+            if (m_FilteredImpactByItemId != null)
+                return m_FilteredImpactByItemId.TryGetValue(itemId, out filteredImpact);
+            filteredImpact = default;
+            return false;
         }
 
         /// <summary>
@@ -68,14 +131,26 @@ namespace Unity.MemoryProfiler.Editor.UI
             RootsAndImpactRowSource rowSource,
             int pageSize,
             NativeRootSize totalImpactSize,
-            MemorySize totalSnapshotMemorySize)
+            MemorySize totalSnapshotMemorySize,
+            MemorySize totalImpactExclusiveSize = default,
+            MemorySize totalOwnSize = default,
+            MemorySize totalSharedInTotalSize = default,
+            MemorySize totalSharedProRataSize = default)
             : base(new List<TreeViewItemData<ItemData>>())
         {
             TotalImpactSize = totalImpactSize;
             TotalSnapshotMemorySize = totalSnapshotMemorySize;
+            TotalImpactExclusiveSize = totalImpactExclusiveSize;
+            TotalOwnSize = totalOwnSize;
+            TotalSharedInTotalSize = totalSharedInTotalSize;
+            TotalImpactSharedProRataSize = totalSharedProRataSize;
             m_RowSource = rowSource;
             m_Store = rowSource.Store;
             m_UnfilteredTotalImpact = totalImpactSize;
+            m_UnfilteredTotalImpactExclusive = totalImpactExclusiveSize;
+            m_UnfilteredTotalOwnSize = totalOwnSize;
+            m_UnfilteredTotalSharedInTotal = totalSharedInTotalSize;
+            m_UnfilteredTotalSharedProRata = totalSharedProRataSize;
             m_BucketRevealMask = new bool[(int)RootAndImpactInfo.OwnershipBucket.Count];
 
             m_Paged = new PagedFlatModel<CompactFlatRow, ItemData>(m_Store, RootNodes, pageSize, row => row.TreeId,
@@ -100,6 +175,30 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <see cref="TotalSnapshotMemorySize"/>.
         /// </summary>
         public NativeRootSize TotalImpactSize { get; private set; }
+
+        /// <summary>
+        /// The portion of <see cref="TotalImpactSize"/> not shared with any other referrer: the sum of the displayed
+        /// <see cref="ItemData.ExclusiveImpactSum"/> of the same top-level rows.
+        /// </summary>
+        public MemorySize TotalImpactExclusiveSize { get; private set; }
+
+        /// <summary>
+        /// The shared (pro-rata) column summed over the topmost rows from their displayed values, which stay
+        /// accurate where a row's total and exclusive impact were discounted.
+        /// </summary>
+        public MemorySize TotalImpactSharedProRataSize { get; private set; }
+
+        /// <summary>
+        /// The own size of every row summed at all depths, because <see cref="ItemData.OwnSizeSum"/> never covers a
+        /// row's subtree.
+        /// </summary>
+        public MemorySize TotalOwnSize { get; private set; }
+
+        /// <summary>
+        /// The shared-in-total column summed over the topmost rows. It intentionally exceeds the snapshot total,
+        /// since shared bytes count once per referrer; read it as a reference-hotspot magnitude, not an amount of memory.
+        /// </summary>
+        public MemorySize TotalSharedInTotalSize { get; private set; }
 
         /// <summary>The total size of memory accounted for in the original snapshot, used to reconcile the table total against the snapshot.</summary>
         public MemorySize TotalSnapshotMemorySize { get; }
@@ -193,6 +292,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 // Nothing excluded: show the whole store; the total is the precomputed unfiltered baseline.
                 TotalImpactSize = m_UnfilteredTotalImpact;
+                TotalImpactExclusiveSize = m_UnfilteredTotalImpactExclusive;
+                TotalOwnSize = m_UnfilteredTotalOwnSize;
+                TotalSharedInTotalSize = m_UnfilteredTotalSharedInTotal;
+                TotalImpactSharedProRataSize = m_UnfilteredTotalSharedProRata;
                 m_Paged.ApplyFilter(null, materialize: materialize);
                 return;
             }
@@ -201,12 +304,37 @@ namespace Unity.MemoryProfiler.Editor.UI
             var revealVirtualMachine = false;
             if (filter != null)
                 revealBucket = BuildBucketRevealMask(filter, out revealVirtualMachine);
+            if (hideExclusiveOnly)
+                EnsureExclusiveOnlyRowsWithSurvivingDescendants();
             var predicate = BuildRowFilterPredicate(filter, hideExclusiveOnly, hideRegionData, revealBucket, revealVirtualMachine);
 
             m_KeptAncestorDepthStack.Clear();
+            m_ApplyAssetBundleAllSavingsSubstitution =
+                filter != null && filter.ExclusiveStatusMask == RootsAndImpactSummaryModelBuilder.AllSavingsStatusMask
+                && filter.SearchStringFilter == null;
             m_FilteredTotalAccumulator = default;
+            m_FilteredExclusiveAccumulator = default;
+            m_FilteredSharedProRataAccumulator = default;
+            m_FilteredOwnSizeAccumulator = default;
+            m_FilteredSharedInTotalAccumulator = default;
+            m_FilteredAssetBundleCategoryTotal = default;
+            m_FilteredAssetBundleCategoryExclusive = default;
+            m_FilteredAssetBundleCategorySharedProRata = default;
             m_Paged.ApplyFilter(predicate, AccumulateFilteredTotal, materialize);
+            if (m_ApplyAssetBundleAllSavingsSubstitution)
+            {
+                // Row impacts miss a used bundle's reclaimable share and overstate unused content the recoverable splits pro-rata.
+                m_RowSource.ComputeAssetBundleSavingsCategory(out var categoryTotal, out var categoryExclusive);
+                m_FilteredTotalAccumulator = m_FilteredTotalAccumulator - m_FilteredAssetBundleCategoryTotal + categoryTotal;
+                m_FilteredExclusiveAccumulator = m_FilteredExclusiveAccumulator - m_FilteredAssetBundleCategoryExclusive + categoryExclusive;
+                m_FilteredSharedProRataAccumulator = m_FilteredSharedProRataAccumulator - m_FilteredAssetBundleCategorySharedProRata
+                    + SharedProRataOf(categoryTotal, categoryExclusive);
+            }
             TotalImpactSize = m_FilteredTotalAccumulator;
+            TotalImpactExclusiveSize = m_FilteredExclusiveAccumulator;
+            TotalOwnSize = m_FilteredOwnSizeAccumulator;
+            TotalSharedInTotalSize = m_FilteredSharedInTotalAccumulator;
+            TotalImpactSharedProRataSize = m_FilteredSharedProRataAccumulator;
         }
 
         /// <summary>
@@ -238,19 +366,82 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         /// <summary>
         /// Runs for every store row in DFS pre-order during ApplyFlatFilter. Maintains a stack of the depths of
-        /// currently-kept ancestor rows; a kept row contributes its TotalImpact only when it has no kept ancestor,
-        /// whose TotalImpact already subsumes it.
+        /// currently-kept ancestor rows; a kept row contributes its TotalImpact, ExclusiveImpactSum and SharedInTotalSum
+        /// only when it has no kept ancestor, whose values already subsume it. OwnSizeSum accumulates at every kept
+        /// row. Also tracks AssetBundle-category rows separately while
+        /// <see cref="m_ApplyAssetBundleAllSavingsSubstitution"/> is set.
         /// </summary>
         void AccumulateFilteredTotal(long storeIndex, bool kept)
         {
-            var depth = m_Store[storeIndex].Depth;
+            ref readonly var row = ref m_Store[storeIndex];
+            var depth = row.Depth;
             while (m_KeptAncestorDepthStack.Count > 0 && m_KeptAncestorDepthStack[m_KeptAncestorDepthStack.Count - 1] >= depth)
                 m_KeptAncestorDepthStack.RemoveAt(m_KeptAncestorDepthStack.Count - 1);
             if (!kept)
                 return;
+            m_FilteredOwnSizeAccumulator += row.OwnSizeSum;
             if (m_KeptAncestorDepthStack.Count == 0)
-                m_FilteredTotalAccumulator += m_Store[storeIndex].TotalImpact;
+            {
+                m_FilteredTotalAccumulator += row.TotalImpact;
+                m_FilteredExclusiveAccumulator += row.ExclusiveImpactSum;
+                m_FilteredSharedProRataAccumulator += row.SharedProRataSum;
+                m_FilteredSharedInTotalAccumulator += row.SharedInTotalSum;
+                if (m_ApplyAssetBundleAllSavingsSubstitution
+                    && RootsAndImpactSummaryModelBuilder.TryMapStatusToIssue(row.Status, out var issue)
+                    && issue == RootsAndImpactSummaryModelBuilder.TypeOfRootIssues.UnloadableAssetBundleMemory)
+                {
+                    m_FilteredAssetBundleCategoryTotal += row.TotalImpact;
+                    m_FilteredAssetBundleCategoryExclusive += row.ExclusiveImpactSum;
+                    m_FilteredAssetBundleCategorySharedProRata += row.SharedProRataSum;
+                }
+            }
             m_KeptAncestorDepthStack.Add(depth);
+        }
+
+        /// <summary>
+        /// The tree build hides an exclusive-only node only once none of its children survived (a post-order,
+        /// leaf-only rule), so an exclusive-only node above a descendant with shared impact stays visible. This
+        /// reproduces that over the pre-order store in one reverse pass, where <c>survivorBelowDepth[d]</c> says
+        /// whether a surviving row at depth d was seen since the last row shallower than d — i.e. whether the
+        /// next parent reached at depth d - 1 has a surviving descendant. Rows at the saturated depth
+        /// <see cref="ushort.MaxValue"/> can't be told apart from their descendants, so each of them counts any
+        /// later surviving saturated row as one; that can only keep extra rows below an already-kept ancestor,
+        /// never drop one or change the total. The store is immutable for this model, so the result is computed once.
+        /// </summary>
+        void EnsureExclusiveOnlyRowsWithSurvivingDescendants()
+        {
+            if (m_ExclusiveOnlyRowsWithSurvivingDescendants.IsCreated)
+                return;
+
+            var rows = new DynamicArray<long>(0, Allocator.Persistent);
+            var survivorBelowDepth = new DynamicArray<bool>(0, Allocator.Persistent);
+            try
+            {
+                for (var i = m_Store.Count - 1; i >= 0; i--)
+                {
+                    ref readonly var row = ref m_Store[i];
+                    var childDepth = Math.Min(row.Depth + 1L, ushort.MaxValue);
+                    if (survivorBelowDepth.Count <= childDepth)
+                        survivorBelowDepth.Resize(childDepth + 1, memClear: true);
+
+                    var hasSurvivingDescendant = survivorBelowDepth[childDepth];
+                    survivorBelowDepth[childDepth] = false;
+
+                    var exclusiveOnly = row.IsExclusiveOnly && !row.IsRegionData;
+                    if (exclusiveOnly && hasSurvivingDescendant)
+                        rows.Push(i);
+                    if (!exclusiveOnly || hasSurvivingDescendant)
+                        survivorBelowDepth[row.Depth] = true;
+                }
+            }
+            finally
+            {
+                survivorBelowDepth.Dispose();
+            }
+
+            for (long lo = 0, hi = rows.Count - 1; lo < hi; lo++, hi--)
+                (rows[lo], rows[hi]) = (rows[hi], rows[lo]);
+            m_ExclusiveOnlyRowsWithSurvivingDescendants = rows;
         }
 
         /// <summary>
@@ -269,13 +460,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var row = m_Store[i];
 
                 // Structural hide toggles, applied as post-filters over the superset store. Hide Exclusive-Only
-                // drops rows with only exclusive impact; an exclusive-only node's whole subtree is exclusive-only
-                // by construction, so dropping every such row drops pure-exclusive subtrees whole (no cascade
-                // needed). Region rows look exclusive-only but are emitted outside the ownership tree and are
-                // never subject to this toggle, so they are excluded from the gate.
+                // drops rows with only exclusive impact unless a descendant survives the toggle, as the tree build
+                // does. Region rows look exclusive-only but are emitted outside the ownership tree and are never
+                // subject to this toggle, so they are excluded from the gate.
                 if (hideRegionData && row.IsRegionData)
                     return false;
-                if (hideExclusiveOnly && row.IsExclusiveOnly && !row.IsRegionData)
+                if (hideExclusiveOnly && row.IsExclusiveOnly && !row.IsRegionData
+                    && DynamicArrayAlgorithms.BinarySearch(m_ExclusiveOnlyRowsWithSurvivingDescendants, i) < 0)
                     return false;
 
                 if (filter == null)
@@ -330,9 +521,16 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// </summary>
         bool[] BuildBucketRevealMask(CompoundSearchFilter filter, out bool revealVirtualMachine)
         {
+            // Mirror tree mode's "Managed Roots" name match revealing every sub-group (see
+            // RootsAndImpactModelBuilder.IsManagedRootsSubGroup) so flat mode's reveal mask agrees.
+            bool managedRootsNameMatches = filter.MatchesTextName(UIContentData.TextContent.RootsAndImpactBucketManagedRoots);
+
             Array.Clear(m_BucketRevealMask, 0, m_BucketRevealMask.Length);
             for (var b = 0; b < m_BucketRevealMask.Length; b++)
-                m_BucketRevealMask[b] = filter.MatchesTextName(RootsAndImpactModelBuilder.BucketDisplayNameForBucketId((byte)b));
+            {
+                m_BucketRevealMask[b] = filter.MatchesTextName(RootsAndImpactModelBuilder.BucketDisplayNameForBucketId((byte)b))
+                    || (managedRootsNameMatches && RootsAndImpactModelBuilder.IsManagedRootsSubGroup((RootAndImpactInfo.OwnershipBucket)b));
+            }
             revealVirtualMachine = filter.MatchesTextName(
                 RootsAndImpactModelBuilder.BucketDisplayNameForBucketId(CompactFlatRow.BucketIdVirtualMachine));
             return m_BucketRevealMask;
@@ -347,9 +545,18 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_Paged.MaterializePage(page);
         }
 
+        public bool TryGetPageForRow(long storeIndex, out int page)
+        {
+            page = 0;
+            return m_Paged != null && m_Paged.TryGetPageForRow(storeIndex, out page);
+        }
+
+        public int GetTreeIdForStoreIndex(long storeIndex) => RowSource.Store[storeIndex].TreeId;
+
         public void Dispose()
         {
             m_Paged?.Dispose();
+            m_ExclusiveOnlyRowsWithSurvivingDescendants.Dispose();
             m_RowSource?.Release();
         }
 
@@ -360,7 +567,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// in a managed dictionary, so a multi-million-node ownership tree only fits if that entry stays this
         /// small.
         /// </summary>
-        public readonly struct ItemData : IPrivateComparableItemData
+        public readonly struct ItemData : IPrivateComparableItemData, IHasSourceIndex
         {
             static readonly CompactFlatRow s_Zero = default;
 
@@ -463,6 +670,52 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// True if the own size of this item includes graphics memory (GfxSize > 0).
             /// </summary>
             public bool OwnSizeIncludesGraphics => Row.OwnSizeIncludesGraphics;
+
+            /// <summary>
+            /// The number of referrers this item's impact was divided across (see <see cref="RootAndImpactInfo.GetReferrerCount"/>);
+            /// <see cref="RootAndImpactInfo.ReferrerData.SingleReferrer"/> if it never divided and for group-header rows.
+            /// </summary>
+            public long ReferrerCount => IsValid ? Row.ReferrerCount : RootAndImpactInfo.ReferrerData.SingleReferrer;
+
+            /// <summary>
+            /// True if this item's ownership-tree parent received none of its impact (see <see cref="RootAndImpactInfo.TryGetOrphanedSplitRedirect"/>).
+            /// </summary>
+            public bool ParentExcludedFromSplit => Row.ParentExcludedFromSplit;
+
+            /// <summary>
+            /// True if this item's <see cref="ExclusiveImpactSum"/> does not reach a single referrer up the chain as Exclusive,
+            /// because its impact was divided or its parent was excluded from the split.
+            /// </summary>
+            public bool ExclusiveWasShared => ReferrerCount != RootAndImpactInfo.ReferrerData.SingleReferrer || ParentExcludedFromSplit;
+        }
+
+        /// <summary>
+        /// The impact of the topmost filter-matching descendants beneath a de-emphasized ancestor or group-header row.
+        /// Kept in a side-table (see <see cref="TryGetFilteredImpact"/>) so unfiltered rows pay no per-row cost.
+        /// </summary>
+        public readonly struct FilteredImpact
+        {
+            public FilteredImpact(NativeRootSize totalImpact, MemorySize exclusiveImpactSum, MemorySize sharedProRataSum, MemorySize sharedInTotalSum)
+            {
+                TotalImpact = totalImpact;
+                ExclusiveImpactSum = exclusiveImpactSum;
+                SharedProRataSum = sharedProRataSum;
+                SharedInTotalSum = sharedInTotalSum;
+            }
+
+            public NativeRootSize TotalImpact { get; }
+            public MemorySize ExclusiveImpactSum { get; }
+            public MemorySize SharedProRataSum { get; }
+            public MemorySize SharedInTotalSum { get; }
+
+            /// <summary>The summed-up <see cref="TotalImpact"/>, matching <see cref="ItemData.TotalImpactSum"/>.</summary>
+            public MemorySize TotalImpactSum => TotalImpact.SumUp();
+
+            public static FilteredImpact operator +(FilteredImpact a, FilteredImpact b) => new FilteredImpact(
+                a.TotalImpact + b.TotalImpact,
+                a.ExclusiveImpactSum + b.ExclusiveImpactSum,
+                a.SharedProRataSum + b.SharedProRataSum,
+                a.SharedInTotalSum + b.SharedInTotalSum);
         }
     }
 }

@@ -26,11 +26,15 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// can tell that the loading overlay it put up now belongs to a newer build and must be left alone.
         /// </summary>
         int m_LatestBuildGeneration;
+        int m_SettledBuildGeneration;
 
         /// <summary>
         /// Gets whether a model is currently being built or if a completed model exists.
         /// </summary>
         public bool HasModelOrIsBuildingOne => m_LastBuildModelTask != null;
+
+        /// <summary>Whether the latest requested build has yet to be applied, fail or be canceled.</summary>
+        public bool IsBuilding => Volatile.Read(ref m_SettledBuildGeneration) != Volatile.Read(ref m_LatestBuildGeneration);
 
         /// <summary>
         /// Gets the current finalized model, or null if no model has been successfully built.
@@ -42,13 +46,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         /// <summary>
         /// Builds a model asynchronously with proper cancellation and cleanup handling.
+        /// A call that has been superseded by a later one owns nothing from that point on: it must neither apply
+        /// its model nor hide the loading overlay, which by then belongs to the build that replaced it.
         /// </summary>
         /// <param name="getBuilderTask">Function to get the builder task</param>
         /// <param name="getSorterTask">Function to get the sorter task</param>
         /// <param name="onModelRebuild">Callback when model is rebuilt (success/failure)</param>
         /// <param name="onViewReloaded">Callback when view should be reloaded</param>
         /// <param name="showLoading">Action to show loading UI</param>
-        /// <param name="hideLoading">Action to hide loading UI</param>
+        /// <param name="hideLoading">Action to hide loading UI. Invoked only while this build is still the latest one.</param>
         /// <param name="justSort">If true, only sort existing model without rebuilding</param>
         /// <returns>The built and sorted model, or null if canceled/failed</returns>
         public async Task<TModel> BuildModelAsync(
@@ -70,6 +76,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 if (buildGeneration == Volatile.Read(ref m_LatestBuildGeneration))
                     hideLoading();
+            }
+
+            void SettleUnlessSuperseded()
+            {
+                if (buildGeneration == Volatile.Read(ref m_LatestBuildGeneration))
+                    Volatile.Write(ref m_SettledBuildGeneration, buildGeneration);
             }
 
             // Cleanup previously canceled builds
@@ -115,6 +127,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     m_LastFinalizedModelTask = Task.FromResult(model);
 
                     var success = model != null;
+                    SettleUnlessSuperseded();
                     onModelRebuild(model, success, modelHasNewTreeViewIds, null);
 
                     // Hide loading UI
@@ -138,6 +151,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             catch (OperationCanceledException)
             {
                 AsyncTaskHelper.DebugLogAsyncStep("Async Building - Canceled                 " + modelTypeName);
+                SettleUnlessSuperseded();
                 HideLoadingUnlessSuperseded();
                 return null;
             }
@@ -146,6 +160,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Update the UI even if an exception happens
                 try
                 {
+                    SettleUnlessSuperseded();
                     onModelRebuild(null, false, modelHasNewTreeViewIds, e);
                     onViewReloaded(false);
                     HideLoadingUnlessSuperseded();

@@ -27,9 +27,31 @@ namespace Unity.MemoryProfiler.Editor.UI
             UnifiedUnityObject,
 
             GCHandle,
+            ManagedRoot,
 
             LeakedShell,
             LeakedDynamicAsset,
+
+            /// <summary>
+            /// A row that only shows the managed half of a Full Unity Object whose native half is shown as a
+            /// separate row (e.g. Roots &amp; Impact). Same icon as <see cref="UnifiedUnityObject"/> but with the
+            /// native (C++) side greyed out.
+            /// </summary>
+            UnifiedUnityObjectManagedHalf,
+            /// <summary>
+            /// A row that only shows the native half of a Full Unity Object whose managed half is shown as a
+            /// separate row (e.g. Roots &amp; Impact). Same icon as <see cref="UnifiedUnityObject"/> but with the
+            /// managed (C#) side greyed out.
+            /// </summary>
+            UnifiedUnityObjectNativeHalf,
+            /// <summary>
+            /// The managed-half row equivalent of <see cref="LeakedDynamicAsset"/>, see <see cref="UnifiedUnityObjectManagedHalf"/>.
+            /// </summary>
+            LeakedDynamicAssetManagedHalf,
+            /// <summary>
+            /// The native-half row equivalent of <see cref="LeakedDynamicAsset"/>, see <see cref="UnifiedUnityObjectNativeHalf"/>.
+            /// </summary>
+            LeakedDynamicAssetNativeHalf,
         }
 
         DataType m_DataType = DataType.UnifiedUnityObject;
@@ -40,7 +62,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         public DataType Type
         {
             get { return m_DataType; }
-            private set
+            internal set
             {
                 m_DataType = value;
                 m_DataTypeIcon.ClearClassList();
@@ -62,6 +84,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                         m_DataTypeIcon.AddToClassList(k_ClassDataTypeGCHandle);
                         m_DataTypeIcon.tooltip = TextContent.DataTypeGCHandleTooltip;
                         break;
+                    case DataType.ManagedRoot:
+                        m_DataTypeIcon.AddToClassList(k_ClassDataTypeManaged);
+                        m_DataTypeIcon.tooltip = TextContent.DataTypeManagedRootTooltip;
+                        break;
                     case DataType.UnifiedUnityType:
                     case DataType.UnifiedUnityObject:
                         m_DataTypeIcon.AddToClassList(k_ClassDataTypeUnified);
@@ -74,6 +100,22 @@ namespace Unity.MemoryProfiler.Editor.UI
                     case DataType.LeakedDynamicAsset:
                         m_DataTypeIcon.AddToClassList(k_ClassDataTypeLeakedDynamicAsset);
                         m_DataTypeIcon.tooltip = TextContent.DataTypeLeakedDynamicAssetTooltip;
+                        break;
+                    case DataType.UnifiedUnityObjectManagedHalf:
+                        m_DataTypeIcon.AddToClassList(k_ClassDataTypeUnifiedManagedHalf);
+                        m_DataTypeIcon.tooltip = TextContent.DataTypeUnifiedUnityManagedHalfTooltip;
+                        break;
+                    case DataType.UnifiedUnityObjectNativeHalf:
+                        m_DataTypeIcon.AddToClassList(k_ClassDataTypeUnifiedNativeHalf);
+                        m_DataTypeIcon.tooltip = TextContent.DataTypeUnifiedUnityNativeHalfTooltip;
+                        break;
+                    case DataType.LeakedDynamicAssetManagedHalf:
+                        m_DataTypeIcon.AddToClassList(k_ClassDataTypeLeakedDynamicAssetManagedHalf);
+                        m_DataTypeIcon.tooltip = TextContent.DataTypeLeakedDynamicAssetManagedHalfTooltip;
+                        break;
+                    case DataType.LeakedDynamicAssetNativeHalf:
+                        m_DataTypeIcon.AddToClassList(k_ClassDataTypeLeakedDynamicAssetNativeHalf);
+                        m_DataTypeIcon.tooltip = TextContent.DataTypeLeakedDynamicAssetNativeHalfTooltip;
                         break;
                     default:
                         m_DataTypeIcon.AddToClassList(k_ClassDataTypeUnknown);
@@ -156,6 +198,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         string m_NativeObjectName = string.Empty;
         CachedSnapshot.SourceIndex m_SourceIndex;
+        CachedSnapshot.SourceIndex m_RowSourceIndex;
+        CachedSnapshot m_RowSnapshot;
 
 #if UNITY_6000_0_OR_NEWER
         [UxmlAttribute]
@@ -212,6 +256,25 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         public Action<ContextualMenuPopulateEvent> ContextMenuOpening = delegate { };
 
+        /// <summary>
+        /// The object or type this label's row shows, keeping the native half of a Unity Object row rather than its managed shell.
+        /// Invalid for a row without one, e.g. a group row, so callers must check <see cref="CachedSnapshot.SourceIndex.Valid"/>.
+        /// </summary>
+        public CachedSnapshot.SourceIndex RowSourceIndex => m_RowSourceIndex;
+
+        /// <summary>The snapshot <see cref="RowSourceIndex"/> belongs to.</summary>
+        public CachedSnapshot RowSnapshot => m_RowSnapshot;
+
+        /// <summary>
+        /// Sets the row's source for a row whose label is shown as plain text, e.g. a memory region, which no
+        /// <c>SetLabelData</c> overload derives from a source. Call it after setting the label data, which resets it.
+        /// </summary>
+        public void SetRowSource(CachedSnapshot cs, CachedSnapshot.SourceIndex source)
+        {
+            m_RowSourceIndex = source;
+            m_RowSnapshot = cs;
+        }
+
         public override VisualElement contentContainer
         {
             get { return null; }
@@ -225,6 +288,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         Button m_DocumentationButton;
 
         bool m_NeedsDisposal;
+        bool m_SubscribedToTruncateState;
+
+        internal bool IsSubscribedToTruncateStateChanges => m_SubscribedToTruncateState;
 
         const string k_ClassIconItem = "type-icon";
         const string k_ClassDataTypeIcon = "data-type-icon";
@@ -234,6 +300,10 @@ namespace Unity.MemoryProfiler.Editor.UI
         const string k_ClassDataTypeUnified = "data-type-icon__unified";
         const string k_ClassDataTypeLeakedShell = "data-type-icon__leaked-shell";
         const string k_ClassDataTypeLeakedDynamicAsset = "data-type-icon__leaked-dynamic-asset";
+        const string k_ClassDataTypeUnifiedManagedHalf = "data-type-icon__unified-managed-half";
+        const string k_ClassDataTypeUnifiedNativeHalf = "data-type-icon__unified-native-half";
+        const string k_ClassDataTypeLeakedDynamicAssetManagedHalf = "data-type-icon__leaked-dynamic-asset-managed-half";
+        const string k_ClassDataTypeLeakedDynamicAssetNativeHalf = "data-type-icon__leaked-dynamic-asset-native-half";
         const string k_ClassDataTypeUnknown = "no-icon__icon";
 
         public ObjectOrTypeLabel()
@@ -255,6 +325,10 @@ namespace Unity.MemoryProfiler.Editor.UI
             this.AddManipulator(new ContextualMenuManipulator(PopulateOptionMenu));
 
             UIElementsHelper.SetVisibility(m_DocumentationButton, false /*!string.IsNullOrEmpty(m_DocumentationLink)*/);
+
+            // The static settings event must not outlive the panel, or a closed window stays reachable through it.
+            RegisterCallback<AttachToPanelEvent>(OnAttachToPanel);
+            RegisterCallback<DetachFromPanelEvent>(_ => UpdateTruncateStateSubscription(attachedToPanel: false));
         }
 
         void PopulateOptionMenu(ContextualMenuPopulateEvent evt)
@@ -286,23 +360,26 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // These data types have no type name worth showing next to their name (e.g. a GCHandle's "type"
             // is just the GCHandle icon/tooltip, not a separate name), so skip straight to the name.
-            if (Type is DataType.GCHandle)
+            if (Type is DataType.GCHandle or DataType.ManagedRoot)
                 return name;
 
             // Apply the name and format it as surrounded by parentheses if it could have a native name.
             // If it could have a name but doesn't, the empty quotes will indicate that.
-            // For managed objects with their address as names or string preview values, we want to show the name without quotes to avoid visual clutter. 
-            var text = Type is DataType.UnifiedUnityObject or DataType.NativeObject or DataType.LeakedDynamicAsset or DataType.LeakedShell ? $"\"{name}\" " :
-                (string.IsNullOrEmpty(name) ? $"{name} " : name);
+            // For managed objects with their address as names or string preview values, we want to show the name without quotes to avoid visual clutter.
+            var quoteName = Type is DataType.UnifiedUnityObject or DataType.NativeObject or DataType.LeakedDynamicAsset or DataType.LeakedShell
+                or DataType.UnifiedUnityObjectManagedHalf or DataType.UnifiedUnityObjectNativeHalf
+                or DataType.LeakedDynamicAssetManagedHalf or DataType.LeakedDynamicAssetNativeHalf;
 
             var managedTypeName = truncateManagedType ? PathsToRootDetailView.TruncateTypeName(m_ManagedTypeName) : m_ManagedTypeName;
-            if (!string.IsNullOrEmpty(m_ManagedTypeName))
-                text += managedTypeName;
-
+            var typeText = string.IsNullOrEmpty(m_ManagedTypeName) ? string.Empty : managedTypeName;
             if (m_NativeTypeName != managedTypeName)
-                text += (string.IsNullOrEmpty(m_ManagedTypeName) || string.IsNullOrEmpty(m_NativeTypeName) ? string.Empty : " : ") + m_NativeTypeName;
+                typeText += (string.IsNullOrEmpty(m_ManagedTypeName) || string.IsNullOrEmpty(m_NativeTypeName) ? string.Empty : " : ") + m_NativeTypeName;
 
-            return text;
+            if (quoteName)
+                return string.IsNullOrEmpty(typeText) ? $"\"{name}\"" : $"\"{name}\" {typeText}";
+            if (string.IsNullOrEmpty(name))
+                return typeText;
+            return string.IsNullOrEmpty(typeText) ? name : $"{name} {typeText}";
         }
 
         public void SetLabelData(CachedSnapshot cs, UnifiedTypeAndName typeInfo)
@@ -324,6 +401,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             Type = typeInfo.IsUnifiedType ? DataType.UnifiedUnityType : (typeInfo.HasManagedType ? DataType.PureCSharpType : DataType.NativeUnityType);
             m_SourceIndex = typeInfo.HasManagedType ? new CachedSnapshot.SourceIndex(CachedSnapshot.SourceIndex.SourceId.ManagedType, typeInfo.ManagedTypeIndex)
                 : new CachedSnapshot.SourceIndex(CachedSnapshot.SourceIndex.SourceId.NativeType, typeInfo.NativeTypeIndex);
+            m_RowSourceIndex = m_SourceIndex;
+            m_RowSnapshot = cs;
 
             // Delay label updating until the end of this call, but use the properties to update the backing fields used for the UXML attributed fields.
             using var _ = new DelayedLabelUpdateScope(this);
@@ -332,7 +411,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             NativeObjectName = string.Empty;
         }
 
-        public void SetLabelData(CachedSnapshot cs, UnifiedUnityObjectInfo unityObjectInfo)
+        public void SetLabelData(CachedSnapshot cs, UnifiedUnityObjectInfo unityObjectInfo, CachedSnapshot.SourceIndex.SourceId? rowHalf = null)
         {
             InitializeIfNeeded();
             ShowIcons(true);
@@ -355,7 +434,11 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TypeIcon.image = typeIcon?.image;
 
             m_SourceIndex = unityObjectInfo.HasManagedSide ? unityObjectInfo.ManagedObjectData.GetSourceLink(cs) : unityObjectInfo.NativeObjectData.GetSourceLink(cs);
+            m_RowSourceIndex = m_SourceIndex;
+            m_RowSnapshot = cs;
             Type = GetDataTypeFromStatus(cs, in unityObjectInfo, m_SourceIndex);
+            if (rowHalf.HasValue && unityObjectInfo.IsFullUnityObject)
+                Type = ToHalfVariant(Type, rowHalf.Value);
 
             // Delay label updating until the end of this call, but use the properties to update the backing fields used for the UXML attributed fields.
             using var _ = new DelayedLabelUpdateScope(this);
@@ -370,7 +453,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// in the tables and the details panel. Snapshots whose status computation did not run report
         /// <see cref="ObjectStatus.None"/>; those fall back to the <see cref="UnifiedUnityObjectInfo"/> predicates.
         /// </summary>
-        static DataType GetDataTypeFromStatus(CachedSnapshot cs, in UnifiedUnityObjectInfo unityObjectInfo, CachedSnapshot.SourceIndex sourceIndex)
+        internal static DataType GetDataTypeFromStatus(CachedSnapshot cs, in UnifiedUnityObjectInfo unityObjectInfo, CachedSnapshot.SourceIndex sourceIndex)
         {
             var status = cs?.ObjectStatusComputation?.GetStatus(sourceIndex) ?? ObjectStatus.None;
             switch (status)
@@ -389,6 +472,29 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Remaps a Unified/Leaked-Dynamic-Asset data type to the icon variant that greys out the symbol for
+        /// the half not represented by <paramref name="rowHalf"/>. Used by views (e.g. Roots &amp; Impact) that
+        /// show the managed and native halves of a Full Unity Object as separate rows, so each row's icon
+        /// signals it is only one half of that object.
+        /// </summary>
+        internal static DataType ToHalfVariant(DataType dataType, CachedSnapshot.SourceIndex.SourceId rowHalf)
+        {
+            switch (dataType)
+            {
+                case DataType.UnifiedUnityObject:
+                    return rowHalf == CachedSnapshot.SourceIndex.SourceId.ManagedObject ? DataType.UnifiedUnityObjectManagedHalf
+                        : rowHalf == CachedSnapshot.SourceIndex.SourceId.NativeObject ? DataType.UnifiedUnityObjectNativeHalf
+                        : dataType;
+                case DataType.LeakedDynamicAsset:
+                    return rowHalf == CachedSnapshot.SourceIndex.SourceId.ManagedObject ? DataType.LeakedDynamicAssetManagedHalf
+                        : rowHalf == CachedSnapshot.SourceIndex.SourceId.NativeObject ? DataType.LeakedDynamicAssetNativeHalf
+                        : dataType;
+                default:
+                    return dataType;
+            }
+        }
+
         public void SetLabelData(CachedSnapshot cs, string typeName, string objectName, DataType dataType = DataType.NativeUnityType, bool showDataTypeIcon = false)
         {
             InitializeIfNeeded();
@@ -397,6 +503,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TypeIcon.image = null;
             Type = dataType;
             m_SourceIndex = default;
+            m_RowSourceIndex = m_SourceIndex;
+            m_RowSnapshot = cs;
 
             // Delay label updating until the end of this call, but use the properties to update the backing fields used for the UXML attributed fields.
             using var _ = new DelayedLabelUpdateScope(this);
@@ -415,6 +523,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_TypeIcon.image = typeIcon?.image;
             Type = DataType.ManagedObject;
             m_SourceIndex = pureCSharpObject.GetSourceLink(cs);
+            m_RowSourceIndex = m_SourceIndex;
+            m_RowSnapshot = cs;
 
             // Delay label updating until the end of this call, but use the properties to update the backing fields used for the UXML attributed fields.
             using var _ = new DelayedLabelUpdateScope(this);
@@ -458,15 +568,21 @@ namespace Unity.MemoryProfiler.Editor.UI
             UIElementsHelper.SetVisibility(m_TypeIcon, true);
         }
 
-        public bool TrySetLabelDataFromSourceIndexForTableEntry(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, string itemName, out string displayName)
+        public bool TrySetLabelDataFromSourceIndexForTableEntry(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, string itemName, out string displayName, bool splitUnifiedObjectIntoHalves = false)
         {
             displayName = itemName;
             if (string.IsNullOrEmpty(displayName))
                 displayName = CachedSnapshot.InvalidItemName;
-            return TrySetLabelDataFromSourceIndex(snapshot, source, displayName);
+            return TrySetLabelDataFromSourceIndex(snapshot, source, displayName, splitUnifiedObjectIntoHalves);
         }
 
-        public bool TrySetLabelDataFromSourceIndex(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, string displayName = null)
+        /// <param name="splitUnifiedObjectIntoHalves">
+        /// Opt-in for views (e.g. Roots &amp; Impact) that show the managed and native halves of a Full Unity
+        /// Object as separate rows: when true and <paramref name="source"/> is a <see cref="CachedSnapshot.SourceIndex.SourceId.ManagedObject"/>
+        /// or <see cref="CachedSnapshot.SourceIndex.SourceId.NativeObject"/>, the icon greys out the symbol for
+        /// the half not represented by this row. Defaults to false so every other caller is unaffected.
+        /// </param>
+        public bool TrySetLabelDataFromSourceIndex(CachedSnapshot snapshot, CachedSnapshot.SourceIndex source, string displayName = null, bool splitUnifiedObjectIntoHalves = false)
         {
             switch (source.Id)
             {
@@ -480,14 +596,23 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case CachedSnapshot.SourceIndex.SourceId.GCHandleIndex:
                 case CachedSnapshot.SourceIndex.SourceId.Prefab:
                 case CachedSnapshot.SourceIndex.SourceId.Scene:
-                    SetLabelData(snapshot, source, displayName);
+                case CachedSnapshot.SourceIndex.SourceId.ManagedRoot:
+                case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                    SetLabelData(snapshot, source, displayName, splitUnifiedObjectIntoHalves);
                     return true;
                 default:
                     return false;
             }
         }
 
-        public void SetLabelData(CachedSnapshot cs, CachedSnapshot.SourceIndex source, string itemName = null)
+        public void SetLabelData(CachedSnapshot cs, CachedSnapshot.SourceIndex source, string itemName = null, bool splitUnifiedObjectIntoHalves = false)
+        {
+            SetLabelDataForSource(cs, source, itemName, splitUnifiedObjectIntoHalves);
+            m_RowSourceIndex = source;
+            m_RowSnapshot = cs;
+        }
+
+        void SetLabelDataForSource(CachedSnapshot cs, CachedSnapshot.SourceIndex source, string itemName, bool splitUnifiedObjectIntoHalves)
         {
             switch (source.Id)
             {
@@ -495,7 +620,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     var od = ObjectData.FromManagedObjectIndex(cs, (int)source.Index);
                     ShowIcons(true);
-                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
+                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od), splitUnifiedObjectIntoHalves ? source.Id : (CachedSnapshot.SourceIndex.SourceId?)null);
                     if (!string.IsNullOrEmpty(itemName))
                         NativeObjectName = itemName;
                     break;
@@ -504,7 +629,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     var od = ObjectData.FromNativeObjectIndex(cs, (int)source.Index);
                     ShowIcons(true);
-                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od));
+                    SetLabelData(cs, new UnifiedUnityObjectInfo(cs, od), splitUnifiedObjectIntoHalves ? source.Id : (CachedSnapshot.SourceIndex.SourceId?)null);
                     if (!string.IsNullOrEmpty(itemName))
                         NativeObjectName = itemName;
                     break;
@@ -575,6 +700,22 @@ namespace Unity.MemoryProfiler.Editor.UI
                 case CachedSnapshot.SourceIndex.SourceId.Scene:
                     SetStructuralLabelData(cs, source, itemName, Icons.SceneIconContent, TextContent.ObjectStatusSceneRoot);
                     break;
+                case CachedSnapshot.SourceIndex.SourceId.ManagedRoot:
+                {
+                    if (string.IsNullOrEmpty(itemName))
+                        SetLabelData(cs, itemName, string.Empty, DataType.ManagedRoot, showDataTypeIcon: true);
+                    else
+                        SetLabelData(cs, TextContent.ManagedRootTypeName, source.GetName(cs), DataType.ManagedRoot, showDataTypeIcon: true);
+                    break;
+                }
+                case CachedSnapshot.SourceIndex.SourceId.ManagedHeapSection:
+                {
+                    if (string.IsNullOrEmpty(itemName))
+                        SetLabelData(cs, itemName, string.Empty, DataType.ManagedRoot, showDataTypeIcon: true);
+                    else
+                        SetLabelData(cs, TextContent.ManagedHeapSectionTypeName, source.GetName(cs), DataType.ManagedRoot, showDataTypeIcon: true);
+                    break;
+                }
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -596,6 +737,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var name = string.IsNullOrEmpty(itemName) ? source.GetName(cs) : itemName;
 
+            // Delay label updating until the end of this call, but use the properties to update the backing fields used for the UXML attributed fields.
             using var _ = new DelayedLabelUpdateScope(this);
             ManagedTypeName = string.Empty;
             NativeTypeName = string.Empty;
@@ -607,7 +749,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (!m_NeedsDisposal)
             {
                 m_NeedsDisposal = true;
-                MemoryProfilerSettings.TruncateStateChanged += OnTruncateStateChanged;
+                UpdateTruncateStateSubscription(attachedToPanel: panel != null);
             }
         }
 
@@ -616,8 +758,27 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (m_NeedsDisposal)
             {
                 m_NeedsDisposal = false;
-                MemoryProfilerSettings.TruncateStateChanged -= OnTruncateStateChanged;
+                UpdateTruncateStateSubscription(attachedToPanel: false);
             }
+        }
+
+        void UpdateTruncateStateSubscription(bool attachedToPanel)
+        {
+            var subscribe = m_NeedsDisposal && attachedToPanel;
+            if (subscribe == m_SubscribedToTruncateState)
+                return;
+            m_SubscribedToTruncateState = subscribe;
+            if (subscribe)
+                MemoryProfilerSettings.TruncateStateChanged += OnTruncateStateChanged;
+            else
+                MemoryProfilerSettings.TruncateStateChanged -= OnTruncateStateChanged;
+        }
+
+        void OnAttachToPanel(AttachToPanelEvent evt)
+        {
+            UpdateTruncateStateSubscription(attachedToPanel: true);
+            if (m_NeedsDisposal)
+                OnTruncateStateChanged();
         }
 
         void OnTruncateStateChanged()
