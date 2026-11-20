@@ -7,6 +7,9 @@ using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -89,6 +92,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
     }
 
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     static class TreeViewControllerHelper
     {
         public static readonly IList<int> ShowNoItemsAtAllFilter = new List<int>().AsReadOnly();
@@ -344,7 +350,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
                 var model = t.Result;
                 // Sort it according to the current sort descriptors.
-                model?.Sort(sortComparison);
+                model?.Sort(sortComparison, cancellationToken);
 
                 cancellationToken.ThrowIfCancellationRequested();
                 AsyncTaskHelper.DebugLogAsyncStep("Sorting Finished                 " + typeof(TModel));

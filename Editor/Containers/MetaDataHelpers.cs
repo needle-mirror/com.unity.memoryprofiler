@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.Containers
 {
@@ -57,7 +61,9 @@ namespace Unity.MemoryProfiler.Editor.Containers
             return pos;
         }
     }
-
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class MetaDataHelpers
     {
         enum AvailableMetaDataTypes
@@ -68,6 +74,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
             Shader,
             Texture,
             Texture2D,
+            VisualEffectAsset,
+            VFXManager,
         }
 
         static Dictionary<string, AvailableMetaDataTypes> s_TypeNameToEnum = new()
@@ -78,6 +86,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
             { "Shader", AvailableMetaDataTypes.Shader },
             { "Texture", AvailableMetaDataTypes.Texture },
             { "Texture2D", AvailableMetaDataTypes.Texture2D },
+            { "VisualEffectAsset", AvailableMetaDataTypes.VisualEffectAsset },
+            { "VFXManager", AvailableMetaDataTypes.VFXManager },
         };
 
         static List<(string, string)> MetaDataStringFactory(ILongIndexedContainer<byte> bytes, AvailableMetaDataTypes key, CachedSnapshot cs)
@@ -90,6 +100,8 @@ namespace Unity.MemoryProfiler.Editor.Containers
                 case AvailableMetaDataTypes.Shader: return new ShaderMetaData(bytes).GenerateInfoStrings(cs);
                 case AvailableMetaDataTypes.Texture: return new TextureMetaData(bytes).GenerateInfoStrings(cs);
                 case AvailableMetaDataTypes.Texture2D: return new Texture2DMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.VisualEffectAsset: return new VisualEffectAssetMetaData(bytes).GenerateInfoStrings(cs);
+                case AvailableMetaDataTypes.VFXManager: return new VFXManagerMetaData(bytes).GenerateInfoStrings(cs);
                 default: throw new ArgumentOutOfRangeException();
             }
         }
@@ -669,6 +681,219 @@ namespace Unity.MemoryProfiler.Editor.Containers
         public bool VersionMatches()
         {
             return Version == kPackageFormatVersion;
+        }
+    }
+
+    internal struct VisualEffectAssetMetaData : IMetaDataBuffer
+    {
+        const int kPackageFormatVersion = 1;
+        public int Version;
+        public int BatchCount;
+        public int BatchSize;
+        public int CPUBuffersCount;
+        public List<string> CPUBufferNames;
+        public List<int> CPUBufferSizes;
+        public int GPUBuffersCount;
+        public List<string> GPUBufferNames;
+        public List<int> GPUBufferSizes;
+        public int BakedTextureSize;
+
+        public unsafe VisualEffectAssetMetaData(ILongIndexedContainer<byte> bytes)
+        {
+            BatchCount = 0;
+            BatchSize = 0;
+            CPUBuffersCount = 0;
+            CPUBufferNames = null;
+            CPUBufferSizes = null;
+            GPUBuffersCount = 0;
+            GPUBufferNames = null;
+            GPUBufferSizes = null;
+            BakedTextureSize = 0;
+
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+
+            Version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            // Other versions may use a different layout, and the counts read below drive further reads
+            if (Version != kPackageFormatVersion)
+                return;
+
+            BatchCount = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+            if (BatchCount > 0)
+            {
+                BatchSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+                CPUBuffersCount = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+                CPUBufferNames = new List<string>(CPUBuffersCount);
+                CPUBufferSizes = new List<int>(CPUBuffersCount);
+                for (int i = 0; i < CPUBuffersCount; i++)
+                {
+                    CPUBufferNames.Add(ByteBufferReader.ReadString(ref pos, ptr));
+                    CPUBufferSizes.Add(ByteBufferReader.ReadValue<int>(ref pos, ptr));
+                }
+
+                GPUBuffersCount = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+                GPUBufferNames = new List<string>(GPUBuffersCount);
+                GPUBufferSizes = new List<int>(GPUBuffersCount);
+                for (int i = 0; i < GPUBuffersCount; i++)
+                {
+                    GPUBufferNames.Add(ByteBufferReader.ReadString(ref pos, ptr));
+                    GPUBufferSizes.Add(ByteBufferReader.ReadValue<int>(ref pos, ptr));
+                }
+
+                BakedTextureSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+            }
+        }
+
+        public bool VersionMatches()
+        {
+            return Version == kPackageFormatVersion;
+        }
+
+        public List<(string, string)> GenerateInfoStrings(CachedSnapshot cachedSnapshot)
+        {
+            List<(string, string)> infoStrings = new List<(string, string)>();
+
+            if (!VersionMatches())
+            {
+                infoStrings.Add(("Warning",
+                    MetaDataHelpers.GenerateVersionMismatchWarning(Version, kPackageFormatVersion)));
+                return infoStrings;
+            }
+
+            infoStrings.Add(("Batch Count", BatchCount.ToString()));
+            if (BatchCount > 0)
+            {
+                infoStrings.Add(("Batch Size", BatchSize.ToString()));
+
+                // Only buffers with a non-zero size are listed, so count those and find the last one to use └ for it
+                int lastCPUIndex = -1;
+                int nonEmptyCPUBuffers = 0;
+                for (int i = 0; i < CPUBuffersCount; i++)
+                {
+                    if (CPUBufferSizes[i] != 0) { lastCPUIndex = i; nonEmptyCPUBuffers++; }
+                }
+                infoStrings.Add(("CPU Buffer Count", FormatBatchedCount(nonEmptyCPUBuffers)));
+                for (int i = 0; i < CPUBuffersCount; i++)
+                {
+                    if (CPUBufferSizes[i] != 0)
+                        infoStrings.Add(($"{(i == lastCPUIndex ? "└" : "├")} {CPUBufferNames[i]}", FormatBatchedBytes(CPUBufferSizes[i])));
+                }
+
+                int lastGPUIndex = -1;
+                int nonEmptyGPUBuffers = 0;
+                for (int i = 0; i < GPUBuffersCount; i++)
+                {
+                    if (GPUBufferSizes[i] != 0) { lastGPUIndex = i; nonEmptyGPUBuffers++; }
+                }
+                infoStrings.Add(("GPU Buffer Count", FormatBatchedCount(nonEmptyGPUBuffers)));
+                for (int i = 0; i < GPUBuffersCount; i++)
+                {
+                    if (GPUBufferSizes[i] != 0)
+                        infoStrings.Add(($"{(i == lastGPUIndex ? "└" : "├")} {GPUBufferNames[i]}", FormatBatchedBytes(GPUBufferSizes[i])));
+                }
+
+                infoStrings.Add(("Baked Texture", FormatBatchedBytes(BakedTextureSize)));
+            }
+            return infoStrings;
+        }
+
+        // With several batches, show the total first, followed by the per batch breakdown
+        string FormatBatchedCount(int perBatchCount)
+        {
+            return BatchCount == 1 ? perBatchCount.ToString() : $"{(long)BatchCount * perBatchCount} ({BatchCount} x {perBatchCount})";
+        }
+
+        string FormatBatchedBytes(int perBatchSize)
+        {
+            return BatchCount == 1 ? EditorUtility.FormatBytes(perBatchSize) : $"{EditorUtility.FormatBytes((long)BatchCount * perBatchSize)} ({BatchCount} x {EditorUtility.FormatBytes(perBatchSize)})";
+        }
+    }
+
+    internal struct VFXManagerMetaData : IMetaDataBuffer
+    {
+        const int kPackageFormatVersion = 1;
+        public int Version;
+        public int GlobalCPUInputArgsSize;
+        public int GlobalGPUInputArgsSize;
+        public int GlobalIndirectArgsSize;
+        public int QuadIndexBufferSize;
+        public int OctagonIndexBufferSize;
+        public int HexahedronIndexBufferSize;
+
+        public unsafe VFXManagerMetaData(ILongIndexedContainer<byte> bytes)
+        {
+            GlobalCPUInputArgsSize = 0;
+            GlobalGPUInputArgsSize = 0;
+            GlobalIndirectArgsSize = 0;
+            QuadIndexBufferSize = 0;
+            OctagonIndexBufferSize = 0;
+            HexahedronIndexBufferSize = 0;
+
+            byte* ptr = bytes.GetUnsafeTypedPtr();
+            int pos = 0;
+
+            Version = ByteBufferReader.ReadValue<Int32>(ref pos, ptr);
+            // Other versions may use a different, possibly shorter, layout
+            if (Version != kPackageFormatVersion)
+                return;
+
+            GlobalCPUInputArgsSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+            GlobalGPUInputArgsSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+            GlobalIndirectArgsSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+            QuadIndexBufferSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+            OctagonIndexBufferSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+            HexahedronIndexBufferSize = ByteBufferReader.ReadValue<int>(ref pos, ptr);
+        }
+
+        public bool VersionMatches()
+        {
+            return Version == kPackageFormatVersion;
+        }
+
+        public List<(string, string)> GenerateInfoStrings(CachedSnapshot cachedSnapshot)
+        {
+            List<(string, string)> infoStrings = new List<(string, string)>();
+            if (!VersionMatches())
+            {
+                infoStrings.Add(("Warning",
+                    MetaDataHelpers.GenerateVersionMismatchWarning(Version, kPackageFormatVersion)));
+                return infoStrings;
+            }
+
+            var groups = new (string label, (string name, int size)[] buffers)[]
+            {
+                ("Indirect Command Buffers", new[]
+                {
+                    ("Global CPU Input Args", GlobalCPUInputArgsSize),
+                    ("Global GPU Input Args", GlobalGPUInputArgsSize),
+                    ("Global Indirect Args", GlobalIndirectArgsSize),
+                }),
+                ("Index Buffers", new[]
+                {
+                    ("Quad Index Buffer", QuadIndexBufferSize),
+                    ("Octagon Index Buffer", OctagonIndexBufferSize),
+                    ("Hexahedron Index Buffer", HexahedronIndexBufferSize),
+                }),
+            };
+
+            foreach (var group in groups)
+            {
+                // Only buffers with a non-zero size are listed, so count those and find the last one to use └ for it
+                int lastIndex = -1;
+                int nonEmptyBuffers = 0;
+                for (int i = 0; i < group.buffers.Length; i++)
+                {
+                    if (group.buffers[i].size > 0) { lastIndex = i; nonEmptyBuffers++; }
+                }
+                infoStrings.Add((group.label, nonEmptyBuffers.ToString()));
+                for (int i = 0; i < group.buffers.Length; i++)
+                {
+                    if (group.buffers[i].size > 0)
+                        infoStrings.Add(($"{(i == lastIndex ? "└" : "├")} {group.buffers[i].name}", EditorUtility.FormatBytes(group.buffers[i].size)));
+                }
+            }
+
+            return infoStrings;
         }
     }
 }

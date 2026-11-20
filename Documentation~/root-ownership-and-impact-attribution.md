@@ -109,6 +109,7 @@ Object A ends up with about 0.85 MB exclusive memory (its own 0.1 MB, plus B's 0
 
 ## Scene hierarchy impact attribution
 
+<!-- prettier-ignore -->
 > [!NOTE]
 > This section covers the native side of scene objects. A Unity Object's managed shell is rooted separately. For more information, refer to [Roots and the shortest path to root](#roots-and-the-shortest-path-to-root).
 

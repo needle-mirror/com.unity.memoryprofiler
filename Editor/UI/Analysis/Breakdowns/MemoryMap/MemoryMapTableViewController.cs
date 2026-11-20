@@ -21,9 +21,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             return m_Builder.Build(snapshot, args);
         }
 
-        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IList<int> treeNodeIdFilter)
+        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IList<int> treeNodeIdFilter, CancellationToken cancellationToken)
         {
-            return m_Builder.Build(baseModel, treeNodeIdFilter);
+            return m_Builder.Build(baseModel, treeNodeIdFilter, cancellationToken);
         }
 
         public void ClearIdToIndexCache()
@@ -233,15 +233,15 @@ namespace Unity.MemoryProfiler.Editor.UI
                 destroyCell: cell => cell.Q<ObjectOrTypeLabel>().Dispose());
         }
 
-        protected MemoryMapBreakdownModelBuilder.BuildArgs GetModelBuilderArgs()
+        protected MemoryMapBreakdownModelBuilder.BuildArgs GetModelBuilderArgs(CancellationToken cancellationToken)
         {
             // Pass the scoped filter directly for proper hierarchical search
-            return new MemoryMapBreakdownModelBuilder.BuildArgs(m_FilterManager.SearchFilter);
+            return new MemoryMapBreakdownModelBuilder.BuildArgs(m_FilterManager.SearchFilter, cancellationToken);
         }
 
         protected override Func<MemoryMapBreakdownModel> GetModelBuilderTask(CancellationToken cancellationToken)
         {
-            var args = GetModelBuilderArgs();
+            var args = GetModelBuilderArgs(cancellationToken);
             return m_BuildOrchestrator.CreateBuildTask(
                 args,
                 m_FilterManager.BaseModelForTreeNodeIdFiltering,

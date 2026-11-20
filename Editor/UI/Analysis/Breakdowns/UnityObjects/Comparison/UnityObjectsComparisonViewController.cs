@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
 using UnityEngine.UIElements;
@@ -113,12 +114,13 @@ namespace Unity.MemoryProfiler.Editor.UI
         }
 
         protected override UnityObjectsComparisonModelBuilder.UnityObjectSpecificBuildArgs GetBaseModelBuilderArgs(
-            CompoundSearchFilter searchFilter, bool sameSessionComparison)
+            CompoundSearchFilter searchFilter, bool sameSessionComparison, CancellationToken cancellationToken)
         {
             return new UnityObjectsComparisonModelBuilder.UnityObjectSpecificBuildArgs(
                 searchFilter: searchFilter,
                 flattenHierarchy: Flatten,
-                disambiguateByInstanceId: sameSessionComparison && !Flatten);
+                disambiguateByInstanceId: sameSessionComparison && !Flatten,
+                cancellationToken: cancellationToken);
         }
 
         protected override void TrackUsageAnalytics(IScopedFilter<string> itemNameFilter)

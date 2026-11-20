@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.Profiling;
 using UnityEngine;
@@ -60,7 +61,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             TreeModelHelpers.ClearIdToIndexCache(ref m_IdToIndex);
         }
 
-        public AllTrackedMemoryModel Build(AllTrackedMemoryModel baseModel, IEnumerable<int> treeNodeIdFilter = null)
+        public AllTrackedMemoryModel Build(AllTrackedMemoryModel baseModel, IEnumerable<int> treeNodeIdFilter = null, CancellationToken cancellationToken = default)
         {
             var tree = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
 
@@ -77,6 +78,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 while (stack.Count > 0)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var treeNode = stack.Pop();
                     // only add leaf nodes, add children to the stack to be processed
                     if (treeNode.hasChildren)
@@ -216,12 +218,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             var rootItems = new List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>();
             using (k_GenerateTreeMarker.Auto())
             {
+                args.CancellationToken.ThrowIfCancellationRequested();
                 if (BuildNativeTree(snapshot, args, context.NativeObjectIndex2SizeMap, context.NativeRootReference2SizeMap, context.NativeRootReference2UnsafeAllocations2SizeMap, context.NativeRegionName2SizeMap, out var nativeMemoryTree))
                     rootItems.Add(nativeMemoryTree);
 
+                args.CancellationToken.ThrowIfCancellationRequested();
                 if (BuildManagedTree(snapshot, args, context.ManagedTypeName2ObjectsTreeMap, context.ManagedTypeName2NativeName2ObjectsTreeMap, context.ManagedMemoryVM, context.ManagedMemoryReserved, out var managedMemoryTree))
                     rootItems.Add(managedMemoryTree);
 
+                args.CancellationToken.ThrowIfCancellationRequested();
                 if (BuildTreeFromGroupByNameMap(k_ExecutablesGroupName, (int)IAnalysisViewSelectable.Category.ExecutablesAndMapped, context.ExecutablesName2SizeMap, out var executablesTree, args, ObjectStatus.ExecutablesAndMapped))
                     rootItems.Add(executablesTree);
 
@@ -291,8 +296,10 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // Extract all objects from the hierarchy and build group specific maps
             var filterArgs = args;
+            var cancellationToken = args.CancellationToken;
             snapshot.EntriesMemoryMap.ForEachFlatWithResidentSize((index, address, size, residentSize, source) =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var memorySize = new MemorySize(size, residentSize);
 
                 context.Total += memorySize;
@@ -330,6 +337,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var processedNativeRoots = snapshot.ProcessedNativeRoots;
             for (long mappedProcessedRootIndex = 0; mappedProcessedRootIndex < processedNativeRoots.Count; mappedProcessedRootIndex++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ref readonly var data = ref processedNativeRoots.Data[mappedProcessedRootIndex];
                 switch (data.NativeObjectOrRootIndex.Id)
                 {
@@ -921,7 +929,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 {
                     string NativeObjectIndex2InstanceId(SourceIndex x) => NativeObjectTools.ProduceNativeObjectNameAndId(x.Index, snapshot);
 
-                    GroupItemsNested(snapshot, nativeObjectIndex2TotalMap, NativeObjectIndex2InstanceId, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, args.SearchFilter);
+                    GroupItemsNested(snapshot, nativeObjectIndex2TotalMap, NativeObjectIndex2InstanceId, NativeObjectIndex2Name, NativeObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, false, out var nativeObjectsGroupName2TreeMap, args.SearchFilter, args.CancellationToken);
                     if (BuildTreeFromGroupByIdMap(k_NativeObjectsGroupName, m_ItemId++, false, GroupKey2Name, GroupKey2Index, nativeObjectsGroupName2TreeMap, out var unityObjectsRoot))
                         treeItems.Add(unityObjectsRoot);
                 }
@@ -1144,7 +1152,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     return "ID: 0";
                 }
 
-                GroupItemsNested(snapshot, objectIndex2TotalMap, GraphicsResourceIndex2InstanceId, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, unreliable, out var nestedObjectsGroupName2TreeMap, args.SearchFilter);
+                GroupItemsNested(snapshot, objectIndex2TotalMap, GraphicsResourceIndex2InstanceId, ObjectIndex2Name, ObjectIndex2GroupKey, GroupKey2Index, GroupKey2Name, unreliable, out var nestedObjectsGroupName2TreeMap, args.SearchFilter, args.CancellationToken);
                 return BuildTreeFromGroupByIdMap(GraphicsGroupName, (int)IAnalysisViewSelectable.Category.Graphics, unreliable, GroupKey2Name, GroupKey2Index, nestedObjectsGroupName2TreeMap, out tree, null, treeItems);
             }
             else
@@ -1187,6 +1195,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             group2itemsMap = new Dictionary<T, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>();
             foreach (var item in itemIndex2SizeMap)
             {
+                args.CancellationToken.ThrowIfCancellationRequested();
                 var itemName = itemIndex2ItemName(item.Key);
                 var itemGroupKey = itemIndex2GroupKey(item.Key);
 
@@ -1259,11 +1268,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             Func<T, string> groupKey2GroupName,
             bool unreliable,
             out Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>> typeGroup2NameGroup2ItemsMap,
-            CompoundSearchFilter searchFilter)
+            CompoundSearchFilter searchFilter,
+            CancellationToken cancellationToken)
         {
             typeGroup2NameGroup2ItemsMap = new Dictionary<T, Dictionary<string, List<TreeViewItemData<AllTrackedMemoryModel.ItemData>>>>();
             foreach (var item in itemIndex2SizeMap)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var itemID = itemIndex2ItemID(item.Key);
                 var itemName = itemIndex2ItemName(item.Key);
                 var itemGroupId = itemIndex2GroupId(item.Key);
@@ -1598,7 +1609,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 bool breakdownNativeReserved = false,
                 bool disambiguateUnityObjects = false,
                 bool breakdownGfxResources = true,
-                string[] allocationRootNamesToSplitIntoSuballocations = null)
+                string[] allocationRootNamesToSplitIntoSuballocations = null,
+                CancellationToken cancellationToken = default)
             {
                 SearchFilter = searchFilter;
                 PathFilter = pathFilter;
@@ -1606,6 +1618,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 DisambiguateUnityObjects = disambiguateUnityObjects;
                 BreakdownGfxResources = breakdownGfxResources;
                 AllocationRootNamesToSplitIntoSuballocations = allocationRootNamesToSplitIntoSuballocations;
+                CancellationToken = cancellationToken;
             }
 
             /// <summary>
@@ -1629,6 +1642,8 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             // The allocation rootes listed as "<AreaName>:<ObjectName>" that should get all allocations underneath them listed separately.
             public string[] AllocationRootNamesToSplitIntoSuballocations { get; }
+
+            public CancellationToken CancellationToken { get; }
         }
     }
 }

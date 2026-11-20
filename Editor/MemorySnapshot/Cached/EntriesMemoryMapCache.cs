@@ -170,16 +170,15 @@ namespace Unity.MemoryProfiler.Editor
                 if (m_ItemsCount == 0)
                     return;
 
+                var merger = new ManagedObjectPieceMerger((i, address, size, _, source) => action(i, address, size, source));
+
                 SourceIndex? currentSystemRegion = null;
+                var currentSystemRegionEnd = 0UL;
                 for (long i = 0; i < m_ItemsCount - 1; i++)
                 {
                     var cur = m_CombinedData[i];
 
-                    // Register current system region
-                    if (cur.Source.Id == SourceIndex.SourceId.SystemMemoryRegion)
-                        currentSystemRegion = cur.Source;
-                    else if (cur.Source.Id == SourceIndex.SourceId.None)
-                        currentSystemRegion = null;
+                    UpdateCurrentSystemRegion(cur, ref currentSystemRegion, ref currentSystemRegionEnd);
 
                     // Ignore free memory regions
                     if (cur.Source.Id == SourceIndex.SourceId.None)
@@ -192,8 +191,10 @@ namespace Unity.MemoryProfiler.Editor
                         // capture and regions capture
                         //
                         // Nb! Special case for gfx resources, as we add them
-                        // with fake address and without system regions root
-                        if (!currentSystemRegion.HasValue && (cur.Source.Id != SourceIndex.SourceId.GfxResource))
+                        // with fake address and without system regions root.
+                        // Managed heap items are kept too: regions only describe residency,
+                        // and the managed heap can grow after the regions were captured.
+                        if (!currentSystemRegion.HasValue && (cur.Source.Id != SourceIndex.SourceId.GfxResource) && !IsManagedHeapItem(cur.Source.Id))
                             continue;
                     }
 
@@ -205,9 +206,27 @@ namespace Unity.MemoryProfiler.Editor
                     if (size == 0)
                         continue;
 
-                    action(i, cur.Address, size, cur.Source);
+                    merger.Add(i, cur.Address, size, 0, cur.Source);
                 }
+                merger.Flush();
             }
+
+            // Tracks the system region the scan is in, which ends at the region's own end address
+            void UpdateCurrentSystemRegion(AddressPoint cur, ref SourceIndex? currentSystemRegion, ref ulong currentSystemRegionEnd)
+            {
+                if (currentSystemRegion.HasValue && cur.Address >= currentSystemRegionEnd)
+                    currentSystemRegion = null;
+                if (cur.Source.Id == SourceIndex.SourceId.SystemMemoryRegion)
+                {
+                    currentSystemRegion = cur.Source;
+                    currentSystemRegionEnd = m_Snapshot.SystemMemoryRegions.RegionAddress[cur.Source.Index] + m_Snapshot.SystemMemoryRegions.RegionSize[cur.Source.Index];
+                }
+                else if (cur.Source.Id == SourceIndex.SourceId.None)
+                    currentSystemRegion = null;
+            }
+
+            static bool IsManagedHeapItem(SourceIndex.SourceId id) =>
+                id is SourceIndex.SourceId.ManagedObject or SourceIndex.SourceId.ManagedHeapSection;
 
             public delegate void ForEachFlatWithResidentSizeAction(long index, ulong address, ulong size, ulong residentSize, SourceIndex source);
 
@@ -221,16 +240,15 @@ namespace Unity.MemoryProfiler.Editor
                 if (m_ItemsCount == 0)
                     return;
 
+                var merger = new ManagedObjectPieceMerger(action);
+
                 SourceIndex? currentSystemRegion = null;
+                var currentSystemRegionEnd = 0UL;
                 for (long i = 0; i < m_ItemsCount - 1; i++)
                 {
                     var cur = m_CombinedData[i];
 
-                    // Register current system region
-                    if (cur.Source.Id == SourceIndex.SourceId.SystemMemoryRegion)
-                        currentSystemRegion = cur.Source;
-                    else if (cur.Source.Id == SourceIndex.SourceId.None)
-                        currentSystemRegion = null;
+                    UpdateCurrentSystemRegion(cur, ref currentSystemRegion, ref currentSystemRegionEnd);
 
                     // Ignore free memory regions
                     if (cur.Source.Id == SourceIndex.SourceId.None)
@@ -258,8 +276,11 @@ namespace Unity.MemoryProfiler.Editor
                         {
                             // Ignore items outside of system regions
                             // They exist due to time difference between allocation
-                            // capture and regions capture
-                            continue;
+                            // capture and regions capture.
+                            // Managed heap items are kept (with zero resident size), as the heap
+                            // can grow after the regions were captured.
+                            if (!IsManagedHeapItem(cur.Source.Id))
+                                continue;
                         }
                         else if (m_Snapshot.HasSystemMemoryResidentPages)
                         {
@@ -269,7 +290,58 @@ namespace Unity.MemoryProfiler.Editor
                         }
                     }
 
-                    action(i, cur.Address, size, residentSize, cur.Source);
+                    merger.Add(i, cur.Address, size, residentSize, cur.Source);
+                }
+                merger.Flush();
+            }
+
+            // A managed object split at system region boundaries is reported once, as the sum of its adjacent pieces.
+            struct ManagedObjectPieceMerger
+            {
+                readonly ForEachFlatWithResidentSizeAction m_Action;
+                bool m_HasPending;
+                long m_Index;
+                ulong m_Address, m_Size, m_ResidentSize;
+                SourceIndex m_Source;
+
+                public ManagedObjectPieceMerger(ForEachFlatWithResidentSizeAction action)
+                {
+                    m_Action = action;
+                    m_HasPending = false;
+                    m_Index = 0;
+                    m_Address = m_Size = m_ResidentSize = 0;
+                    m_Source = default;
+                }
+
+                public void Add(long index, ulong address, ulong size, ulong residentSize, SourceIndex source)
+                {
+                    if (m_HasPending && source == m_Source && address == m_Address + m_Size)
+                    {
+                        m_Size += size;
+                        m_ResidentSize += residentSize;
+                        return;
+                    }
+
+                    Flush();
+                    if (source.Id != SourceIndex.SourceId.ManagedObject)
+                    {
+                        m_Action(index, address, size, residentSize, source);
+                        return;
+                    }
+                    m_HasPending = true;
+                    m_Index = index;
+                    m_Address = address;
+                    m_Size = size;
+                    m_ResidentSize = residentSize;
+                    m_Source = source;
+                }
+
+                public void Flush()
+                {
+                    if (!m_HasPending)
+                        return;
+                    m_HasPending = false;
+                    m_Action(m_Index, m_Address, m_Size, m_ResidentSize, m_Source);
                 }
             }
 
@@ -480,11 +552,12 @@ namespace Unity.MemoryProfiler.Editor
                     m_Snapshot.CrawledData.ManagedObjects.Count +
                     m_Snapshot.NativeGfxResourceReferences.Count) * 2;
                 m_CombinedData = new DynamicArray<AddressPoint>(maxPointsCount, Allocator.Persistent);
+                using var regionBoundaries = BuildSystemRegionBoundaries();
 
                 // Add OS reported system memory regions
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
-                    m_CombinedData,
+                    ref m_CombinedData,
                     SourceIndex.SourceId.SystemMemoryRegion,
                     Convert.ToInt32(m_Snapshot.SystemMemoryRegions.Count),
                     (long i) =>
@@ -501,7 +574,7 @@ namespace Unity.MemoryProfiler.Editor
                 // are reported
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
-                    m_CombinedData,
+                    ref m_CombinedData,
                     SourceIndex.SourceId.NativeMemoryRegion,
                     Convert.ToInt32(m_Snapshot.NativeMemoryRegions.Count),
                     (long i) =>
@@ -519,7 +592,7 @@ namespace Unity.MemoryProfiler.Editor
                 // Add Mono reported managed sections
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
-                    m_CombinedData,
+                    ref m_CombinedData,
                     SourceIndex.SourceId.ManagedHeapSection,
                     Convert.ToInt32(m_Snapshot.ManagedHeapSections.Count),
                     (long i) =>
@@ -529,12 +602,13 @@ namespace Unity.MemoryProfiler.Editor
                         var sectionType = m_Snapshot.ManagedHeapSections.SectionType[i];
                         bool valid = (size > 0);
                         return (valid, address, size);
-                    });
+                    },
+                    regionBoundaries);
 
                 // Add individual native allocations
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
-                    m_CombinedData,
+                    ref m_CombinedData,
                     SourceIndex.SourceId.NativeAllocation,
                     Convert.ToInt32(m_Snapshot.NativeAllocations.Count),
                     (long i) =>
@@ -548,7 +622,7 @@ namespace Unity.MemoryProfiler.Editor
                 // Add native objects
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
-                    m_CombinedData,
+                    ref m_CombinedData,
                     SourceIndex.SourceId.NativeObject,
                     Convert.ToInt32(m_Snapshot.NativeObjects.Count),
                     (long i) =>
@@ -568,7 +642,7 @@ namespace Unity.MemoryProfiler.Editor
                 // Add managed objects
                 m_ItemsCount = AddPoints(
                     m_ItemsCount,
-                    m_CombinedData,
+                    ref m_CombinedData,
                     SourceIndex.SourceId.ManagedObject,
                     Convert.ToInt32(m_Snapshot.CrawledData.ManagedObjects.Count),
                     (long i) =>
@@ -578,7 +652,35 @@ namespace Unity.MemoryProfiler.Editor
                         var size = (ulong)info.Size;
                         bool valid = (size > 0);
                         return (valid, address, size);
-                    });
+                    },
+                    regionBoundaries);
+            }
+
+            // Sorted unique start and end addresses of all system regions, or an empty array if there is no region info.
+            DynamicArray<ulong> BuildSystemRegionBoundaries()
+            {
+                var boundaries = new DynamicArray<ulong>(0, Allocator.Temp);
+                if (!m_Snapshot.HasSystemMemoryRegionsInfo)
+                    return boundaries;
+
+                var regions = m_Snapshot.SystemMemoryRegions;
+                boundaries.Reserve(regions.Count * 2);
+                for (long i = 0; i < regions.Count; i++)
+                {
+                    boundaries.Push(regions.RegionAddress[i]);
+                    boundaries.Push(regions.RegionAddress[i] + regions.RegionSize[i]);
+                }
+                DynamicArrayAlgorithms.IntrospectiveSort(boundaries, 0, boundaries.Count);
+
+                // Adjacent regions share a boundary, which must only split an item once
+                long unique = 0;
+                for (long i = 0; i < boundaries.Count; i++)
+                {
+                    if (unique == 0 || boundaries[i] != boundaries[unique - 1])
+                        boundaries[unique++] = boundaries[i];
+                }
+                boundaries.Resize(unique, false);
+                return boundaries;
             }
 
             [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
@@ -807,9 +909,13 @@ namespace Unity.MemoryProfiler.Editor
                     && enclosingRegionType == SystemMemoryRegionEntriesCache.MemoryType.Mapped;
             }
 
-            // Adds a fixed number of points from a container of the specific type
-            static long AddPoints(long index, DynamicArray<AddressPoint> data, SourceIndex.SourceId sourceName, long count, Func<long, (bool valid, ulong address, ulong size)> accessor)
+            // Adds a fixed number of points from a container of the specific type.
+            // Items are split into one span per system region they overlap (and the gaps between),
+            // so that no item is cut off by the end of a region later on. The spans share the item's SourceIndex.
+            // Only pass region boundaries for items that are not bound to system regions.
+            static long AddPoints(long index, ref DynamicArray<AddressPoint> data, SourceIndex.SourceId sourceName, long count, Func<long, (bool valid, ulong address, ulong size)> accessor, DynamicArray<ulong> clipBoundaries = default)
             {
+                var clip = clipBoundaries.IsCreated && clipBoundaries.Count > 0;
                 for (long i = 0; i < count; i++)
                 {
                     var (valid, address, size) = accessor(i);
@@ -817,23 +923,41 @@ namespace Unity.MemoryProfiler.Editor
                     if (!valid || (size == 0))
                         continue;
 
-                    var id = index;
-                    data[index++] = new AddressPoint(
-                        address,
-                        id,
-                        new SourceIndex(sourceName, i),
-                        AddressPointType.StartPoint
-                    );
+                    var end = address + size;
+                    var nextBoundary = clip ? FindFirstAbove(clipBoundaries, address) : 0;
+                    var spanStart = address;
+                    do
+                    {
+                        var spanEnd = clip && nextBoundary < clipBoundaries.Count && clipBoundaries[nextBoundary] < end ? clipBoundaries[nextBoundary++] : end;
 
-                    data[index++] = new AddressPoint(
-                        address + size,
-                        id,
-                        new SourceIndex(sourceName, i),
-                        AddressPointType.EndPoint
-                    );
+                        if (index + 2 > data.Count)
+                            data.Resize(index + 2, false, DynamicArray<AddressPoint>.ResizePolicy.Double);
+
+                        var id = index;
+                        var source = new SourceIndex(sourceName, i);
+                        data[index++] = new AddressPoint(spanStart, id, source, AddressPointType.StartPoint);
+                        data[index++] = new AddressPoint(spanEnd, id, source, AddressPointType.EndPoint);
+                        spanStart = spanEnd;
+                    }
+                    while (spanStart < end);
                 }
 
                 return index;
+            }
+
+            // Index of the first value that is greater than the given one, in an ascending array
+            static long FindFirstAbove(DynamicArray<ulong> sorted, ulong value)
+            {
+                long low = 0, high = sorted.Count;
+                while (low < high)
+                {
+                    var mid = low + (high - low) / 2;
+                    if (sorted[mid] <= value)
+                        low = mid + 1;
+                    else
+                        high = mid;
+                }
+                return low;
             }
 
             public void DebugPrintToFile()

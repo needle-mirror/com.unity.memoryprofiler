@@ -38,13 +38,12 @@ The kind of data that you can explore in areas such as the **All of Memory Table
 
 The Memory Profiler stores fields depending on the data type:
 
-* It stores [value types](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/value-types) by their value.
-* It stores [reference types](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/reference-types) as pointer addresses. The **Managed Fields** section in the **Selection Details** panel resolves any pointer address to instead show the details of the referenced object or allocation, if it exists.
+- It stores [value types](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/value-types) by their value.
+- It stores [reference types](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/reference-types) as pointer addresses. The **Managed Fields** section in the **Selection Details** panel resolves any pointer address to instead show the details of the referenced object or allocation, if it exists.
 
 ### Safeguarding sensitive data
 
 The Memory Profiler stores data in a way that can make some sensitive data accessible. For example, string type fields might indicate via their name what the string they point to means. So searching for a field named `Password`, `Credentials` or `Token` might identify strings with sensitive data. If Unity has garbage collected the object that points to the string, or even the string itself, the data might still be there. However, it's no longer identifiable, unless you have a rough idea of what you're looking for or part of the string value to search for.
-
 
 To prevent exposing sensitive information such as personal identifiers or credentials when sharing snapshots, you could store sensitive data in constant fields (`const`). The Memory Profiler doesn't capture constants because they are embedded into the binary executable. However, constant fields in the binary executable can be accessed through decompilation.
 
@@ -54,5 +53,5 @@ For further discussion about this issue, refer to the [Unity Discussions thread]
 
 ## Additional resources
 
-* [Collect memory data](snapshots.md)
-* [Inspect memory usage](inspect-memory-usage.md)
+- [Collect memory data](snapshots.md)
+- [Inspect memory usage](inspect-memory-usage.md)

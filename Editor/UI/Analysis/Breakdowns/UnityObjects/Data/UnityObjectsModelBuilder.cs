@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Unity.MemoryProfiler.Editor.Extensions;
 using UnityEditor.MemoryProfiler;
 using UnityEngine;
@@ -37,7 +38,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             TreeModelHelpers.ClearIdToIndexCache(ref m_IdToIndex);
         }
 
-        public UnityObjectsModel Build(UnityObjectsModel baseModel, IEnumerable<int> treeNodeIdFilter = null)
+        public UnityObjectsModel Build(UnityObjectsModel baseModel, IEnumerable<int> treeNodeIdFilter = null, CancellationToken cancellationToken = default)
         {
             var tree = new List<TreeViewItemData<UnityObjectsModel.ItemData>>();
 
@@ -54,6 +55,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 while (stack.Count > 0)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var treeNode = stack.Pop();
                     // only add leaf nodes, add children to the stack to be processed
                     if (treeNode.hasChildren)
@@ -137,10 +139,10 @@ namespace Unity.MemoryProfiler.Editor.UI
                 var totalNativeSize = new MemorySize();
                 var totalManagedSize = new MemorySize();
                 var totalGpuSize = new MemorySize();
-                CollectTypeMapLeafNodesToStore(typeIndexToTypeObjectsMap, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
+                CollectTypeMapLeafNodesToStore(typeIndexToTypeObjectsMap, store, names, args.CancellationToken, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
                 foreach (var innerMap in disambiguatedTypeIndexToTypeObjectsMap.Values)
-                    CollectTypeMapLeafNodesToStore(innerMap, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
-                CollectTypeMapLeafNodesToStore(nonDisambiguatedObjectsOfDisambiguatedNativeTypes, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
+                    CollectTypeMapLeafNodesToStore(innerMap, store, names, args.CancellationToken, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
+                CollectTypeMapLeafNodesToStore(nonDisambiguatedObjectsOfDisambiguatedNativeTypes, store, names, args.CancellationToken, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
                 return new UnityObjectsModel(store, names, m_FlattenedPageSize, totalMemorySize, totalNativeSize, totalManagedSize, totalGpuSize, totalMemoryInSnapshot);
             }
             catch
@@ -157,6 +159,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             Dictionary<SourceIndex, DictionaryOrList> map,
             FlattenedRowStore<UnityObjectsCompactRow> store,
             List<string> names,
+            CancellationToken cancellationToken,
             ref MemorySize totalMemorySize,
             ref MemorySize totalNativeSize,
             ref MemorySize totalManagedSize,
@@ -167,14 +170,20 @@ namespace Unity.MemoryProfiler.Editor.UI
                 if (typeObjects.ListOfObjects != null)
                 {
                     foreach (var item in typeObjects.ListOfObjects)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
                         EmitItemToStore(item, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
+                    }
                 }
                 else if (typeObjects.MapOfObjects != null)
                 {
                     foreach (var objList in typeObjects.MapOfObjects.Values)
                     {
                         foreach (var item in objList)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
                             EmitItemToStore(item, store, names, ref totalMemorySize, ref totalNativeSize, ref totalManagedSize, ref totalGpuSize);
+                        }
                     }
                 }
             }
@@ -274,11 +283,13 @@ namespace Unity.MemoryProfiler.Editor.UI
             var unityObjectsTree = new List<TreeViewItemData<UnityObjectsModel.ItemData>>(typeIndexToTypeObjectsMap.Count);
             foreach (var kvp in typeIndexToTypeObjectsMap)
             {
+                args.CancellationToken.ThrowIfCancellationRequested();
                 unityObjectsTree.Add(CreateUnityObjectTypeGroup(snapshot, kvp));
             }
 
             foreach (var nativeTypeToManagedTypesKVP in disambiguatedTypeIndexToTypeObjectsMap)
             {
+                args.CancellationToken.ThrowIfCancellationRequested();
                 var nativeUndisambiguatedItems = new KeyValuePair<SourceIndex, DictionaryOrList>(
                     nativeTypeToManagedTypesKVP.Key,
                     nonDisambiguatedTechnicallyManagedTypeItems.ContainsKey(nativeTypeToManagedTypesKVP.Key)
@@ -389,6 +400,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         Dictionary<SourceIndex, UnityObjectSize> BuildNativeObjectIndexToSize(
             CachedSnapshot snapshot,
+            CancellationToken cancellationToken,
             out MemorySize _totalMemoryInSnapshot)
         {
             // Extract all native objects and related data from the hierarchy
@@ -401,6 +413,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var processedNativeRoots = snapshot.ProcessedNativeRoots;
             for (long i = 0; i < processedNativeRoots.Count; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var itemIndex = processedNativeRoots.Data[i].NativeObjectOrRootIndex;
                 switch (itemIndex.Id)
                 {
@@ -439,13 +452,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             disambiguatedTypeIndexToTypeObjectsMap = new Dictionary<SourceIndex, Dictionary<SourceIndex, DictionaryOrList>>();
             nonDisambiguatedObjectsOfDisambiguatedNativeTypes = new Dictionary<SourceIndex, DictionaryOrList>();
 
-            var nativeObject2Size = BuildNativeObjectIndexToSize(snapshot, out totalMemoryInSnapshot);
+            var nativeObject2Size = BuildNativeObjectIndexToSize(snapshot, args.CancellationToken, out totalMemoryInSnapshot);
 
             // Group objects by type
             var nativeTypes = snapshot.NativeTypes;
             var nativeObjects = snapshot.NativeObjects;
             foreach (var obj in nativeObject2Size)
             {
+                args.CancellationToken.ThrowIfCancellationRequested();
                 int managedTypeIndex = -1;
                 string managedTypeName = null;
                 if (nativeObjects.ManagedObjectIndex[obj.Key.Index] >= 0)
@@ -653,7 +667,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                 ITextFilter unityObjectTypeNameFilter = null,
                 bool flattenHierarchy = false,
                 bool potentialDuplicatesFilter = false,
-                bool disambiguateByInstanceId = false)
+                bool disambiguateByInstanceId = false,
+                CancellationToken cancellationToken = default)
             {
                 SearchFilter = searchFilter;
                 UnityObjectNameFilter = unityObjectNameFilter;
@@ -661,6 +676,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 FlattenHierarchy = flattenHierarchy;
                 PotentialDuplicatesFilter = potentialDuplicatesFilter;
                 DisambiguateByInstanceId = disambiguateByInstanceId;
+                CancellationToken = cancellationToken;
             }
             /// <summary>
             /// Only include tree paths that match this filter.
@@ -683,6 +699,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// Use Instance IDs to differentiate objects with the same name, only used in comparisons
             /// </summary>
             public bool DisambiguateByInstanceId { get; }
+
+            public CancellationToken CancellationToken { get; }
         }
 
         public class MapOfManagedTypeOrObjectName2Objects

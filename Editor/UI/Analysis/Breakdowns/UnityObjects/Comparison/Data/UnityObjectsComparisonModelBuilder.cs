@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Unity.MemoryProfiler.Editor.Extensions;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
@@ -43,12 +44,33 @@ namespace Unity.MemoryProfiler.Editor.UI
                     args.SearchFilter,
                     unityObjectNameFilter: null,
                     flattenHierarchy: false,
-                    disambiguateByInstanceId: args.DisambiguateByInstanceId);
+                    disambiguateByInstanceId: args.DisambiguateByInstanceId,
+                    cancellationToken: args.CancellationToken);
             var baseModelBuilder = new UnityObjectsModelBuilder();
 
             var modelA = baseModelBuilder.Build(snapshotA, singleSnapshotArgs);
-            var modelB = baseModelBuilder.Build(snapshotB, singleSnapshotArgs);
+            UnityObjectsModel modelB = null;
+            try
+            {
+                modelB = baseModelBuilder.Build(snapshotB, singleSnapshotArgs);
+                return BuildComparisonModel(snapshotA, snapshotB, modelA, modelB, args, comparisonArgs);
+            }
+            catch
+            {
+                modelA.Dispose();
+                modelB?.Dispose();
+                throw;
+            }
+        }
 
+        UnityObjectsComparisonModel BuildComparisonModel(
+            CachedSnapshot snapshotA,
+            CachedSnapshot snapshotB,
+            UnityObjectsModel modelA,
+            UnityObjectsModel modelB,
+            UnityObjectSpecificBuildArgs args,
+            TreeComparisonBuilder.BuildArgs comparisonArgs)
+        {
             var treeComparisonBuilder = new TreeComparisonBuilder();
             var comparisonTree = treeComparisonBuilder.Build<UnityObjectsModel.ItemData, UnityObjectsModel, UnityObjectsComparisonModel.ExtraData>(
                 modelA.RootNodes,
@@ -76,39 +98,48 @@ namespace Unity.MemoryProfiler.Editor.UI
             {
                 var leaves = TreeModelUtility.RetrieveLeafNodesOfTree(comparisonTree);
                 var rowSource = new ComparisonRowSource<UnityObjectsComparisonModel.ExtraData>(leaves.Count);
-                var totalSizeA = new MemorySize();
-                var totalSizeB = new MemorySize();
-                foreach (var leaf in leaves)
+                try
                 {
-                    var data = leaf.data;
-                    totalSizeA += data.TotalSizeInA;
-                    totalSizeB += data.TotalSizeInB;
-                    rowSource.Add(
-                        leaf.id,
-                        data.SourceIndex,
-                        data.TotalSizeInA,
-                        data.TotalSizeInB,
-                        data.CountInA,
-                        data.CountInB,
-                        data.ChildCount,
-                        data.Name,
-                        data.TreeViewIdsInA,
-                        data.TreeViewIdsInB,
-                        data.ExtraData,
-                        data.ExtraData.WarningInfoInA.GetStatusSortKey(),
-                        data.ExtraData.WarningInfoInB.GetStatusSortKey(),
-                        data.HasChanged);
-                }
+                    var totalSizeA = new MemorySize();
+                    var totalSizeB = new MemorySize();
+                    foreach (var leaf in leaves)
+                    {
+                        args.CancellationToken.ThrowIfCancellationRequested();
+                        var data = leaf.data;
+                        totalSizeA += data.TotalSizeInA;
+                        totalSizeB += data.TotalSizeInB;
+                        rowSource.Add(
+                            leaf.id,
+                            data.SourceIndex,
+                            data.TotalSizeInA,
+                            data.TotalSizeInB,
+                            data.CountInA,
+                            data.CountInB,
+                            data.ChildCount,
+                            data.Name,
+                            data.TreeViewIdsInA,
+                            data.TreeViewIdsInB,
+                            data.ExtraData,
+                            data.ExtraData.WarningInfoInA.GetStatusSortKey(),
+                            data.ExtraData.WarningInfoInB.GetStatusSortKey(),
+                            data.HasChanged);
+                    }
 
-                return new UnityObjectsComparisonModel(
-                    modelA, modelB,
-                    rowSource,
-                    m_FlattenedPageSize,
-                    modelA.TotalSnapshotMemorySize,
-                    modelB.TotalSnapshotMemorySize,
-                    largestAbsoluteSizeDelta,
-                    totalSizeA,
-                    totalSizeB);
+                    return new UnityObjectsComparisonModel(
+                        modelA, modelB,
+                        rowSource,
+                        m_FlattenedPageSize,
+                        modelA.TotalSnapshotMemorySize,
+                        modelB.TotalSnapshotMemorySize,
+                        largestAbsoluteSizeDelta,
+                        totalSizeA,
+                        totalSizeB);
+                }
+                catch
+                {
+                    rowSource.Dispose();
+                    throw;
+                }
             }
 
             return new UnityObjectsComparisonModel(
@@ -171,12 +202,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             public UnityObjectSpecificBuildArgs(
                 CompoundSearchFilter searchFilter,
                 bool flattenHierarchy,
-                bool disambiguateByInstanceId
+                bool disambiguateByInstanceId,
+                CancellationToken cancellationToken = default
                 )
             {
                 SearchFilter = searchFilter;
                 FlattenHierarchy = flattenHierarchy;
                 DisambiguateByInstanceId = disambiguateByInstanceId && !flattenHierarchy;
+                CancellationToken = cancellationToken;
             }
             /// <summary>
             /// Only include tree paths that match this filter.
@@ -190,6 +223,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             /// Use Instance IDs to differentiate objects with the same name
             /// </summary>
             public bool DisambiguateByInstanceId { get; }
+
+            public CancellationToken CancellationToken { get; }
         }
     }
 }

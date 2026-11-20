@@ -55,7 +55,7 @@ namespace Unity.MemoryProfiler.Editor
             }
 #endif
 
-            unsafe public ConnectionEntriesCache(ref IFileReader reader, NativeObjectEntriesCache nativeObjects, long gcHandlesCount)
+            unsafe public ConnectionEntriesCache(ref IFileReader reader, NativeObjectEntriesCache nativeObjects, GCHandleEntriesCache gcHandles)
             {
                 Count = reader.GetEntryCount(EntryType.Connections_From);
 
@@ -83,8 +83,8 @@ namespace Unity.MemoryProfiler.Editor
                         To = new DynamicArray<SourceIndex>(Count, Allocator.Persistent);
                         for (long i = 0; i < Count; i++)
                         {
-                            From[i] = OldUnifiedIndexToSourceIndex(oldFrom[i], gcHandlesCount);
-                            To[i] = OldUnifiedIndexToSourceIndex(oldTo[i], gcHandlesCount);
+                            From[i] = OldUnifiedIndexToSourceIndex(oldFrom[i], gcHandles);
+                            To[i] = OldUnifiedIndexToSourceIndex(oldTo[i], gcHandles);
                         }
                     }
                 }
@@ -95,7 +95,7 @@ namespace Unity.MemoryProfiler.Editor
                 }
 
                 if (reader.FormatVersion >= FormatVersion.NativeConnectionsAsInstanceIdsVersion)
-                    RemapInstanceIdsToSourceIndices(nativeObjects, gcHandlesCount, instanceIDFrom, instanceIDTo);
+                    RemapInstanceIdsToSourceIndices(nativeObjects, instanceIDFrom, instanceIDTo);
 
                 instanceIDFrom.Dispose();
                 instanceIDTo.Dispose();
@@ -112,15 +112,15 @@ namespace Unity.MemoryProfiler.Editor
             }
 
             [MethodImpl(MethodImplementationHelper.AggressiveInlining)]
-            SourceIndex OldUnifiedIndexToSourceIndex(int index, long gcHandlesCount)
+            SourceIndex OldUnifiedIndexToSourceIndex(int index, GCHandleEntriesCache gcHandles)
             {
-                if (index < gcHandlesCount)
-                    return new SourceIndex(SourceIndex.SourceId.ManagedObject, index);
+                if (index < gcHandles.RawCount)
+                    return new SourceIndex(SourceIndex.SourceId.ManagedObject, gcHandles.RawRowToRow(index));
 
-                return new SourceIndex(SourceIndex.SourceId.NativeObject, index - gcHandlesCount);
+                return new SourceIndex(SourceIndex.SourceId.NativeObject, index - gcHandles.RawCount);
             }
 
-            void RemapInstanceIdsToSourceIndices(NativeObjectEntriesCache nativeObjects, long gcHandlesCount,
+            void RemapInstanceIdsToSourceIndices(NativeObjectEntriesCache nativeObjects,
                 DynamicArray<EntityId> instanceIDFrom, DynamicArray<EntityId> instanceIDTo)
             {
                 var instanceIds = nativeObjects.InstanceId;

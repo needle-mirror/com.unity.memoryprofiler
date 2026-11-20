@@ -1,21 +1,37 @@
 ---
 uid: changelog
 ---
+
 # Changelog
+
 All notable changes to this package will be documented in this file.
 
-The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
-and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+
+## [1.2.1] - 2026-11-20
+
+### Added
+
+- Added VisualEffectAsset and VFXManager meta data to the Selected Item Details panel, listing their CPU and GPU buffers, baked texture, indirect command buffers and index buffers with their sizes, for snapshots captured from Unity versions that report it.
+
+### Fixed
+
+- Fixed the search for a selected Unity Object's Editor counterpart, which enables the "Select in Editor" button and the preview in Selected Item Details, failing with a NullReferenceException in Unity versions where a search can finish before the search request returns.
+- Fixed the "Show Memory Map view" preference only taking effect after reopening the Memory Profiler window. The Memory Map tab is now added or removed as soon as the preference changes.
+- Fixed clicking Capture repeatedly starting overlapping captures that could fail with a NullReferenceException and leave the modal "Memory capture" progress bar stuck, making the Editor unusable. Further clicks while a capture is in progress are now rejected, and the progress bar is always cleared when a capture ends.
+- Fixed the Editor becoming unresponsive for minutes when closing the Memory Profiler window while a table or comparison of large snapshots was still being built ([UUM-161145](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-161145)).
+- Fixed setting relative snapshot paths with "../" entries to actually resolve to the right parent folder.
 
 ## [1.2.0] - 2026-10-23
 
 ### Added
+
 - Added support for new kinds of managed roots in CoreCLR snapshots: thread's stack, pending finalizer, frozen or pinned memory. Those are now visible as roots and shown in the Roots & Impact view.
 - Added filter-aware Impact values to the Roots & Impact table: when a search or status filter is active, rows that only remain visible because a descendant matches now show the impact of their filter-matching descendants as the primary value, with the row's own full impact shown struck-through and dimmed beside it, and the table total likewise reflects only the filter-matching entries.
-- Added a note to the Memory Impact section of the Selection Details for *Unity Objects* stating whether the Native Object exclusively owns its Managed Shell (or vice versa) or if it only owns part of its impact due to shared references. The general explanation of Memory Impact now lives in a collapsible "What Is Memory Impact?" foldout that links to the documentation.
+- Added a note to the Memory Impact section of the Selection Details for _Unity Objects_ stating whether the Native Object exclusively owns its Managed Shell (or vice versa) or if it only owns part of its impact due to shared references. The general explanation of Memory Impact now lives in a collapsible "What Is Memory Impact?" foldout that links to the documentation.
 - Added a "Potential Savings" widget to the Summary page that surfaces the clearest avoidable memory — Leaked Managed Shells, Leaked dynamically created Assets, Unused Assets in loaded AssetBundles, Unloadable Assets, and Broken Script References — each measured by its memory Impact. For AssetBundles the figure is the memory that unloading — or repartitioning — the bundles would actually reclaim: their otherwise-unused contents plus the shaveable share of each bundle's own serialization size.
 - Added deep-links from each Potential Savings widget row into the Roots & Impact view pre-filtered to that category's object statuses (via a per-row Inspect button, a double-click, or the widget's Inspect button and its Selection Details panel), so you can investigate and act on the found memory usage directly. The AssetBundles category opens the view expanded rather than flattened so you can assess bundle granularity.
-- Added an option to the preferences to toggle the "Potential Savings" widget on the summary page between the default of focusing on the exclusive impact (which is guaranteed to be reducible by addressing the flagged issues) and the total impact (which encompasses memory usage which *might* be able to be reduced this way but can't be guaranteed to be reducible algorithmically at scale).
+- Added an option to the preferences to toggle the "Potential Savings" widget on the summary page between the default of focusing on the exclusive impact (which is guaranteed to be reducible by addressing the flagged issues) and the total impact (which encompasses memory usage which _might_ be able to be reduced this way but can't be guaranteed to be reducible algorithmically at scale).
 - Added the sums of size columns into their column headers.
 - Added a "Scale bars to parent" option to the footer of the All Of Memory, Unity Objects and Roots & Impact tables and their comparison tables. It scales the size bars relative to the parent item instead of the table total (in the comparison tables, relative to the larger of the summed increases and summed decreases among its siblings, as a parent's net difference can be smaller than a child's), and toggling it keeps the current state of the table.
 - Added Depth, Refs (referrers), Share (of impact) and Impact (total impact) columns to the References panel's "Referenced By" and "References To" tables, so you can more easily reason about where the impact is coming from, even if the references aren't rooted (and therefore listed as its children in the Roots & Impact table) to the selected item. Depth is shown relative to the currently selected item's shortest path to root (↑ = closer to the root, ↓ = further away, 0 = same depth), in brackets when a reference's shortest path terminates at a different root. Share shows a dash, with an explanation, when the selected item's own impact had already been fully attributed before the referrer distributed its memory, since none of it reached the selection in that case. Column visibility is remembered per rider for the session and defaults to sensible sets per rider (e.g. Refs and Share are only shown by default on "References To"). "Referenced By" and "References To" can be sorted by any column except "Flags" (formerly "!"), defaulting to Depth (or Impact when Depth is hidden), and the sort column and direction are remembered per rider for the session.
@@ -24,10 +40,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added a "Refocus" button to the right hand panel's title bar. While you could always click the title to deselect any row in the References table and regain the Selection details for your original selection in the main table, this now makes it possible to select and frame the concrete row again after following the ping for its references. If you switched away from the table you made the selection in, it will frame it in the currently open table (if it contains it) or to offer to switch to a table that does contain it. A selection made in a comparison's Base or Compared table is refocused there while that table still lists it.
 
 ### Changed
+
 - Roots & Impact, All Of Memory, Memory Map and References tables now use a different icon in front of the Managed Shell or Native Unity Object part of a UnityEngine.Object type object that has both parts. In contrast to the Unity Objects table, which lists all instances based on their native object instance (thereby missing Leaked Managed Shell cases), these tables list both parts of these objects as separate row entries. Before this change, it wasn't really possible to tell which one was which, aside from guessing from the surrounding context. Additionally, the References tables now use the full range of icons in the same way that the main tables do, and no longer just the managed or native object icon.
 - Related to the above change, the object's title in the Selection Details now specifies if the selected item was the Managed Shell or the Native Unity Object. The remainder of the Selection Details keeps providing the information for both parts combined. The right hand panel otherwise only adapts the Shortest Path To Root table to match which part was selected. The remaining References tables treat these two as one object and list both references to and from both combined while ignoring the self references between the two.
 
 ### Fixed
+
 - Fixed the References panel in Selected Item Details always reopening on "Shortest Path To Root" for every selection, discarding the rider you had switched to (e.g. "References To") and forcing you to reselect it after every click. The panel now remembers your choice per table for the session, and opens Roots & Impact selections on "References To" by default since "Shortest Path To Root" duplicates what the Roots & Impact tree already shows.
 - Fixed the tooltips of the "Replace Memory UI in Profiler Window", "Show reserved native memory breakdown", "Show Memory Map view" and "Asset Search Provider Settings" options in the Memory Profiler Preferences never being shown.
 - Fixed managed heap section names showing up empty in the Memory Map view and the Selected Item Details panel.
@@ -37,12 +55,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed the Managed Fields inspector in Selected Item Details showing wrong values for some array fields of objects in CoreCLR snapshots, such as a Dictionary's entries, and logging "Requesting Array info on an invalid data type" errors. When the snapshot carried no type entry for the array's type, the field was read as a single struct stored inside the object instead of as a reference to the array.
 - Fixed importing a snapshot into the snapshots folder occasionally logging a "Could not open file ... for read" error because the snapshot list was refreshed while the file was still being copied.
 - Fixed memory being attributed to the wrong place, or under-reported, when the platform reported the same underlying memory mapping more than once with different boundaries in a capture (observed on Linux when a memory region, or a run of regions, resized while the capture was taken). The overlapping reports cut the containing memory region short, so e.g. large managed arrays could show a smaller size in the tables than their length would suggest. Such overlapping duplicate reports are now reconciled in favor of the later, more up-to-date reading.
-
+- Fixed native allocation callstacks from Linux captures showing only the parameter list of each frame, such as `(param, types)`, instead of its method name. Linux frames carry no address, module or file information, so the method name was dropped while looking for the module name. They are now simplified to the method name, the same way as frames from other platforms.
 
 ## [1.2.0-pre.1] - 2026-09-02
 
 ### Added
-- Added a new "Roots & Impact" view to the Memory Profiler window. It breaks down the entire memory usage of a snapshot by what *roots* it to memory, grouped by the kind of root (e.g. static fields, `DontDestroyOnLoad` objects, Scenes, Asset Bundles, native subsystem allocations, and unrooted memory), and shows the memory *Impact* of each entry: the memory it owns exclusively plus its proportional share of any memory it keeps alive together with other roots. This builds on the "Shortest Path To Root" and per-object "Impact" information added to the Selection Details in 1.1.10, now aggregated into a top-level table so you can see at a glance which roots are responsible for the most memory. The view supports the Allocated, Allocated and Resident, and Resident table modes, the configurable columns and Status column described below, and a toggle to hide memory that isn't attributable to a specific object (such as reserved or untracked regions) so you can focus on object-attributable usage. The table's total reconciles against the total memory in the snapshot.
+
+- Added a new "Roots & Impact" view to the Memory Profiler window. It breaks down the entire memory usage of a snapshot by what _roots_ it to memory, grouped by the kind of root (e.g. static fields, `DontDestroyOnLoad` objects, Scenes, Asset Bundles, native subsystem allocations, and unrooted memory), and shows the memory _Impact_ of each entry: the memory it owns exclusively plus its proportional share of any memory it keeps alive together with other roots. This builds on the "Shortest Path To Root" and per-object "Impact" information added to the Selection Details in 1.1.10, now aggregated into a top-level table so you can see at a glance which roots are responsible for the most memory. The view supports the Allocated, Allocated and Resident, and Resident table modes, the configurable columns and Status column described below, and a toggle to hide memory that isn't attributable to a specific object (such as reserved or untracked regions) so you can focus on object-attributable usage. The table's total reconciles against the total memory in the snapshot.
 - Added the ability to enable or disable optional columns by using the context menu of the table header.
 - Added status column to Unity Objects and All Of Memory table, including their comparison tables (invisible by default, see note above) with "Status in A" and "Status in B" columns and optional comparison based on status change (which also toggles the column visibility for these). The status columns are searchable so while the Description columns no longer add the `(Leaked Managed Shell)` suffix, the tables can still be searched for these via their name, as well as any other status. A drop-down menu also allows for explicitly filtering the table for entries of one or more specific statuses. Note: When a table entry groups objects with a mix of statuses, it will show as "Mixed" with the different statuses in the tool-tip. Since search filtering applies to the state of individual objects in each of the snapshot, "Mixed" is the only status column value that can't be found via search or filtering by status.
 - Added pagination to the flattened mode of the Roots & Impact and Unity Objects tables. Flattening these tables on a very large snapshot previously could run out of memory or stall the UI; the rows are now held outside the managed heap and only one page is shown at a time, with a page control below the table to step through them. Sorting by any size or status column sorts across the entire flattened set. Sorting by the Description (name) column does too, but has to resolve every row's name from the snapshot, so above a large row count its column header warns that the sort may take a moment.
@@ -50,12 +69,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added support for opening memory snapshots taken with the CoreCLR scripting backend.
 
 ### Changed
+
 - Removed the preference to disable the Roots & Impact / Impact & Root calculations that was added in 1.1.10. With the previously known edge cases addressed and the processing stabilized, these calculations now always run when opening a snapshot that supports them.
 - Reduced memory usage while having a snapshot open by unloading the managed heap bytes after it was crawled during the opening process, loading individual sections back in on demand when e.g. inspecting managed objects.
 - The selected item details no longer use the sign of the ID part of the EntityId value to influence search availability or the status of Assets as "Runtime Created" for snapshots taken from Unity 6000.5 or newer. This has always been more of a probabilistic nudge than a hard and fast rule even before EntityIds switched to 8 bytes, but definitely stopped being true for Unity 6000.6.0a3 or newer.
 - Switched to using the `Unity.Scripting.LifecycleManagement` API instead of `*InitializeOnLoad` on Unity 6000.5.0a9 and newer.
 - Improved the performance of selecting entries and filtering the Base and Compared tables in comparison mode significantly.
-- Unity Objects are now listed with *both* their `InstanceId`/`EntityId` and their name when comparing snapshots from the same session, instead of just their id.
+- Unity Objects are now listed with _both_ their `InstanceId`/`EntityId` and their name when comparing snapshots from the same session, instead of just their id.
 - When comparing, the All Of Memory table now shows results for the Base and Compared table when selecting at type, not just first when selecting a sub-group under the type.
 - Set the UI texts up for translation. The UI may be translated based on availability and your Editor preferences.
 - The All Of Memory and Memory Map tables now shows Unity asset types and their objects with the corresponding icons.
@@ -63,6 +83,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - The state for the toggles at the bottom of the tables is now retained for the duration of the current Editor session.
 
 ### Fixed
+
 - Improved the accuracy of the "Impact" figures shown in the Selection Details (introduced in 1.1.10) and the new Roots & Impact view, by fixing several cases where memory could be double-counted or attributed to the wrong owner: static field storage being counted both on its managed type and inside the managed virtual machine's native allocations, GCHandles stranding a proportional share of the memory they co-reference alongside a real owner, scene-hierarchy objects, unrooted native allocations, and hard-rooted native objects (e.g. non-scene `DontDestroyOnLoad` objects) that are also referenced from elsewhere having their impact attributed away instead of retained.
 - Fixed "InvalidOperationException" on opening snapshots where prefabs have been added to the delayed deletion queue but their name is not yet deleted.
 - Fixed that the Base and Compared tables for the Unity Objects in comparison mode would list unchanged objects with the same name, regardless of the "Show Unchanged" toggle.
@@ -77,14 +98,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed multi-dimensional (rank 2 or higher) managed arrays on captures from 64-bit IL2CPP players always being crawled as length 0, making their elements invisible to the managed object graph and under-reporting the array's size. The array bounds block was read with a stride sized for Mono's runtime layout, which happens to differ from 64-bit IL2CPP's (32-bit IL2CPP captures were unaffected, as their layout happens to match Mono's). This fix applies to captures that report their scripting backend (Unity 2019.4.29f1, 2020.3.12f1, 2021.1.9f1, 2021.2.0a12, or newer); older captures cannot be identified as IL2CPP and are unaffected by this change.
 
 ### Removed
+
 - Deprecated the Unity.MemoryProfiler.Editor.MemoryProfilerModule.ProfilerMemoryView enum, which didn't have any use as part of the public API anyways.
 
 ## [1.1.12] - 2026-03-10
 
 ### Changed
+
 - Unified the display of unnamed native Unity objects in all tables, including the Reference tables to be `"<No Name>"`.
 
 ### Fixed
+
 - Fixed two native memory leaks during snapshot opening.
 - Fixed search field alignment in small memory profiler window configurations ([UUM-133948](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-133948)).
 - Fixed error “InvalidOperationException: is a persistent scene object on Transform on GameObject that does not map to a prefab!“ on opening snapshots containing prefabs that are in the process of getting unloaded via the delayed deletion queue.
@@ -92,64 +116,76 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed the "Reset Opt-Out settings for dialog prompts" button in the Memory Profiler preferences to work with the new `EditorDialog.DisplayDecisionDialogWithOptOut()` API in Unity 6000.3 and newer.
 
 ### Added
+
 - Added a status and hint to the selected item details for persistent scene objects in the delayed deletion queue.
 - Added the hint to set the `.name` property for unnamed dynamic assets, even when they are marked as `DontDestroyOnLoad`.
-- Added a warning box to non-prefab scene objects (i.e. they are *NOT* assets) with the `HideFlags.DontUnloadUnusedAsset` set, additional to the warning logged on opening snapshots containing such objects. The warning message was also extended to highlight that this is a mistake in the project code that will lead to unexpected behavior. Always use the method `Object.DontDestroyOnLoad()` to move scene objects (GameObjects and their components) into the `DontDestroyOnLoad` scene to properly keep them from being unloaded as the `HideFlag.DontUnloadUnusedAsset` will be ignored for non-asset.
+- Added a warning box to non-prefab scene objects (i.e. they are _NOT_ assets) with the `HideFlags.DontUnloadUnusedAsset` set, additional to the warning logged on opening snapshots containing such objects. The warning message was also extended to highlight that this is a mistake in the project code that will lead to unexpected behavior. Always use the method `Object.DontDestroyOnLoad()` to move scene objects (GameObjects and their components) into the `DontDestroyOnLoad` scene to properly keep them from being unloaded as the `HideFlag.DontUnloadUnusedAsset` will be ignored for non-asset.
 
 ## [1.1.11] - 2026-02-06
 
 ### Fixed
+
 - Fixed an occasional deadlock when switching the table modes between Allocated, Allocated and Resident and Resident.
 
 ### Changed
-- Adjusted the search logic for the Memory Map table to not just filter by the content of the *Name* column but now also by the *Address* or *Type* and deals properly with nested table entries in the same way search works in the other tables.
+
+- Adjusted the search logic for the Memory Map table to not just filter by the content of the _Name_ column but now also by the _Address_ or _Type_ and deals properly with nested table entries in the same way search works in the other tables.
 
 ## [1.1.10] - 2026-01-30
 
 ### Added
-- Added a "Shortest Path To Root" tab to the References section. This shows the shortest path to what roots every object or (referenced) native allocation to memory. Note that it shows only *one* path and that it is only guaranteed to be the shortest path within all paths to the strongest binding type of root. There can be multiple paths and even shorter ones in weaker binding root types, none of which are currently shown in this list. While there are more insights to be gained by inspecting all paths to root, this additional view should provide a quick starting point, particularly for long and complex reference chains where the *Referenced By* tab might never drill deep enough to get to a root. For Unity Objects where the shortest path for their Managed Shell ends in a different root than the native object, both paths are shown.
-- Added entries for the "Impact" any object has on the overall memory usage to the new *Impact* section of their *Selection Details*. This *Impact* includes their own memory usage as well as the proportional amount of the *Impact* attributed to objects and allocations that the object references. That is to say, if it is the only one referencing another object, the *Impact* of the other object is added to its impact in full; if others reference that other object, the *Impact* of the other object is distributed among all those referencing it. To ensure no byte gets lost due to rounding issues, the references to a shared object that were found first might get 1 B more added to their *Impact* than the references found later. When a *Unity Object* is selected that consists of both a native and a mangaged object, the *Impact* for each is shown separately, as it might differ or fully include the other. For example, if the Managed Shell of a MonoBehaviour is rooted to a static field, the *Impact* of the Managed Shell is shared with the native object and all managed reference, but the *Impact* of the native object's *Impact* is not attributed to the managed shell or the static field root, as it exclusively bound to the lifetime of its GameObject and Scene. In case of an Asset however, the native object's *Impact* would be shared with the static reference chain, as that chain will keep it from being unloaded by `Resources.UnloadUnusedAssets()`.
+
+- Added a "Shortest Path To Root" tab to the References section. This shows the shortest path to what roots every object or (referenced) native allocation to memory. Note that it shows only _one_ path and that it is only guaranteed to be the shortest path within all paths to the strongest binding type of root. There can be multiple paths and even shorter ones in weaker binding root types, none of which are currently shown in this list. While there are more insights to be gained by inspecting all paths to root, this additional view should provide a quick starting point, particularly for long and complex reference chains where the _Referenced By_ tab might never drill deep enough to get to a root. For Unity Objects where the shortest path for their Managed Shell ends in a different root than the native object, both paths are shown.
+- Added entries for the "Impact" any object has on the overall memory usage to the new _Impact_ section of their _Selection Details_. This _Impact_ includes their own memory usage as well as the proportional amount of the _Impact_ attributed to objects and allocations that the object references. That is to say, if it is the only one referencing another object, the _Impact_ of the other object is added to its impact in full; if others reference that other object, the _Impact_ of the other object is distributed among all those referencing it. To ensure no byte gets lost due to rounding issues, the references to a shared object that were found first might get 1 B more added to their _Impact_ than the references found later. When a _Unity Object_ is selected that consists of both a native and a mangaged object, the _Impact_ for each is shown separately, as it might differ or fully include the other. For example, if the Managed Shell of a MonoBehaviour is rooted to a static field, the _Impact_ of the Managed Shell is shared with the native object and all managed reference, but the _Impact_ of the native object's _Impact_ is not attributed to the managed shell or the static field root, as it exclusively bound to the lifetime of its GameObject and Scene. In case of an Asset however, the native object's _Impact_ would be shared with the static reference chain, as that chain will keep it from being unloaded by `Resources.UnloadUnusedAssets()`.
 - Added an option to the Memory Profiler's preferences to disable the calculations needed for the above mentioned Impact and Root determinations. While we did our best to consider all possibilities, there might be edge cases where these calculations cause issues while opening a snapshot, and the capture opening times might increase due to these calculations. You can therefore disable the calculations, but please report any errors you may encounter, so that we can fix them.
 
 ### Fixed
+
 - Snapshot panel and details panel size and toggle state are now persisting.
 - Fixed a few smaller managed memory leaks in the UI.
 - Fixed Memory Usage module UI in Profiler Window in light mode having too dark a background color.
 - Fixed a broken profiler target selection drop-down on Unity 6000.5 with a null-pointer exception thrown during EditorStyles.toolbarDropDown inside PlayerConnectionCompatibilityHelper.GetPlayerDisplayName.
 - Fixed a native memory leak in the ManagedData constructor and when loading the dumped managed heap bytes out of a snapshot file.
 - Fixed the toggle labeled "Show Address in Call Stacks" so it does what it says, instead of the opposite.
-- Fixed the *Selection Details* for Unity Objects without a Managed Shell claiming the object to be "Referenced By: 0" where they totally had native references.
+- Fixed the _Selection Details_ for Unity Objects without a Managed Shell claiming the object to be "Referenced By: 0" where they totally had native references.
 
 ### Changed
+
 - Improved performance for table sorting.
 - Unrooted memory is now broken down by allocation for snapshots taken from 6000.3 or newer even if the Editor is not in `internal mode` and the snapshot was not taken from a Player or Editor started with the command line option `-enable-memoryprofiler-callstacks`. With that option these allocations are grouped by their Memory Label.
 
 ## [1.1.9] - 2025-09-05
 
 ### Changed
+
 - Renamed Unknown to Unrooted as that more properly describes these allocations. Further, if a snapshot is taken from a Player or Editor is started with the command line option `-enable-memoryprofiler-callstacks` (only available for 6000.3 or newer, for older versions Unity's source code would have to have been compiled with the precompiler directive `ENABLE_STACKS_ON_ALL_ALLOCS`) AND when doing so on a Unity version where the bug ([UUM-116049](https://issuetracker.unity3d.com/product/unity/issues/guid/UUM-116049)) has been fixed, AND if the Unity Editor opening the snapshot is in `internal mode`, then the Unrooted allocations are split out into the Memory Labels which had been used for their allocation. Note: this is predominantly a debug tool for Unity Engine developers to fix their unrooted allocations.
 
 ## [1.1.8] - 2025-08-13
 
 ### Added
+
 - Added an option to the Memory Profiler preferences to consider all pointer sized fields as potential pointers to native allocations. By default such fields are only considered when they are found on types in the `Unity.Entites` namespace, which helps analyse DOTS and Entities usage of unmanaged memory. Turning this option on can improve reference discovery for native memory, but can also produce false positives and slow down snapshot opening times. If you want to make your own usages of memory allocated via `UnsafeUtility` easier to analyze, it is recommended to instead store references to it as actual pointers or `IntPtr`s.
 
 ### Fixed
+
 - Compilation issues on Unity versions between 6000.0.0a1 and 6000.0.52f1.
 - UI issues due to too long paths and resulting failures to import the files.
 - Fixed potential duplicates in Unity Objects table not finding potential duplicates if their resident memory size differs ([PROFB-367](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-367)).
 - Fixed discrepancies in the resident amounts given for native and managed memory on the Summary page compared to the All Of Memmory Page when inspecting captures from IL2CPP. The resident amounts used for the VM memory where not properly reattributed.
 
 ### Changed
+
 - Improved the analysis of managed data to find DOTS/Entites related references to unmanaged memory when that memory is referenced from types in the `Unity.Entites` namespace.
 - Switched on resident memory breakdown for the managed memory section on the Summary page.
 
 ## [1.1.7] - 2025-08-06
 
 ### Added
+
 - Added a UTC timestamp, as well as the current frame count, Time.realtimeSinceStartupAsDouble and (when capturing a snapshot from a Unity Editor) EditorApplication.timeSinceStartup to the default snapshot metadata injector (which is included in builds made with this version of the package included, unless a [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html) instance is present). This should make correlating snapshots to timing captures easier. The time reflects the start of the capture taking process and the metadata can be observed by hovering the snapshot in the list of captures (while not in Play Mode).
 
 ### Fixed
+
 - Fixed loading of a capture with an invalid native root allocation reference from a graphics resource ([PROFB-359](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-359)).
 - Fixed an issue where the list of snapshots would jump to the wrong position after opening one.
 - Fixed issue where non-Latin characters in a project's Product Name would result in an incorrectly named memory snapshot file ([PROFB-346](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-346)).
@@ -162,6 +198,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed icon for captures made on Apple Vision Pro.
 
 ### Changed
+
 - Improved the handling of exceptions thrown during a snapshot opening process so that previously opened snapshots apear properly as closed int UI and a mismatch between UI and loading state do not lead to follow on-exceptions.
 - Improved the documentation for [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html).
 - Added GCHandles allocated for managed objects to the list of references if they are not associated with a native object (where that native object would then be placed in the references list).
@@ -170,9 +207,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.6] - 2025-03-24
 
 ### Added
+
 - Added info on which scripting backend a snapshot was captured from to the tooltip of the snapshot's entry in the snapshot list.
 
 ### Fixed
+
 - Fixed calculation leading to an attempt to allocate negatively sized NativeHashmap<SourceIndex,UnsafeList<int>> backing memory for large connection maps for projects with Collections package versions <2.1.
 - Fixed the Memory Usage module details UI in the Profiler Window not getting properly overridden by UI from the Memory Profiler package. Compared to the state in 1.1.3 this override now also shows Resident vs Committed memory (where those counters are available in the profiler data), counts for the Top Unity Object categories and a bar for all GC Allocated In Frame split into main thread and other threads. The display for bar graphs has also been fixed.
 - Fixed the summary page's Top Unity Objects table showing incorrect Description texts on selecting elements of the table.
@@ -181,26 +220,32 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.5] - 2025-02-14
 
 ### Added
+
 - Managed fields referencing native allocations are now parsed as references. References show up in the References To tab for the managed objects holding the references, as well as in the Referenced By tab for native allocations under `Native > Unity Subsystems > UnsafeUtility` in the All Of Memory table. Note that this is not an exhaustive list of all references to these allocations, as stack variables could reference them as well but are not part of the snapshot. Thus, a native allocation without references is not necessarily leaked.
 - Native Allocations (e.g. those listed in `Native > Unity Subsystems > UnsafeUtility` in the All Of Memory table) are now named based on the field and object information of the first managed reference to them, making them easier to parse than address values and stand out from the list as having reference information.
 
 ### Fixed
+
 - The Memory Profiler now finds references from unsafe pointer fields to Managed Objects **IF** they are also held by a GC Handle. The extra condition is there to avoid false positives while adding more detailed reference info for those GCHandle held objects.
 - The Managed Fields table now shows any pointer sized fields that might be holding managed objects as referencing these managed objects (Note: if they are not referenced otherwise, they won't sho up in the other tables).
 
 ### Changed
+
 - The References To table now shows field information for references held by managed fields
 
 ## [1.1.4] - 2025-02-07
 
 ### Added
+
 - Added memory amount taken up by static field data to Virtual Machine Memory description when selecting it. It usually is a very small portion of the VM but it is one that all snapshots already have data for.
 - Added snapshot meta data description (reported via an implementation of [`Unity.MemoryProfiler.MetadataCollect`](https://docs.unity3d.com/Packages/com.unity.memoryprofiler@1.1/api/Unity.MemoryProfiler.MetadataCollect.html) or [`Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata`](https://docs.unity3d.com/6000.1/Documentation/ScriptReference/Unity.Profiling.Memory.MemoryProfiler.CreatingMetadata.html)) to the tooltips of the snapshot screenshot images.
 
 ### Fixed
+
 - Fixed native sizes getting trimmed down for Native Objects captured in snapshots from Unity versions before 2022.2, when their Native Allocations did not fall within reported memory regions. This trimming falsely assumed proper memory region reporting.
 
 ### Changed
+
 - Improved object size information in selection details view; now lists Graphics memory.
 - Showing Graphics sizes in All Of Memory table for snapshots of Unity versions prior to 2022.2 and adjusting native sizes to rely on Profiler.GetRuntimeMemorySizeLong data for these captures.
 - Switched Unity Objects table and summary to use the explicitly reported graphics sizes for all snapshots taken from 2022.2 or newer, instead of 2023.1 or newer. 2022.2 and 2022.3 had this data but was displaying graphics sizes based on calculations using Profiler.GetRuntimeMemorySizeLong data. Earlier 2022.2 and 2022.3 versions had different bugs in the reported values for the explicitly reported graphics sizes so snapshots taken between version 2022.2.0a8 and 2022.3.7f1 might have shown different graphics and native sizes on the Unity Objects table vs what the All Of Memory table was showing for them. Small discrepancies in native memory reporting, that also might have had an influence on the graphics and native sizes shown in the two tables have been fixed in 2022.3.43f1 so for the most reliable data, use that or a newer version for profiling.
@@ -211,17 +256,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.3] - 2024-10-31
 
 ### Fixed
+
 - Static field references were only listed in the References view if they directly referenced the selected item, i.e. a static field referencing an object B that referenced the selected object A would only show object B, but not the static reference to B ([PROFB-173](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-173)).
 - Fixed an ArgumentOutOfRangeException when opening the Unity Objects page in compare mode with 2 snapshots that were captured without capturing Native Objects.
 - Fixed a NullReferenceException when opening the All of Memory page in compare mode with 2 snapshots that were captured without capturing Native Objects but with Native Allocations, both from the same session.
 - Fixed the ID numbers for Graphics objects on the All of Memory page in compare mode with 2 snapshots that where both captured from the same session to be their Native Object's instance ID.
 
 ### Changed
+
 - Adjusted package dependency on Unity.Collections down to 1.2 to retain compatibility to 2022.3 without forcing to update Unity.Collections to 2.1 or newer.
 
 ## [1.1.2] - 2024-10-24
 
 ### Fixed
+
 - Fixed Memory Profiler UI freezing on selecting Unity Objects when the search index hasn't been built yet.
 - Reattributed Nintendo Switch's reserved GPU memory from Native to Graphics in the Summary view and All Of Memory table.
 - Improved the performance of the Managed Data Crawler by using the Job System when parsing managed array data with potential references to managed objects. In some worst case scenarios this brings the opening times down from several hours to <5min, thereby fixing [PROFB-191](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-191).
@@ -229,6 +277,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed inclusion of allocated GPU memory on the Nintendo Switch on the All Of Memory table under `Native > Unity Subsystem > Unknown`. Instead, it is now shown under `Graphics (Estimated)` and/or `Untracked > Graphics`.
 
 ### Changed
+
 - Improved accuracy of the search for Assets and Scene Objects within the open project which is used for the "Select in Editor" button, Open in Search and Preview Image by constraining it to exact names.
 - Improved responsiveness of table item selection of Unity Objects (in any table) by switching the Assets and Scene Object search triggered by that selection to run async instead of synchronous.
 - The All Of Memory table now lists all individual allocation under Native > Unity Subsystem > UnsafeUtility to allow for checking the count and size of different allocations made via UnsafeUtility.
@@ -237,9 +286,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.1] - 2024-09-10
 
 ### Added
+
 - Added the name of the assembly to the Type details when selecting a Managed Type group.
 
 ### Fixed
+
 - Fixed navigating with arrow keys not updating reference list in All of Memory view ([PROFB-153](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-153)).
 - Fixed retention of Snapshot list expansion and scroll state so that it does not expand all items unexpectedly but remembers which sessions were collapsed and which extended ([PROFB-196](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-196)).
 - Fixed dropdown text being clipped when "Allocated and Resident Memory on Device" was selected.
@@ -255,6 +306,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Reattributed IL2CPP VM memory from Native to Managed in the All Of Memory table.
 
 ### Changed
+
 - Allowed Snapshots to reside in Subfolders within the configured memory snapshot path.
 - Improved Snapshots folder monitoring: Changes to the folder are now reflected in the Editor without it requiring to acquire focus first.
 - Improved display of managed arrays in the Selected Item Details and Managed Fields.
@@ -262,11 +314,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.0] - 2023-10-16
 
 ### Changed
+
 - Bump version to 1.1.0 from 1.1.0-pre.3.
 
 ## [1.1.0-pre.3] - 2023-09-27
 
 ### Fixed
+
 - Fixed an exception on capturing when the default snapshot storage path was used (./MemoryCaptures) but did not exist. It now gets created if it is missing. Custom set storage paths will still not be created as issues with these need user input to get resolved properly.
 - Fixed an ArgumentOutOfRangeException in ManagedObjectInspector on selecting some object entries in the All of Memory and Unity Objects table. The field inspector UI was trying to display the managed field values of static fields that hadn't been initialized.
 - Fixed Snapshot opening triggering a synchronous search via SearchService to initialize it for the Select, Find and Asset Preview functionality. As that could trigger SearchService to start indexing, this might have lead to longer stalls on opening snapshots.
@@ -282,6 +336,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed issue with Unity Objects view that caused some managed objects not to group and shown as separate items.
 
 ### Changed
+
 - Documentation updated.
 - The "Search In Project" button now searches in the Assets folder _and_ in Packages (related to ([PROFB-54](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-54))).
 - Improved the performance of selecting items in the All Of Memory and Unity Objects tables for objects with managed memory. This affected in particular objects which have a lot of entries (their own or nested fields) displayed in their Managed Fields in the Selection Details panel. Beyond improving the performance in general, 'Continue...' entries, which can be clicked to get further entries added to the view, now not only appear in fields 4 layers down and for big arrays, but also after a total of 1000 field entries have been added to the view.
@@ -289,13 +344,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.0-pre.1] - 2023-05-04
 
 ### Added
+
 - Added thumbnailing for screenshots to improve startup speed.
 
 ### Changed
+
 - Deprecated accidentally exposed as public IComparableItemData interface.
 - Updated window icon.
 
 ### Fixed
+
 - Fixed an empty MonoBehaviour entry being displayed in the Unity Objects table when 'Show Potential Duplicates' was checked and there are no potential duplicate MonoBehaviours.
 - Fixed Summary view tracking of Graphics memory on Switch.
 - Fixed the Summary breakdown bar's total label overlapping with its legend when using small window sizes.
@@ -304,9 +362,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.0-exp.2] - 2023-04-20
 
 ### Added
+
 - Added metadata support for AudioClip and Shader objects.
 
 ### Fixed
+
 - Fixed an ArgumentNullException for a parameter named `e` in `MemoryBreakdownLegendViewController.GatherColumnReferences` ([PROFB-97](https://issuetracker.unity3d.com/product/unity/issues/guid/PROFB-97)).
 - Fixed Selection Details foldouts so that they retain their expansion status for the duration of an Editor session and not change on every selection change.
 - Fixed screenshots remaining after deleting snapshots.
@@ -323,11 +383,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.1.0-exp.1] - 2023-03-21
 
 ### Added
+
 - Added a dropdown to the Unity Objects and All Of Memory views that allows switching between showing all sizes as they relate to Resident Memory, Allocated Memory or both.
 - Added support for RenderTexture metadata in memory captures.
 - Added tooltips to sizes in Selection Details view, showing the memory usage in bytes.
 
 ### Changed
+
 - Reduced managed memory usage when opening snapshots by loading the managed heap bytes into native instead of managed memory containers.
 - Changed the naming of managed object entries in tables when they are not connected to a native Unity Object from "No Name" to their address. Strings and char arrays additionally show their first characters after their address value. Entries for Unity Objects that had their native object destroyed further get the postfix "(Leaked Shell)" after their address.
 - Changed Unity Object comparison for same session comparisons to further distinguish Unity Objects by their Instance IDs, unless the table is flattened.
@@ -335,6 +397,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Objects of types inheriting from MonoBehaviour or ScriptableObject are now grouped under their managed type name in the Unity Objects table.
 
 ### Fixed
+
 - General layout improvements in details view.
 - Fixed missing allocators information in Native->Reserved breakdown in compare mode of the All of Memory view.
 - Fixed Managed Fields table to show details for struct data.
@@ -351,6 +414,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.0.0] - 2022-08-26
 
 ### Fixed
+
 - Fixed typos in the UI.
 - Fixed 'Destroying assets is not permitted to avoid data loss' error when previewing TerrainData objects.
 - Minor styling adjustments to Light theme.
@@ -359,25 +423,30 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.0.0-pre.3] - 2022-06-30
 
 ### Added
+
 - All Of Memory Comparison functionality.
 - Added the ability to sort by multiple columns on Unity Objects, All Of Memory, Unity Objects Comparison, and All Of Memory Comparison table column headers. CTRL-click a table column header to add it as an additional (secondary, tertiary etc.) sorting column.
 - List of executables and mapped files if snapshot is made with Unity 2022.2 or newer.
 
 ### Changed
+
 - Close a snapshot by clicking the new 'Close' button, instead of selecting an open snapshot.
 - Remove A/B snapshot colors.
 - Remove Swap Snapshots button.
 
 ### Fixed
+
 - Renaming a snapshot no longer allows duplicate file names with different casing, which naturally caused file system errors.
 - Fixed detail panel reference view not showing all the references for selected object.
 
 ## [1.0.0-pre.2] - 2022-05-05
 
 ### Changed
+
 - Changed details view UI to hide references section if selected item doesn't have references.
 
 ### Fixed
+
 - Fixed a crash in DynamicArray.Resize [(Case 1426543)](https://issuetracker.unity3d.com/product/unity/issues/guid/1426543/).
 - Selecting a Unity Object Type in the Unity Objects Comparison view now clears the selection in the Details view.
 - Fixed `Value cannot be Null` error and infinite Circular References when expanding types with self references in the Managed Fields table in the Selected Item Details panel.
@@ -385,19 +454,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.0.0-pre.1] - 2022-05-04
 
 ### Added
+
 - Added Unity Objects comparison view when comparing two snapshots.
 
 ### Removed
+
 - Removed accidentally exposed as public internal API
 - Removed Fragmentation, Objects & Allocations, and Tree Map legacy tabs.
 
 ### Changed
+
 - Changed minimal supported version to 2022.2.
 - Use Editor built-in platform icons in the Snapshot panel.
 - Moved Unity Objects and All Of Memory breakdowns to their own tabs.
 - Moved Potential Duplicates to an option within Unity Objects.
 
 ### Fixed
+
 - Fixed an issue whereby tab bar text would overlap with details text on sufficiently small window sizes.
 - Fixed an exception occurring when loading an unsupported snapshot and opening the Unity Objects breakdown.
 - Fixed an issue whereby a 'feature not available due to pre 2022.1' message can be shown incorrectly.
@@ -405,19 +478,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.7.1-preview.1] - 2022-05-10
 
 ### Fixed
+
 - Fixed a crash in DynamicArray.Resize [(Case 1426543)](https://issuetracker.unity3d.com/product/unity/issues/guid/1426543/).
 
 ## [0.7.0-preview.2] - 2022-05-04
 
 ### Fixed
+
 - Fixed the layout of entries in the Selected Item Details panel.
 
 ## [0.7.0-preview.1] - 2022-05-04
 
 ### Added
+
 - Progress bar when opening the Tree Map for the first time.
 
 ### Fixed
+
 - Fixed Displaying of strings longer than 8000 characters breaking the Selected Item Details UI by capping the maximum length of strings to 8000 before displaying them.
 - Fixed Compilation on Unity 2021.1.
 - Fixed a possible TempJob allocation leak when failing to reading a corrupt snapshot.
@@ -426,10 +503,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed NullPointer exception when clicking on the selected item label in the References panel if no item is selected.
 
 ### Changed
+
 - Sped up snapshot opening times.
 - Moved All Object Tree Map and Table to its own Page.
-  - The Memory Usage Summary on the Summary Page will now be always unfolded on switching to this page.
-  - For all other pages containing the Memory Usage Summary, it defaults to being folded up and will remember its state on each page for the current Session of the Editor.
+    - The Memory Usage Summary on the Summary Page will now be always unfolded on switching to this page.
+    - For all other pages containing the Memory Usage Summary, it defaults to being folded up and will remember its state on each page for the current Session of the Editor.
 - Optimized Tree Map generation. This reduces time to open Tree Map by 25%.
 - Remove reflection usage for opening the Preferences window focused on the Memory Profiler's settings.
 - Renamed "Top Issues" to "Potential Capture Issues".
@@ -437,499 +515,562 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Adjusted Engine and Editor API usage to reflect Memory Profiler APIs moving out of Experimental namespaces in 2022.2.0a13.
 
 ### Removed
+
 - Removed View History buttons from the toolbar. With the removal of links in tables in version 0.5.0-preview.1, these buttons had become largely redundant.
 - Removed sorting of the tables for the Memory Summary bars until pending rework on them is conducted.
 
 ## [0.6.0-preview.1] - 2022-03-11
 
 ### Added
+
 - Added the 'Unity Objects' view to show a breakdown of memory contributing to all Unity Objects. This enables you to more easily understand the total memory impact of the assets and objects in your project by showing you their total, native, and managed sizes in one place. Unity Objects are grouped by their types, such as Texture2D, Material, and Mesh. Use the 'Search By Name' functionality to filter the view to specific objects. Use the 'Flatten Hierarchy' functionality to remove the Type groupings.
 - Added the 'Potential Duplicates' view to show a breakdown of all potential duplicate Unity Objects. Potential duplicates, which are Unity Objects of the same type, name, and size, might represent the same asset loaded multiple times in memory.
 - Added the 'All Tracked Memory' view to show a breakdown of all tracked memory that Unity knows about.
 - Added References To functionality. A list of the objects that the current selection has "references to" will now be displayed in the References To tabbed section of the details panel.
 
 ### Fixed
+
 - Removed two instances of Reflection for loading icons.
 
 ## [0.5.1-preview.1] - 2022-02-25
 
 ### Added
- - Added tooltip to the Referenced By section to explain what it means. "Displays a list of other entities that reference the selected object."
+
+- Added tooltip to the Referenced By section to explain what it means. "Displays a list of other entities that reference the selected object."
 
 ### Fixed
- - Fixed Managed Type truncation for generic types to only truncate the type that holds the generic type arguments.
- - Removed "Examples/SearchService/Providers" Menu item.
- - Fixed issue where filters would be added to the spreadsheet tables and could not be removed.
- - Fixed issue where selecting something in the references tree view would cause the spreadsheet to repaint and lose latent selection.
- - Fixed Duplicate entries appearing in searches in the reference view.
- - Fixed NotImplementedException being thrown when traversing history from the fragmentation panel to a high-level element breakdown selection.
- - Fixed the main selection not being recreated in the references view when navigating back in history from other views to the details panel.
- - Fixed issue where removing filters would leave the wrong selection in the table view.
- - Fixed references view selection causing table expansion state to reset.
- - Fixed Errors and Exceptions breaking the Memory Profiler Window when minimizing, maximizing or docking and undocking it.
- - Improved "Select in Editor" search accuracy for Assets and Scene Objects in 2021.1 or newer editors.
- - Improved "Open in Quick Search" search string when searching for Scene Objects in 2021.1 or newer editors.
+
+- Fixed Managed Type truncation for generic types to only truncate the type that holds the generic type arguments.
+- Removed "Examples/SearchService/Providers" Menu item.
+- Fixed issue where filters would be added to the spreadsheet tables and could not be removed.
+- Fixed issue where selecting something in the references tree view would cause the spreadsheet to repaint and lose latent selection.
+- Fixed Duplicate entries appearing in searches in the reference view.
+- Fixed NotImplementedException being thrown when traversing history from the fragmentation panel to a high-level element breakdown selection.
+- Fixed the main selection not being recreated in the references view when navigating back in history from other views to the details panel.
+- Fixed issue where removing filters would leave the wrong selection in the table view.
+- Fixed references view selection causing table expansion state to reset.
+- Fixed Errors and Exceptions breaking the Memory Profiler Window when minimizing, maximizing or docking and undocking it.
+- Improved "Select in Editor" search accuracy for Assets and Scene Objects in 2021.1 or newer editors.
+- Improved "Open in Quick Search" search string when searching for Scene Objects in 2021.1 or newer editors.
 
 ### Changed
- - Changed Snapshot preview screen-shot textures to get compressed in memory to reduce memory overhead.
- - Changed Type name truncation so that all type names are truncated not just the initial type name.
- - Changed the Referenced By tree view to not contain the selected object.
-   - The selected object that the references are calculated for are now displayed above the tree view.
-   - The Referenced By button now show the number of direct connections in its label.
- - The import buttons has been moved to left side of the memory profiler window toolbar.
- - The snapshots panel toggle text has been removed.
- - The details panel toggle text has been removed and the icon has been changed to use the inspector icon.
+
+- Changed Snapshot preview screen-shot textures to get compressed in memory to reduce memory overhead.
+- Changed Type name truncation so that all type names are truncated not just the initial type name.
+- Changed the Referenced By tree view to not contain the selected object.
+    - The selected object that the references are calculated for are now displayed above the tree view.
+    - The Referenced By button now show the number of direct connections in its label.
+- The import buttons has been moved to left side of the memory profiler window toolbar.
+- The snapshots panel toggle text has been removed.
+- The details panel toggle text has been removed and the icon has been changed to use the inspector icon.
 
 ## [0.5.0-preview.1] - 2022-02-02
 
 ### Added
- - Added selection events to the view history.
- - Added details panel. This is context aware and will show extra information about whatever the current selection is.
-   - Referenced By (Raw) section: This section of the details panel shows the connections to the current selection, where applicable. This can be used to determine the paths to objects that are holding objects in memory and is currently designed as a 1:1 match to the references column click through from the object tables.
-   - Selection Details section: This section of the details panel displays, where possible, additional information about the currently selected item e.g. the fields on a managed object or the description of the currently selected memory usage overview category.
-     - Showing these details is currently only implemented for Managed or Native Objects, Managed or Native Types and the breakdown categories in the Memory Usage Overview.
-     - If an Object is selected that inherits from UnityEngine.Object (a "Unity Object") that has a Managed Shell to its Native Object, the Selection Details treat it as one object, giving you all the info for both of them and list out details separately as well were useful.
-     - Where applicable, the selected item is searched for in the editor. If there is exactly one item found in the editor which match the search criteria, which is either the Instance ID (if the capture is from the current Editor Session) or its Name and Type, two things become available
-       - The "Select in Editor" button to ping the object in the Scene Hierarchy or Project Browser and to select the object so it's details are shown in any open Inspector view.
-       - If applicable, a preview is loaded from the object in the Editor. (NOTE: This is NOT how the object necessarily looked in the build. The search logic may have found a different object or it may have been changed since the build was made. This is just to potentially help in identifying the Object in the capture faster.)
-     - Regardless of the results of the search for a specific object, the new "Search in Scene/Project" button can always help in finding Assets or Scene Objects quickly.
-     - In Unity 2021.1 and newer, an additional button will open Quick Search.
+
+- Added selection events to the view history.
+- Added details panel. This is context aware and will show extra information about whatever the current selection is.
+    - Referenced By (Raw) section: This section of the details panel shows the connections to the current selection, where applicable. This can be used to determine the paths to objects that are holding objects in memory and is currently designed as a 1:1 match to the references column click through from the object tables.
+    - Selection Details section: This section of the details panel displays, where possible, additional information about the currently selected item e.g. the fields on a managed object or the description of the currently selected memory usage overview category.
+        - Showing these details is currently only implemented for Managed or Native Objects, Managed or Native Types and the breakdown categories in the Memory Usage Overview.
+        - If an Object is selected that inherits from UnityEngine.Object (a "Unity Object") that has a Managed Shell to its Native Object, the Selection Details treat it as one object, giving you all the info for both of them and list out details separately as well were useful.
+        - Where applicable, the selected item is searched for in the editor. If there is exactly one item found in the editor which match the search criteria, which is either the Instance ID (if the capture is from the current Editor Session) or its Name and Type, two things become available
+            - The "Select in Editor" button to ping the object in the Scene Hierarchy or Project Browser and to select the object so it's details are shown in any open Inspector view.
+            - If applicable, a preview is loaded from the object in the Editor. (NOTE: This is NOT how the object necessarily looked in the build. The search logic may have found a different object or it may have been changed since the build was made. This is just to potentially help in identifying the Object in the capture faster.)
+        - Regardless of the results of the search for a specific object, the new "Search in Scene/Project" button can always help in finding Assets or Scene Objects quickly.
+        - In Unity 2021.1 and newer, an additional button will open Quick Search.
 - Added the ability to hide table columns and reduced the set of columns shown by default down to the most commonly useful ones. The reasoning for hiding these is:
-   -  With the managed fields moved to the Selection Details section, the "Static" and "Field Target Size" columns have become redundant, and so has the ability to expand Managed Objects to see their fields, and the "Address" column to see the field layout clearer.
-   -  With the Selection Details section showing a Unity Object's managed and Native info as one, the Managed Objects no longer show their Native Object's size and instead of splitting their size into a Managed Size and a Native Size column, the tables now only show one Size column and one Name Column by default.
-   -  The Native Instance ID is also shown in the Selection Details under the Advanced tab. The most important info from it is considered for the "Status" displayed in the "Basic" info section (i.e. negative = Runtime Created, Positive = Loaded from file).
-   -  If you took a snapshot of the current editor session, the Instance ID is used by the "Select in Editor" button in the Selection Details section to select the instance. It therefore no longer needs to be displayed as a link in the table.
-   -  All other links in the tables have also been disabled, as they would only help see further details for an object, that now live in the Selection Details section
- - Added a "Count" and a "Total Size" label above each table that dynamically adjusts as you filter the table.
- - The Managed Fields inspector in the Selection Details section has some additions over what was previously shown in the tables:
-   - It links up NativeArray fields that point to native Allocations with these allocations for easier analysis of DOTS memory usage.
-   - For IntPtr fields, it tries to find the Object, Allocation or Region that the IntPtr points at, and shows the information it finds.
-   - For UnityEngine.Object.m_CachedPointer it shows the Native Object that the Managed Shell Object points to.
-   - Recursive reference chains are caught and truncated so that it is safe to use Alt/Option + LMB click to expand the tree all the way. Though right now, to keep processing times low, it only searches 3 levels deep at a time.
- - Added toggle to truncate type names in the details panel. It can be accessed through the kebab menu icon and the context menu of both the managed object inspector and referenced by tree views.
+    - With the managed fields moved to the Selection Details section, the "Static" and "Field Target Size" columns have become redundant, and so has the ability to expand Managed Objects to see their fields, and the "Address" column to see the field layout clearer.
+    - With the Selection Details section showing a Unity Object's managed and Native info as one, the Managed Objects no longer show their Native Object's size and instead of splitting their size into a Managed Size and a Native Size column, the tables now only show one Size column and one Name Column by default.
+    - The Native Instance ID is also shown in the Selection Details under the Advanced tab. The most important info from it is considered for the "Status" displayed in the "Basic" info section (i.e. negative = Runtime Created, Positive = Loaded from file).
+    - If you took a snapshot of the current editor session, the Instance ID is used by the "Select in Editor" button in the Selection Details section to select the instance. It therefore no longer needs to be displayed as a link in the table.
+    - All other links in the tables have also been disabled, as they would only help see further details for an object, that now live in the Selection Details section
+- Added a "Count" and a "Total Size" label above each table that dynamically adjusts as you filter the table.
+- The Managed Fields inspector in the Selection Details section has some additions over what was previously shown in the tables:
+    - It links up NativeArray fields that point to native Allocations with these allocations for easier analysis of DOTS memory usage.
+    - For IntPtr fields, it tries to find the Object, Allocation or Region that the IntPtr points at, and shows the information it finds.
+    - For UnityEngine.Object.m_CachedPointer it shows the Native Object that the Managed Shell Object points to.
+    - Recursive reference chains are caught and truncated so that it is safe to use Alt/Option + LMB click to expand the tree all the way. Though right now, to keep processing times low, it only searches 3 levels deep at a time.
+- Added toggle to truncate type names in the details panel. It can be accessed through the kebab menu icon and the context menu of both the managed object inspector and referenced by tree views.
 
 ### Fixed
- - Fixed Fragmentation page to show an Allocations table with root object and area names when comparing snapshots.
+
+- Fixed Fragmentation page to show an Allocations table with root object and area names when comparing snapshots.
 
 ### Changed
- - Memory Usage Overview categories can now be selected, either via their colored bar or via their row in the table below it. Selecting the category will show a description of what is encompassed in this category in the Selection Details section.
- - Reduced the amount of memory used for snapshot preview images in the Editor.
- - The Name column in the tables now shows managed string content in quotes.
- - On capturing or importing a snapshot, the Snapshot side bar is now toggled visible if it was not before. It also scrolls to reveal the new snapshot.
+
+- Memory Usage Overview categories can now be selected, either via their colored bar or via their row in the table below it. Selecting the category will show a description of what is encompassed in this category in the Selection Details section.
+- Reduced the amount of memory used for snapshot preview images in the Editor.
+- The Name column in the tables now shows managed string content in quotes.
+- On capturing or importing a snapshot, the Snapshot side bar is now toggled visible if it was not before. It also scrolls to reveal the new snapshot.
 
 ## [0.4.4-preview.2] - 2022-01-12
 
 ### Added
- - Added the Unity version a capture was made in to the tool-tip of the Session label of opened snapshots.
+
+- Added the Unity version a capture was made in to the tool-tip of the Session label of opened snapshots.
 
 ### Fixed
- - Fixed tables drawing blank areas when scrolled past row 60000 and scrolling to the right.
- - Fixed the Fragmentation view's Memory Map drawing of Managed Memory regions while comparing snapshots when they changed size between captures. They would previously show the entire region as changed and not show which objects within them were new or deleted. [(Case 1388611)](https://issuetracker.unity3d.com/product/unity/issues/guid/1388611/)
- - Fixed an IndexOutOfBoundsException when sorting size tables in the Memory Map's Object list and switching to the Region or Allocations lists.
- - Fixed the row size option in the Fragmentation view not being properly stored across sessions for Fragmentation analysis of snapshots in comparison mode.
- - Fixed an issue where the crawler would find impossibly big string objects, inflating Managed Object Memory and causing exceptions when these were to be drawn in a table [(Case 1393878)](https://issuetracker.unity3d.com/product/unity/issues/guid/1393878/).
+
+- Fixed tables drawing blank areas when scrolled past row 60000 and scrolling to the right.
+- Fixed the Fragmentation view's Memory Map drawing of Managed Memory regions while comparing snapshots when they changed size between captures. They would previously show the entire region as changed and not show which objects within them were new or deleted. [(Case 1388611)](https://issuetracker.unity3d.com/product/unity/issues/guid/1388611/)
+- Fixed an IndexOutOfBoundsException when sorting size tables in the Memory Map's Object list and switching to the Region or Allocations lists.
+- Fixed the row size option in the Fragmentation view not being properly stored across sessions for Fragmentation analysis of snapshots in comparison mode.
+- Fixed an issue where the crawler would find impossibly big string objects, inflating Managed Object Memory and causing exceptions when these were to be drawn in a table [(Case 1393878)](https://issuetracker.unity3d.com/product/unity/issues/guid/1393878/).
 
 ### Changed
- - Renamed the `References` column to `Referenced By` to improve clarity slightly.
+
+- Renamed the `References` column to `Referenced By` to improve clarity slightly.
 
 ## [0.4.3-preview.1] - 2021-12-13
 
 ### Added
- - Added a toggle to the Memory Usage Summary when comparing snapshots to switch between normalizing the bars to their respective total, or scaling them to the bigger of the two.
+
+- Added a toggle to the Memory Usage Summary when comparing snapshots to switch between normalizing the bars to their respective total, or scaling them to the bigger of the two.
 
 ### Fixed
- - Fixed an exception that occurred when creating a new UI Document via `Create > UI Toolkit > UI Document`.
- - Fixed an Index Out Of Bounds exception in ManagedMemorySectionEntriesCache.Find on opening some snapshots, particularly IL2CPP snapshots.
- - Fixed an issue which affected the crawling of some snapshots that prevented Managed Objects of types inheriting from UnityEngine.Object from being properly connected with their Native Objects and therefore not showing their Native Sizes, Instance IDs and Native Object Names in the tables [(Case 1383114)](https://issuetracker.unity3d.com/product/unity/issues/guid/1383114/).
- - Fixed "Failed To read Object, please report a bug." Objects appearing in snapshots with only one or two managed heap sections.
- - Fixed "abnormal mesh bounds" error to not appear on opening snapshots.
- - Fixed total available memory so it no longer adds GPU memory on unified memory platforms.
- - Fixed `Memory Usage` breakdown categories adding up to more than the `Total` value [(Case 1381034)](https://fogbugz.unity3d.com/f/cases/1381034/).
+
+- Fixed an exception that occurred when creating a new UI Document via `Create > UI Toolkit > UI Document`.
+- Fixed an Index Out Of Bounds exception in ManagedMemorySectionEntriesCache.Find on opening some snapshots, particularly IL2CPP snapshots.
+- Fixed an issue which affected the crawling of some snapshots that prevented Managed Objects of types inheriting from UnityEngine.Object from being properly connected with their Native Objects and therefore not showing their Native Sizes, Instance IDs and Native Object Names in the tables [(Case 1383114)](https://issuetracker.unity3d.com/product/unity/issues/guid/1383114/).
+- Fixed "Failed To read Object, please report a bug." Objects appearing in snapshots with only one or two managed heap sections.
+- Fixed "abnormal mesh bounds" error to not appear on opening snapshots.
+- Fixed total available memory so it no longer adds GPU memory on unified memory platforms.
+- Fixed `Memory Usage` breakdown categories adding up to more than the `Total` value [(Case 1381034)](https://fogbugz.unity3d.com/f/cases/1381034/).
 
 ### Changed
- - Renamed the Memory Usage Breakdown category `Other` to `Other Native Memory` to improve clarity slightly. It shows all native memory usage tracked by Unity's Memory Manager that does not show up in the other, more specific categories.
- - Renamed the Memory Usage Breakdown category `Virtual Machine` to `Virtual Machine (IL2CPP)`, `Virtual Machine (Mono)` or `Virtual Machine (Scripting)` depending on which scripting back-end is used, or if two different ones are used when comparing snapshots.
+
+- Renamed the Memory Usage Breakdown category `Other` to `Other Native Memory` to improve clarity slightly. It shows all native memory usage tracked by Unity's Memory Manager that does not show up in the other, more specific categories.
+- Renamed the Memory Usage Breakdown category `Virtual Machine` to `Virtual Machine (IL2CPP)`, `Virtual Machine (Mono)` or `Virtual Machine (Scripting)` depending on which scripting back-end is used, or if two different ones are used when comparing snapshots.
 
 ## [0.4.2-preview.1] - 2021-10-22
 
 ### Fixed
- - Fixed an exception thrown by the Tree Map when opening a snapshot that contains a group of types that collectively "use" 0 B, preventing the opening of the snapshot [(Case 1368289)](https://issuetracker.unity3d.com/product/unity/issues/guid/1368289/).
- - Fixed compilation on earlier 2019.4 patch versions which failed due to usage of some newer RuntimePlatform enum values.
- - Fixed the profiler target drop-down to no longer cause a TargetParameterCountException and draw as blank button on 2022.1.0a13 or newer.
- - Fixed the snapshot rename work-flow when renaming an open snapshot so that the name input field gets the keyboard focus after closing the dialog prompt.
+
+- Fixed an exception thrown by the Tree Map when opening a snapshot that contains a group of types that collectively "use" 0 B, preventing the opening of the snapshot [(Case 1368289)](https://issuetracker.unity3d.com/product/unity/issues/guid/1368289/).
+- Fixed compilation on earlier 2019.4 patch versions which failed due to usage of some newer RuntimePlatform enum values.
+- Fixed the profiler target drop-down to no longer cause a TargetParameterCountException and draw as blank button on 2022.1.0a13 or newer.
+- Fixed the snapshot rename work-flow when renaming an open snapshot so that the name input field gets the keyboard focus after closing the dialog prompt.
 
 ## [0.4.1-preview.1] - 2021-09-21
 
 ### Added
- - Added two capture options when capturing the Editor, allowing you to choose whether or not the Memory Profiler should close all open snapshots and trigger a Garbage Collection before taking the capture. The default behavior is to do both of these to reduce the noise when capturing the memory usage in the Editor.
+
+- Added two capture options when capturing the Editor, allowing you to choose whether or not the Memory Profiler should close all open snapshots and trigger a Garbage Collection before taking the capture. The default behavior is to do both of these to reduce the noise when capturing the memory usage in the Editor.
 
 ### Changed
- - Changed capture logic when capturing snapshots from a Player to not close open snapshots and trigger a Garbage Collection in the capturing Editor.
- - Fixed platform icons so they show up for more platforms.
- - Fixed the Memory Profiler Module UI so it shows non-broken, single data set Memory Breakdown bars and a functional object data list again.
- - Fixed a calculation for the `Memory Usage` breakdown where `Virtual Machine` memory was faultily subtracted from `Other`.
- - Fixed Managed Memory Breakdown bars not swapping A and B bars when swapping the Snapshot.
- - Fixed the value of Untracked so it stays as `Unknown` on sorting, instead of changing to `0 B`.
- - Fixed Allocation tables to not show allocations without a proper root object id as associated with `ExecutableAndDlls` but instead as having an `Unkown` root object.
+
+- Changed capture logic when capturing snapshots from a Player to not close open snapshots and trigger a Garbage Collection in the capturing Editor.
+- Fixed platform icons so they show up for more platforms.
+- Fixed the Memory Profiler Module UI so it shows non-broken, single data set Memory Breakdown bars and a functional object data list again.
+- Fixed a calculation for the `Memory Usage` breakdown where `Virtual Machine` memory was faultily subtracted from `Other`.
+- Fixed Managed Memory Breakdown bars not swapping A and B bars when swapping the Snapshot.
+- Fixed the value of Untracked so it stays as `Unknown` on sorting, instead of changing to `0 B`.
+- Fixed Allocation tables to not show allocations without a proper root object id as associated with `ExecutableAndDlls` but instead as having an `Unkown` root object.
 
 ## [0.4.0-preview.2] - 2021-09-01
 
 ### Changed
- - Fixed error messages appearing about `90deg` and `270deg` being an `UnsupportedUnit` for Unity versions before 2021.2.
- - The 'A' icon in the break down table header is now hidden when in single snapshot mode.
+
+- Fixed error messages appearing about `90deg` and `270deg` being an `UnsupportedUnit` for Unity versions before 2021.2.
+- The 'A' icon in the break down table header is now hidden when in single snapshot mode.
 
 ## [0.4.0-preview.1] - 2021-08-31
 
 Recommended Unity versions to upgrade to when using this package version:
- - 2019.x
-   - 2019.4.29f1 or newer
- - 2020.x
-   - 2020.3.12f1 or newer
- - 2021.1
-   - 2021.1.9f1 or newer
- - 2021.2
-   - 2021.2.0a12 or newer
-or any newer version of Unity.
+
+- 2019.x
+    - 2019.4.29f1 or newer
+- 2020.x
+    - 2020.3.12f1 or newer
+- 2021.1
+    - 2021.1.9f1 or newer
+- 2021.2
+    - 2021.2.0a12 or newer or any newer version of Unity.
 
 ### Added
- - Added a collapsible "Memory Usage Overview" section containing a high level breakdown of the Memory usage.
-   - It shows the same breakdowns as the Profiler Window's simple Memory Profiler panel, adding two more categories which are untracked in the Profiler Window: Virtual Machine and Executable and DLLs
-   - It additionally shows a breakdown of Managed Memory usage into Virtual Machine (currently only available when using the Mono scripting backend), Objects and the two kinds of free reserved space, either in the Active Heap section, or as Fragmented Heap in older sections.
-     Note that Fragmented Heap Space can be reused for Managed Object memory, if new objects fit into contiguous free space in it. You can use the Fragmentation page to analyze your memory usage if you seem to have a lot of fragmented memory.
-     This breakdown should help you determine if it might be worth to dig deeper into Fragmentation or your Managed Object usage, or if there are other areas to focus on.
- - Added a collapsible "Top Issues" section containing some identified issues with the opened snapshot. On opening a snapshot, checks will be run and entries added to the list.
-   Note: There are a lot of memory usage scenarios that might be problematic but are not clear cut enough for an algorithm without any context of the project to make any determination on.
-   This list can therefore not be exhaustive but aims to offer a helpful start into memory investigations.
-   More checks will be added going forward. The current set of checks will add:
-   - A warning if the snapshot was taken from a Unity Editor, as memory usage in the Editor might be misleading compared to memory usage in a build.
-   - A warning if the System Allocator is used.
-   - An info entry if the snapshot was taken with some options for capturing disabled.
-   - A warning when comparing snapshots that were taken with different capturing options being enabled.
-   - An info entry when comparing snapshots taken from different sessions or an unknown session, as this will affect the detail level at which differences can be checked.
-   - An info entry when comparing snapshots taken from different Unity versions, as observed changes in memory could be due to the version change instead of a change in the project. The version numbers are shown if they are known.
- - Added a view selection Ribbon
-   - Renamed the Memory Map view to Fragmentation page.
-   - Moved all Table views into the new Objects and Allocations page.
-   - Renamed the Tree Map view to Summary page.
-     - This is an intermediate step in a larger UI refactor. In a next step, the Summary page will get new top level summary sections and the Tree Map view will be moved to the Objects and Allocations page.
- - Added an option to the drop-down of the Capture button to not take a screenshot on capture.
- - Added Virtual Machine memory as a category to Memory Map. This relies on changes made to the snapshot data and only works for any snapshots taken from Unity versions 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer. Only builds made against the Mono Scripting Back-end report Virtual Machine memory usage. IL2CPP does, as of yet, not report any of its Virtual Machine memory usage. This also addresses [(Case 987987)](https://issuetracker.unity3d.com/product/unity/issues/guid/987987/)
- - Added a Button to open the package's documentation to the top right corner.
- - Added a Menu button to the top right corner, containing an option to show the Memory Profiler's Preferences window.
- - Added a "Snapshot Window" Button to the top left corner to toggle the visibility of the open snapshots pane and the snapshots list.
- - Added the ability to set match row filtering for string based rows to check for exact (case-insensitive) matches additionally to the existing option to filter if it contains the searched string.
- - Added a replacement for the details view of the [Profiler Window](https://docs.unity3d.com/Manual/ProfilerWindow.html)'s [Memory Profiler module](https://docs.unity3d.com/Manual/ProfilerMemory.html). If the Package is installed, it will provide the UI for the Memory Profiler module for Unity versions of 2021.2 or newer.
- - Added a setting to `Preferences / Analysis / Memory Profiler / Replace Memory UI in Profiler Window` to toggle the Memory Profiler Module replacement on or off.
- - Added "All Native Allocations" table which lists the Memory Region, Area and Root Object names for each Allocation.
+
+- Added a collapsible "Memory Usage Overview" section containing a high level breakdown of the Memory usage.
+    - It shows the same breakdowns as the Profiler Window's simple Memory Profiler panel, adding two more categories which are untracked in the Profiler Window: Virtual Machine and Executable and DLLs
+    - It additionally shows a breakdown of Managed Memory usage into Virtual Machine (currently only available when using the Mono scripting backend), Objects and the two kinds of free reserved space, either in the Active Heap section, or as Fragmented Heap in older sections. Note that Fragmented Heap Space can be reused for Managed Object memory, if new objects fit into contiguous free space in it. You can use the Fragmentation page to analyze your memory usage if you seem to have a lot of fragmented memory. This breakdown should help you determine if it might be worth to dig deeper into Fragmentation or your Managed Object usage, or if there are other areas to focus on.
+- Added a collapsible "Top Issues" section containing some identified issues with the opened snapshot. On opening a snapshot, checks will be run and entries added to the list. Note: There are a lot of memory usage scenarios that might be problematic but are not clear cut enough for an algorithm without any context of the project to make any determination on. This list can therefore not be exhaustive but aims to offer a helpful start into memory investigations. More checks will be added going forward. The current set of checks will add:
+    - A warning if the snapshot was taken from a Unity Editor, as memory usage in the Editor might be misleading compared to memory usage in a build.
+    - A warning if the System Allocator is used.
+    - An info entry if the snapshot was taken with some options for capturing disabled.
+    - A warning when comparing snapshots that were taken with different capturing options being enabled.
+    - An info entry when comparing snapshots taken from different sessions or an unknown session, as this will affect the detail level at which differences can be checked.
+    - An info entry when comparing snapshots taken from different Unity versions, as observed changes in memory could be due to the version change instead of a change in the project. The version numbers are shown if they are known.
+- Added a view selection Ribbon
+    - Renamed the Memory Map view to Fragmentation page.
+    - Moved all Table views into the new Objects and Allocations page.
+    - Renamed the Tree Map view to Summary page.
+        - This is an intermediate step in a larger UI refactor. In a next step, the Summary page will get new top level summary sections and the Tree Map view will be moved to the Objects and Allocations page.
+- Added an option to the drop-down of the Capture button to not take a screenshot on capture.
+- Added Virtual Machine memory as a category to Memory Map. This relies on changes made to the snapshot data and only works for any snapshots taken from Unity versions 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer. Only builds made against the Mono Scripting Back-end report Virtual Machine memory usage. IL2CPP does, as of yet, not report any of its Virtual Machine memory usage. This also addresses [(Case 987987)](https://issuetracker.unity3d.com/product/unity/issues/guid/987987/)
+- Added a Button to open the package's documentation to the top right corner.
+- Added a Menu button to the top right corner, containing an option to show the Memory Profiler's Preferences window.
+- Added a "Snapshot Window" Button to the top left corner to toggle the visibility of the open snapshots pane and the snapshots list.
+- Added the ability to set match row filtering for string based rows to check for exact (case-insensitive) matches additionally to the existing option to filter if it contains the searched string.
+- Added a replacement for the details view of the [Profiler Window](https://docs.unity3d.com/Manual/ProfilerWindow.html)'s [Memory Profiler module](https://docs.unity3d.com/Manual/ProfilerMemory.html). If the Package is installed, it will provide the UI for the Memory Profiler module for Unity versions of 2021.2 or newer.
+- Added a setting to `Preferences / Analysis / Memory Profiler / Replace Memory UI in Profiler Window` to toggle the Memory Profiler Module replacement on or off.
+- Added "All Native Allocations" table which lists the Memory Region, Area and Root Object names for each Allocation.
 
 ### Changed
- - Changed the snapshot list UI by:
-   - Moving the open snapshots section to the top
-   - Adding a bar to break-down the total allocated memory vs. the systems maximally available memory to each snapshot (only works for snapshots taken form 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer)
-   - Grouping snapshots taken from the same session together and listing the project name along side them (only works for snapshots taken form 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer, older snapshots are grouped into the "Unknown Session")
-   - Moved snapshots options (Rename, Delete, Open Folder) into right-click context menu.
-   - Snapshots are now refereed to as "A" or "B" when comparing them.
- - Fixed table UI so that it no longer starts glitching when looking at tables of over 60000 rows.
- - Fixed an issue where the Memory Map would draw Native Objects over other Native Objects and over the end of their Native Region. The UI falsely assumed that an Object's memory is contiguous, starting from the address to the Object's header. In reality it may consist of several buffers and other allocations distributed across different memory regions. Right now, the memory reporting of Native UnityEngine.Objects is not detailed enough (broken down to each allocation) to clarify just where all of an Object's memory is residing. Current Native Objects being drawn in the Memory Map therefore is not 100% guaranteed to be showing the correct amount of contiguous memory owned by this object, but at least it no longer draws over other Objects or outside of the Region or Allocation it resides in. [(Case 1278205)](https://issuetracker.unity3d.com/product/unity/issues/guid/1278205/)
- - Fixed Memory map colors for Objects and Allocations drawn outside of regions. [(Case 1278203)](https://issuetracker.unity3d.com/product/unity/issues/guid/1278203/)
- - Fixed Memory Map to not draw anything or a white background outside of actual memory address usage. The pixels for these regions where no longer correctly cleared to full transparency.
- - Fixed Memory Map to not draw Virtual Machine memory as Managed Stack Memory in improbably high virtual address space. (Reporting of Managed Stack memory is not yet supported. Virtual Machine memory was miss-read as stack memory by the crawler.)
- - Fixed Memory Map Diff to draw lines correctly again as green, red, yellow or purple instead of drawing all lines as red.
- - Changed "Native Memory Regions" table to "All Memory Regions" table, naming Managed Memory Regions as either "Managed Heap Memory Section" or "Virtual Machine Memory Section" and showing this table in Memory Map details section when opting to look at Regions.
- - Changed Memory map to show the new "All Native Allocations" table when displaying allocations to provide more accessible information on the details of the allocations.
- - Changed "Import" button to use an icon instead of text and moved it to the right side of the toolbar.
- - Changed the link text for the Native Instance ID column to ping the object it belongs to, if the capture was taken from the current Editor session.
- - Clarified UI of the snapshot list to show more clearly which snapshots are open [(Case 1129613)](https://issuetracker.unity3d.com/product/unity/issues/guid/1129613/)
- - Changed loading of Snapshot preview screenshots to happen asynchronously to speed up opening the window and rebuilding it after Domain Reload.
- - Improved Memory Map selection workflow, hinting that the table below it needs a selection to show anything and clarifying why there might be no data.
- - Fixed Memory Map deselection not affecting the view immediately.
- - Improved handling when taking a snapshot and waiting for the screenshot to be transmitted takes unusually long.
- - Fixed removing of sort filters via the 'x' button to actually remove the filter from the column.
- - Improved table names in the table view drop-down to format the amount of rows with thousand-separators.
- - Fixed filters to only use "Pretty Names" for the columns they apply to.
- - Changed Tree Map table to explicitly show the filters applied to the table when selecting a type block in the map. This also, for the first time, allows clearing the filtering after the first such selection was made.
- - Improved the Memory Module simple view in the Profiler Window (this package replaces the default one) by adding a scrollbar.
- - Fixed Tree Map to include 0B sized Native Objects in the count for objects of their Type.
- - Fixed match filter input field so it always gets the keyboard focus on adding the filter [(Case 1359045)](https://issuetracker.unity3d.com/product/unity/issues/guid/1359045/)
+
+- Changed the snapshot list UI by:
+    - Moving the open snapshots section to the top
+    - Adding a bar to break-down the total allocated memory vs. the systems maximally available memory to each snapshot (only works for snapshots taken form 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer)
+    - Grouping snapshots taken from the same session together and listing the project name along side them (only works for snapshots taken form 2021.2.0a12, 2021.1.9, 2020.3.12f1, 2019.4.29f1 or newer, older snapshots are grouped into the "Unknown Session")
+    - Moved snapshots options (Rename, Delete, Open Folder) into right-click context menu.
+    - Snapshots are now refereed to as "A" or "B" when comparing them.
+- Fixed table UI so that it no longer starts glitching when looking at tables of over 60000 rows.
+- Fixed an issue where the Memory Map would draw Native Objects over other Native Objects and over the end of their Native Region. The UI falsely assumed that an Object's memory is contiguous, starting from the address to the Object's header. In reality it may consist of several buffers and other allocations distributed across different memory regions. Right now, the memory reporting of Native UnityEngine.Objects is not detailed enough (broken down to each allocation) to clarify just where all of an Object's memory is residing. Current Native Objects being drawn in the Memory Map therefore is not 100% guaranteed to be showing the correct amount of contiguous memory owned by this object, but at least it no longer draws over other Objects or outside of the Region or Allocation it resides in. [(Case 1278205)](https://issuetracker.unity3d.com/product/unity/issues/guid/1278205/)
+- Fixed Memory map colors for Objects and Allocations drawn outside of regions. [(Case 1278203)](https://issuetracker.unity3d.com/product/unity/issues/guid/1278203/)
+- Fixed Memory Map to not draw anything or a white background outside of actual memory address usage. The pixels for these regions where no longer correctly cleared to full transparency.
+- Fixed Memory Map to not draw Virtual Machine memory as Managed Stack Memory in improbably high virtual address space. (Reporting of Managed Stack memory is not yet supported. Virtual Machine memory was miss-read as stack memory by the crawler.)
+- Fixed Memory Map Diff to draw lines correctly again as green, red, yellow or purple instead of drawing all lines as red.
+- Changed "Native Memory Regions" table to "All Memory Regions" table, naming Managed Memory Regions as either "Managed Heap Memory Section" or "Virtual Machine Memory Section" and showing this table in Memory Map details section when opting to look at Regions.
+- Changed Memory map to show the new "All Native Allocations" table when displaying allocations to provide more accessible information on the details of the allocations.
+- Changed "Import" button to use an icon instead of text and moved it to the right side of the toolbar.
+- Changed the link text for the Native Instance ID column to ping the object it belongs to, if the capture was taken from the current Editor session.
+- Clarified UI of the snapshot list to show more clearly which snapshots are open [(Case 1129613)](https://issuetracker.unity3d.com/product/unity/issues/guid/1129613/)
+- Changed loading of Snapshot preview screenshots to happen asynchronously to speed up opening the window and rebuilding it after Domain Reload.
+- Improved Memory Map selection workflow, hinting that the table below it needs a selection to show anything and clarifying why there might be no data.
+- Fixed Memory Map deselection not affecting the view immediately.
+- Improved handling when taking a snapshot and waiting for the screenshot to be transmitted takes unusually long.
+- Fixed removing of sort filters via the 'x' button to actually remove the filter from the column.
+- Improved table names in the table view drop-down to format the amount of rows with thousand-separators.
+- Fixed filters to only use "Pretty Names" for the columns they apply to.
+- Changed Tree Map table to explicitly show the filters applied to the table when selecting a type block in the map. This also, for the first time, allows clearing the filtering after the first such selection was made.
+- Improved the Memory Module simple view in the Profiler Window (this package replaces the default one) by adding a scrollbar.
+- Fixed Tree Map to include 0B sized Native Objects in the count for objects of their Type.
+- Fixed match filter input field so it always gets the keyboard focus on adding the filter [(Case 1359045)](https://issuetracker.unity3d.com/product/unity/issues/guid/1359045/)
 
 ### Removed
- - Removed support for Unity 2018.4. Old snapshots can still be imported but the package of the UI no longer works with 2018.4.
- - Removed the option to toggle off "Pretty Names" in the table views. It is now an unchangeable default.
- - Removed `Managed Global` from references list of managed objects.
 
+- Removed support for Unity 2018.4. Old snapshots can still be imported but the package of the UI no longer works with 2018.4.
+- Removed the option to toggle off "Pretty Names" in the table views. It is now an unchangeable default.
+- Removed `Managed Global` from references list of managed objects.
 
 ## [0.2.10-preview.1] - 2021-07-30
+
 ### Changed
-  - Fixed an issue where snapshots taken on UWP using the .NET scripting backend, could not be loaded by the package.
+
+- Fixed an issue where snapshots taken on UWP using the .NET scripting backend, could not be loaded by the package.
 
 ### Removed
-  - Removed ReflectionUtility as it was no longer used by the package.
 
+- Removed ReflectionUtility as it was no longer used by the package.
 
 ## [0.2.9-preview.3] - 2021-05-26
-### Changed
-  - Fixed an issue with the creation of several string buffers inside the snapshot file reader, where buffer memory would not be zero initialized.
-  - Fixed an issue where compilation against Unity Editor 2021.2 was broken.
-  - Fixed target connection dropdown being broken on 2021.2.
 
+### Changed
+
+- Fixed an issue with the creation of several string buffers inside the snapshot file reader, where buffer memory would not be zero initialized.
+- Fixed an issue where compilation against Unity Editor 2021.2 was broken.
+- Fixed target connection dropdown being broken on 2021.2.
 
 ## [0.2.9-preview.2] - 2021-05-26
-### Changed
-  - Fixed an unused variable warning for kCurrentVersion ([case 1329193](https://fogbugz.unity3d.com/f/cases/1329193/))
 
+### Changed
+
+- Fixed an unused variable warning for kCurrentVersion ([case 1329193](https://fogbugz.unity3d.com/f/cases/1329193/))
 
 ## [0.2.9-preview.1] - 2021-03-17
-### Changed
-  - Updated from Unity Distribution License to Unity Companion License
-  - Fixed an issue with setting capture folder path, failing to correctly parse the provided path
 
+### Changed
+
+- Updated from Unity Distribution License to Unity Companion License
+- Fixed an issue with setting capture folder path, failing to correctly parse the provided path
 
 ## [0.2.8-preview.2] - 2021-01-18
-### Changed
-  - Fixed an issue with the capture button style not appearing on 2018.4 Editors.
 
+### Changed
+
+- Fixed an issue with the capture button style not appearing on 2018.4 Editors.
 
 ## [0.2.8-preview.1] - 2021-01-14
-### Changed
-  - Fixed an issue with heap section sorting and remapping which would cause managed objects to sometimes fail to be crawled.
 
+### Changed
+
+- Fixed an issue with heap section sorting and remapping which would cause managed objects to sometimes fail to be crawled.
 
 ## [0.2.7-preview.1] - 2020-12-21
+
 ### Added
- - Added a capture flags selection dropdown onto the Capture button.
- - Added tooltips to display the complete value of table entries such as multiline strings, which are being turncated.
+
+- Added a capture flags selection dropdown onto the Capture button.
+- Added tooltips to display the complete value of table entries such as multiline strings, which are being turncated.
 
 ### Changed
-  - Fixed an issue with the reference table, where value type fields would be skipped when displaying the reference target.
-  - Fixed an issue where multiple match filters could be added to one column.
-  - Fixed an issue where the Native Instance ID column in the All Objects Table would not be display some entries. ([case 1278247](https://issuetracker.unity3d.com/product/unity/issues/guid/1278247/)).
-  - Fixed an issue with the Tree Map where history events would not be applied to the view, after clicking the previous view button ([case 1299864](https://issuetracker.unity3d.com/product/unity/issues/guid/1299864/)).
-  - Fixed an issue where the table pane would attempt to change GUI state in between layout and repaint events.
-  - Fixed an issue with multiline strings being displayed incorrectly inside their row ([case 1275855](https://issuetracker.unity3d.com/product/unity/issues/guid/1275855/)).
-  - Changed the Address column formatting to show pointer values in hex rather than decimal, for raw data tables.
-  - Renamed the Owned Size column into Managed Size for the All Objects table and Size for Managed and Native Objects tables.
-  - Renamed the Target Size column into Field Target Size for All Objects and Managed Objects tables.
-  - Fixed an issue with filters UI not being displayed for the Memory Map.
-  - Fixed an issue with Memory Map selection being incorrect after loading a snapshot ([case 1276377](https://issuetracker.unity3d.com/product/unity/issues/guid/1276377/)).
+
+- Fixed an issue with the reference table, where value type fields would be skipped when displaying the reference target.
+- Fixed an issue where multiple match filters could be added to one column.
+- Fixed an issue where the Native Instance ID column in the All Objects Table would not be display some entries. ([case 1278247](https://issuetracker.unity3d.com/product/unity/issues/guid/1278247/)).
+- Fixed an issue with the Tree Map where history events would not be applied to the view, after clicking the previous view button ([case 1299864](https://issuetracker.unity3d.com/product/unity/issues/guid/1299864/)).
+- Fixed an issue where the table pane would attempt to change GUI state in between layout and repaint events.
+- Fixed an issue with multiline strings being displayed incorrectly inside their row ([case 1275855](https://issuetracker.unity3d.com/product/unity/issues/guid/1275855/)).
+- Changed the Address column formatting to show pointer values in hex rather than decimal, for raw data tables.
+- Renamed the Owned Size column into Managed Size for the All Objects table and Size for Managed and Native Objects tables.
+- Renamed the Target Size column into Field Target Size for All Objects and Managed Objects tables.
+- Fixed an issue with filters UI not being displayed for the Memory Map.
+- Fixed an issue with Memory Map selection being incorrect after loading a snapshot ([case 1276377](https://issuetracker.unity3d.com/product/unity/issues/guid/1276377/)).
 
 ### Removed
-  - Removed the profile target concatenation from the capture button, as the currently selected target is already visible on the target dropdown.
 
+- Removed the profile target concatenation from the capture button, as the currently selected target is already visible on the target dropdown.
 
 ## [0.2.6-preview.1] - 2020-10-01
+
 ### Added
-  - Added search field delay when filtering table entries via the match filter.
-  - Added a dialog box when attempting to rename a snapshot to same name as an existing one ([case 1273417](https://issuetracker.unity3d.com/product/unity/issues/guid/1273417/)).
-  - Added a dialog box when attempting to rename a snapshot with invalid characters ([case 1274987](https://issuetracker.unity3d.com/product/unity/issues/guid/1274987/)).
-  - Added name tags for snapshot preview screenshots, to avoid confusion when the user takes a snapshot with the memory profiler window open.
-  - Added name tag for memory map backing memory texture.
+
+- Added search field delay when filtering table entries via the match filter.
+- Added a dialog box when attempting to rename a snapshot to same name as an existing one ([case 1273417](https://issuetracker.unity3d.com/product/unity/issues/guid/1273417/)).
+- Added a dialog box when attempting to rename a snapshot with invalid characters ([case 1274987](https://issuetracker.unity3d.com/product/unity/issues/guid/1274987/)).
+- Added name tags for snapshot preview screenshots, to avoid confusion when the user takes a snapshot with the memory profiler window open.
+- Added name tag for memory map backing memory texture.
 
 ### Changed
-  - Removed unneeded finalizer from CachedSnasphot, which could crash the Editor.
-  - Fixed an issue inside the VM data validation tools, where we would not catch invalid VM info data.
-  - Fixed incorrect parsing of table headers as callstack site ids when attempting to retrieve callstacks for a native allocation.
-  - Fixed texture color space to linear inside the MemoryMap view creation ([case 1261948](https://issuetracker.unity3d.com/product/unity/issues/guid/1261948/)).
-  - Fixed potential alpha overflows inside the MemoryMap, where some regions on the memory map might have become transparent.
-  - Secured the MemorySnapshot backend so that we handle array sizes larger than int.Max gracefully.
-  - Fixed an issue with reading entries null entries from reference arrays, where this would cause a NullReferenceException.
-  - Changed the snapshot crawler to discard unknown type data as some types are VM internal.
-    Note: The following versions are able to capture all type data: 2020.2b2, 2020.1.5f1, 2019.4.10f1.
-  - Changed table diffing to be multi-key, thus making the diffing operation accurate with regards to matching object as "Same".
-  - Changed the Address column formatting to show pointer values in hex rather than decimal, for object tables.
-  - Changed the Name column so that it only shows object or field name depending on the expanded item.
-  - Fixed some static fields not showing up in the Reference table.
-  - Fixed a leak where the snapshot collection would never clean up it's Texture2D.
-  - Fixed a leak where the memory map's backing texture would never be cleaned up during flush.
-  - Fixed an issue where snapshots could be imported twice ([case 1271886](https://issuetracker.unity3d.com/product/unity/issues/guid/1271886/)).
-  - Fixed an issue showing "None" in the diff table's match filter, when matching by "Diff" column value.
-  - Fixed an issue where the snapshot deletion message would not to explicitly state that the file will be permanently removed.
-  - Fixed an issue where the naming convention used for snapshots inside the memory map diff view was incorrect.
-  - Fixed an issue where the snapshots used inside memory map would not swap when the swap button was pressed.
-  - Fixed an issue where snapshot file list was sorted alphabetically ([case 1276092](https://issuetracker.unity3d.com/product/unity/issues/guid/1276092/)).
-  - Fixed an issue where open snapshots could end up losing their open state while still open in the tool ([case 1275288](https://issuetracker.unity3d.com/product/unity/issues/guid/1275288/)).
-  - Fixed an issue where the snapshot file list wouldn't update when the editor would change focus ([case 1275835](https://issuetracker.unity3d.com/product/unity/issues/guid/1275835/)).
 
+- Removed unneeded finalizer from CachedSnasphot, which could crash the Editor.
+- Fixed an issue inside the VM data validation tools, where we would not catch invalid VM info data.
+- Fixed incorrect parsing of table headers as callstack site ids when attempting to retrieve callstacks for a native allocation.
+- Fixed texture color space to linear inside the MemoryMap view creation ([case 1261948](https://issuetracker.unity3d.com/product/unity/issues/guid/1261948/)).
+- Fixed potential alpha overflows inside the MemoryMap, where some regions on the memory map might have become transparent.
+- Secured the MemorySnapshot backend so that we handle array sizes larger than int.Max gracefully.
+- Fixed an issue with reading entries null entries from reference arrays, where this would cause a NullReferenceException.
+- Changed the snapshot crawler to discard unknown type data as some types are VM internal. Note: The following versions are able to capture all type data: 2020.2b2, 2020.1.5f1, 2019.4.10f1.
+- Changed table diffing to be multi-key, thus making the diffing operation accurate with regards to matching object as "Same".
+- Changed the Address column formatting to show pointer values in hex rather than decimal, for object tables.
+- Changed the Name column so that it only shows object or field name depending on the expanded item.
+- Fixed some static fields not showing up in the Reference table.
+- Fixed a leak where the snapshot collection would never clean up it's Texture2D.
+- Fixed a leak where the memory map's backing texture would never be cleaned up during flush.
+- Fixed an issue where snapshots could be imported twice ([case 1271886](https://issuetracker.unity3d.com/product/unity/issues/guid/1271886/)).
+- Fixed an issue showing "None" in the diff table's match filter, when matching by "Diff" column value.
+- Fixed an issue where the snapshot deletion message would not to explicitly state that the file will be permanently removed.
+- Fixed an issue where the naming convention used for snapshots inside the memory map diff view was incorrect.
+- Fixed an issue where the snapshots used inside memory map would not swap when the swap button was pressed.
+- Fixed an issue where snapshot file list was sorted alphabetically ([case 1276092](https://issuetracker.unity3d.com/product/unity/issues/guid/1276092/)).
+- Fixed an issue where open snapshots could end up losing their open state while still open in the tool ([case 1275288](https://issuetracker.unity3d.com/product/unity/issues/guid/1275288/)).
+- Fixed an issue where the snapshot file list wouldn't update when the editor would change focus ([case 1275835](https://issuetracker.unity3d.com/product/unity/issues/guid/1275835/)).
 
 ## [0.2.5-preview.1] - 2020-07-01
-### Changed
- - Fixed up some issues with connections not being added properly during crawling.
- - Fixed up an issue when diffing two snapshots where invalid object would cause the system to throw ([case 1236254](https://issuetracker.unity3d.com/product/unity/issues/guid/1236254/)).
- - Optimized the crawling of native connections.
- - Reduced crawling operation memory footprint by ~30%.
- - Fixed Memory Map address label text spilling over ([case 1256489](https://issuetracker.unity3d.com/product/unity/issues/guid/1256489/)).
- - Fixed Memory Map interfering with Profiler Line Charts ([case 1260533](https://issuetracker.unity3d.com/product/unity/issues/guid/1260533/)).
 
+### Changed
+
+- Fixed up some issues with connections not being added properly during crawling.
+- Fixed up an issue when diffing two snapshots where invalid object would cause the system to throw ([case 1236254](https://issuetracker.unity3d.com/product/unity/issues/guid/1236254/)).
+- Optimized the crawling of native connections.
+- Reduced crawling operation memory footprint by ~30%.
+- Fixed Memory Map address label text spilling over ([case 1256489](https://issuetracker.unity3d.com/product/unity/issues/guid/1256489/)).
+- Fixed Memory Map interfering with Profiler Line Charts ([case 1260533](https://issuetracker.unity3d.com/product/unity/issues/guid/1260533/)).
 
 ## [0.2.4-preview.1] - 2020-06-10
-### Changed
- - Fixed an issue with the Memory Profiler Window failing to load it's resources when opening during playmode.
- - Upgraded the dependency on EditorCoroutines package to 1.0.0.
- - Fixed a compilation issue with Unity 2019.4 ([case 1254424](https://issuetracker.unity3d.com/product/unity/issues/guid/1254424/)).
- - Fixed up two unused variable warnings.
 
+### Changed
+
+- Fixed an issue with the Memory Profiler Window failing to load it's resources when opening during playmode.
+- Upgraded the dependency on EditorCoroutines package to 1.0.0.
+- Fixed a compilation issue with Unity 2019.4 ([case 1254424](https://issuetracker.unity3d.com/product/unity/issues/guid/1254424/)).
+- Fixed up two unused variable warnings.
 
 ## [0.2.3-preview.2] - 2020-03-18
-### Changed
- - Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.2.
- - Fixed an issue with the layouting of the Memory Map's legend.
 
+### Changed
+
+- Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.2.
+- Fixed an issue with the layouting of the Memory Map's legend.
 
 ## [0.2.3-preview.1] - 2020-03-04
-### Changed
- - Fixed an issue where selecting an object of type System.String would raise exceptions when attempting to retrieve field memory metrics([case 1224644](https://issuetracker.unity3d.com/product/unity/issues/guid/1224644/)).
- - Fixed an issue where matching string objects based on their value, was not retrieving the correct object data.
 
+### Changed
+
+- Fixed an issue where selecting an object of type System.String would raise exceptions when attempting to retrieve field memory metrics([case 1224644](https://issuetracker.unity3d.com/product/unity/issues/guid/1224644/)).
+- Fixed an issue where matching string objects based on their value, was not retrieving the correct object data.
 
 ## [0.2.2-preview.1] - 2020-02-26
+
 ### Changed
- - Fixed incorrect layouting behavior when scrolling down or up inside a table.
- - Improved snapshot crawler performance, by allocating crawled data in blocks.
- - Fixed an issue with the "Owned size" column for managed objects, which caused the displayed value to be incorrect.
- - Fixed an UI issue where tables would throw exceptions when scrolling too fast.
- - Improved Treemap UI performance.
+
+- Fixed incorrect layouting behavior when scrolling down or up inside a table.
+- Improved snapshot crawler performance, by allocating crawled data in blocks.
+- Fixed an issue with the "Owned size" column for managed objects, which caused the displayed value to be incorrect.
+- Fixed an UI issue where tables would throw exceptions when scrolling too fast.
+- Improved Treemap UI performance.
 
 ## [0.2.1-preview.2] - 2020-02-18
-### Changed
- - Improved snapshot crawler performance by reducing the number of Exception objects being creating during snapshot crawling.
- - Fixed an issue where the crawler would skip some managed object fields depending on offset.
 
+### Changed
+
+- Improved snapshot crawler performance by reducing the number of Exception objects being creating during snapshot crawling.
+- Fixed an issue where the crawler would skip some managed object fields depending on offset.
 
 ## [0.2.1-preview.1] - 2020-02-10
+
 ### Added
- - Added MetadataCollect abstract class in order to provide a better, performant way to inject new collectors into the metadata collection system.
+
+- Added MetadataCollect abstract class in order to provide a better, performant way to inject new collectors into the metadata collection system.
 
 ### Changed
- - Fixed an issue with the native object connections cache, where invalid native object references would not be skipped.
+
+- Fixed an issue with the native object connections cache, where invalid native object references would not be skipped.
 
 ### Removed
- - Removed IMetadataCollect interface and the method of injection used for it, as it would degrade runtime performance each time the injection would occur.
 
+- Removed IMetadataCollect interface and the method of injection used for it, as it would degrade runtime performance each time the injection would occur.
 
 ## [0.2.0-preview.1] - 2020-01-09
-### Changed
- - Fixed an issue with the snapshot crawler going out of bounds, when scanning an array object's binary data
- - Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.1.
 
+### Changed
+
+- Fixed an issue with the snapshot crawler going out of bounds, when scanning an array object's binary data
+- Upgraded the dependency on EditorCoroutines package to 0.1.0-preview.1.
 
 ## [0.1.0-preview.9] - 2019-11-22
-### Changed
- - Fixed an issue where the Memory Profiler's progress bar would keep being displayed after the window was closed.
- - Fixed a UI issue where items selected inside a table would no longer be highlighted.
- - The package is now no longer compatible with the following version range of the Editor: 2020.1.0a0 - 2020.1.0a14.
 
+### Changed
+
+- Fixed an issue where the Memory Profiler's progress bar would keep being displayed after the window was closed.
+- Fixed a UI issue where items selected inside a table would no longer be highlighted.
+- The package is now no longer compatible with the following version range of the Editor: 2020.1.0a0 - 2020.1.0a14.
 
 ## [0.1.0-preview.8] - 2019-11-08
+
 ### Changed
- - Fixed the MetaDataInjector warning when using the obsolete EditorApplication.scriptingRuntimeVersion in Unity versions newer than 2019.3.
- - Improved native connection stitching to managed objects.
- - Integrated v.10 snapshot support where native connections are dumped as Object ID instead of indices.
- - Optimized the snapshot crawling process, by reducing the number of heap look-ups.
- - Optimized snapshot heap lookup functionality, to use binary search instead of linear search.
- - Fixed an issue when importing a snapshot via the Import window would not copy the file into the Memory Captures folder.
- - Fixed a number of UI issues related to the Editor theming update.
- - The package is now no longer compatible with the following version range of the Editor: 19.3.0a1 - 19.3.0b9.
 
- ### Removed
- - Removed unnecessary Profiling abstraction code present in the package.
- - Removed XML loading support in preparation to deprecate XML usage in the package, and to provide users with an interface to create their own tables.
+- Fixed the MetaDataInjector warning when using the obsolete EditorApplication.scriptingRuntimeVersion in Unity versions newer than 2019.3.
+- Improved native connection stitching to managed objects.
+- Integrated v.10 snapshot support where native connections are dumped as Object ID instead of indices.
+- Optimized the snapshot crawling process, by reducing the number of heap look-ups.
+- Optimized snapshot heap lookup functionality, to use binary search instead of linear search.
+- Fixed an issue when importing a snapshot via the Import window would not copy the file into the Memory Captures folder.
+- Fixed a number of UI issues related to the Editor theming update.
+- The package is now no longer compatible with the following version range of the Editor: 19.3.0a1 - 19.3.0b9.
 
+### Removed
+
+- Removed unnecessary Profiling abstraction code present in the package.
+- Removed XML loading support in preparation to deprecate XML usage in the package, and to provide users with an interface to create their own tables.
 
 ## [0.1.0-preview.7] - 2019-08-02
+
 ### Added
- - Added Screenshots getting taken on capture for Unity versions starting from 2019.3 and up.
- - Added window tab icon.
- - Added a popup warning about the potential for sharing personally identifying or otherwise sensitive data when sharing snapshots.
- - Added info to the documentation regarding potential sensitive data contained in snapshot files.
- - Added a button to the preferences to reset the opt-out decisions for above mentioned warning popup.
- - Added byte size formatting for size columns in the tables.
- - Added "Open Folder" option to the snapshot options menu.
+
+- Added Screenshots getting taken on capture for Unity versions starting from 2019.3 and up.
+- Added window tab icon.
+- Added a popup warning about the potential for sharing personally identifying or otherwise sensitive data when sharing snapshots.
+- Added info to the documentation regarding potential sensitive data contained in snapshot files.
+- Added a button to the preferences to reset the opt-out decisions for above mentioned warning popup.
+- Added byte size formatting for size columns in the tables.
+- Added "Open Folder" option to the snapshot options menu.
 
 ### Changed
- - Fixed snapshot file rename functionality ([case 1131905](https://issuetracker.unity3d.com/product/unity/issues/guid/1131905/)).
- - Fixed snapshot file and meta data fields overlapping in 2019.3.x.
- - Fixed new snapshot folders getting created with every character change to the path in the Memory Profiler preferences ([case 1162851](https://issuetracker.unity3d.com/product/unity/issues/guid/1162851/)).
- - Fixed a numerical overflow when parsing snapshots with large amounts of objects and/or allocations.
- - Fixed compile issues due to the removed "EditorApplication.scriptingRuntimeVersion" API.
- - Fixed the target selection drop-down which stopped working in 2019.3
- - Moved the Memory Profiler preferences under Analysis/Memory Profiler in the Preferences window to group it with Profiler Window Settings.
- - Fixed alternating table row colors as well as row selection in 2019.3
- - Fixed link text color being hard to read in the light editor skin.
+
+- Fixed snapshot file rename functionality ([case 1131905](https://issuetracker.unity3d.com/product/unity/issues/guid/1131905/)).
+- Fixed snapshot file and meta data fields overlapping in 2019.3.x.
+- Fixed new snapshot folders getting created with every character change to the path in the Memory Profiler preferences ([case 1162851](https://issuetracker.unity3d.com/product/unity/issues/guid/1162851/)).
+- Fixed a numerical overflow when parsing snapshots with large amounts of objects and/or allocations.
+- Fixed compile issues due to the removed "EditorApplication.scriptingRuntimeVersion" API.
+- Fixed the target selection drop-down which stopped working in 2019.3
+- Moved the Memory Profiler preferences under Analysis/Memory Profiler in the Preferences window to group it with Profiler Window Settings.
+- Fixed alternating table row colors as well as row selection in 2019.3
+- Fixed link text color being hard to read in the light editor skin.
 
 ### Removed
- - Metadata collection for Scripting Runtime version for Unity >= 2019.3 since "EditorApplication.scriptingRuntimeVersion" was removed.
+
+- Metadata collection for Scripting Runtime version for Unity >= 2019.3 since "EditorApplication.scriptingRuntimeVersion" was removed.
 
 ## [0.1.0-preview.6] - 2019-04-03
+
 ### Changed
- - Fixed dangling subscriber for OnPlaymodeChanged.
- - Fixed broken metadata injector, implemented metadata processors will now be called.
- - Fixed incorrect referencing of managed objects to native objects that did not own them.
- - Fixed style sheet warnings.
- - Changed the display string of uninitialized types from "Unknown Type" to "Uninitialized Type".
- - Fixed missing references for managed objects.
- - Fixed incorrect disposal of sidebar delegate.
+
+- Fixed dangling subscriber for OnPlaymodeChanged.
+- Fixed broken metadata injector, implemented metadata processors will now be called.
+- Fixed incorrect referencing of managed objects to native objects that did not own them.
+- Fixed style sheet warnings.
+- Changed the display string of uninitialized types from "Unknown Type" to "Uninitialized Type".
+- Fixed missing references for managed objects.
+- Fixed incorrect disposal of sidebar delegate.
 
 ## [0.1.0-preview.5] - 2019-01-29
+
 ### Added
- - Added progress bar displays for actions like opening/importing snapshots.
- - Restored binary compatibility with the 2017.4 memory snapshot format.
- - Added handling for duplicate GC handles present in the snapshot.
+
+- Added progress bar displays for actions like opening/importing snapshots.
+- Restored binary compatibility with the 2017.4 memory snapshot format.
+- Added handling for duplicate GC handles present in the snapshot.
 
 ### Changed
- - Lowered the number of GC allocations when crawling a snapshot.
- - Upgraded dependency on EditorCoroutines package to 0.0.2-preview.1.
- - Changed the initialization of the managed memory sections to not overallocate.
- - Fixed an issue where selecting a region on the memory map would expand the table underneath onto the whole window.
- - Fixed an issue where closing either snapshot (with two snapshots loaded) would close the other one instead.
- - Resolved UI issues with upstream UI elements versions.
+
+- Lowered the number of GC allocations when crawling a snapshot.
+- Upgraded dependency on EditorCoroutines package to 0.0.2-preview.1.
+- Changed the initialization of the managed memory sections to not overallocate.
+- Fixed an issue where selecting a region on the memory map would expand the table underneath onto the whole window.
+- Fixed an issue where closing either snapshot (with two snapshots loaded) would close the other one instead.
+- Resolved UI issues with upstream UI elements versions.
 
 ### Removed
- - Removed links in columns: Native Object Name, Native Size. For the Native Objects table.
+
+- Removed links in columns: Native Object Name, Native Size. For the Native Objects table.
 
 ## [0.1.0-preview.4] - 2019-01-02
+
 ### Added
- - Added on demand computing for tables with the purpose of speeding up the snapshot opening process.
- - Added better handling for corrupted snapshots, in order to avoid having the UI become non-responsive.
+
+- Added on demand computing for tables with the purpose of speeding up the snapshot opening process.
+- Added better handling for corrupted snapshots, in order to avoid having the UI become non-responsive.
 
 ### Changed
- - Changed the managed data crawler to use a stack based approach in order to avoid stack overflows when processing large amounts of managed object references.
- - Fixed an issue where attempting to rename a snapshot with two snapshots open would cause an I/O sharing violation, due to the other snapshot being closed instead.
- - Changed capture sequence to first output to a temporary (.tmpsnap) file, to avoid having the Workbench's refresh functionality(triggered during application focus) try to access a snapshot that currently being streamed from a remote target.
+
+- Changed the managed data crawler to use a stack based approach in order to avoid stack overflows when processing large amounts of managed object references.
+- Fixed an issue where attempting to rename a snapshot with two snapshots open would cause an I/O sharing violation, due to the other snapshot being closed instead.
+- Changed capture sequence to first output to a temporary (.tmpsnap) file, to avoid having the Workbench's refresh functionality(triggered during application focus) try to access a snapshot that currently being streamed from a remote target.
 
 ## [0.1.0-preview.3] - 2018-12-17
+
 ### Added
- - Added enable callback for the capture button, to support cases where the compilation guards get triggered by building the Player.
- - Added missing deregister step for the compilation callbacks to the OnDisable method.
+
+- Added enable callback for the capture button, to support cases where the compilation guards get triggered by building the Player.
+- Added missing deregister step for the compilation callbacks to the OnDisable method.
 
 ## [0.1.0-preview.2] - 2018-12-12
+
 ### Added
- - Added documentation for the package.
- - Added a table display underneath the "TreeMap" in order to display data about the currently selected object.
- - Added metadata injection functionality, to allow users to specify their metadata collection in a simple way.
- - Added "Diff" functionality for the "MemoryMap".
- - Added import functionality for old snapshot formats that were exported via the "Bitbucket Memory Profiler".
- - Added platform icons for snapshots whose metadata contains the platform from which they were taken.
- - Added basic file management functionality (rename, delete) for the "Workbench". It can be found under the option cogwheel of the snapshots.
- - Added the "Open Snapshots View" to the "Workbench", where users can Diff the last two open snapshots.
+
+- Added documentation for the package.
+- Added a table display underneath the "TreeMap" in order to display data about the currently selected object.
+- Added metadata injection functionality, to allow users to specify their metadata collection in a simple way.
+- Added "Diff" functionality for the "MemoryMap".
+- Added import functionality for old snapshot formats that were exported via the "Bitbucket Memory Profiler".
+- Added platform icons for snapshots whose metadata contains the platform from which they were taken.
+- Added basic file management functionality (rename, delete) for the "Workbench". It can be found under the option cogwheel of the snapshots.
+- Added the "Open Snapshots View" to the "Workbench", where users can Diff the last two open snapshots.
 
 ### Changed
- - Reworked the "MemoryMap" to display memory allocations in a more intuitive way, allowing better understanding of the captured memory layout.
- - Reworked the "Workbench" to manage the snapshot directory and display all snaphot files contained in it. The "Workbench" default directory resides in "[ProjectRoot]/MemoryCaptures".
- - General UX improvements.
+
+- Reworked the "MemoryMap" to display memory allocations in a more intuitive way, allowing better understanding of the captured memory layout.
+- Reworked the "Workbench" to manage the snapshot directory and display all snaphot files contained in it. The "Workbench" default directory resides in "[ProjectRoot]/MemoryCaptures".
+- General UX improvements.
 
 ### Removed
- - Removed "Diff" button from the snapshot entries inside the "Workbench".
- - Removed "Delete" button from the snapshot entries inside the "Workbench". Delete can instead be found in the menu under the options cogwheel of the snapshot.
+
+- Removed "Diff" button from the snapshot entries inside the "Workbench".
+- Removed "Delete" button from the snapshot entries inside the "Workbench". Delete can instead be found in the menu under the options cogwheel of the snapshot.
 
 ## [0.1.0-preview.1] - 2018-11-15
-### Added
- - Added memory snapshot crawler.
- - Added data caching for the crawled snapshot.
- - Added database and tables for displaying processed object data.
- - Added "Diff" functionality to tables, in order to allow the user to compare two different snapshots.
- - Migrated the "TreeMap" view from the bitbucket memory profiler.
- - Added XML syntax for defining tables, with default tables being defined inside "memview.xml".
- - Added the concept of a "Workbench" to allow the user to save a list of known snapshots.
- - Added the "MemoryMap" view to allow users to see the allocated memory space for their application.
 
-### This is the first release of *Unity Package Memory Profiler*.
- Source code release of the Memory Profiler package, with no added documentation.
+### Added
+
+- Added memory snapshot crawler.
+- Added data caching for the crawled snapshot.
+- Added database and tables for displaying processed object data.
+- Added "Diff" functionality to tables, in order to allow the user to compare two different snapshots.
+- Migrated the "TreeMap" view from the bitbucket memory profiler.
+- Added XML syntax for defining tables, with default tables being defined inside "memview.xml".
+- Added the concept of a "Workbench" to allow the user to save a list of known snapshots.
+- Added the "MemoryMap" view to allow users to see the allocated memory space for their application.
+
+### This is the first release of _Unity Package Memory Profiler_.
+
+Source code release of the Memory Profiler package, with no added documentation.

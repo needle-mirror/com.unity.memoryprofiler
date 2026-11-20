@@ -6,10 +6,16 @@ using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     // Abstract base view controller for memory breakdown views, such as 'Unity Objects' and 'All Of Memory'.
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     abstract class BreakdownViewController : ViewController, ITableItemLocator, IFilterRelaxationTarget
     {
         protected virtual string AllocatedMemoryInTableFormatString => TextContent.AllocatedMemoryInTableFormat;

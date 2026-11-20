@@ -5,9 +5,15 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking.PlayerConnection;
 using ConnectionGUI = UnityEditor.Networking.PlayerConnection.PlayerConnectionGUI;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class PlayerConnectionCompatibilityHelper
     {
         static ConstructorInfo s_ConstructConnectionWindow;

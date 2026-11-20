@@ -3,9 +3,15 @@ using System.Xml.Linq;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class NativeAllocationTools
     {
         [MethodImpl(MethodImplementationHelper.AggressiveInlining)]

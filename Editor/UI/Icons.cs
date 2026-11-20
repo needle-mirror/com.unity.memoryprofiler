@@ -3,9 +3,15 @@ using System.IO;
 using Unity.MemoryProfiler.Editor.UI.PathsToRoot;
 using UnityEditor;
 using UnityEngine;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class Icons
     {
         public const string IconFolder = "Packages/com.unity.memoryprofiler/Editor/UI/Icons/";

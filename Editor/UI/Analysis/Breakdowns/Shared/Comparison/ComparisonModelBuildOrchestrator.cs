@@ -50,7 +50,11 @@ namespace Unity.MemoryProfiler.Editor.UI
                 // Build the comparison model
                 var model = builder.Build(snapshotA, snapshotB, args);
 
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    (model as IDisposable)?.Dispose();
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
                 AsyncTaskHelper.DebugLogAsyncStep($"Building Finished {modelTypeName}");
                 return model;
             };

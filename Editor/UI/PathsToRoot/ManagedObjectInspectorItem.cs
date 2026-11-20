@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEditor;
 using System.Runtime.CompilerServices;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 #if IMGUI_TREEVIEW_API_CHANGED
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 #else
@@ -9,6 +12,9 @@ using UnityEditor.IMGUI.Controls;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal class ManagedObjectInspectorItem : TreeViewItem
     {
         public bool PendingProcessing => m_ReferencePendingProcessingWhenExpanding.ObjectData.IsValid;

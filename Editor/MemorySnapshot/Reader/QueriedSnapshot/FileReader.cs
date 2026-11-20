@@ -8,6 +8,9 @@ using Unity.MemoryProfiler.Editor.Containers;
 using Unity.MemoryProfiler.Editor.Diagnostics;
 using Unity.MemoryProfiler.Editor.Format.LowLevel.IO;
 using Unity.Profiling;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
 {
@@ -70,6 +73,9 @@ namespace Unity.MemoryProfiler.Editor.Format.QueriedSnapshot
     //
     // Legend:
     //  <Chapter> - EntryType eg: NativeObjectName
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     class FileReader : IFileReader
     {
         [StructLayout(LayoutKind.Explicit, Size = 16, Pack = 4)]

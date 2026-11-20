@@ -21,9 +21,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             return m_Builder.Build(snapshot, args);
         }
 
-        public UnityObjectsModel Build(UnityObjectsModel baseModel, IList<int> treeNodeIdFilter)
+        public UnityObjectsModel Build(UnityObjectsModel baseModel, IList<int> treeNodeIdFilter, CancellationToken cancellationToken)
         {
-            return m_Builder.Build(baseModel, treeNodeIdFilter);
+            return m_Builder.Build(baseModel, treeNodeIdFilter, cancellationToken);
         }
 
         public void ClearIdToIndexCache()
@@ -395,7 +395,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 visible: true);
         }
 
-        protected UnityObjectsModelBuilder.BuildArgs GetModelBuilderArgs()
+        protected UnityObjectsModelBuilder.BuildArgs GetModelBuilderArgs(CancellationToken cancellationToken)
         {
             return new UnityObjectsModelBuilder.BuildArgs(
                 m_FilterManager.CompoundSearchFilter,
@@ -403,12 +403,13 @@ namespace Unity.MemoryProfiler.Editor.UI
                 m_FilterManager.TypeNameFilter,
                 FlattenHierarchy,
                 ShowDuplicatesOnly,
-                DisambiguateByInstanceId);
+                DisambiguateByInstanceId,
+                cancellationToken);
         }
 
         protected override Func<UnityObjectsModel> GetModelBuilderTask(CancellationToken cancellationToken)
         {
-            var args = GetModelBuilderArgs();
+            var args = GetModelBuilderArgs(cancellationToken);
             return m_BuildOrchestrator.CreateBuildTask(
                 args,
                 m_FilterManager.BaseModelForTreeNodeIdFiltering,

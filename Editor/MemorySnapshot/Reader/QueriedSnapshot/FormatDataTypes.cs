@@ -297,6 +297,8 @@ namespace Unity.MemoryProfiler.Editor.Format
         kEnum = 1 << 5,
         kNested = 1 << 6,
         kExplicitLayout = 1 << 7,
+        // CoreCLR general array (lower-bound or multi-dimensional): an inline bounds block precedes the elements.
+        kArrayHasBounds = 1 << 8,
         kArrayRankMask = unchecked((int)0xFFFF0000)
     }
 

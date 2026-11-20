@@ -12,6 +12,9 @@ using Unity.MemoryProfiler.Editor.UIContentData;
 using Unity.Profiling;
 using UnityEditor;
 using UnityEngine;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
@@ -32,6 +35,9 @@ namespace Unity.MemoryProfiler.Editor
         LoadedCompare
     }
 
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal class SnapshotDataService : IDisposable, ISnapshotDataService
     {
         const int k_MaxFilenameLengthBytes = 255; // Limit on Mac/Linux
@@ -72,12 +78,12 @@ namespace Unity.MemoryProfiler.Editor
             var listBuilder = new SnapshotFileListModelBuilder(allSnapshots, DateTime.MinValue);
             m_SnapshotFileListModel = listBuilder.Build();
 
+            SetupSnapshotFolderWatcher();
+            SyncSnapshotsFolder();
+
             EditorApplication.update -= Update;
             EditorApplication.update += Update;
             MemoryProfilerSettings.SnapshotStoragePathChanged += SetupSnapshotFolderWatcher;
-
-            SetupSnapshotFolderWatcher();
-            SyncSnapshotsFolder();
         }
 
         void Update()
@@ -133,6 +139,10 @@ namespace Unity.MemoryProfiler.Editor
             var path = GetOrCreateSnapshotFolderPath();
 
             m_SnapshotFolderWatcher?.Dispose();
+            m_SnapshotFolderWatcher = null;
+            // A missing non-default folder is retried on the next sync, after the user had a chance to create it.
+            if (!Directory.Exists(path))
+                return;
             m_SnapshotFolderWatcher = new FileSystemWatcherUnity(path);
             m_SnapshotFolderWatcher.Changed += DirectoryChanged;
 
@@ -398,6 +408,14 @@ namespace Unity.MemoryProfiler.Editor
             // CancellationTokenSource on the main thread once it completes.
             m_BuildAllSnapshotsCTS?.Cancel();
 
+            if (m_SnapshotFolderWatcher == null)
+                SetupSnapshotFolderWatcher();
+            if (m_SnapshotFolderWatcher == null)
+            {
+                m_SnapshotFolderIsDirty = false;
+                return;
+            }
+
             // Check and store updated state
             m_SnapshotFolderWatcher.Refresh();
             // Grab a copy of the directory so that a directory change on the main thread will not bleed into the worker thread.
@@ -624,7 +642,7 @@ namespace Unity.MemoryProfiler.Editor
                     return m_SnapshotFolderWatcher.Directory.FullName;
             }
             SetupSnapshotFolderWatcher();
-            return m_SnapshotFolderWatcher.Directory.FullName;
+            return m_SnapshotFolderWatcher != null ? m_SnapshotFolderWatcher.Directory.FullName : MemoryProfilerSettings.AbsoluteMemorySnapshotStoragePath;
         }
 
         string GetOrCreateSnapshotFolderPath()

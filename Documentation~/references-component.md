@@ -6,16 +6,16 @@ When you select an object in the [Memory Profiler window](memory-profiler-window
 
 The References section has the following tabs:
 
-|**Tab**|**Description**|
-|---|---|
-|**Shortest Path To Root**| Lists the shortest path of references between the selected object and its strongest root. |
-|**Referenced By**| Displays the tree of references leading to the selected object. By default, the entries in this tab are collapsed and only display the reference in the chain closest to the selected object. Select objects that belong to a hierarchy to expand them and display the full reference hierarchy of the object and its roots.|
-|**References To**| Displays a list of objects that the selected object references. Only displays all directly referenced objects but not the objects referenced by these.|
+| **Tab** | **Description** |
+| --- | --- |
+| **Shortest Path To Root** | Lists the shortest path of references between the selected object and its strongest root. |
+| **Referenced By** | Displays the tree of references leading to the selected object. By default, the entries in this tab are collapsed and only display the reference in the chain closest to the selected object. Select objects that belong to a hierarchy to expand them and display the full reference hierarchy of the object and its roots. |
+| **References To** | Displays a list of objects that the selected object references. Only displays all directly referenced objects but not the objects referenced by these. |
 
 The References section displays the selected object's name regardless of whether it contains any references. If a selected object contains references or if another object references the selected object, then the references are displayed in the appropriate tab.
 
 ## Additional resources
 
-* [Snapshots panel reference](snapshots-component.md)
-* [Main panel reference](main-component.md)
-* [Selection Details panel reference](selection-details-component.md)
+- [Snapshots panel reference](snapshots-component.md)
+- [Main panel reference](main-component.md)
+- [Selection Details panel reference](selection-details-component.md)

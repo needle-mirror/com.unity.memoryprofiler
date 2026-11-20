@@ -4,6 +4,9 @@ using System.Linq;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -11,6 +14,9 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// All process memory usage as seen by OS broken down
     /// into a set of pre-defined high-level categories.
     /// </summary>
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal class AllMemorySummaryModelBuilder : IMemorySummaryModelBuilder<MemorySummaryModel>
     {
         const string kPlatformIdAndroid = "dalvik";

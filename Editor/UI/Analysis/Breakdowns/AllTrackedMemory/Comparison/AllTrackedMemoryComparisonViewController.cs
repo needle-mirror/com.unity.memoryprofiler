@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Unity.MemoryProfiler.Editor.Extensions;
 using Unity.MemoryProfiler.Editor.Format;
 using UnityEditor;
@@ -98,7 +99,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// <c>disambiguateUnityObjects</c> on both child tables, and
         /// <see cref="ComparisonViewController{TBaseModel, TBaseModelBuilderArgs, TBaseModelItemData, TModelSpecificData}.GetModelBuilderTask(System.Threading.CancellationToken)"/>
         /// passes true for the sameSessionComparison arg to
-        /// <see cref="ComparisonViewController{TBaseModel, TBaseModelBuilderArgs, TBaseModelItemData, TModelSpecificData}.GetBaseModelBuilderArgs(CompoundSearchFilter, bool)"/>
+        /// <see cref="ComparisonViewController{TBaseModel, TBaseModelBuilderArgs, TBaseModelItemData, TModelSpecificData}.GetBaseModelBuilderArgs(CompoundSearchFilter, bool, System.Threading.CancellationToken)"/>
         /// so that a Managed/Native Unity Object row's name embeds its native InstanceId (<see cref="NativeObjectTools.ProduceNativeObjectNameAndId"/>).
         /// Therefore matching such a row by name IS matching it by instance, and that instance can gain or lose its
         /// Managed Shell between A and B. The label above was only ever classified from whichever snapshot won
@@ -338,13 +339,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             MemoryProfilerAnalytics.AddAllTrackedMemoryComparisonUsage(itemNameFilter != null, MemoryProfilerSettings.ShowReservedMemoryBreakdown, IncludeUnchanged);
         }
 
-        protected override AllTrackedMemoryModelBuilder.BuildArgs GetBaseModelBuilderArgs(CompoundSearchFilter searchFilter, bool sameSessionComparison)
+        protected override AllTrackedMemoryModelBuilder.BuildArgs GetBaseModelBuilderArgs(CompoundSearchFilter searchFilter, bool sameSessionComparison, CancellationToken cancellationToken)
         {
             return new AllTrackedMemoryModelBuilder.BuildArgs(
                 searchFilter: searchFilter,
                 breakdownNativeReserved: MemoryProfilerSettings.ShowReservedMemoryBreakdown,
                 disambiguateUnityObjects: sameSessionComparison,
-                allocationRootNamesToSplitIntoSuballocations: MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 ? MemoryProfilerSettings.AllocationRootsToSplit : null);
+                allocationRootNamesToSplitIntoSuballocations: MemoryProfilerSettings.FeatureFlags.EnableDynamicAllocationBreakdown_2024_10 ? MemoryProfilerSettings.AllocationRootsToSplit : null,
+                cancellationToken: cancellationToken);
         }
 
         protected override bool ShowExtraDataToggle => true;

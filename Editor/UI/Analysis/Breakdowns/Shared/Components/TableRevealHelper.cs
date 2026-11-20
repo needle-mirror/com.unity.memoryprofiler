@@ -5,6 +5,9 @@ using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
@@ -16,6 +19,9 @@ namespace Unity.MemoryProfiler.Editor.UI
     /// until the in-flight model rebuild it depends on completes, and the "Select In..." reveal
     /// flow itself (prompting to relax filters, or reporting an item can't be shown at all).
     /// </summary>
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     class TableRevealHelper
     {
         const string k_RowHighlightUssClass = "memory-profiler-row-highlight";

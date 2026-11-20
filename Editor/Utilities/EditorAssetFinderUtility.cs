@@ -18,6 +18,9 @@ using HideFlags = UnityEngine.HideFlags;
 using GameObject = UnityEngine.GameObject;
 using Vector2 = UnityEngine.Vector2;
 using Unity.MemoryProfiler.Editor.Diagnostics;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 #if UNITY_6000_4_OR_NEWER
 using GUID = UnityEngine.GUID;
@@ -39,6 +42,9 @@ namespace Unity.MemoryProfiler.Editor
     /// Split out so that <see cref="MemoryProfilerAnalytics"/> doesn't accidentally trigger search
     /// initialization by triggering the static initializer for <see cref="EditorAssetFinderUtility"/>.
     /// </summary>
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class EditorSessionUtility
     {
         static MethodInfo s_GetLocalGuid = null;
@@ -55,6 +61,9 @@ namespace Unity.MemoryProfiler.Editor
     /// Split out so that the Test Project can doesn't accidentally trigger async search
     /// by triggering the static initializer for <see cref="EditorAssetFinderUtility"/>.
     /// </summary>
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class QuickSearchUtility
     {
         public static bool QuickSearchCanUseNameFilter { get; private set; }
@@ -352,7 +361,9 @@ namespace Unity.MemoryProfiler.Editor
             }
             void AsyncSessionFinished(SearchContext context)
             {
-                if (State <= SearchState.InProgress && !context.searchInProgress && !m_SearchList.pending)
+                // A search that finishes within its first fetch ends its session before SearchService.Request returns,
+                // i.e. before m_SearchList is assigned. Without a list there is nothing left pending.
+                if (State <= SearchState.InProgress && !context.searchInProgress && !(m_SearchList?.pending ?? false))
                     State = SearchState.FinishedSuccessfully;
             }
 
@@ -460,6 +471,9 @@ namespace Unity.MemoryProfiler.Editor
         }
     }
 
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class EditorAssetFinderUtility
     {
         public struct Findings : IDisposable

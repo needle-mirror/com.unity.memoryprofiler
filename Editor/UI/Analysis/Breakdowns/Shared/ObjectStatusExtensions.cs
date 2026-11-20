@@ -13,8 +13,14 @@ namespace Unity.MemoryProfiler.Editor.UI
 {
     static partial class ObjectStatusExtensions
     {
+#if LIFECYCLE_APIS_AVAILABLE
+        [NoAutoStaticsCleanup]
+#endif
         public static ulong AllStatuses { get; private set; }
         /// <summary>Mask of every "clearly leaked" status, offered as a one-click preset group in the filter dropdown.</summary>
+#if LIFECYCLE_APIS_AVAILABLE
+        [NoAutoStaticsCleanup]
+#endif
         public static ulong AllLeakedStatusesMask { get; private set; }
 
         /// <summary>Builds a bitmask (bit N = <see cref="ObjectStatus"/> N) from the given statuses.</summary>
@@ -106,6 +112,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         };
 
         /// <summary>Bitmask with a bit set for every <see cref="ObjectStatus"/> value that passes <see cref="IsWarningStatus"/>.</summary>
+#if LIFECYCLE_APIS_AVAILABLE
+        [NoAutoStaticsCleanup]
+#endif
         public static ulong WarningStatusesBitmask { get; private set; }
 
         /// <summary>
@@ -113,8 +122,14 @@ namespace Unity.MemoryProfiler.Editor.UI
         /// Only consulted for non-warning items: warning items sort by -WarningCount so they bubble to the top
         /// (see <see cref="GetStatusSortKey(ObjectStatusWarningInfo)"/>).
         /// </summary>
+#if LIFECYCLE_APIS_AVAILABLE
+        [NoAutoStaticsCleanup]
+#endif
         static int[] k_StatusSortKeys;
         /// <summary>Sort rank for the "Mixed" placeholder shown when a group contains multiple statuses.</summary>
+#if LIFECYCLE_APIS_AVAILABLE
+        [NoAutoStaticsCleanup]
+#endif
         static int k_MixedStatusSortKey;
         public static ReadOnlyCollection<string> StatusMaskChoiceNames => k_StatusMaskChoiceNames.AsReadOnly();
         public static ReadOnlyCollection<string> StatusMaskChoiceTooltips => k_StatusMaskChoiceTooltips.AsReadOnly();

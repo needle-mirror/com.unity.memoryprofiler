@@ -8,7 +8,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         where TModel : class
     {
         TModel Build(CachedSnapshot snapshot, TBuildArgs args);
-        TModel Build(TModel baseModel, IList<int> treeNodeIdFilter);
+        TModel Build(TModel baseModel, IList<int> treeNodeIdFilter, CancellationToken cancellationToken);
         TModel EmptyModel { get; }
         void ClearIdToIndexCache();
     }
@@ -62,11 +62,22 @@ namespace Unity.MemoryProfiler.Editor.UI
             cancellationToken.ThrowIfCancellationRequested();
             AsyncTaskHelper.DebugLogAsyncStep("Start Building (derived) (not canceled)                 " + m_ModelTypeName);
 
-            var model = m_Builder.Build(baseModel, treeNodeIdFilter);
+            var model = m_Builder.Build(baseModel, treeNodeIdFilter, cancellationToken);
 
-            cancellationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(model, baseModel))
+                DisposeAndThrowIfCanceled(model, cancellationToken);
+            else
+                cancellationToken.ThrowIfCancellationRequested();
             AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + m_ModelTypeName);
             return model;
+        }
+
+        internal static void DisposeAndThrowIfCanceled(TModel model, CancellationToken cancellationToken)
+        {
+            if (!cancellationToken.IsCancellationRequested)
+                return;
+            (model as IDisposable)?.Dispose();
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
         TModel BuildFullModel(
@@ -79,7 +90,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             var model = m_Builder.Build(m_Snapshot, args);
 
-            cancellationToken.ThrowIfCancellationRequested();
+            DisposeAndThrowIfCanceled(model, cancellationToken);
             AsyncTaskHelper.DebugLogAsyncStep("Building Finished                 " + m_ModelTypeName);
             return model;
         }

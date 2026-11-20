@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Unity.MemoryProfiler.Editor.Extensions;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
@@ -106,7 +107,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             if (getComparisonKeyA != null)
             {
                 Debug.Assert(getComparisonKeyB != null, "If getComparisonKeyA is provided, getComparisonKeyB must also be provided.");
-                intermediateTree = BuildIntermediateTree<TBaseModelTreeItemData, TBaseModel, TModelSpecificData, TComparableKey>(treeA, treeB, getExtraData, getComparisonKeyA, getComparisonKeyB, keyComparer);
+                intermediateTree = BuildIntermediateTree<TBaseModelTreeItemData, TBaseModel, TModelSpecificData, TComparableKey>(treeA, treeB, getExtraData, args.CancellationToken, getComparisonKeyA, getComparisonKeyB, keyComparer);
             }
             else
             {
@@ -115,7 +116,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 Debug.Assert(getComparisonKeyB == null, "If getComparisonKeyA is not provided, getComparisonKeyB must also be null.");
                 Debug.Assert(keyComparer == null, "If getComparisonKeyA is not provided, keyComparer must also be null.");
                 intermediateTree = BuildIntermediateTree<TBaseModelTreeItemData, TBaseModel, TModelSpecificData, string>
-                    (treeA, treeB, getExtraData, (d) => d.Name, (d) => d.Name, StringComparer.Ordinal);
+                    (treeA, treeB, getExtraData, args.CancellationToken, (d) => d.Name, (d) => d.Name, StringComparer.Ordinal);
             }
             var comparisonTree = BuildUitkTreeFromIntermediateTree(intermediateTree, args, extraDataHasChanged, out largestAbsoluteSizeDelta, aggregateExtraDataFromChildren);
             return comparisonTree;
@@ -125,6 +126,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             IEnumerable<TreeViewItemData<TBaseModelTreeItemData>> treeA,
             IEnumerable<TreeViewItemData<TBaseModelTreeItemData>> treeB,
             Func<List<TreeViewItemData<TBaseModelTreeItemData>>, List<TreeViewItemData<TBaseModelTreeItemData>>, TModelSpecificData> getExtraData,
+            CancellationToken cancellationToken,
             Func<TBaseModelTreeItemData, TComparableKey> getComparisonKeyA = null,
             Func<TBaseModelTreeItemData, TComparableKey> getComparisonKeyB = null,
             IComparer<TComparableKey> keyComparer = null)
@@ -172,14 +174,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             while (itemStackA.Count > 0 && itemStackB.Count > 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var itemA = itemStackA.Pop();
                 var itemB = itemStackB.Pop();
                 var parentOutputNode = parentOutputNodeStack.Pop();
 
                 var childrenA = (List<TreeViewItemData<TBaseModelTreeItemData>>)itemA.children ?? new List<TreeViewItemData<TBaseModelTreeItemData>>();
                 var childrenB = (List<TreeViewItemData<TBaseModelTreeItemData>>)itemB.children ?? new List<TreeViewItemData<TBaseModelTreeItemData>>();
-                childrenA.Sort(sortByKeyComparisonA);
-                childrenB.Sort(sortByKeyComparisonB);
+                TreeModelUtility.SortCancellable(childrenA, sortByKeyComparisonA, cancellationToken);
+                TreeModelUtility.SortCancellable(childrenB, sortByKeyComparisonB, cancellationToken);
 
                 MatchSortedItems(
                     childrenA,
@@ -256,7 +259,8 @@ namespace Unity.MemoryProfiler.Editor.UI
                         }
                     },
                     cachedMatchingListForItemsWithNameInA: cachedMatchingListForItemsWithNameInA,
-                    cachedMatchingListForItemsWithNameInB: cachedMatchingListForItemsWithNameInB
+                    cachedMatchingListForItemsWithNameInB: cachedMatchingListForItemsWithNameInB,
+                    cancellationToken: cancellationToken
                 );
             }
 
@@ -278,7 +282,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             Comparison<TreeViewItemData<T>> withinBComparison,
             Action<List<TreeViewItemData<T>>, List<TreeViewItemData<T>>> match,
             List<TreeViewItemData<T>> cachedMatchingListForItemsWithNameInA = null,
-            List<TreeViewItemData<T>> cachedMatchingListForItemsWithNameInB = null)
+            List<TreeViewItemData<T>> cachedMatchingListForItemsWithNameInB = null,
+            CancellationToken cancellationToken = default)
             where T : IPrivateComparableItemData
         {
             cachedMatchingListForItemsWithNameInA ??= new();
@@ -288,6 +293,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var indexB = 0;
             while (indexA < itemsSortedByNameA.Count || indexB < itemsSortedByNameB.Count)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 int comparison;
                 if (indexA >= itemsSortedByNameA.Count)
                     comparison = 1;
@@ -355,6 +361,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             var postOrderStack = new Stack<Node<TBaseModel, TBaseModelTreeItemData, TModelSpecificData>>();
             while (stack.Count > 0)
             {
+                args.CancellationToken.ThrowIfCancellationRequested();
                 var node = stack.Pop();
                 postOrderStack.Push(node);
 
@@ -371,6 +378,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             largestAbsoluteSizeDelta = 0;
             while (postOrderStack.Count > 0)
             {
+                args.CancellationToken.ThrowIfCancellationRequested();
                 var node = postOrderStack.Pop();
 
                 // Retrieve child tree-view-items and calculate inclusive values.
@@ -491,12 +499,14 @@ namespace Unity.MemoryProfiler.Editor.UI
             public BuildArgs(
                 bool includeUnchanged,
                 AllTrackedMemoryTableMode tableMode,
-                bool compareExtraData = false
+                bool compareExtraData = false,
+                CancellationToken cancellationToken = default
                 )
             {
                 IncludeUnchanged = includeUnchanged;
                 TableMode = tableMode;
                 CompareExtraData = compareExtraData;
+                CancellationToken = cancellationToken;
             }
 
             // Include unchanged items.
@@ -507,6 +517,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             // When true, callers should pass an extraDataHasChanged delegate to Build()
             // so that extra-data differences (e.g. status) factor into HasChanged.
             public bool CompareExtraData { get; }
+
+            public CancellationToken CancellationToken { get; }
         }
 
         // A node for the intermediate comparison tree.

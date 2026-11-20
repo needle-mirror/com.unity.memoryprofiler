@@ -127,6 +127,67 @@ namespace Unity.MemoryProfiler.Editor
                 return memLabelSourceIndex;
             }
 
+            /// <summary>
+            /// Returns the start of the parameter list of a demangled C++ function name, or -1 if it has none.
+            /// Brackets inside template arguments, lambda names ("{lambda(int)#1}") and operator names ("operator()", "operator<<")
+            /// don't start it, and neither do brackets followed by "::", as in "(anonymous namespace)::" or "Outer(int)::{lambda()#1}::".
+            /// </summary>
+            static int FindParameterListStart(ReadOnlySpan<char> name)
+            {
+                const string k_Operator = "operator";
+                const string k_OperatorSymbolChars = "<>=!+-*/%^&|~[],";
+                var nestingDepth = 0;
+                for (var i = 0; i < name.Length; ++i)
+                {
+                    var c = name[i];
+                    if (c == '<' || c == '{')
+                    {
+                        ++nestingDepth;
+                    }
+                    else if ((c == '>' || c == '}') && nestingDepth > 0)
+                    {
+                        --nestingDepth;
+                    }
+                    else if (c == 'o' && (i == 0 || name[i - 1] == ':') && name.Slice(i).StartsWith(k_Operator))
+                    {
+                        var operatorEnd = i + k_Operator.Length;
+                        if (name.Slice(operatorEnd).StartsWith("()"))
+                        {
+                            operatorEnd += 2;
+                        }
+                        else
+                        {
+                            while (operatorEnd < name.Length && k_OperatorSymbolChars.IndexOf(name[operatorEnd]) >= 0)
+                                ++operatorEnd;
+                        }
+                        i = operatorEnd - 1;
+                    }
+                    else if (c == '(' && nestingDepth == 0)
+                    {
+                        var closingBracket = FindClosingBracket(name, i);
+                        if (closingBracket < 0)
+                            return i > 0 ? i : -1;
+                        if (i > 0 && !name.Slice(closingBracket + 1).StartsWith("::"))
+                            return i;
+                        i = closingBracket;
+                    }
+                }
+                return -1;
+            }
+
+            static int FindClosingBracket(ReadOnlySpan<char> name, int openingBracket)
+            {
+                var depth = 0;
+                for (var i = openingBracket; i < name.Length; ++i)
+                {
+                    if (name[i] == '(')
+                        ++depth;
+                    else if (name[i] == ')' && --depth == 0)
+                        return i;
+                }
+                return -1;
+            }
+
             public void AppendCallstackLine(NativeCallstackSymbolEntriesCache symbols, ulong targetSymbol, StringBuilder stringBuilder,
                 List<KeyValuePair<int, string>> fileLinkHashToFileName = null, bool simplifyCallStacks = true, bool clickableCallStacks = true, bool terminateWithLineBreak = true)
             {
@@ -139,6 +200,29 @@ namespace Unity.MemoryProfiler.Editor
                     try
                     {
                         var symbol = symbols.ReadableStackTrace[symbolIdx].AsSpan();
+
+                        // Linux (libunwind) format: " #NN Namespace::Class::Method(param, types)\n" - no address, module or file info.
+                        // Keep the method name and drop the parameter list, matching what the Windows path below produces.
+                        var trimmed = symbol.TrimStart(' ');
+                        if (trimmed.Length > 1 && trimmed[0] == '#')
+                        {
+                            var nameStart = trimmed.IndexOf(' ');
+                            var name = nameStart > 0 ? trimmed.Slice(nameStart + 1) : trimmed;
+                            var lineBreak = name.IndexOf('\n');
+                            if (lineBreak >= 0)
+                                name = name.Slice(0, lineBreak);
+                            if (simplifyCallStacks)
+                            {
+                                var parameterListStart = FindParameterListStart(name);
+                                if (parameterListStart > 0)
+                                    name = name.Slice(0, parameterListStart);
+                            }
+                            stringBuilder.Append(name);
+                            if (terminateWithLineBreak)
+                                stringBuilder.Append('\n');
+                            return;
+                        }
+
                         var firstCharIndexOfAssemblyName = symbol.IndexOf('(');
                         if (firstCharIndexOfAssemblyName > 0)
                         {

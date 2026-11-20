@@ -7,10 +7,16 @@ using Unity.MemoryProfiler.Editor.UI;
 using Unity.Profiling.Memory;
 using UnityEditor;
 using UnityEngine;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 [assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.MemoryProfilerModule")]
 
 namespace Unity.MemoryProfiler.Editor
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class MemoryProfilerSettings
     {
         // Opt-out Dialog keys:
@@ -42,6 +48,7 @@ namespace Unity.MemoryProfiler.Editor
         public static event Action SortReferencesWithDifferentRootLastChanged;
         public static event Action SnapshotStoragePathChanged;
         public static event Action ShowTotalImpactInPotentialSavingsChanged;
+        public static event Action ShowMemoryMapViewChanged;
 
         /// <summary>
         /// There are some things that only make sense for those with access to Unity's source code, like internal Engineers, Unity QA and customers with source code access.
@@ -70,6 +77,9 @@ namespace Unity.MemoryProfiler.Editor
             FeatureFlags.ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace = ConsiderAllPointerSizedFieldsAsPotentialPointersAtNativeAllocations;
         }
 
+#if LIFECYCLE_APIS_AVAILABLE
+        [NoAutoStaticsCleanup]
+#endif
         internal static class FeatureFlags
         {
             // For By Status and Path From Roots
@@ -146,6 +156,30 @@ namespace Unity.MemoryProfiler.Editor
                         managedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace: ManagedCrawlerConsidersPotentialPointersToNativeAllocationsOutsideOfEntitiesNamespace
                     );
                 }
+            }
+        }
+
+        static string s_BaseSnapshotFolder;
+
+        /// <summary>
+        /// Only meant to be set by tests to override the base path away from the project directory and to a path that isolates
+        /// the snapshot folder used for the tests from the actual snapshots folder in a project running the tests.
+        /// </summary>
+        internal static string SnapshotFolderBasePath
+        {
+            get
+            {
+                return s_BaseSnapshotFolder ?? Application.dataPath.Replace("/Assets", "");
+            }
+            set
+            {
+                if (string.IsNullOrEmpty(value))
+                    s_BaseSnapshotFolder = null;
+                else if (!Path.IsPathRooted(value))
+                    throw new ArgumentException("The folder must be an absolute path.", nameof(value));
+                else
+                    s_BaseSnapshotFolder = value;
+                SnapshotStoragePathChanged?.Invoke();
             }
         }
 
@@ -227,48 +261,54 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        public static string AbsoluteMemorySnapshotStoragePath
+        public static string AbsoluteMemorySnapshotStoragePath => ResolveAbsoluteSnapshotPath(MemorySnapshotStoragePath, SnapshotFolderBasePath);
+
+        /// <summary>
+        /// Resolves a "./" or "../" relative snapshot folder path against <paramref name="basePath"/>, which has to be an absolute path.
+        /// Returns null for paths that are not relative or not valid. Paths with more "../" entries than <paramref name="basePath"/> has folders get clamped at its root, and an error is logged.
+        /// </summary>
+        internal static string ResolveAbsoluteSnapshotPath(string folderPath, string basePath)
         {
-            get
+            var pathTokens = folderPath.Split(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            if (!pathTokens[0].StartsWith(".")) //ensure that we are a relative path
             {
-                string folderPath = MemoryProfilerSettings.MemorySnapshotStoragePath;
-                //split the string
-                var pathTokens = folderPath.Split(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-                if (pathTokens.Length == 0)
-                    return null;
-
-                StringBuilder pathSb = new StringBuilder();
-                if (!pathTokens[0].StartsWith(".")) //ensure that we are a relative path
-                {
-                    Debug.LogError(folderPath + " Is not a valid relative path, as it doesn't start with './'. Please change the path for memory snapshots in the Preferences.");
-                    return null;
-                }
-
-                if (!pathTokens[0].StartsWith("..")) //relative path first set to start in ./
-                {
-                    pathSb.Append(Application.dataPath.Replace("/Assets", ""));
-                }
-
-                for (int i = 1; i < pathTokens.Length; ++i)
-                {
-                    pathSb.Append(Path.DirectorySeparatorChar);
-                    pathSb.Append(pathTokens[i]);
-                }
-
-                var res = pathSb.ToString();
-                try
-                {
-                    //will throw for invalid paths
-                    res = Path.GetFullPath(res);
-                }
-                catch (Exception)
-                {
-                    Debug.LogError(folderPath + " Is not a valid relative path, it has more instances of '../' than folders above the project folder. Please change the path for memory snapshots in the Preferences.");
-                    return null;
-                }
-
-                return res;
+                Debug.LogError(folderPath + " Is not a valid relative path, as it doesn't start with './' or '../'. Please change the path for memory snapshots in the Preferences.");
+                return null;
             }
+
+            var availableFolders = basePath.Substring(Path.GetPathRoot(basePath).Length)
+                .Split(new[] { Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries).Length;
+            var exceedsBasePath = false;
+            foreach (var token in pathTokens)
+            {
+                if (token == "..")
+                {
+                    if (--availableFolders < 0)
+                    {
+                        exceedsBasePath = true;
+                        availableFolders = 0;
+                    }
+                }
+                else if (token.Length > 0 && token != ".")
+                    ++availableFolders;
+            }
+
+            string res;
+            try
+            {
+                // GetFullPath throws for invalid paths and clamps excess "../" entries at the volume root
+                res = Path.GetFullPath(Path.Combine(basePath, folderPath));
+            }
+            catch (Exception)
+            {
+                Debug.LogError(folderPath + " Is not a valid relative path. Please change the path for memory snapshots in the Preferences.");
+                return null;
+            }
+
+            if (exceedsBasePath)
+                Debug.LogError($"The chosen relative path \"{folderPath}\" is targeting a folder higher up than the base path at \"{basePath}\" allows. Falling back to \"{res}\".");
+
+            return res;
         }
 
         public static bool MemoryProfilerPackageOverridesMemoryModuleUI
@@ -316,6 +356,7 @@ namespace Unity.MemoryProfiler.Editor
                 if (value == ShowMemoryMapView)
                     return;
                 EditorPrefs.SetBool(k_ShowMemoryMapView, value);
+                ShowMemoryMapViewChanged?.Invoke();
             }
         }
 

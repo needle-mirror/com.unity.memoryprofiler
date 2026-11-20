@@ -325,9 +325,8 @@ namespace Unity.MemoryProfiler.Editor
                 GcHandles = new GCHandleEntriesCache(ref reader);
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.GcHandlesCache);
 
-                // RawCount, not Count: the pre-format-10 unified-index split below needs the file's
-                // original GCHandles row count, unaffected by GCHandleEntriesCache's own duplicate removal.
-                Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles.RawCount);
+                Connections = new ConnectionEntriesCache(ref reader, NativeObjects, GcHandles);
+                GcHandles.ReleaseRawRowMap();
                 m_MetricsCollector.RecordConstructorTimingAndStartNext(SnapshotMetrics.TimingStep.ConnectionsCache);
 
                 // Rest of the backend-provided managed object graph.

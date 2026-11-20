@@ -8,6 +8,9 @@ using Unity.Scripting.LifecycleManagement;
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal partial class ProgressBarDisplay
     {
         string m_Title;

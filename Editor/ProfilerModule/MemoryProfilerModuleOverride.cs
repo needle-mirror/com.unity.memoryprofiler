@@ -18,6 +18,9 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
         Detailed = 1
     }
     [Serializable]
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     partial class MemoryProfilerModuleOverride
     {
         // This is an Editor Only class and handled via its InitializeOnLoadMethod, or via lifecycle attributes

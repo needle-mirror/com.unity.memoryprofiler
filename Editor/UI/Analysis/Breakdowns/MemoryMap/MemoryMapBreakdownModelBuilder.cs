@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.UI.TreeModelHelpers;
@@ -23,7 +24,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             TreeModelHelpers.ClearIdToIndexCache(ref m_IdToIndex);
         }
 
-        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IEnumerable<int> treeNodeIdFilter = null)
+        public MemoryMapBreakdownModel Build(MemoryMapBreakdownModel baseModel, IEnumerable<int> treeNodeIdFilter = null, CancellationToken cancellationToken = default)
         {
             var tree = new List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>>();
 
@@ -40,6 +41,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                 }
                 while (stack.Count > 0)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var treeNode = stack.Pop();
                     // only add leaf nodes, add children to the stack to be processed
                     if (treeNode.hasChildren)
@@ -81,7 +83,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             List<TreeViewItemData<MemoryMapBreakdownModel.ItemData>> roots = null;
             ConvertToTreeViewRecursive(snapshot, args, null, -1, ref roots);
-            return new MemoryMapBreakdownModel(roots, GetTotalMemorySize(snapshot));
+            return new MemoryMapBreakdownModel(roots, GetTotalMemorySize(snapshot, args.CancellationToken));
         }
 
         bool CanBuildBreakdownForSnapshot(CachedSnapshot snapshot)
@@ -97,6 +99,7 @@ namespace Unity.MemoryProfiler.Editor.UI
 
             snapshot.EntriesMemoryMap.ForEachChild(parentIndex, (index, address, size, source) =>
             {
+                filterArgs.CancellationToken.ThrowIfCancellationRequested();
                 var item = data[index];
                 var name = snapshot.EntriesMemoryMap.GetName(index);
 
@@ -208,11 +211,12 @@ namespace Unity.MemoryProfiler.Editor.UI
             return kinds;
         }
 
-        MemorySize GetTotalMemorySize(CachedSnapshot snapshot)
+        MemorySize GetTotalMemorySize(CachedSnapshot snapshot, CancellationToken cancellationToken)
         {
             var totalMemorySize = new MemorySize();
             snapshot.EntriesMemoryMap.ForEachFlatWithResidentSize((index, address, size, residentSize, source) =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 totalMemorySize += new MemorySize(size, residentSize);
             });
 
@@ -325,12 +329,15 @@ namespace Unity.MemoryProfiler.Editor.UI
 
         internal readonly struct BuildArgs
         {
-            public BuildArgs(IScopedFilter<string> searchFilter)
+            public BuildArgs(IScopedFilter<string> searchFilter, CancellationToken cancellationToken = default)
             {
                 SearchFilter = searchFilter;
+                CancellationToken = cancellationToken;
             }
 
             public IScopedFilter<string> SearchFilter { get; }
+
+            public CancellationToken CancellationToken { get; }
         }
     }
 }

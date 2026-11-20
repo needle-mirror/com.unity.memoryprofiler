@@ -2,9 +2,15 @@ using System;
 using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine.UIElements;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal class MemoryProfilerViewController : ViewController
     {
         const string k_UxmlAssetGuid = "3dd0da5afd7349e46be51745993b4f81";
@@ -115,6 +121,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SnapshotDataService.LoadedSnapshotsChanged += RefreshAnalysisView;
             m_SnapshotDataService.CompareModeChanged += CompareViewChanged;
             m_SnapshotDataService.AboutToUnloadSnapshot += RefreshAnalysisView;
+            MemoryProfilerSettings.ShowMemoryMapViewChanged += ShowMemoryMapViewChanged;
 
             // TwoPaneSplitView.viewDataKey is not currently supported so we need to manually persist its state.
             var snapshotListPaneSize = EditorPrefs.GetFloat(k_SnapshotListSplitViewFixedPaneSizePreferenceKey, 300);
@@ -191,6 +198,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             RefreshAnalysisView();
         }
 
+        void ShowMemoryMapViewChanged()
+        {
+            // The Memory Map tab only exists in single snapshot mode.
+            if (m_AnalysisViewController is not AnalysisTabBarController || (m_SnapshotDataService.CompareMode && m_SnapshotDataService.Compared != null))
+                return;
+
+            RefreshAnalysisView();
+        }
+
         void ToggleSnapshotsPanel(ChangeEvent<bool> e)
         {
             if (e.newValue)
@@ -225,6 +241,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             m_SnapshotDataService.CompareModeChanged -= CompareViewChanged;
             m_ScreenshotsManager.ScreenshotLoaded -= ScreenshotsLoaded;
             m_SnapshotDataService.AboutToUnloadSnapshot -= RefreshAnalysisView;
+            MemoryProfilerSettings.ShowMemoryMapViewChanged -= ShowMemoryMapViewChanged;
 
             base.Dispose(disposing);
 

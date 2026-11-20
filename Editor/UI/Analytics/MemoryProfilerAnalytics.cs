@@ -9,12 +9,18 @@ using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.Analytics;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
     // the internal APIs for Analytic Events do not follow the correct naming guidelines and sometimes using odd variable names.
     // This is because their data and field names gets serialized out and send to our analytics back-end using those field names.
     // There is a fixed set of expected field names that will get processed. Please check our internal Analytics spreadsheet, linked to from the Dashboard for more info.
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     static class MemoryProfilerAnalytics
     {
         const int k_MaxEventsPerHour = 100; // Max Events send per hour.

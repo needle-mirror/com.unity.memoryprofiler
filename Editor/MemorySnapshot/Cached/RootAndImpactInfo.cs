@@ -4041,17 +4041,6 @@ namespace Unity.MemoryProfiler.Editor
             }
         }
 
-        static bool IsFrozenHeapObject(CachedSnapshot snapshot, long managedObjectIndex)
-        {
-            ref readonly var frozenHeapObjects = ref snapshot.CrawledData.FrozenHeapManagedObjectIndices;
-            for (long i = 0; i < frozenHeapObjects.Count; i++)
-            {
-                if (frozenHeapObjects[i] == managedObjectIndex)
-                    return true;
-            }
-            return false;
-        }
-
         [Conditional("VALIDATE_ROOT_AND_IMPACT")]
         void Validate(CachedSnapshot snapshot)
         {
@@ -4290,8 +4279,14 @@ namespace Unity.MemoryProfiler.Editor
                         }
                         break;
                     case SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForMangedObjects:
+                    {
                         ref readonly var rootStepInfoForManagedObjects = ref m_ShortestPathInfo[rootGroupIndex];
                         ref readonly var markerInfoForManagedObjects = ref m_Marker[rootGroupIndex];
+                        ref readonly var frozenHeapObjects = ref snapshot.CrawledData.FrozenHeapManagedObjectIndices;
+                        using var frozenHeapObjectSet = new NativeHashSet<long>((int)frozenHeapObjects.Count, Allocator.Persistent);
+                        for (long i = 0; i < frozenHeapObjects.Count; i++)
+                            frozenHeapObjectSet.Add(frozenHeapObjects[i]);
+
                         for (long i = 0; i < snapshot.CrawledData.ManagedObjects.Count; i++)
                         {
                             ref readonly var rootStep = ref rootStepInfoForManagedObjects[i];
@@ -4301,8 +4296,8 @@ namespace Unity.MemoryProfiler.Editor
                             {
                                 // Only a frozen/NonGC-heap object roots itself (see CrawlManagedHeapSections);
                                 // every other managed object is rooted by a GCHandle/ManagedRoot/referrer.
-                                Debug.Assert(IsFrozenHeapObject(snapshot, i),
-                                    $"Managed object {i} is a root itself but is not a frozen/NonGC-heap object");
+                                if (!frozenHeapObjectSet.Contains(i))
+                                    Debug.Assert(false, $"Managed object {i} is a root itself but is not a frozen/NonGC-heap object");
                                 Debug.Assert(rootStep.Root == new SourceIndex(SourceIndex.SourceId.ManagedObject, i),
                                     "A frozen/NonGC-heap object should be its own root");
                             }
@@ -4313,6 +4308,7 @@ namespace Unity.MemoryProfiler.Editor
                             Debug.Assert(mark.FullyDistributedImpact, "Managed object impact should be fully distributed");
                         }
                         break;
+                    }
                     case SourceIndexToRootAndImpactInfoMapper.IndexInNestedArrayForManagedRoots:
                         if (!snapshot.HasManagedRoots)
                             break;

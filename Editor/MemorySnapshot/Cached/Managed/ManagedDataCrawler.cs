@@ -81,7 +81,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         const bool k_MemClearCrawlDataStack = false;
         const bool k_MemClearFieldLayoutData = false;
 
-        struct StackCrawlData
+        internal struct StackCrawlData
         {
             // Address of object to be crawled.
             public ulong Address;
@@ -124,7 +124,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             }
         }
 
-        readonly struct NativeObjectOrAllocationFinder : IDisposable
+        internal readonly struct NativeObjectOrAllocationFinder : IDisposable
         {
             [ReadOnly]
             public readonly AddressToInstanceId AddressToInstanceId;
@@ -1817,8 +1817,9 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 fromArrayIndex, allowStackExpansion: allowStackExpansion);
         }
 
+        // Burst direct-call targets must be internal or public: the Burst direct-call source generator (UAC2017) can't intercept private methods.
         [MethodImpl(MethodImplementationHelper.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
-        static void CrawlRawObjectData(
+        internal static void CrawlRawObjectData(
             in ManagedMemorySectionEntriesCache managedHeapBytes, in VirtualMachineInformation vmInfo, in AddressToManagedIndexHashMap managedObjectIndexByAddress,
             in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, in MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
             ref DynamicArray<StackCrawlData> crawlDataStack, in DynamicArrayRef<FieldLayoutInfo> fieldLayouts, in BytesAndOffset bytesAndOffsetOfFieldDataWithoutHeader,
@@ -1851,7 +1852,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
         }
 
         [MethodImpl(MethodImplementationHelper.AggressiveInlining), BurstCompile(CompileSynchronously = true, DisableDirectCall = false, DisableSafetyChecks = k_DisableBurstDebugChecks, Debug = k_DebugBurstJobs)]
-        static void CrawlRawFieldData(ulong arrayDataPtr, FieldReferenceType referenceTypeArrayFieldType, long maxObjectIndexFindableViaPointers,
+        internal static void CrawlRawFieldData(ulong arrayDataPtr, FieldReferenceType referenceTypeArrayFieldType, long maxObjectIndexFindableViaPointers,
             in AddressToManagedIndexHashMap mangedObjectIndexByAddress, in ManagedMemorySectionEntriesCache ManagedHeapSections, in VirtualMachineInformation vmInfo,
             ref DynamicArray<StackCrawlData> resultingCrawlDataStack, in NativeObjectOrAllocationFinder nativeObjectOrAllocationFinder, in MemoryProfilerSettings.FeatureFlags.CrawlerFlags crawlerFlags,
             int typeIndexOfTheTypeOwningTheField, in SourceIndex referenceOwner,
@@ -2192,8 +2193,10 @@ namespace Unity.MemoryProfiler.Editor.Managed
             var idx = data.ManagedObjectIndex;
             if (idx < 0 && !objectsByAddress.GetOrInitializeValue(data.Address, out idx, -1))
             {
-                // Static values can be stale, see BackendObjects.
+                // Static values can be stale, see BackendObjects. Native targets are not managed objects,
+                // so they are not in BackendObjects and must not be dropped here.
                 if (data.ReferenceOwner.Id == SourceIndex.SourceId.ManagedType && crawlData.BackendObjects.IsCreated
+                    && !data.SourceIndexOfNativeItem.Valid
                     && !crawlData.BackendObjects.Contains(data.Address))
                     return false;
 
@@ -2417,7 +2420,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
                 return true;
             }
 
-            var arrayLength = ManagedHeapArrayDataTools.ReadArrayLength(snapshot, byteOffset, obj.ITypeDescription, out var arrayRank);
+            var arrayLength = ManagedHeapArrayDataTools.ReadArrayLength(snapshot, byteOffset, obj.ITypeDescription);
 
             if (arrayLength <= 0)
             {
@@ -2430,9 +2433,7 @@ namespace Unity.MemoryProfiler.Editor.Managed
             if (iElementTypeDescription == -1)
                 return false; //do not crawl uninitialized object types, as we currently don't have proper handling for these
 
-            var arrayDataOffset = ManagedHeapArrayDataTools.IsCoreClrArrayLayout(virtualMachineInformation)
-                ? ManagedHeapArrayDataTools.GetCoreClrArrayDataOffset(virtualMachineInformation, arrayRank)
-                : virtualMachineInformation.ArrayHeaderSize;
+            var arrayDataOffset = ManagedHeapArrayDataTools.GetArrayDataOffset(snapshot, virtualMachineInformation, obj.ITypeDescription);
             var arrayData = byteOffset.Add(arrayDataOffset);
 
             var isValueTypeArray = typeDescriptions.HasFlag(iElementTypeDescription, TypeFlags.kValueType);

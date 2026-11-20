@@ -22,8 +22,8 @@ namespace Unity.MemoryProfiler.Editor
         /// is hard-coded to equal <c>scripting_array_object_header_size()</c>, so this offset equality is
         /// the layout's signal rather than an actual pointer to dereference. On CoreCLR, length/rank data
         /// is always inline: total count at <see cref="VirtualMachineInformation.ArraySizeOffsetInHeader"/>,
-        /// and for a genuine multi-dimensional array, per-rank {length, lowerBound} int32 pairs starting
-        /// immediately at <see cref="VirtualMachineInformation.ArrayHeaderSize"/> (matches dotnet-runtime's
+        /// and for a multi-dimensional or lower-bound array (<see cref="TypeFlags.kArrayHasBounds"/>), an inline
+        /// block of per-rank lengths then lower bounds (int32 each) starting immediately at <see cref="VirtualMachineInformation.ArrayHeaderSize"/> (matches dotnet-runtime's
         /// <c>ArrayBase::GetBoundsPtr</c>/<c>GetLowerBoundsPtr</c>).
         /// </summary>
         internal static bool IsCoreClrArrayLayout(VirtualMachineInformation vmInfo)
@@ -56,31 +56,31 @@ namespace Unity.MemoryProfiler.Editor
         }
 
         /// <summary>
-        /// Offset from the start of an array object to its first element's bytes. On CoreCLR, a
-        /// rank > 1 array carries an inline bounds block (<c>rank</c> lengths followed by <c>rank</c>
-        /// lower bounds, each <c>int32</c>) between the header and the element data — see
-        /// <see cref="ReadCoreClrArrayRankLength"/>. Rank &lt;= 1 has no such block. Only meaningful
-        /// when <see cref="IsCoreClrArrayLayout"/> is true; Mono/IL2CPP's bounds live out-of-line via
-        /// a pointer, so their element data always starts right after the header.
+        /// Offset from the start of an array object to its first element's bytes on CoreCLR. When
+        /// <paramref name="hasInlineBounds"/> is true (rank > 1, or a rank-1 array flagged
+        /// <see cref="TypeFlags.kArrayHasBounds"/>), an inline bounds block of <c>max(rank, 1)</c> lengths
+        /// followed by as many lower bounds (each <c>int32</c>) sits between the header and the elements;
+        /// see <see cref="ReadCoreClrArrayRankLength"/>. Only meaningful when <see cref="IsCoreClrArrayLayout"/>
+        /// is true; Mono/IL2CPP's bounds live out-of-line, so their elements start right after the header.
         /// </summary>
-        internal static ulong GetCoreClrArrayDataOffset(VirtualMachineInformation vmInfo, int rank)
+        internal static ulong GetCoreClrArrayDataOffset(VirtualMachineInformation vmInfo, int rank, bool hasInlineBounds)
         {
-            if (rank <= 1)
+            if (!hasInlineBounds)
                 return vmInfo.ArrayHeaderSize;
-            return vmInfo.ArrayHeaderSize + (ulong)rank * 2 * sizeof(int);
+            return vmInfo.ArrayHeaderSize + (ulong)Math.Max(rank, 1) * 2 * sizeof(int);
         }
 
         /// <summary>
         /// Offset from the start of an array object to its first element's bytes, looking up the
-        /// array's rank when needed. Prefer <see cref="GetCoreClrArrayDataOffset"/> directly if the
-        /// rank is already known, to avoid a redundant <see cref="TypeDescriptionEntriesCache.GetRank"/>
-        /// lookup.
+        /// array's rank and bounds flag when needed.
         /// </summary>
         internal static ulong GetArrayDataOffset(CachedSnapshot data, VirtualMachineInformation vmInfo, int iTypeDescriptionArrayType)
         {
-            return IsCoreClrArrayLayout(vmInfo)
-                ? GetCoreClrArrayDataOffset(vmInfo, data.TypeDescriptions.GetRank(iTypeDescriptionArrayType))
-                : vmInfo.ArrayHeaderSize;
+            if (!IsCoreClrArrayLayout(vmInfo))
+                return vmInfo.ArrayHeaderSize;
+            var rank = data.TypeDescriptions.GetRank(iTypeDescriptionArrayType);
+            var hasInlineBounds = rank > 1 || data.TypeDescriptions.HasFlag(iTypeDescriptionArrayType, TypeFlags.kArrayHasBounds);
+            return GetCoreClrArrayDataOffset(vmInfo, rank, hasInlineBounds);
         }
 
         public static ArrayInfo GetArrayInfo(CachedSnapshot data, BytesAndOffset arrayData, int iTypeDescriptionArrayType)
@@ -99,7 +99,7 @@ namespace Unity.MemoryProfiler.Editor
                 arrayInfo.Length = 1;
                 for (int i = 0; i < arrayInfo.Rank.Length; i++)
                     arrayInfo.Length *= arrayInfo.Rank[i];
-                arrayInfo.Data = arrayInfo.Header.Add(GetCoreClrArrayDataOffset(virtualMachineInformation, arrayInfo.Rank.Length));
+                arrayInfo.Data = arrayInfo.Header.Add(GetArrayDataOffset(data, virtualMachineInformation, iTypeDescriptionArrayType));
             }
             else
             {

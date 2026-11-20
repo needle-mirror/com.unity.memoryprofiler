@@ -653,7 +653,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
         }
 
-        public RootsAndImpactModel Build(RootsAndImpactModel baseModel, IList<int> treeNodeIdFilter)
+        public RootsAndImpactModel Build(RootsAndImpactModel baseModel, IList<int> treeNodeIdFilter, CancellationToken cancellationToken = default)
         {
             if (treeNodeIdFilter == null)
                 return baseModel;
@@ -672,6 +672,7 @@ namespace Unity.MemoryProfiler.Editor.UI
             }
             while (stack.Count > 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var treeNode = stack.Pop();
                 if (treeNode.hasChildren)
                 {

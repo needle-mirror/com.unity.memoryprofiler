@@ -1,8 +1,14 @@
 using System;
 using Unity.Profiling;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class NativeObjectTools
     {
         // This marker is used in performance tests. Adjust the Performance tests if you change the marker or its usage.

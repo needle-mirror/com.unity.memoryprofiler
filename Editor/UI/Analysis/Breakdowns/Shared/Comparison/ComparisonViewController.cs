@@ -6,10 +6,16 @@ using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor.UI
 {
     // Abstract base view controller for visual comparison between two trees. Displays a comparison table, for which you must provide a ComparisonTableModel builder. Subclasses then provide the specialized base/compared views (see AllTrackedMemoryComparisonViewController for example).
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     abstract class ComparisonViewController<TBaseModel, TBaseModelBuilderArgs, TBaseModelItemData, TModelSpecificData>
         : TreeViewController<
             ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>,
@@ -460,15 +466,15 @@ namespace Unity.MemoryProfiler.Editor.UI
             ConfigureStatusColumns();
         }
 
-        protected abstract TBaseModelBuilderArgs GetBaseModelBuilderArgs(CompoundSearchFilter searchFilter, bool sameSessionComparison);
+        protected abstract TBaseModelBuilderArgs GetBaseModelBuilderArgs(CompoundSearchFilter searchFilter, bool sameSessionComparison, CancellationToken cancellationToken);
 
-        protected virtual TreeComparisonBuilder.BuildArgs GetComparisonModelBuilderArgs()
+        protected virtual TreeComparisonBuilder.BuildArgs GetComparisonModelBuilderArgs(CancellationToken cancellationToken)
         {
             SessionState.SetBool(k_SessionStateKey_FlattenHierarchy, Flatten);
             SessionState.SetBool(k_SessionStateKey_IncludeUnchanged, IncludeUnchanged);
             SessionState.SetBool(k_SessionStateKey_CompareExtraData, CompareExtraData);
             // TODO: fix comparison tables to work with resident memory info
-            return new TreeComparisonBuilder.BuildArgs(IncludeUnchanged, AllTrackedMemoryTableMode.OnlyCommitted, CompareExtraData);
+            return new TreeComparisonBuilder.BuildArgs(IncludeUnchanged, AllTrackedMemoryTableMode.OnlyCommitted, CompareExtraData, cancellationToken);
         }
 
         protected override Func<ComparisonTableModel<TBaseModel, TBaseModelItemData, TModelSpecificData>> GetModelBuilderTask(CancellationToken cancellationToken)
@@ -476,8 +482,8 @@ namespace Unity.MemoryProfiler.Editor.UI
             // Build arguments for the comparison model
             var sameSessionComparison = IsSameSessionComparison;
             var itemNameFilter = BuildTextFilterFromSearchText();
-            var baseModelArgs = GetBaseModelBuilderArgs(itemNameFilter, sameSessionComparison);
-            var comparisonArgs = GetComparisonModelBuilderArgs();
+            var baseModelArgs = GetBaseModelBuilderArgs(itemNameFilter, sameSessionComparison, cancellationToken);
+            var comparisonArgs = GetComparisonModelBuilderArgs(cancellationToken);
 
             var args = new ComparisonModelBuilderArgs(baseModelArgs, comparisonArgs);
             return m_BuildOrchestrator.CreateBuildTask(args, cancellationToken);

@@ -11,6 +11,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 #if IMGUI_TREEVIEW_API_CHANGED
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
 #else
@@ -34,6 +37,9 @@ namespace Unity.MemoryProfiler.Editor.UI
         SubFoldoutPersistState = 1 << 10,
         SubFoldoutSpaced = 1 << 11,
     }
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal class SelectedItemDetailsPanel : IDisposable
     {
         const string k_UxmlAssetGuidSelectedItemDetailsGroup = "7b1ac4070dcbad341a293530f4f8e3d4";

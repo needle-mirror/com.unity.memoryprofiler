@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 using UnityEngine.Scripting;
@@ -20,6 +21,7 @@ using Unity.Scripting.LifecycleManagement;
 #endif
 
 [assembly: Preserve, AlwaysLinkAssembly]
+[assembly: InternalsVisibleTo("Unity.MemoryProfiler.Editor.Tests")]
 namespace Unity.MemoryProfiler
 {
 #if !MEMPROFILER_DISABLE_METADATA_INJECTOR

@@ -28,7 +28,7 @@ namespace Unity.MemoryProfiler.Editor
         string m_ConnectionDisplayName;
 
         // Capture state
-        bool m_CaptureInProgress; // Exclusively for the tests
+        bool m_CaptureInProgress;
         bool m_SnapshotInProgress;
         bool m_ScreenshotInProgress;
         double m_TimestamprOfLastSnapshotReceived;
@@ -63,6 +63,12 @@ namespace Unity.MemoryProfiler.Editor
             if (EditorApplication.isCompiling)
             {
                 Debug.LogError("Unable to snapshot while compilation is ongoing");
+                return;
+            }
+
+            if (m_CaptureInProgress)
+            {
+                Debug.LogWarning("Snapshot already in progress.");
                 return;
             }
 
@@ -115,178 +121,191 @@ namespace Unity.MemoryProfiler.Editor
                 yield break;
             }
 
-            ProgressBarDisplay.ShowBar("Memory capture");
-            yield return null; //skip one frame so we can draw the progress bar
-
-            m_SnapshotInProgress = true;
-            m_ScreenshotInProgress = true;
-
-            using var capturedSnapshotEvent = MemoryProfilerAnalytics.BeginCapturedSnapshotEvent();
-
-            if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Editor)
-            {
-                if (MemoryProfilerSettings.CloseSnapshotsWhenCapturingEditor)
-                {
-                    ProgressBarDisplay.UpdateProgress(0.0f, "Closing snapshot...");
-                    m_SnapshotDataService.UnloadAll();
-                    // Skip a frame
-                    yield return null;
-                }
-
-                if (MemoryProfilerSettings.GCCollectWhenCapturingEditor)
-                {
-                    ProgressBarDisplay.UpdateProgress(0.1f, "Collecting garbage...");
-
-                    var oldGCReserved = Profiler.GetMonoHeapSizeLong();
-                    // Repeat 6 times together with finalizers wait to give a higher chance to boehm to catch up with pending finalizers.
-                    // Finalizers delay collection of objects and may cause other object being considered as referenced.
-                    for (var i = 0; i < 6; ++i)
-                    {
-                        GC.Collect();
-                        // Ensure finalizers are executed so we can collect objects with pending finalizers next iteration
-                        GC.WaitForPendingFinalizers();
-                        // Early exit if we were able to collect successfully and release free heap sections.
-                        if (Profiler.GetMonoHeapSizeLong() < oldGCReserved)
-                            break;
-                    }
-                }
-            }
-
-            ProgressBarDisplay.UpdateProgress(0.2f, "Taking capture...");
-
-            var snapshotFolderPath = m_SnapshotDataService.GetSnapshotFolderPath();
-            string basePath = Path.Combine(snapshotFolderPath, FileExtensionContent.SnapshotTempFileName);
-
-            bool snapshotCaptureResult = false;
-            bool screenshotCaptureResult = false;
-            string capturePath = "";
-
-            Action<string, bool, DebugScreenCapture> screenshotCaptureFunc = null;
-            if (MemoryProfilerSettings.CaptureWithScreenshot)
-            {
-                screenshotCaptureFunc = (string path, bool result, DebugScreenCapture screenCapture) =>
-                {
-                    var wasStillWaitingForScreenshot = m_ScreenshotInProgress; // or did it time out?
-                    m_ScreenshotInProgress = false;
-                    screenshotCaptureResult = result;
-                    if (!screenshotCaptureResult)
-                        return;
-
-                    if (screenCapture.RawImageDataReference.Length == 0)
-                        return;
-
-                    if (wasStillWaitingForScreenshot) // only update progress if not timed out
-                        ProgressBarDisplay.UpdateProgress(0.8f, "Processing Screenshot");
-
-                    if (Path.HasExtension(path))
-                    {
-                        path = Path.ChangeExtension(path, FileExtensionContent.SnapshotTempScreenshotFileExtension);
-                    }
-
-                    Texture2D tex = new Texture2D(screenCapture.Width, screenCapture.Height, screenCapture.ImageFormat, false);
-                    CopyDataToTexture(tex, screenCapture.RawImageDataReference);
-                    File.WriteAllBytes(path, tex.EncodeToPNG());
-                    if (Application.isPlaying)
-                        UnityEngine.Object.Destroy(tex);
-                    else
-                        UnityEngine.Object.DestroyImmediate(tex);
-                };
-            }
-
-            Action<string, bool> snapshotCaptureFunc = (string path, bool result) =>
-            {
-                m_SnapshotInProgress = false;
-                m_TimestamprOfLastSnapshotReceived = EditorApplication.timeSinceStartup;
-
-                snapshotCaptureResult = result;
-
-                capturePath = path;
-            };
-
             try
             {
-                if (MemoryProfilerSettings.CaptureWithScreenshot && (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Player || Application.isPlaying))
+                ProgressBarDisplay.ShowBar("Memory capture");
+                yield return null; //skip one frame so we can draw the progress bar
+
+                m_SnapshotInProgress = true;
+                m_ScreenshotInProgress = true;
+
+                using var capturedSnapshotEvent = MemoryProfilerAnalytics.BeginCapturedSnapshotEvent();
+
+                if (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Editor)
                 {
-                    QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
+                    if (MemoryProfilerSettings.CloseSnapshotsWhenCapturingEditor)
+                    {
+                        ProgressBarDisplay.UpdateProgress(0.0f, "Closing snapshot...");
+                        m_SnapshotDataService.UnloadAll();
+                        // Skip a frame
+                        yield return null;
+                    }
+
+                    if (MemoryProfilerSettings.GCCollectWhenCapturingEditor)
+                    {
+                        ProgressBarDisplay.UpdateProgress(0.1f, "Collecting garbage...");
+
+                        var oldGCReserved = Profiler.GetMonoHeapSizeLong();
+                        // Repeat 6 times together with finalizers wait to give a higher chance to boehm to catch up with pending finalizers.
+                        // Finalizers delay collection of objects and may cause other object being considered as referenced.
+                        for (var i = 0; i < 6; ++i)
+                        {
+                            GC.Collect();
+                            // Ensure finalizers are executed so we can collect objects with pending finalizers next iteration
+                            GC.WaitForPendingFinalizers();
+                            // Early exit if we were able to collect successfully and release free heap sections.
+                            if (Profiler.GetMonoHeapSizeLong() < oldGCReserved)
+                                break;
+                        }
+                    }
                 }
-                else
+
+                ProgressBarDisplay.UpdateProgress(0.2f, "Taking capture...");
+
+                var snapshotFolderPath = m_SnapshotDataService.GetSnapshotFolderPath();
+                string basePath = Path.Combine(snapshotFolderPath, FileExtensionContent.SnapshotTempFileName);
+
+                bool snapshotCaptureResult = false;
+                bool screenshotCaptureResult = false;
+                string capturePath = "";
+
+                Action<string, bool, DebugScreenCapture> screenshotCaptureFunc = null;
+                if (MemoryProfilerSettings.CaptureWithScreenshot)
                 {
-                    QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
-                    m_ScreenshotInProgress = false; //screenshot is not in progress
+                    screenshotCaptureFunc = (string path, bool result, DebugScreenCapture screenCapture) =>
+                    {
+                        var wasStillWaitingForScreenshot = m_ScreenshotInProgress; // or did it time out?
+                        m_ScreenshotInProgress = false;
+                        screenshotCaptureResult = result;
+                        if (!screenshotCaptureResult)
+                            return;
+
+                        if (screenCapture.RawImageDataReference.Length == 0)
+                            return;
+
+                        if (wasStillWaitingForScreenshot) // only update progress if not timed out
+                            ProgressBarDisplay.UpdateProgress(0.8f, "Processing Screenshot");
+
+                        if (Path.HasExtension(path))
+                        {
+                            path = Path.ChangeExtension(path, FileExtensionContent.SnapshotTempScreenshotFileExtension);
+                        }
+
+                        Texture2D tex = new Texture2D(screenCapture.Width, screenCapture.Height, screenCapture.ImageFormat, false);
+                        CopyDataToTexture(tex, screenCapture.RawImageDataReference);
+                        File.WriteAllBytes(path, tex.EncodeToPNG());
+                        if (Application.isPlaying)
+                            UnityEngine.Object.Destroy(tex);
+                        else
+                            UnityEngine.Object.DestroyImmediate(tex);
+                    };
                 }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Failed to take a Memory Snapshot. Configured storage path was: {basePath}");
-                throw ex;
-            }
 
-            capturedSnapshotEvent.SetResult(snapshotCaptureResult);
-            ProgressBarDisplay.UpdateProgress(0.7f);
-
-            // Wait for snapshotting operation to finish and skip one frame to update loading bar
-            int skipFrames = 2;
-            while (skipFrames > 0)
-            {
-                if (!m_SnapshotInProgress)
-                    --skipFrames;
-
-                yield return null;
-            }
-
-            // Wait for screenshot op to complete and time out if it does not
-            while (m_ScreenshotInProgress)
-            {
-                if (EditorApplication.timeSinceStartup - m_TimestamprOfLastSnapshotReceived >= k_TimeOutForScreenshots)
+                Action<string, bool> snapshotCaptureFunc = (string path, bool result) =>
                 {
-                    m_ScreenshotInProgress = false;
-                    break;
-                }
-                yield return null;
-            }
+                    m_SnapshotInProgress = false;
+                    m_TimestamprOfLastSnapshotReceived = EditorApplication.timeSinceStartup;
 
-            if (snapshotCaptureResult)
-            {
-                ProgressBarDisplay.UpdateProgress(0.9f, "Copying capture...");
+                    snapshotCaptureResult = result;
 
-                // Read meta information to build human readable file name
-                var modelBuilder = new SnapshotFileModelBuilder(capturePath);
-                var snapshotFileModel = modelBuilder.Build();
-                FileInfo file = new FileInfo(capturePath);
-                var dateString = snapshotFileModel.Timestamp.ToLocalTime().ToString("yyyy-MM-dd_HH-mm-ss", System.Globalization.CultureInfo.InvariantCulture);
+                    capturePath = path;
+                };
 
-                // Santise the product name
-                var invalidChars = Path.GetInvalidFileNameChars();
-                var prodNameSanitised = new StringBuilder(snapshotFileModel.ProductName);
-                foreach (var t in invalidChars)
-                    prodNameSanitised.Replace(t, '_');
-
-                var finalFileName = $"{prodNameSanitised}_{dateString}{FileExtensionContent.SnapshotFileExtension}";
-
-                // Move file to the final location
-                var snapshotPath = Path.Combine(snapshotFolderPath, finalFileName);
                 try
                 {
-                    File.Move(capturePath, snapshotPath);
+                    if (MemoryProfilerSettings.CaptureWithScreenshot && (m_PlayerConnectionState.connectedToTarget == ConnectionTarget.Player || Application.isPlaying))
+                    {
+                        QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, screenshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
+                    }
+                    else
+                    {
+                        QueryMemoryProfiler.TakeSnapshot(basePath, snapshotCaptureFunc, MemoryProfilerSettings.MemoryProfilerCaptureFlags);
+                        m_ScreenshotInProgress = false; //screenshot is not in progress
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"Failed to store Memory Snapshot. Attempted to store as: {snapshotPath}");
+                    Debug.LogError($"Failed to take a Memory Snapshot. Configured storage path was: {basePath}");
                     throw ex;
                 }
-                if (screenshotCaptureResult)
+
+                capturedSnapshotEvent.SetResult(snapshotCaptureResult);
+                ProgressBarDisplay.UpdateProgress(0.7f);
+
+                // Wait for snapshotting operation to finish and skip one frame to update loading bar
+                int skipFrames = 2;
+                while (skipFrames > 0)
                 {
-                    capturePath = Path.ChangeExtension(capturePath, FileExtensionContent.SnapshotTempScreenshotFileExtension);
-                    string screenshotPath = Path.ChangeExtension(snapshotPath, FileExtensionContent.SnapshotScreenshotFileExtension);
-                    File.Move(capturePath, screenshotPath);
+                    if (!m_SnapshotInProgress)
+                        --skipFrames;
+
+                    yield return null;
                 }
+
+                // Wait for screenshot op to complete and time out if it does not
+                while (m_ScreenshotInProgress)
+                {
+                    if (EditorApplication.timeSinceStartup - m_TimestamprOfLastSnapshotReceived >= k_TimeOutForScreenshots)
+                    {
+                        m_ScreenshotInProgress = false;
+                        break;
+                    }
+                    yield return null;
+                }
+
+                if (snapshotCaptureResult)
+                {
+                    ProgressBarDisplay.UpdateProgress(0.9f, "Copying capture...");
+
+                    // Read meta information to build human readable file name
+                    var modelBuilder = new SnapshotFileModelBuilder(capturePath);
+                    var snapshotFileModel = modelBuilder.Build();
+                    if (snapshotFileModel == null)
+                    {
+                        Debug.LogError($"Failed to read Memory Snapshot at: {capturePath}");
+                    }
+                    else
+                    {
+                        FileInfo file = new FileInfo(capturePath);
+                        var dateString = snapshotFileModel.Timestamp.ToLocalTime().ToString("yyyy-MM-dd_HH-mm-ss", System.Globalization.CultureInfo.InvariantCulture);
+
+                        // Santise the product name
+                        var invalidChars = Path.GetInvalidFileNameChars();
+                        var prodNameSanitised = new StringBuilder(snapshotFileModel.ProductName);
+                        foreach (var t in invalidChars)
+                            prodNameSanitised.Replace(t, '_');
+
+                        var finalFileName = $"{prodNameSanitised}_{dateString}{FileExtensionContent.SnapshotFileExtension}";
+
+                        // Move file to the final location
+                        var snapshotPath = Path.Combine(snapshotFolderPath, finalFileName);
+                        try
+                        {
+                            File.Move(capturePath, snapshotPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.LogError($"Failed to store Memory Snapshot. Attempted to store as: {snapshotPath}");
+                            throw ex;
+                        }
+                        if (screenshotCaptureResult)
+                        {
+                            capturePath = Path.ChangeExtension(capturePath, FileExtensionContent.SnapshotTempScreenshotFileExtension);
+                            string screenshotPath = Path.ChangeExtension(snapshotPath, FileExtensionContent.SnapshotScreenshotFileExtension);
+                            File.Move(capturePath, screenshotPath);
+                        }
+                    }
+                }
+
+                m_SnapshotDataService.SetSnapshotsFolderDirty();
             }
-
-            ProgressBarDisplay.ClearBar();
-
-            m_SnapshotDataService.SetSnapshotsFolderDirty();
-
-            m_CaptureInProgress = false;
+            finally
+            {
+                ProgressBarDisplay.ClearBar();
+                m_SnapshotInProgress = false;
+                m_ScreenshotInProgress = false;
+                m_CaptureInProgress = false;
+            }
         }
 
         void CopyDataToTexture(Texture2D tex, NativeArray<byte> byteArray)

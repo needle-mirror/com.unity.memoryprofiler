@@ -33,6 +33,23 @@ namespace Unity.MemoryProfiler.Editor
             /// </summary>
             public long RawCount;
 
+            /// <summary>
+            /// Original row -> row in <see cref="Target"/>. Only created when duplicates were removed;
+            /// use <see cref="RawRowToRow"/> to read it.
+            /// </summary>
+            DynamicArray<long> m_RawRowToRow;
+
+            /// <summary>The row in <see cref="Target"/> that original file row <paramref name="rawRow"/> was merged into.</summary>
+            public long RawRowToRow(long rawRow) => m_RawRowToRow.IsCreated && rawRow >= 0 ? m_RawRowToRow[rawRow] : rawRow;
+
+            /// <summary>Frees the row map once nothing needs to translate original rows anymore; <see cref="RawRowToRow"/> is the identity afterwards.</summary>
+            public void ReleaseRawRowMap()
+            {
+                if (m_RawRowToRow.IsCreated)
+                    m_RawRowToRow.Dispose();
+                m_RawRowToRow = default;
+            }
+
             public GCHandleEntriesCache(ref IFileReader reader)
             {
                 unsafe
@@ -54,13 +71,27 @@ namespace Unity.MemoryProfiler.Editor
             /// <summary>Compacts <see cref="Target"/> to one row per unique address.</summary>
             void RemoveDuplicateTargets()
             {
-                using var seenAddresses = new NativeHashSet<ulong>((int)Count, Allocator.Temp);
+                using var rowByAddress = new NativeHashMap<ulong, long>((int)Count, Allocator.Temp);
                 var uniqueCount = 0L;
                 for (long i = 0; i < Count; i++)
                 {
                     var target = Target[i];
-                    if (seenAddresses.Add(target))
+                    if (rowByAddress.TryAdd(target, uniqueCount))
+                    {
+                        if (m_RawRowToRow.IsCreated)
+                            m_RawRowToRow[i] = uniqueCount;
                         Target[uniqueCount++] = target;
+                        continue;
+                    }
+
+                    if (!m_RawRowToRow.IsCreated)
+                    {
+                        // rows before the first duplicate have not moved
+                        m_RawRowToRow = new DynamicArray<long>(Count, Allocator.Persistent);
+                        for (long j = 0; j < i; j++)
+                            m_RawRowToRow[j] = j;
+                    }
+                    m_RawRowToRow[i] = rowByAddress[target];
                 }
 
                 if (uniqueCount == Count)
@@ -76,6 +107,7 @@ namespace Unity.MemoryProfiler.Editor
                 UniqueCount = 0;
                 RawCount = 0;
                 Target.Dispose();
+                ReleaseRawRowMap();
             }
         }
     }

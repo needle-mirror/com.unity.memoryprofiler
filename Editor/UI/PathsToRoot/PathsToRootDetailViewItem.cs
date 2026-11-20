@@ -5,6 +5,9 @@ using Unity.MemoryProfiler.Editor.UIContentData;
 using UnityEditor;
 using UnityEngine;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 #if IMGUI_TREEVIEW_API_CHANGED
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
@@ -14,6 +17,9 @@ using UnityEditor.IMGUI.Controls;
 
 namespace Unity.MemoryProfiler.Editor.UI.PathsToRoot
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal sealed class PathsToRootDetailTreeViewItem : TreeViewItem
     {
         static readonly GUIContent s_DashContent = new GUIContent("—");

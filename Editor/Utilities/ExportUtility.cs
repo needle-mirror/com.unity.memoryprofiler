@@ -10,9 +10,15 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.CachedSnapshot;
 using static Unity.MemoryProfiler.Editor.CallstacksTreeWindow;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 namespace Unity.MemoryProfiler.Editor
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     static class ExportUtility
     {
         public const int InvalidMappedAreaId = -1;

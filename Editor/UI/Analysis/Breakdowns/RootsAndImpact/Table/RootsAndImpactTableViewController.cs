@@ -20,9 +20,9 @@ namespace Unity.MemoryProfiler.Editor.UI
             return m_Builder.Build(snapshot, args);
         }
 
-        public RootsAndImpactModel Build(RootsAndImpactModel baseModel, IList<int> treeNodeIdFilter)
+        public RootsAndImpactModel Build(RootsAndImpactModel baseModel, IList<int> treeNodeIdFilter, CancellationToken cancellationToken)
         {
-            return m_Builder.Build(baseModel, treeNodeIdFilter);
+            return m_Builder.Build(baseModel, treeNodeIdFilter, cancellationToken);
         }
 
         public void ClearIdToIndexCache()

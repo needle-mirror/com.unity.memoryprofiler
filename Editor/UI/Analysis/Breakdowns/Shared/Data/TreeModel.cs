@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using UnityEngine.UIElements;
 using static Unity.MemoryProfiler.Editor.UI.TreeModelHelpers;
 
@@ -168,7 +169,7 @@ namespace Unity.MemoryProfiler.Editor.UI
         where TTreeItemData : INamedTreeItemData
     {
         public List<TreeViewItemData<TTreeItemData>> RootNodes { get; }
-        public void Sort(Comparison<TreeViewItemData<TTreeItemData>> sortComparison);
+        public void Sort(Comparison<TreeViewItemData<TTreeItemData>> sortComparison, CancellationToken cancellationToken = default);
     }
 
     abstract class TreeModel<T> : ITreeModel<T>
@@ -183,15 +184,16 @@ namespace Unity.MemoryProfiler.Editor.UI
         public List<TreeViewItemData<T>> RootNodes { get; }
 
         // Sort the tree's data according to the provided sort comparison.
-        public void Sort(Comparison<TreeViewItemData<T>> sortComparison)
+        public void Sort(Comparison<TreeViewItemData<T>> sortComparison, CancellationToken cancellationToken = default)
         {
             if (sortComparison == null)
                 return;
 
-            RootNodes.Sort(sortComparison);
+            TreeModelUtility.SortCancellable(RootNodes, sortComparison, cancellationToken);
             var stack = new Stack<TreeViewItemData<T>>(RootNodes);
             while (stack.Count > 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var item = stack.Pop();
                 if (item.hasChildren)
                 {
@@ -199,7 +201,7 @@ namespace Unity.MemoryProfiler.Editor.UI
                     foreach (var child in children)
                         stack.Push(child);
 
-                    children.Sort(sortComparison);
+                    TreeModelUtility.SortCancellable(children, sortComparison, cancellationToken);
                 }
             }
         }

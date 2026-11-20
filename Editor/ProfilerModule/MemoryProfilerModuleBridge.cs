@@ -4,6 +4,9 @@ using System.Reflection;
 #endif
 using Unity.Profiling.Editor;
 using UnityEditor;
+#if LIFECYCLE_APIS_AVAILABLE
+using Unity.Scripting.LifecycleManagement;
+#endif
 
 #if MEMORY_PROFILER_MODULE_BINDING_USES_CORRECT_NAMESPACE
 // This should technically be the correct namespace...
@@ -14,6 +17,9 @@ namespace Unity.MemoryProfiler.MemoryProfilerModule.Editor
 namespace Unity.MemoryProfiler.Editor.MemoryProfilerModule
 #endif
 {
+#if LIFECYCLE_APIS_AVAILABLE
+    [NoAutoStaticsCleanup]
+#endif
     internal static class MemoryProfilerModuleBridge
     {
 #if MEMORY_PROFILER_MODULE_WILL_BIND_BRIDGE_AUTOMATICALLY  // aka Unity Version >= 2022.2.0a12

@@ -6,6 +6,7 @@ The Roots & Impact view groups all the memory in a snapshot by what roots it: th
 
 To understand the rooting and impact attribution model behind the view, refer to [Root ownership and impact attribution](root-ownership-and-impact-attribution.md). To learn how Unity handles the managed and native memory of Unity objects, refer to [Analyzing Unity object memory leaks](managed-shell-objects.md). The Roots & Impact view uses the same rooting, status, and impact data shown for a single object in the [References panel's](references-component.md) **Shortest Path To Root** column and the [Selection Details panel](selection-details-component.md).
 
+<!-- prettier-ignore -->
 > [!NOTE]
 > To use the Roots & Impact view, you need to capture a snapshot. For more information, refer to [Capture or import a snapshot](snapshot-capture.md).
 
@@ -39,9 +40,11 @@ Each root group entry displays its impact in the following columns:
 
 By default, the view sorts entries by **Total** impact, so the largest contributors appear first. This often resembles the root-group order, because stronger root types tend to capture everything they reference and later groups capture only the memory left over.
 
+<!-- prettier-ignore -->
 > [!NOTE]
 > Impact values cover native, managed, and graphics memory. You can display a column for each memory type in the context menu of the column header. You can also use that context menu to show Allocated, Allocated and Resident, or Resident values.
 
+<!-- prettier-ignore -->
 > [!NOTE]
 > A shared memory entry can also be the single owner of memory. For example, if an entry reaches the same object through two of its own references, the Shared view attributes that object's memory to the entry as two shared fractions. The **Shared (non-distributed)** column shows the full amount regardless of how it's split between entries under different roots or distant relatives within a single root's reference graph.
 
@@ -57,6 +60,7 @@ How the results appear depends on whether you flatten the hierarchy:
 - In the default hierarchical view, matching objects appear in place, with the non-matching ancestors and descendants that form their context shown greyed out.
 - When you enable the flatten option, the view lists only the matching objects as a flat, sortable list. Sort by the **Total** column to rank them by overall impact.
 
+<!-- prettier-ignore -->
 > [!TIP]
 > A leaked object's size can be small, but the memory it keeps alive through its references can be significant, including native and graphics memory. To accurately assess impact in each section, sort by **Total**.
 
@@ -66,6 +70,7 @@ The greyed-out context in the hierarchical view helps you reason about leaks in 
 - Spot a common source. The path from the root down to a leak is that object's shortest path to root, so when many leaks share a parent, such as one statically referenced collection or event, that parent rises to the top as the first thing to clear.
 - Expand the children of a leak to learn what memory it keeps alive. This is the first place you can inspect those references as a tree, rather than the first-level **Referenced By** list in the References panel.
 
+<!-- prettier-ignore -->
 > [!NOTE]
 > In the flattened view, an entry's **Total** value includes the impact of any matching descendants that also appear as their own rows, such as a leaked shell that roots another leaked shell. The per-row **Total** values therefore overlap and don't sum to **Total Impact In Table**, which counts each contribution only once.
 
@@ -73,6 +78,7 @@ Leaked dynamic assets are unreferenced, so they appear one level below their roo
 
 To check for runtime-created assets that accumulate over time, enable the **All Leaked** status group, then look for entries with the **Leaked Dynamic Asset** status.
 
+<!-- prettier-ignore -->
 > [!TIP]
 > The **Broken Script References** group identifies leaks where the backing script of a native MonoBehaviour or ScriptableObject instance was deleted, renamed, or failed to compile. These instances carry the **Broken Script Reference** status, included in the **All Leaked** filter, because they have no reference or root that keeps them alive but aren't cleaned up automatically. To resolve the leak caused by each entry, restore the missing script or destroy the object.
 
@@ -83,6 +89,7 @@ To find out how much memory managed static references keep alive:
 1. Expand the **Static Types** group at the top of the table.
 1. Browse the entries organized by namespace and type.
 
+<!-- prettier-ignore -->
 > [!TIP]
 > Your code keeps memory under the **Static Types** group alive for the lifetime of the application unless it explicitly clears the references. A common source of leaks is a static reference into a scene that keeps that scene's objects alive after the scene unloads, which can turn the managed objects into leaked shells.
 

@@ -465,11 +465,13 @@ namespace Unity.MemoryProfiler.Editor
                 var typeNameToIndex = new Dictionary<string, int>();
                 for (int i = 0; i < Count; ++i)
                 {
+                    // Prefer the plain (SZ) row when a bounded array type shares its name.
+                    if (HasFlag(i, TypeFlags.kArrayHasBounds) && typeNameToIndex.ContainsKey(TypeDescriptionName[i]))
+                        continue;
                     typeNameToIndex[TypeDescriptionName[i]] = i;
                 }
                 if (managedObjects.InstanceCountPerType.IsCreated)
                     InclusiveInstanceCount = ComputeInclusiveInstanceCounts(managedObjects.InstanceCountPerType, BaseOrElementTypeIndex, Allocator.Persistent);
-                PreferLiveGenerationOfUnityBaseTypes(typeNameToIndex);
 
                 typeNameToIndex.GetOrInitializeValue(UnityObjectTypeName, out ITypeUnityObject, ITypeInvalid);
 #if DEBUG_VALIDATION //This shouldn't really happen
@@ -751,47 +753,6 @@ namespace Unity.MemoryProfiler.Editor
                 }
             }
 
-            static readonly string[] k_UnityBaseTypeNamesResolvedByGeneration =
-            {
-                k_UnityMonoBehaviourTypeName, k_UnityScriptableObjectTypeName, k_UnityComponentObjectTypeName,
-                k_UnityGameObjectTypeName, k_UnityTransformTypeName, k_UnityRectTransformTypeName, k_UnityEditorEditorTypeName,
-            };
-
-            /// <summary>
-            /// CoreCLR snapshots can contain type rows left over from earlier domain reloads, so a Unity base type
-            /// such as UnityEngine.Object can appear once per reload. Points the Unity base type names at the
-            /// generation that the live objects of the backend-provided object table derive from.
-            /// </summary>
-            void PreferLiveGenerationOfUnityBaseTypes(Dictionary<string, int> typeNameToIndex)
-            {
-                if (!InclusiveInstanceCount.IsCreated)
-                    return;
-                using var unityObjectRows = new DynamicArray<int>(0, 4, Allocator.Temp);
-                for (int i = 0; i < Count; ++i)
-                {
-                    if (TypeDescriptionName[i] == UnityObjectTypeName)
-                        unityObjectRows.Push(i);
-                }
-                if (unityObjectRows.Count < 2)
-                    return;
-
-                // UnityEngine.Object currently contains no static fields so there is no benefit in providing a valid list for candidateHasResolvedStatics
-                var liveUnityObjectRow = SelectLiveGenerationRow(unityObjectRows, InclusiveInstanceCount, default);
-                typeNameToIndex[UnityObjectTypeName] = liveUnityObjectRow;
-
-                foreach (var name in k_UnityBaseTypeNamesResolvedByGeneration)
-                {
-                    for (int i = 0; i < Count; ++i)
-                    {
-                        if (TypeDescriptionName[i] == name && DerivesFromRow(BaseOrElementTypeIndex, i, liveUnityObjectRow))
-                        {
-                            typeNameToIndex[name] = i;
-                            break;
-                        }
-                    }
-                }
-            }
-
             /// <summary>
             /// Returns the row of the live generation of the type at <paramref name="typeIndex"/>, or the row itself when its name is unique.
             /// CoreCLR keeps the type rows of assembly load contexts that leaked across domain reloads, under the same names as the live ones.
@@ -885,17 +846,6 @@ namespace Unity.MemoryProfiler.Editor
                     }
                 }
                 return inclusive;
-            }
-
-            static bool DerivesFromRow(DynamicArray<int> baseOrElementTypeIndex, int typeIndex, int baseTypeIndex)
-            {
-                for (long hops = 0; typeIndex >= 0 && hops < baseOrElementTypeIndex.Count; ++hops)
-                {
-                    if (typeIndex == baseTypeIndex)
-                        return true;
-                    typeIndex = baseOrElementTypeIndex[typeIndex];
-                }
-                return false;
             }
 
             bool FieldMatchesOptions(int fieldIndex, FieldDescriptionEntriesCache fieldDescriptions, FieldFindOptions options)

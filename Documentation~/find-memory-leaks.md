@@ -4,8 +4,8 @@ Memory leaks cause your application to perform worse over time and might lead to
 
 Memory leaks typically happen for one of the following reasons:
 
-* Missing code to release objects from memory.
-* Unintentional references keeping objects in memory.
+- Missing code to release objects from memory.
+- Unintentional references keeping objects in memory.
 
 To identify memory leaks, capture and compare multiple snapshots. Refer to [Compare two snapshots](snapshots-comparison.md) for more information.
 
@@ -26,6 +26,6 @@ Increased memory usage in the second snapshot might indicate a memory leak.
 
 ## Additional resources
 
-* [Compare two snapshots](snapshots-comparison.md)
-* [Memory Profiler window reference](memory-profiler-window-reference.md)
-* [Analyzing Unity object memory leaks](managed-shell-objects.md)
+- [Compare two snapshots](snapshots-comparison.md)
+- [Memory Profiler window reference](memory-profiler-window-reference.md)
+- [Analyzing Unity object memory leaks](managed-shell-objects.md)
